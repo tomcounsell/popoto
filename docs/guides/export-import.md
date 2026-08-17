@@ -64,6 +64,17 @@ resolution is counted as `vanished` and simply omitted, and a record created
 afterward is absent from the export. `result.matched_count` versus
 `result.record_count` shows you the gap if one exists.
 
+`ValidityField` declares `roundtrip_policy = "carry"` and carries all six of its
+derived Redis keys (`valid_from`, `invalid_at`, `ingested_at`, `chain:fwd`,
+`chain:rev`, and the per-identity `open:{digest}` pointer) through export and
+import — without it, a round trip would silently reopen every superseded record.
+Because there is no reverse index from record to identity digest, exporting a
+record with a `ValidityField` costs one extra `SCAN` over that field's
+`open:*` pointers to find any aimed at it; this only runs on the export path, not
+on save or read. See
+[ValidityField and SupersessionProtocol](../features/validity-and-supersession.md#export-import)
+for the full accounting.
+
 ### `ExportResult`
 
 `export_records()` returns an `ExportResult`:

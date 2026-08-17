@@ -46,6 +46,7 @@ nav:
                 - CoOccurrenceField: 'features/co-occurrence-field.md'
                 - ExistenceFilter: 'features/existence-filter.md'
                 - ObservationProtocol: 'features/observation-protocol.md'
+                - ValidityField and Supersession: 'features/validity-and-supersession.md'
                 - PredictionLedger: 'features/prediction-ledger.md'
                 - Composite Score Query: 'features/composite-score-query.md'
                 - PolicyCache: 'features/policy-cache.md'

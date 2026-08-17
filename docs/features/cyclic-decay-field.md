@@ -71,6 +71,15 @@ class Directive(Model):
 top = Directive.query.filter(agent_id="agent-1").top_by_decay(n=10)
 ```
 
+!!! warning "`top_by_decay()` on a `CyclicDecayField` is not gated by `ValidityField`"
+    `CYCLIC_DECAY_LUA` was deliberately left unmodified by the validity-gating work
+    (issue #580), so a direct `top_by_decay()` call on a model with a `CyclicDecayField`
+    can return a superseded record. This is a direct-caller gap only: `ContextAssembler`
+    never calls `top_by_decay`, and its push path (`composite_score`) plus the assembler
+    post-filter both gate cyclic results correctly. See
+    [ValidityField and SupersessionProtocol](validity-and-supersession.md#known-limitations)
+    for the full accounting.
+
 ### Resolving Pressure
 
 ```python

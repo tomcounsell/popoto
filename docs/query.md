@@ -1232,6 +1232,30 @@ if nearby_drivers:
 See [Models and Fields](fields.md#geofield) for more on defining GeoFields, and
 [Relationship Field](relationship.md) for linking drivers to orders.
 
+## ValidityField Filters
+
+`ValidityField` filters restrict results to records whose bitemporal validity interval
+covers a given moment, rather than filtering on a stored value.
+
+| Lookup | Description |
+|--------|-------------|
+| `{field}__current=True` | Records whose interval covers *now* |
+| `{field}__current=False` | Records that are closed, or not yet started (complement of `current=True` over managed records only). Building the complement reads both interval sets in full, so this lookup is O(N) where `current=True` is O(log N + M) |
+| `{field}__as_of=t` | Records whose interval covered epoch `t` |
+
+```python
+Fact.query.filter(validity__current=True)
+Fact.query.filter(validity__as_of=two_weeks_ago)
+```
+
+Using either lookup consumes a filter slot, so it disables sorted-range `limit`
+pushdown on that query — the default retrieval path (`composite_score()`,
+`top_by_decay()`, `ContextAssembler.assemble()`) instead accepts a keyword-only
+`as_of` parameter and gates server-side, keeping pushdown intact. See
+[ValidityField and SupersessionProtocol](features/validity-and-supersession.md) for
+the full semantics, including why a record with no interval entry satisfies
+neither `current=True` nor `current=False`.
+
 ## Semantic Search
 
 `semantic_search()` finds instances by meaning rather than exact field values. It embeds the
@@ -1399,6 +1423,8 @@ declared `default` -- or `None` if no default is set -- matching `Model.__init__
 | `all()` | SMEMBERS + pipeline HGETALL | O(N) |
 | `get_many(redis_keys=...)` | pipeline HGETALL | O(N) where N = number of keys |
 | `composite_score(...)` | ZUNIONSTORE + ZREVRANGE + pipeline HGETALL | O(K log K + M) |
+| `filter(validity__current=True)` / `filter(validity__as_of=t)` | ZRANGEBYSCORE (x2), intersected | O(log N + M) |
+| `filter(validity__current=False)` | the above, plus ZRANGE (x2) over both interval sets to build the complement | O(N) |
 | `keyword_search(...)` | Lua BM25 scoring over inverted index | O(T * D) where T = query terms, D = docs per term |
 | `fuse(...)` | Rank-merge + pipeline HGETALL | O(sum of list lengths + K log K) |
 | `values(...)` on KeyFields only | No Redis call | O(1) |

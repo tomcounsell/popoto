@@ -67,6 +67,7 @@ import statistics
 import time
 import warnings
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
@@ -79,6 +80,7 @@ from ..fields.existence_filter import ExistenceFilter
 from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.tag_field import TagFieldMixin
+from ..fields.validity_field import ValidityField
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
@@ -659,9 +661,10 @@ def _decayed_partition_scores(
     metacognitive proxy sees the same decayed relevance a query would surface,
     rather than the raw last_updated timestamp stored as the ZSET score:
 
-    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (2 KEYS: the partition
-      ZSET plus the ConfidenceField ``:data`` hash, ``""`` when modulation is
-      off).
+    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (4 KEYS: the partition
+      ZSET, the ConfidenceField ``:data`` hash (``""`` when modulation is off),
+      and the ValidityField ``invalid_at`` / ``valid_from`` interval ZSETs
+      (``""`` when the model has no validity axis — #580, plan D5)).
     * :class:`CyclicDecayField` -> ``CYCLIC_DECAY_LUA`` (4 KEYS: the partition
       ZSET, its ``:cycles`` / ``:pressure`` companion hashes, and the
       confidence ``:data`` hash), so cyclic cadence/pressure is honoured and
@@ -682,10 +685,17 @@ def _decayed_partition_scores(
         DECAY_SCORE_LUA,
         MODULATION_DISABLED,
         confidence_modulation_args,
+        validity_gate_args,
     )
 
     if now is None:
         now = time.time()
+
+    # Validity gating (#580, plan D5). Resolves to ("", "", "") -- gate off,
+    # byte-identical scores -- for every model without a ValidityField, and
+    # whenever Defaults.VALIDITY_GATING_ENABLED is False. model_class is
+    # optional on this path; validity_gate_args tolerates None.
+    gate_invalid_key, gate_valid_key, gate_as_of = validity_gate_args(model_class)
 
     base_score_field = field.base_score_field or ""
     is_cyclic = isinstance(field, CyclicDecayField)
@@ -746,15 +756,22 @@ def _decayed_partition_scores(
             else:
                 result = POPOTO_REDIS_DB.eval(
                     DECAY_SCORE_LUA,
-                    2,  # number of KEYS: zset + confidence
+                    # numkeys: zset + confidence (KEYS[2]) + invalid_at
+                    # (KEYS[3]) + valid_from (KEYS[4]). Passing the validity
+                    # keys without bumping this would shunt them into ARGV and
+                    # silently corrupt base_score_field (plan Risk 1).
+                    4,
                     zkey,
                     conf_hash_key,
+                    gate_invalid_key,
+                    gate_valid_key,
                     str(now),
                     str(field.decay_rate),
                     str(cardinality),  # return every member's decayed score
                     base_score_field,
                     conf_s,
                     conf_c0,
+                    gate_as_of,  # ARGV[7]
                 )
         except Exception as e:
             logger.warning("decayed partition score eval failed for %s: %s", zkey, e)
@@ -1396,6 +1413,14 @@ class ContextAssembler:
         self._embedding_field = None
         self._embedding_field_name = None
         self._tag_field_name = None
+        self._validity_field_name = None
+        # Point-in-time epoch for the *current* assemble() call (issue #580).
+        # Parked here rather than threaded through _pull_path / _push_path
+        # because those seams are monkeypatched by existing callers with
+        # two-argument stand-ins. Unconditionally (re)set at the top of every
+        # assemble() and cleared before its return, so a value can never leak
+        # into a later call even if one raises partway through.
+        self._assembly_as_of: float | None = None
 
         for name, f in model_class._meta.fields.items():
             if isinstance(f, ExistenceFilter) and self._existence_filter is None:
@@ -1423,6 +1448,8 @@ class ContextAssembler:
                 self._embedding_field_name = name
             if isinstance(f, TagFieldMixin) and self._tag_field_name is None:
                 self._tag_field_name = name
+            if isinstance(f, ValidityField) and self._validity_field_name is None:
+                self._validity_field_name = name
 
         # Text field read by output_format="content". Explicit wins; then the
         # BM25Field's source (the field the model already declares as its
@@ -1614,6 +1641,90 @@ class ContextAssembler:
             return records
         return [r for r in records if _get_key(r) in allowed_keys]
 
+    def _resolve_excluded_keys(self, as_of: float | None = None) -> set[str] | None:
+        """Resolve validity gating to the set of Redis keys to DROP.
+
+        Layer 3 of validity gating (issue #580, plan D6), and the only layer
+        that reaches the ``fuse`` / BM25 / graph-propagation arms: those bypass
+        the ``filters`` dict entirely, so neither the decay-Lua gate (layer 1,
+        inside ``DECAY_SCORE_LUA``) nor the composite difference (layer 2,
+        inside ``composite_score``) can see them. Exactly the shape tag scoping
+        already established — a candidate-key post-filter is the only
+        mode-agnostic seam.
+
+        THIS RETURNS AN EXCLUSION SET, NOT A WHITELIST, and that is deliberate.
+        All three gating layers must agree on the same rule: drop a record only
+        when it is provably closed (``invalid_at <= as_of``) or provably not yet
+        started (``valid_from > as_of``). A record with **no entry in either
+        interval ZSET** is *unmanaged* and stays fully retrievable. Resolving
+        the valid set instead — e.g. via ``ValidityField.resolve_valid_keys``,
+        which intersects the two ranges — would silently hide every record that
+        predates the day a ``ValidityField`` was added to an existing model,
+        since none of those has an interval until it is next saved. That is a
+        data-visibility regression, not a stricter gate. Do not "simplify" this
+        into a valid-key intersection.
+
+        Two read-only ``ZRANGEBYSCORE``s, run once per ``assemble()`` call.
+
+        ``Defaults.VALIDITY_GATING_ENABLED`` is read **here, at call time**, not
+        captured at import: the deploy-level kill switch has to take effect at
+        runtime for adopters who cannot edit model code.
+
+        Args:
+            as_of: Epoch seconds to evaluate membership at. ``None`` = now.
+
+        Returns:
+            ``set[str]`` of record keys to drop, or ``None`` meaning "no
+            scoping, behavior byte-identical to pre-#580" — returned when the
+            model declares no ``ValidityField`` (which is every model that has
+            not opted in) or when the kill switch is off. An empty set is NOT
+            the same as ``None``; it means gating ran and excluded nothing.
+
+        Note:
+            This is a point-in-time snapshot of a live store. A supersession
+            landing mid-``assemble()`` is not reflected until the next call —
+            the same accepted property tag scoping has (plan Race 3).
+        """
+        if self._validity_field_name is None:
+            return None
+        if not Defaults.VALIDITY_GATING_ENABLED:
+            return None
+
+        t = time.time() if as_of is None else float(as_of)
+        valid_from_key, invalid_at_key = ValidityField.get_interval_keys(
+            self.model_class, self._validity_field_name
+        )
+        # invalid_at <= t: already closed. The +inf open sentinel never matches.
+        closed = POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, "-inf", t)
+        # valid_from > t: not yet started.
+        future = POPOTO_REDIS_DB.zrangebyscore(valid_from_key, f"({t}", "+inf")
+        # redis-py types every command ``Awaitable[T] | T`` for both the sync
+        # and async clients, so mypy cannot see that these are concrete lists
+        # on the sync client we actually use. Same family as the existing
+        # narrowing casts elsewhere in this module; see CLAUDE.md's note that
+        # this error class is redis-py-version-dependent.
+        closed_list = cast("list[Any]", closed)
+        future_list = cast("list[Any]", future)
+        return {
+            k.decode() if isinstance(k, bytes) else k for k in closed_list + future_list
+        }
+
+    @staticmethod
+    def _scope_by_validity(
+        records: list[Any], excluded_keys: set[str] | None
+    ) -> list[Any]:
+        """Drop records whose validity interval provably does not cover the as-of.
+
+        No-op passthrough when ``excluded_keys`` is None (gating disabled, or the
+        model has no ``ValidityField``). Records absent from ``excluded_keys``
+        are kept — including unmanaged records with no interval at all, which is
+        the whole point of taking an exclusion set rather than a whitelist. See
+        :meth:`_resolve_excluded_keys`.
+        """
+        if excluded_keys is None:
+            return records
+        return [r for r in records if _get_key(r) not in excluded_keys]
+
     def assemble(
         self,
         query_cues=None,
@@ -1623,6 +1734,8 @@ class ContextAssembler:
         emit_trace=False,
         tags=None,
         tag_match="any",
+        *,
+        as_of=None,
     ):
         """Execute the full retrieval pipeline.
 
@@ -1663,6 +1776,17 @@ class ContextAssembler:
                 AND / SINTER: records carrying every listed tag) or ``"any"``
                 (OR / SUNION: records carrying at least one). Ignored when
                 ``tags`` is empty.
+            as_of: Keyword-only. Epoch seconds for point-in-time retrieval
+                (issue #580): ``assemble(as_of=t)`` returns what the agent
+                believed at ``t``, superseded records included, while the
+                default ``None`` means "now" and returns only currently-valid
+                records. Requires a ``ValidityField`` on the model
+                (auto-detected); a no-op passthrough without one, or when
+                ``Defaults.VALIDITY_GATING_ENABLED`` is False. Validity is
+                never expressed as a filter kwarg — a surviving filter param
+                would disable sorted-range limit pushdown — so it is applied
+                server-side in the decay/composite layers and as a
+                candidate-key post-filter here.
 
         Returns:
             AssemblyResult with records, proactive, formatted, and metadata.
@@ -1679,6 +1803,15 @@ class ContextAssembler:
         # scoping — every code path below is then byte-identical to pre-#492.
         allowed_tag_keys = self._resolve_tag_keys(tags, tag_match)
 
+        # Validity gating (issue #580, plan D6 / layer 3). Snapshot the key set
+        # once and post-filter every arm — the fuse/BM25/graph arms bypass
+        # the filters dict, so the server-side layers cannot reach them. This is
+        # an EXCLUSION set, matching layers 1 and 2: unmanaged records (no
+        # interval at all) are kept. ``None`` means no gating; every path below
+        # is then byte-identical to pre-#580.
+        excluded_valid_keys = self._resolve_excluded_keys(as_of)
+        self._assembly_as_of = as_of
+
         pull_records = []
         push_records = []
         all_pull_candidates = []  # For competitive suppression
@@ -1687,8 +1820,12 @@ class ContextAssembler:
         if query_cues:
             pull_records, all_pull_candidates = self._pull_path(query_cues, filters)
             pull_records = self._scope_by_tags(pull_records, allowed_tag_keys)
+            pull_records = self._scope_by_validity(pull_records, excluded_valid_keys)
             all_pull_candidates = self._scope_by_tags(
                 all_pull_candidates, allowed_tag_keys
+            )
+            all_pull_candidates = self._scope_by_validity(
+                all_pull_candidates, excluded_valid_keys
             )
 
         # [CONFIDENCE GATE] Opt-in, off-by-default (issue #463). Reads the
@@ -1759,6 +1896,7 @@ class ContextAssembler:
         if self._cyclic_decay_field_name is not None:
             push_records = self._push_path(filters)
             push_records = self._scope_by_tags(push_records, allowed_tag_keys)
+            push_records = self._scope_by_validity(push_records, excluded_valid_keys)
 
         # --- Merge + deduplicate ---
         seen_keys = set()
@@ -1892,6 +2030,7 @@ class ContextAssembler:
                 logger.warning("_compute_quality failed: %s", e)
                 metadata["quality"] = RetrievalQuality()
 
+        self._assembly_as_of = None
         return AssemblyResult(
             records=selected,
             proactive=proactive,
@@ -1965,6 +2104,16 @@ class ContextAssembler:
     def _pull_path(self, query_cues, filters):
         """Dispatch pull-path retrieval based on ``self._effective_mode``.
 
+        The point-in-time epoch is read off ``self._assembly_as_of`` (parked by
+        ``assemble()`` for the duration of one call) rather than passed as a
+        parameter: these internal seams are monkeypatched by existing tests with
+        two-argument stand-ins, so widening their signatures would break
+        callers this task does not own. It is threaded down to the
+        ``composite_score`` calls so the server-side validity layers evaluate
+        membership at the same instant the assembler's post-filter does —
+        without it, ``assemble(as_of=t)`` could only ever narrow the
+        *currently*-valid set and never reconstruct history (issue #580).
+
         Returns:
             Tuple of (selected_records, all_candidates).
         """
@@ -2012,6 +2161,7 @@ class ContextAssembler:
                 indexes=self.score_weights,
                 limit=self.max_items * 2,
                 co_occurrence_boost=co_occurrence_boost,
+                as_of=self._assembly_as_of,
             )
         except Exception as e:
             logger.warning("CompositeScoreQuery failed: %s", e)
@@ -2063,6 +2213,7 @@ class ContextAssembler:
                         indexes=self.score_weights,
                         limit=self.max_items * 2,
                         co_occurrence_boost=propagated,
+                        as_of=self._assembly_as_of,
                     )
             except Exception as e:
                 logger.warning("CoOccurrence propagation failed: %s", e)
@@ -2235,6 +2386,7 @@ class ContextAssembler:
                 min_score=(
                     self.surfacing_threshold if self.surfacing_threshold > 0 else None
                 ),
+                as_of=self._assembly_as_of,
             )
         except Exception as e:
             logger.warning("Push path failed: %s", e)

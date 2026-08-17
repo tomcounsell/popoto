@@ -107,6 +107,19 @@ class TestDefaultsSync:
             # from Defaults in models/canonical_key.py; no module-level alias
             # exists, so not in MODULE_CONSTANTS.
             "DATETIME_KEY_LEGACY",
+            # ValidityField gating (#580) — read directly from Defaults at call
+            # time by decaying_sorted_field.validity_gate_args and
+            # ContextAssembler._resolve_excluded_keys; VALIDITY_OPEN_SENTINEL
+            # likewise in validity_field.py. A module-level alias is deliberately
+            # NOT created for the kill switch: an alias bound at import time
+            # would defeat the whole point of a runtime-flippable deploy switch
+            # for adopters who cannot edit model code. So not in
+            # MODULE_CONSTANTS, exactly like TAG_SCOPING_ENABLED above.
+            # (apply_overrides still reaches both via its
+            # Defaults.<NAME_UPPER> fallback, so benchmark sweeps can flip them
+            # without any registry entry.)
+            "VALIDITY_GATING_ENABLED",
+            "VALIDITY_OPEN_SENTINEL",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

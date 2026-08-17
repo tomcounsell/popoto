@@ -147,6 +147,12 @@ class QueryBuilder:
         self._computed_sort_fn = None
         self._computed_sort_reverse = False
         self._no_track = False
+        # Point-in-time epoch for validity gating (#580). None = "now". Set for
+        # the duration of one composite_score() / top_by_decay() call so the
+        # decay-Lua gate (layer 1) and the composite validity mask (layer 2)
+        # evaluate membership at the SAME instant. Without it an as-of query
+        # could only ever narrow the now-valid set, never reconstruct history.
+        self._validity_as_of: Optional[float] = None
 
     def filter(self, *args, **kwargs) -> "QueryBuilder":
         """Add filter criteria and return a new QueryBuilder.
@@ -292,7 +298,13 @@ class QueryBuilder:
         return self
 
     def top_by_decay(
-        self, field_name=None, n=10, decay_rate=None, base_score_field=None
+        self,
+        field_name=None,
+        n=10,
+        decay_rate=None,
+        base_score_field=None,
+        *,
+        as_of=None,
     ):
         """Return top-N instances ranked by time-decayed score.
 
@@ -305,6 +317,9 @@ class QueryBuilder:
             n: Maximum number of results to return. Default 10.
             decay_rate: Override the field's decay_rate for this query.
             base_score_field: Override the field's base_score_field for this query.
+            as_of: Keyword-only. Epoch seconds at which validity membership is
+                evaluated (issue #580). ``None`` means "now". Only meaningful
+                for models declaring a ``ValidityField``; ignored otherwise.
 
         Returns:
             List of model instances in decayed-score order. Ordering is
@@ -386,13 +401,36 @@ class QueryBuilder:
 
         # Use extended Lua script for CyclicDecayField, plain script otherwise
         from ..fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
-        from ..fields.decaying_sorted_field import confidence_modulation_args
+        from ..fields.decaying_sorted_field import (
+            confidence_modulation_args,
+            validity_gate_args,
+        )
 
         # Confidence-modulated decay (#491). Resolves to ("", "0", ...) whenever
         # modulation is off, which makes the Lua guard skip the extra HGET and
         # produce byte-identical scores.
         conf_hash_key, conf_s, conf_c0 = confidence_modulation_args(
             model_class, field, field_name, filters=self._filters
+        )
+
+        # Validity gating (#580, plan D5). Resolves to ("", "", "") whenever the
+        # model has no ValidityField or the kill switch is off, which disables
+        # the gate inside the script. On a plain DecayingSortedField,
+        # top_by_decay is the one path where this layer is *authoritative*: its
+        # result is the member list itself, with no ZUNIONSTORE afterwards to
+        # reintroduce a skipped member.
+        #
+        # NOT so for a CyclicDecayField: the branch below dispatches to
+        # CYCLIC_DECAY_LUA, which is deliberately left ungated (an explicit plan
+        # No-Go — its KEYS 1-4 are taken and its header comment forbids
+        # renumbering). So a *direct* top_by_decay() call on a CyclicDecayField
+        # returns superseded records. Assembler paths are unaffected: they never
+        # call top_by_decay, and layers 2 and 3 cover them. Pinned by
+        # tests/test_validity_field.py::TestCyclicDecayGatingGap and documented
+        # under "Known limitations" in docs/features/validity-and-supersession.md
+        # — if you gate the cyclic script, update all three.
+        gate_invalid_key, gate_valid_key, gate_as_of = validity_gate_args(
+            model_class, as_of=as_of
         )
 
         if isinstance(field, CyclicDecayField):
@@ -424,15 +462,22 @@ class QueryBuilder:
         else:
             result = POPOTO_REDIS_DB.eval(
                 DECAY_SCORE_LUA,
-                2,  # number of KEYS: zset + confidence (KEYS[2])
+                # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
+                # valid_from (KEYS[4]). Passing the validity keys without
+                # bumping this would shunt them into ARGV and silently corrupt
+                # base_score_field / the confidence params (plan Risk 1).
+                4,
                 sortedset_db_key.redis_key,
                 conf_hash_key,
+                gate_invalid_key,
+                gate_valid_key,
                 str(now),
                 str(effective_decay_rate),
                 str(n),
                 effective_base_score_field,
                 conf_s,
                 conf_c0,
+                gate_as_of,  # ARGV[7]
             )
 
         if not result:
@@ -478,6 +523,8 @@ class QueryBuilder:
         co_occurrence_boost: dict = None,
         similarity_boost: dict = None,
         temperature: float = 1.0,
+        *,
+        as_of: Optional[float] = None,
     ) -> list:
         """Return top-K instances ranked by a weighted composite of multiple indexes.
 
@@ -515,6 +562,13 @@ class QueryBuilder:
                 value. Low temperature (0.02-0.1) sharpens discrimination so top
                 scores dominate. Default 1.0 preserves current behavior. High
                 temperature (2.0+) flattens scores toward uniform. Must be > 0.
+            as_of: Keyword-only. Epoch seconds at which validity membership is
+                evaluated (issue #580); ``None`` means "now". Both the decay-arm
+                pre-trim and the post-union validity mask read this same instant,
+                so ``as_of`` genuinely reconstructs the past rather than merely
+                narrowing the currently-valid set. Ignored for models that
+                declare no ``ValidityField``, which is every model that has not
+                opted in.
 
         Returns:
             List of model instances ranked by composite score (descending).
@@ -535,6 +589,12 @@ class QueryBuilder:
         from .encoding import decode_popoto_model_hashmap
 
         model_class = self._query.model_class
+
+        # Park the as-of on the builder for the duration of this call so
+        # _materialize_decay_field (reached via _resolve_index) and
+        # _apply_validity_mask agree on the instant, without threading a
+        # parameter through _resolve_index's field-type dispatch.
+        self._validity_as_of = as_of
 
         # --- Validate inputs ---
         if not indexes:
@@ -603,6 +663,18 @@ class QueryBuilder:
             )
             POPOTO_REDIS_DB.expire(composite_key, 5)
 
+            # --- Validity mask (#580, plan D5b) ---
+            # Must run BEFORE the top-K read: the decay-Lua gate only makes a
+            # closed member *absent from the decay arm*, and under AGGREGATE SUM
+            # an absent member scores 0 rather than being removed -- so it still
+            # surfaces on whatever a ConfidenceField / co-occurrence /
+            # similarity arm gives it. Skipping is not excluding; this is.
+            # Subtracts only demonstrably-invalid members: a record with no
+            # interval entry is unmanaged and stays visible (see the method).
+            self._apply_validity_mask(
+                composite_key, model_name, uid, temp_keys, as_of=as_of
+            )
+
             # --- ZREVRANGE top-K ---
             if min_score is not None:
                 raw_results = POPOTO_REDIS_DB.zrevrangebyscore(
@@ -660,6 +732,7 @@ class QueryBuilder:
 
         finally:
             self._cleanup_temp_keys(temp_keys)
+            self._validity_as_of = None
 
     def semantic_search(
         self,
@@ -1232,10 +1305,24 @@ class QueryBuilder:
 
         # Confidence-modulated decay (#491) — same resolution as top_by_decay,
         # so composite_score and top_by_decay never disagree on a score.
-        from ..fields.decaying_sorted_field import confidence_modulation_args
+        from ..fields.decaying_sorted_field import (
+            confidence_modulation_args,
+            validity_gate_args,
+        )
 
         conf_hash_key, conf_s, conf_c0 = confidence_modulation_args(
             model_class, field, field_name, filters=self._filters
+        )
+
+        # Validity gating (#580, plan D5). Here the gate is a *pre-trim*, not the
+        # membership guarantee: the decay arm's contribution is what gets
+        # dropped, and ZUNIONSTORE/SUM would still surface a closed member that
+        # another arm scores. `_apply_validity_mask` (plan D5b) is what actually
+        # excludes it after the union. Both layers must read the SAME as-of --
+        # composite_score parks it on self._validity_as_of for the duration of
+        # the call rather than threading it through _resolve_index's signature.
+        gate_invalid_key, gate_valid_key, gate_as_of = validity_gate_args(
+            model_class, as_of=self._validity_as_of
         )
 
         # Get all decay scores via Lua
@@ -1264,15 +1351,20 @@ class QueryBuilder:
         else:
             result = POPOTO_REDIS_DB.eval(
                 DECAY_SCORE_LUA,
-                2,  # number of KEYS: zset + confidence (KEYS[2])
+                # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
+                # valid_from (KEYS[4]). See the Risk 1 note in top_by_decay.
+                4,
                 sortedset_db_key.redis_key,
                 conf_hash_key,
+                gate_invalid_key,
+                gate_valid_key,
                 str(now),
                 str(field.decay_rate),
                 str(999999),  # get all members
                 base_score_field,
                 conf_s,
                 conf_c0,
+                gate_as_of,  # ARGV[7]
             )
 
         temp_key = f"$CSQ:{model_name}:decay:{field_name}:{uid}"
@@ -1422,6 +1514,112 @@ class QueryBuilder:
                 POPOTO_REDIS_DB.expire(temp_key, 5)
 
         return temp_key
+
+    def _apply_validity_mask(
+        self,
+        composite_key: str,
+        model_name: str,
+        uid: str,
+        temp_keys: list[str],
+        as_of: Optional[float] = None,
+    ) -> None:
+        """Remove *demonstrably invalid* members from a composite result (D5b).
+
+        This is layer 2 of validity gating, and the only layer that enforces
+        *membership* on the ``composite_score`` path. The decay-Lua gate (layer
+        1) merely leaves a closed member out of the decay arm; ``ZUNIONSTORE
+        ... AGGREGATE SUM`` then reads that absence as a 0 contribution, not as
+        an exclusion, so the member still surfaces on the strength of any other
+        weighted arm (a ``ConfidenceField`` index, ``co_occurrence_boost``,
+        ``similarity_boost``). Subtracting an exclusion set removes it.
+
+        THIS IS A SET DIFFERENCE, NOT AN INTERSECTION -- do not "simplify" it
+        back to a ``ZINTERSTORE`` against a valid-member mask. The rule is
+        *exclusion*, matching ``DECAY_SCORE_LUA``'s gate exactly: a member is
+        dropped only when it is provably closed or provably not-yet-started. A
+        record with **no entry in either interval ZSET** is an *unmanaged*
+        record and stays fully retrievable. An intersect-with-whitelist mask
+        would instead delete every such record -- i.e. every row that predates
+        the day a ``ValidityField`` was added to an existing model, none of
+        which has an interval until it is next saved. That is a silent
+        data-visibility regression, not a stricter gate.
+
+        Four core commands, no Lua and no Redis modules, so this is Valkey-safe:
+
+        - ``ZRANGESTORE m_closed invalid_at -inf t  BYSCORE`` -> closed at ``t``
+        - ``ZRANGESTORE m_future valid_from (t  +inf BYSCORE`` -> not yet started
+        - ``ZUNIONSTORE m_excl 2 m_closed m_future WEIGHTS 0 0`` -> the excluded
+        - ``ZDIFFSTORE composite_key 2 composite_key m_excl``
+
+        ``ZDIFFSTORE`` keeps the left-hand scores, so composite scores pass
+        through unchanged and only membership is affected. Both it and
+        ``ZRANGESTORE`` require Redis >= 6.2 / Valkey — the same floor
+        ``bm25_field.py`` already asserts for ``ZMSCORE``, so this adds no new
+        compatibility surface.
+
+        No-op (leaving the composite byte-identical to pre-#580) when the kill
+        switch is off or the model declares no ``ValidityField``.
+
+        Args:
+            composite_key: The post-``ZUNIONSTORE`` key, filtered in place.
+            model_name: Model class name, for the ``$CSQ:`` temp-key namespace.
+            uid: The per-query unique suffix shared by every temp key.
+            temp_keys: The caller's cleanup list; all three temps are appended.
+            as_of: Epoch seconds to evaluate membership at. ``None`` = now.
+        """
+        from ..fields.decaying_sorted_field import validity_gate_args
+
+        model_class = self._query.model_class
+        invalid_at_key, valid_from_key, as_of_repr = validity_gate_args(
+            model_class, as_of=as_of
+        )
+        if not invalid_at_key or not valid_from_key:
+            return
+
+        t = float(as_of_repr)
+        closed_key = f"$CSQ:{model_name}:validclosed:{uid}"
+        future_key = f"$CSQ:{model_name}:validfuture:{uid}"
+        excluded_key = f"$CSQ:{model_name}:validexcl:{uid}"
+        temp_keys.extend([closed_key, future_key, excluded_key])
+
+        # invalid_at <= t -- already closed at t. Inclusive upper bound: a record
+        # closed exactly at t is closed at t. The +inf open sentinel can never
+        # fall in this range, so open records are never collected here.
+        #
+        # The per-argument ignores below are load-bearing: redis-py annotates
+        # zrangestore's start/end as `int`, which is only correct for the
+        # default index-range form. Under BYSCORE they are score bounds and must
+        # be str/float -- "(", "-inf" and "+inf" have no int spelling -- so the
+        # upstream annotation is simply too narrow.
+        POPOTO_REDIS_DB.zrangestore(
+            closed_key,
+            invalid_at_key,
+            "-inf",  # type: ignore[arg-type]
+            t,  # type: ignore[arg-type]
+            byscore=True,
+        )
+        # valid_from > t -- not yet started at t (exclusive lower bound).
+        POPOTO_REDIS_DB.zrangestore(
+            future_key,
+            valid_from_key,
+            f"({t}",  # type: ignore[arg-type]
+            "+inf",  # type: ignore[arg-type]
+            byscore=True,
+        )
+        POPOTO_REDIS_DB.expire(closed_key, 5)
+        POPOTO_REDIS_DB.expire(future_key, 5)
+
+        # Union, not intersect: a member is excluded if it fails EITHER end of
+        # the interval test. Weights are 0 only for tidiness -- ZDIFFSTORE
+        # ignores the right-hand scores entirely.
+        POPOTO_REDIS_DB.zunionstore(excluded_key, {closed_key: 0, future_key: 0})
+        POPOTO_REDIS_DB.expire(excluded_key, 5)
+
+        # Set difference. Members with no interval entry appear in neither
+        # exclusion set, so they survive -- see the docstring for why that is
+        # the required behavior and not an oversight.
+        POPOTO_REDIS_DB.zdiffstore(composite_key, [composite_key, excluded_key])
+        POPOTO_REDIS_DB.expire(composite_key, 5)
 
     @staticmethod
     def _cleanup_temp_keys(temp_keys):
@@ -2364,7 +2562,13 @@ class Query:
         return builder
 
     def top_by_decay(
-        self, field_name=None, n=10, decay_rate=None, base_score_field=None
+        self,
+        field_name=None,
+        n=10,
+        decay_rate=None,
+        base_score_field=None,
+        *,
+        as_of=None,
     ):
         """Return top-N instances ranked by time-decayed score.
 
@@ -2383,7 +2587,11 @@ class Query:
         """
         builder = QueryBuilder(self)
         return builder.top_by_decay(
-            field_name, n=n, decay_rate=decay_rate, base_score_field=base_score_field
+            field_name,
+            n=n,
+            decay_rate=decay_rate,
+            base_score_field=base_score_field,
+            as_of=as_of,
         )
 
     def composite_score(
@@ -2396,6 +2604,8 @@ class Query:
         co_occurrence_boost: dict = None,
         similarity_boost: dict = None,
         temperature: float = 1.0,
+        *,
+        as_of: Optional[float] = None,
     ) -> list:
         """Return top-K instances ranked by weighted composite score.
 
@@ -2428,6 +2638,7 @@ class Query:
             co_occurrence_boost=co_occurrence_boost,
             similarity_boost=similarity_boost,
             temperature=temperature,
+            as_of=as_of,
         )
 
     def semantic_search(

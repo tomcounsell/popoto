@@ -447,7 +447,7 @@ does not re-export field types. Always import from `popoto` directly.
 
 - **[SubconsciousMemory Recipe](subconscious-memory-recipe.md):** the per-turn loop from Level 0, with every knob
 - **[Query-Blind Retrieval](query-blind-retrieval.md):** when composite ranking is right, and when it costs you the answer
-- **[Agent Memory](../features/agent-memory.md):** all 14 primitives and the layers composed on them
+- **[Agent Memory](../features/agent-memory.md):** all 16 primitives and the layers composed on them
 - **[Benchmarks](../benchmarks.md):** the numbers behind the defaults, including the runs that came out badly
 - **[Tuning Magic Numbers](tuning-magic-numbers.md):** decay rates, confidence signals, and thresholds
 - **[PolicyCache Recipe](policy-cache-recipe.md):** RL-style learned action selection on these primitives

@@ -116,6 +116,29 @@ class Defaults:
     # the subconscious assembler path, not deliberate queries. Boolean, not swept.
     TAG_SCOPING_ENABLED = True
 
+    # -- ValidityField (fields/validity_field.py, issue #580) -----------------
+    # Deploy-level kill switch for subconscious, retrieval-time validity gating.
+    # A model that declares a ValidityField gets superseded records excluded from
+    # default retrieval automatically (decay-Lua gate, composite mask, assembler
+    # post-filter); this default-ON behavior means a PyPI adopter whose ranking
+    # regresses after `pip install -U` cannot always edit model code to disable
+    # it. Setting this False makes every retrieval path byte-identical to
+    # pre-#580 behavior — as if the model had no ValidityField at all. Interval
+    # and chain maintenance (the three ZSETs, two chain HASHes and the open
+    # pointer) always runs for correctness, and deliberate queries
+    # (`Model.query.filter(validity__current=True)` / `validity__as_of=t`) still
+    # work — this switch governs only the subconscious gating path. Note the
+    # blast radius of "on by default" is zero at merge: no shipped model
+    # declares a ValidityField. Boolean, not swept.
+    VALIDITY_GATING_ENABLED = True
+    # Open-interval sentinel: the `invalid_at` score of a record that is still
+    # true. `+inf` is native to Redis and Valkey sorted sets — ZADD stores it,
+    # ZSCORE returns "inf", ZRANGEBYSCORE "(t" "+inf" includes it, and Lua 5.1's
+    # tonumber() parses it — so an open interval needs no special-casing on any
+    # read shape. Not a tunable: changing it would silently reclassify every
+    # already-stored open record as closed.
+    VALIDITY_OPEN_SENTINEL = float("inf")
+
     # -- CoOccurrenceField (fields/co_occurrence_field.py) --------------------
     CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-20, variance=0.0) — family scenario never calls weaken_all()
     CO_OCCURRENCE_INITIAL_WEIGHT = 0.1  # sweep 2026-04-20 variance=0.144; best 0.01 but curve has noise cliff, 0.1 is safer default for new users
