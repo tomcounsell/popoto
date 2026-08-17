@@ -47,6 +47,13 @@ This is a deterministic pattern gate, not an oracle. Read the holes:
   worse than useless. The cost is a real, enumerated hole: a bare 40-hex-char
   secret with no vendor prefix is not caught by the entropy backstop. It is
   still caught if it appears as ``password=<sha>`` or similar.
+- **Digit-free tokens are excluded from entropy scoring**
+  (:func:`_is_prose_compound`). Entropy per character does not separate
+  ``ExtractionProviderRegistry`` (3.87 bits) from a real secret, so scoring
+  every long token voided 4.7% of this repo's own documentation paragraphs.
+  The cost: a randomly generated secret containing no digit at all escapes
+  the backstop -- ~3% of 20-character base64 strings, ~0.4% at 32. Only
+  ``high_entropy`` is affected; every named format has its own detector.
 - **A novel credential format with no known prefix, low entropy, and no
   assignment context can pass.** The detector corpus is explicit and lives in
   one module so it can be extended; issue #561's module M9 (seeded audit) is
@@ -182,14 +189,16 @@ _CREDENTIAL_PREFIX = re.compile(
 
 _JWT = re.compile(r"eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}")
 
-# key=value / key: value credential assignments. The value must be long
-# enough to be a real secret and must not be an obvious placeholder.
+# key=value / key: value credential assignments. The minimum value length is
+# applied at scan time, not baked into this pattern: every other NR_*
+# constant is read from Defaults at runtime, and a threshold compiled into a
+# module-level regex would silently ignore a runtime override.
 _CREDENTIAL_ASSIGNMENT = re.compile(
     r"(?:api[_\-]?key|secret[_\-]?key|secret|password|passwd|pwd"
     r"|auth[_\-]?token|access[_\-]?token|refresh[_\-]?token|token"
     r"|access[_\-]?key|private[_\-]?key|client[_\-]?secret|credential)"
     r"\s*[:=]\s*"
-    r"[\"']?(?P<value>[^\s\"'<>,;]{%d,})" % Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN,
+    r"[\"']?(?P<value>[^\s\"'<>,;]+)",
     re.IGNORECASE,
 )
 
@@ -203,9 +212,9 @@ _PLACEHOLDER_VALUE = re.compile(
     re.IGNORECASE,
 )
 
+# Password length is checked at scan time, for the same reason as above.
 _URL_USERINFO = re.compile(
-    r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s/:@]+:[^\s/@]{%d,}@[^\s/]+"
-    % Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN
+    r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s/:@]+:(?P<password>[^\s/@]+)@[^\s/]+"
 )
 
 # 13-19 digits, optionally separated by single spaces or hyphens. Verified by
@@ -234,6 +243,34 @@ _STRUCTURAL_EXCLUSIONS = (
 #: A token is entropy-scored only if it looks like an encoded blob: base64,
 #: base64url, or hex, with no natural-language punctuation.
 _ENTROPY_CHARSET = re.compile(r"^[A-Za-z0-9+/=_\-]+$")
+
+
+def _is_prose_compound(token: str) -> bool:
+    """True if ``token`` reads as English text rather than an encoded blob.
+
+    Shannon entropy per character is a poor discriminator at these lengths.
+    ``conversational-adjacency`` scores 3.69 bits/char and
+    ``ExtractionProviderRegistry`` 3.87, both above the 3.5 threshold, purely
+    because their letters are mostly distinct. Measured against this repo's
+    own documentation, entropy alone put 35 of 900 long paragraphs (3.9%)
+    into the ``high_entropy`` bucket, every one a false positive of that
+    shape -- and at turn level a single such token voids the whole turn.
+
+    The discriminator that actually separates the two populations is
+    *digits*. Encoded secrets are drawn from an alphabet that includes them;
+    hyphenated compounds and CamelCase identifiers contain none. So a token
+    with no digit at all is treated as prose and not entropy-scored. Applying
+    this cut takes the same corpus from 4.7% of paragraphs blocked to 0.8%,
+    with every remaining block a true positive.
+
+    **This widens an enumerated hole and the trade is deliberate.** A
+    randomly generated secret containing no digit whatsoever now escapes the
+    entropy backstop: roughly 3% of 20-character base64 strings and 0.4% at
+    32 characters. It applies *only* to ``high_entropy``, which is the
+    unknown-format backstop -- every vendor-prefixed token, JWT, PEM block,
+    URL userinfo, and assignment form has its own detector and is unaffected.
+    """
+    return not any(char.isdigit() for char in token)
 
 
 def _shannon_entropy(token: str) -> float:
@@ -278,7 +315,6 @@ _REGEX_DETECTORS = (
     ("private_key_block", "pem_header", _PRIVATE_KEY_BLOCK, True),
     ("credential_prefix", "vendor_token", _CREDENTIAL_PREFIX, True),
     ("jwt", "jwt_triplet", _JWT, True),
-    ("url_userinfo", "url_userinfo", _URL_USERINFO, False),
     ("government_id", "us_ssn", _SSN, False),
 )
 
@@ -290,12 +326,27 @@ def _strip_whitespace(text: str) -> str:
 
 def _scan_credential_assignment(text: str) -> Optional[NeverRecordVerdict]:
     """Assignment-form detector, skipping documentation placeholders."""
+    min_len = Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN
     for match in _CREDENTIAL_ASSIGNMENT.finditer(text):
         value = match.group("value")
+        if len(value) < min_len:
+            continue
         if _PLACEHOLDER_VALUE.match(value):
             continue
         return NeverRecordVerdict(
             blocked=True, reason="credential_assignment", detector="assignment"
+        )
+    return None
+
+
+def _scan_url_userinfo(text: str) -> Optional[NeverRecordVerdict]:
+    """``scheme://user:password@host`` detector."""
+    min_len = Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN
+    for match in _URL_USERINFO.finditer(text):
+        if len(match.group("password")) < min_len:
+            continue
+        return NeverRecordVerdict(
+            blocked=True, reason="url_userinfo", detector="url_userinfo"
         )
     return None
 
@@ -323,6 +374,8 @@ def _scan_high_entropy(text: str) -> Optional[NeverRecordVerdict]:
         if any(pattern.match(token) for pattern in _STRUCTURAL_EXCLUSIONS):
             continue
         if not _ENTROPY_CHARSET.match(token):
+            continue
+        if _is_prose_compound(token):
             continue
         if _shannon_entropy(token) >= min_bits:
             return NeverRecordVerdict(
@@ -363,7 +416,11 @@ def scan_never_record(text: Any) -> NeverRecordVerdict:
                 blocked=True, reason=reason, detector=f"{detector}_dewhitespaced"
             )
 
-    for scanner in (_scan_credential_assignment, _scan_payment_card):
+    for scanner in (
+        _scan_credential_assignment,
+        _scan_url_userinfo,
+        _scan_payment_card,
+    ):
         verdict = scanner(text)
         if verdict is not None:
             return verdict

@@ -595,12 +595,29 @@ touches. Confirm the editable install resolves to this checkout first:
 ```bash
 .venv/bin/python -c "import popoto; print(popoto.__file__)"   # must be THIS worktree
 .venv/bin/ruff check src/
+.venv/bin/black --check src/
 .venv/bin/pytest tests/test_never_record_firewall.py -q
-.venv/bin/pytest tests/test_default_memory.py tests/test_subconscious_memory.py \
-                 tests/test_write_filter.py tests/test_models.py \
-                 tests/test_integrations_service.py tests/test_mcp_server.py -q
+.venv/bin/pytest tests/test_integrations_service.py tests/test_integrations_mcp.py \
+                 tests/test_subconscious_memory.py tests/test_subconscious_adoption.py \
+                 tests/test_subconscious_memory_integration.py tests/test_write_filter.py \
+                 tests/test_default_recipe_wiring.py tests/test_adoption_ladder.py \
+                 tests/test_agent_memory_e2e.py tests/test_atomic_save.py \
+                 tests/test_extraction.py -q
+.venv/bin/pytest tests/benchmarks/test_defaults_sync.py -q   # new Defaults must be registered
 .venv/bin/mypy src/            # compare against e220b2e in the SAME venv
+.venv/bin/mkdocs build --strict
 ```
+
+**Corrected after the first review round.** An earlier draft of this block
+named `test_default_memory.py`, `test_models.py`, and `test_mcp_server.py` —
+none of which exist in this repo. pytest exits with "file or directory not
+found" and collects zero tests, so the command could not have produced any
+result at all. The list above is the one actually run.
+
+`tests/benchmarks/test_defaults_sync.py` is listed explicitly because it is
+the gate a narrow scope misses: it asserts every `Defaults` attribute is
+either aliased in `MODULE_CONSTANTS` or explicitly excluded, and adding a
+constant without registering it fails CI on both the Redis and Valkey jobs.
 
 Baseline measured at `e220b2e` in this venv (Python 3.12.13, redis-py 8.1.0,
 Redis DB 15): **mypy 1110 errors in 65 files**, `ruff check src/` clean.
@@ -632,6 +649,19 @@ Critic result files: `scratchpad/critique_561/`. No `docs/sdlc/do-plan-critique.
 exists in this repo, so the critique ran on the generic path and recorded no
 verdict to any substrate — this table is the record.
 
+## Review Results (round 1)
+
+`/do-pr-review` on PR #587. Verdict: **CHANGES REQUESTED** — 1 blocker, 3 tech
+debt, 2 nits. Resolution:
+
+| Finding | Resolution |
+|---|---|
+| **BLOCKER** — the 5 new `Defaults` attributes are not in `MODULE_CONSTANTS` or the exclusion set, failing `tests/benchmarks/test_defaults_sync.py` on both CI jobs | Reproduced locally and confirmed. Registered all 5 in the exclusion set with rationale (they are read from `Defaults` at scan time with no module-level alias, and are a security posture rather than a sweepable retrieval dial). |
+| Plan's Verification block named 3 test files that do not exist | Corrected above, with the failure mode called out. |
+| Over-blocking materially wider than disclosed: `high_entropy` voided 11.6% of long paragraphs; the no-false-positive corpus contained no technical prose | Root-caused: entropy per char does not separate `ExtractionProviderRegistry` (3.87 bits) from a secret. Added a digit-based structural cut. Measured on this repo's docs: 4.7% → 0.8% of ≥200-char paragraphs, all remaining blocks true positives. Six technical-prose cases added to the corpus. The widened hole is documented in the module docstring, the feature page, and pinned by `test_digitless_secret_escapes_the_entropy_backstop`. |
+| 10 KB scan-time measurement missing from the PR body (plan required reporting it) | Measured: **p50 5.11 ms** on a 12.5 KB clean turn, 1.30 ms when a hit short-circuits early. This is **over the plan's 5 ms report threshold**, so it is reported rather than silently accepted — see Open Question 4. |
+| `NR_ASSIGNMENT_MIN_VALUE_LEN` was compiled into a module-level regex, so runtime overrides silently did nothing | Moved both the assignment and URL-userinfo length checks to scan time. Pinned by `test_assignment_threshold_is_read_at_scan_time`. |
+
 ## Open Questions
 
 Both remaining questions are decisions for the PM/principal, not blockers on
@@ -655,7 +685,16 @@ the build. The build proceeds on the stated default; each is cheap to reverse.
    the entropy backstop (it is still caught by `credential_assignment` if it
    appears as `password=<sha>`). The alternative is dropping every commit SHA a
    developer's memory ever mentions. Confirm the trade.
-3. **Plan-doc location.** Repo convention commits plan docs to `main`. This lane
+3. **Scan latency is over the plan's own report threshold.** The Risks table
+   said to measure scan time on a 10 KB turn and "if it exceeds ~5 ms, report
+   rather than silently accept." Measured p50 is **5.11 ms** on a 12.5 KB
+   clean turn (Python 3.12.13, macOS). Reporting it as instructed rather than
+   clearing it. Context for the decision: this is on the *write* path, not
+   the 400 ms read-hook budget, and it is paid once per turn at the turn-level
+   gate plus once per surviving record at the save-level gate. A hit
+   short-circuits at 1.30 ms. It looks acceptable, but the plan reserved that
+   call, so it is the PM's.
+4. **Plan-doc location.** Repo convention commits plan docs to `main`. This lane
    runs in an isolated worktree with concurrent lanes active on the shared
    checkout, so the plan is carried on the session branch and lands with the
    implementation PR instead. Confirm this is acceptable or say whether the plan

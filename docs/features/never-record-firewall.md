@@ -69,12 +69,27 @@ of aiming at zero false negatives on the class above. If a memory you wanted
 disappeared, check `never_record_counts()` — the drop is recorded even though
 the content is not.
 
-**Canonical git SHAs and UUIDs are excluded from entropy scoring.** Developer
-memory content mentions commit SHAs constantly, and dropping every one of
-them would make the firewall worse than useless. The cost is a real hole: a
-bare 40-hex-character secret with no vendor prefix is not caught by the
-entropy backstop. It is still caught if it appears as `password=<sha>` or in
-any other detector's shape.
+**The entropy backstop is deliberately narrowed, in two ways.** Shannon
+entropy per character does not actually separate secrets from technical
+English at these lengths: `conversational-adjacency` scores 3.69 bits/char
+and `ExtractionProviderRegistry` 3.87, both over the 3.5 threshold. Measured
+against this repo's own documentation, entropy alone blocked 4.7% of
+paragraphs over 200 characters — and at turn level a single such token voids
+the entire turn. Two structural cuts bring that to 0.8%, with every remaining
+block a true positive:
+
+- *Canonical git SHAs and UUIDs are not entropy-scored.* Developer memory
+  mentions commit SHAs constantly.
+- *Tokens containing no digit at all are not entropy-scored.* Encoded secrets
+  draw from an alphabet that includes digits; hyphenated compounds and
+  CamelCase identifiers do not.
+
+Both cuts are real holes, stated precisely: a bare 40-hex-character secret,
+or any randomly generated secret that happens to contain no digit (~3% of
+20-character base64 strings, ~0.4% at 32 characters), escapes the entropy
+backstop. Neither cut touches any other detector — the same secret is still
+caught as `password=<value>`, behind a vendor prefix, or in any other named
+shape.
 
 **A novel credential format can pass** if it has no recognized prefix, no
 assignment context, and entropy below the threshold. The detector corpus

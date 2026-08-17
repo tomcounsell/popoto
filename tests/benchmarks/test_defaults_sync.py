@@ -120,6 +120,18 @@ class TestDefaultsSync:
             # without any registry entry.)
             "VALIDITY_GATING_ENABLED",
             "VALIDITY_OPEN_SENTINEL",
+            # Never-record firewall (#561) — all read directly from Defaults
+            # at scan time in privacy/never_record.py; no module-level alias
+            # exists, so none are in MODULE_CONSTANTS. They are also
+            # deliberately NOT sweepable: the firewall's thresholds are a
+            # security posture, not a retrieval-quality dial, and there is no
+            # nDCG signal that would make a sweep meaningful for them.
+            "NR_ENTROPY_MIN_TOKEN_LEN",
+            "NR_ENTROPY_MIN_BITS",
+            "NR_ASSIGNMENT_MIN_VALUE_LEN",
+            "NR_TOMBSTONE_LOG_MAX",
+            # Deploy-level kill switch, like DATETIME_KEY_LEGACY above.
+            "NEVER_RECORD_ENABLED",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

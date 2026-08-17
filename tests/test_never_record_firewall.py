@@ -449,6 +449,65 @@ def test_ordinary_content_is_not_blocked(content):
     assert GatedMemory(agent_id=AGENT, content=content).save() is not False
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "The retrieval arm is weighted/query-adaptive across both corpora.",
+        "This change is forward-incompatible with pre-1.8.0 readers.",
+        "Confidence-modulated decay changes how fast a memory is forgotten.",
+        "We measured conversational-adjacency against the baseline.",
+        "Renamed the ExtractionProviderRegistry to support more backends.",
+        "Set the _default_should_forget hook to override the policy.",
+    ],
+)
+def test_hyphenated_technical_prose_is_not_high_entropy(content):
+    """Entropy alone mis-scores English compounds (#561 review finding).
+
+    ``conversational-adjacency`` scores 3.69 bits/char, above the 3.5
+    threshold, purely because its letters are mostly distinct. These voided
+    3.9% of this repo's own long documentation paragraphs before the
+    prose-compound rule was added.
+    """
+    assert not scan_never_record(content).blocked
+
+
+def test_digit_bearing_tokens_are_still_entropy_scored():
+    """The prose cut keys on digits, which real encoded secrets carry."""
+    assert scan_never_record("tok Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe").blocked
+    assert scan_never_record("tok Zq7Z-1kXpLm4Tv-B8NwR2yHc6JdFgA9sQe").blocked
+    assert scan_never_record("blob aGVsbG8gd29ybGQ7dGhpcyBpczY0IQ==").blocked
+
+
+def test_digitless_secret_escapes_the_entropy_backstop():
+    """Pin the enumerated hole so it cannot regress silently.
+
+    A digit-free random token is NOT caught by the entropy backstop -- the
+    deliberate cost of not blocking ordinary technical prose. Documented in
+    the module docstring and on the feature page. If a future change makes
+    this blocked, that is an improvement, but it must be a considered one:
+    it will also re-block CamelCase identifiers.
+    """
+    assert not scan_never_record("tok ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ").blocked
+    # ...but the same secret behind any recognized shape is still caught.
+    assert scan_never_record("password=ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ").blocked
+    assert scan_never_record("sk-ant-ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ").blocked
+
+
+def test_assignment_threshold_is_read_at_scan_time():
+    """A runtime Defaults override must actually take effect.
+
+    The threshold used to be compiled into a module-level regex, so setting
+    it at runtime silently did nothing.
+    """
+    original = Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN
+    try:
+        assert not scan_never_record("password=abc").blocked
+        Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN = 2
+        assert scan_never_record("password=abc").blocked
+    finally:
+        Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN = original
+
+
 def test_generated_key_never_trips_a_detector():
     """AutoKeyField values are UUID-shaped — the entropy detector's target.
 
