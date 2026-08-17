@@ -382,13 +382,18 @@ Three spikes ran against this worktree at `9180680`, Python 3.12.13, redis-py 8.
 
 ## Prerequisites
 
+All checks below are written against the worktree venv interpreter, `.venv/bin/python`. Bare
+`python` in this worktree is the system interpreter and has neither `popoto` nor
+`sentence_transformers` installed — running these with bare `python` produces a false
+failure.
+
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
 | Redis/Valkey reachable | `redis-cli -n 15 ping` | Test suite and index writes |
-| Editable install resolves to this checkout | `python -c "import popoto,os,sys; sys.exit(0 if os.path.realpath(popoto.__file__).startswith(os.path.realpath('src')) else 1)"` | Prevents testing another tree (CLAUDE.md gate 1) |
-| Full extras installed | `python -c "import numpy, sentence_transformers, mcp"` | Prevents ~95 silently deselected tests (CLAUDE.md gate 2) |
-| V0 on main | `python -c "from popoto import ValidityField, SupersessionProtocol"` | Hard dependency (#580) |
-| M2 on main | `python -c "from popoto import NeverRecordMixin"` | Hard dependency (#561) |
+| Editable install resolves to this checkout | `.venv/bin/python -c "import popoto,os,sys; sys.exit(0 if os.path.realpath(popoto.__file__).startswith(os.path.realpath('src')) else 1)"` | Prevents testing another tree (CLAUDE.md gate 1) |
+| Full extras installed | `.venv/bin/python -c "import numpy, sentence_transformers, mcp"` | Prevents ~95 silently deselected tests (CLAUDE.md gate 2) |
+| V0 on main | `.venv/bin/python -c "from popoto import ValidityField, SupersessionProtocol"` | Hard dependency (#580) |
+| M2 on main | `.venv/bin/python -c "from popoto import NeverRecordMixin"` | Hard dependency (#561) |
 
 ## Solution
 
@@ -556,10 +561,14 @@ The only edits to existing files are additive — imports plus `__all__` entries
 `src/popoto/__init__.py` and `src/popoto/recipes/__init__.py`, and new constants in
 `src/popoto/fields/constants.py`.
 
-- [ ] `tests/benchmarks/test_defaults_sync.py` — **UPDATE**: this suite asserts that every
-  `Defaults` entry is accounted for; the three new `JOURNAL_*` constants need entries. This
-  is the one existing test that will fail without a change, and it is a known follow-on for
-  any new constant.
+- [ ] `tests/benchmarks/test_defaults_sync.py::test_all_defaults_covered_by_module_constants`
+  — **UPDATE**: this is the specific assertion that fails when a `Defaults` entry is added
+  without a corresponding registration. It is the one existing test that will fail without a
+  change.
+- [ ] `tests/benchmarks/overrides.py` (`MODULE_CONSTANTS`) — **UPDATE**: the data the
+  assertion above reads. Adding the three `JOURNAL_*` constants to `constants.py` without
+  registering them here is what makes the test fail; editing the test file alone does not fix
+  it. Both files must change together.
 - [ ] `tests/test_provenance_journal.py` — **CREATE**: the new suite (one test file per
   primitive, per the issue's constraints).
 
@@ -767,7 +776,11 @@ Stated here so the omission is deliberate rather than overlooked.
 - [ ] Append p50/p99 measured at 20k entries and reported with python/redis-py versions
 - [ ] Tests pass (`/do-test`), narrow scope: `tests/test_provenance_journal.py` plus
   `tests/test_validity_field.py` and `tests/benchmarks/test_defaults_sync.py`
-- [ ] mypy error delta is 0 vs the merge-base, measured in the same venv, environment stated
+- [ ] mypy error delta is 0 vs the merge-base. **Baseline already measured for this plan:
+  1119 errors in 66 files (93 source files checked) at `9180680`**, using a clean detached
+  sibling worktree and this worktree's venv — Python 3.12.13, redis-py 8.1.0, mypy 2.3.1,
+  Redis server 8.6.2. The branch number must equal 1119; any other number is stated with its
+  environment, never relayed without one
 - [ ] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
@@ -849,8 +862,10 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
   mode="invalidate", ...)`, then `execute()` — with an inline comment citing #588
 - Every mutating op accepts `pipeline=` and returns it unexecuted when supplied
 - Add `JOURNAL_VALIDITY_COUPLING_ENABLED`, `JOURNAL_STREAM_MAX_LENGTH`, `JOURNAL_KINDS` to
-  `src/popoto/fields/constants.py` under a new section header, and update
-  `tests/benchmarks/test_defaults_sync.py`
+  `src/popoto/fields/constants.py` under a new section header, **and register all three in
+  `tests/benchmarks/overrides.py`'s `MODULE_CONSTANTS`** — that registry, not the test file,
+  is what `test_defaults_sync.py::test_all_defaults_covered_by_module_constants` reads. Both
+  files change together or the suite fails.
 - Export from `src/popoto/recipes/__init__.py` (alphabetized, both the import and `__all__`)
 
 ### 3. Test suite
@@ -875,6 +890,7 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 ### 4. Validation
 - **Task ID**: validate-journal
 - **Depends On**: build-tests
+- **Validates**: `.venv/bin/python -m pytest tests/test_provenance_journal.py tests/test_validity_field.py tests/benchmarks/test_defaults_sync.py -q` plus every row of the Verification table
 - **Assigned To**: journal-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -886,6 +902,7 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 ### 5. Documentation
 - **Task ID**: document-feature
 - **Depends On**: validate-journal
+- **Validates**: `.venv/bin/python -m mkdocs build --strict` and `grep -q 'features/provenance-journal.md' mkdocs.yml`
 - **Assigned To**: journal-documentarian
 - **Agent Type**: documentarian
 - **Parallel**: false
@@ -894,6 +911,7 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 ### 6. Final validation
 - **Task ID**: validate-all
 - **Depends On**: document-feature
+- **Validates**: every row of the Verification table, every Success Criterion, and the mypy delta (`.venv/bin/python -m mypy src/` in this worktree vs the same command against a clean sibling checkout of the merge-base, using this same venv)
 - **Assigned To**: journal-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -901,21 +919,44 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 
 ## Verification
 
+**Command-shape rules these rows obey** (each was empirically wrong in the first draft and is
+corrected here):
+
+- **No shell pipes.** A `|` inside a markdown table cell must be escaped as `\|`, and a
+  builder copying the row verbatim gets a literal backslash-pipe. Every row below is
+  pipe-free, so what is written is what runs.
+- **No `grep -c` with multiple files.** `grep -c PAT a b` prints `a:N` / `b:M` per file, never
+  a scalar, so a "match count == 0" expectation is unsatisfiable by that command shape.
+- **No `grep -c` for absence at all.** `grep -c` exits 1 on zero matches, so an
+  absence-expectation row reports failure under any `set -e` runner even when it passes.
+  Absence is expressed as `grep -q ...` with `exit code != 0`.
+- **No `\|` alternation inside ERE.** In `grep -E`, `\|` is a literal pipe character, not
+  alternation — the first draft's Valkey regex matched nothing real and would have passed
+  vacuously. Alternation is written bare, as `(A|B)`, inside a single-quoted pattern with no
+  table escaping.
+- **`.venv/bin/python`, never bare `python`** — see Prerequisites.
+
 | Check | Command | Expected |
 |-------|---------|----------|
-| Journal tests pass | `python -m pytest tests/test_provenance_journal.py -q` | exit code 0 |
-| V0 suite still passes | `python -m pytest tests/test_validity_field.py -q` | exit code 0 |
-| Defaults sync passes | `python -m pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
-| Exports importable | `python -c "from popoto import AppendOnlyMixin, AppendOnlyViolation; from popoto.recipes import JournalEntry, ProvenanceJournal"` | exit code 0 |
-| Lint clean | `python -m ruff check src/` | exit code 0 |
-| Format clean | `python -m black --check src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code 0 |
-| Docs build | `mkdocs build --strict` | exit code 0 |
-| Docs page exists in nav | `grep -c 'features/provenance-journal.md' mkdocs.yml` | output > 0 |
-| No Redis-module commands (anti-criterion) | `grep -rniE '\b(BF\.\|CMS\.\|TOPK\.\|TDIGEST\.\|JSON\.\|FT\.\|TS\.)' src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py \| wc -l` | match count == 0 |
-| No silent exception swallowing (anti-criterion) | `grep -cE 'except [A-Za-z]*:?\s*$\|except Exception:\s*pass' src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | match count == 0 |
-| Write path never uses SupersessionProtocol (anti-criterion, guards #588 workaround) | `grep -c 'SupersessionProtocol\.\(supersede\|invalidate\)' src/popoto/recipes/provenance_journal.py` | match count == 0 |
-| No extraction-path wiring leaked in (anti-criterion for the M3 No-Go) | `git diff origin/main --name-only \| grep -c 'subconscious_memory.py'` | match count == 0 |
-| `models/base.py` untouched (anti-criterion for D2) | `git diff origin/main --name-only \| grep -c 'models/base.py'` | match count == 0 |
+| Journal tests pass | `.venv/bin/python -m pytest tests/test_provenance_journal.py -q` | exit code 0 |
+| V0 suite still passes | `.venv/bin/python -m pytest tests/test_validity_field.py -q` | exit code 0 |
+| Defaults sync passes | `.venv/bin/python -m pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
+| Exports importable | `.venv/bin/python -c "from popoto import AppendOnlyMixin, AppendOnlyViolation; from popoto.recipes import JournalEntry, ProvenanceJournal"` | exit code 0 |
+| Lint clean | `.venv/bin/python -m ruff check src/` | exit code 0 |
+| Format clean | `.venv/bin/python -m black --check src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code 0 |
+| Docs build | `.venv/bin/python -m mkdocs build --strict` | exit code 0 |
+| Docs page exists in nav | `grep -q 'features/provenance-journal.md' mkdocs.yml` | exit code 0 |
+| No Redis-module commands (anti-criterion) | `grep -rqE '(BF\|CMS\|TOPK\|TDIGEST\|JSON\|FT\|TS)\.[A-Z]' src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code != 0 |
+| No silent exception swallowing (anti-criterion) | `.venv/bin/python -c "import re,sys; src=open('src/popoto/recipes/provenance_journal.py').read()+open('src/popoto/fields/append_only.py').read(); sys.exit(0 if re.search(r'except[^\n]*:\s*\n\s*(pass|\.\.\.)\s*\n', src) else 1)"` | exit code != 0 |
+| Write path never uses SupersessionProtocol (anti-criterion, guards the #588 workaround) | `grep -qE 'SupersessionProtocol\.(supersede\|invalidate)\(' src/popoto/recipes/provenance_journal.py` | exit code != 0 |
+| No extraction-path wiring leaked in (anti-criterion for the M3 No-Go) | `git diff --quiet origin/main -- src/popoto/recipes/subconscious_memory.py` | exit code 0 |
+| `models/base.py` untouched (anti-criterion for D2) | `git diff --quiet origin/main -- src/popoto/models/base.py` | exit code 0 |
+
+Note on the two `(A\|B)` patterns above: the `\|` is **markdown table-cell escaping only**.
+The pattern that runs is `(BF|CMS|TOPK|TDIGEST|JSON|FT|TS)\.[A-Z]` and
+`SupersessionProtocol\.(supersede|invalidate)\(` respectively — bare `|` alternation inside
+single quotes. A builder transcribing these must unescape the table pipes, not copy the
+backslashes.
 
 ## Critique Results
 
