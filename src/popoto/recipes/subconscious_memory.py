@@ -420,9 +420,10 @@ class SubconsciousMemory:
                     saved.append(instance)
                     self._seed_associations(instance, fact)
                     self._seed_confidence(instance, fact)
-                elif Defaults.NEVER_RECORD_ENABLED and scan_never_record(
-                    fact.text
-                ).blocked:
+                elif (
+                    Defaults.NEVER_RECORD_ENABLED
+                    and scan_never_record(fact.text).blocked
+                ):
                     # save() returned False and the fact is firewall-blocked,
                     # so this is a deliberate drop, not a rejected write. Note
                     # it so an all-dropped turn is not misreported as an

@@ -73,7 +73,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Iterator, Optional
 
 from ..exceptions import NeverRecordException
 from ..fields.constants import Defaults
@@ -189,8 +189,7 @@ _CREDENTIAL_ASSIGNMENT = re.compile(
     r"|auth[_\-]?token|access[_\-]?token|refresh[_\-]?token|token"
     r"|access[_\-]?key|private[_\-]?key|client[_\-]?secret|credential)"
     r"\s*[:=]\s*"
-    r"[\"']?(?P<value>[^\s\"'<>,;]{%d,})"
-    % Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN,
+    r"[\"']?(?P<value>[^\s\"'<>,;]{%d,})" % Defaults.NR_ASSIGNMENT_MIN_VALUE_LEN,
     re.IGNORECASE,
 )
 
@@ -216,7 +215,9 @@ _CARD_CANDIDATE = re.compile(r"(?<![\d\-])(?:\d[ \-]?){12,18}\d(?![\d\-])")
 # US SSN. Area/group/serial guards drop 000/666/9xx areas and 00 groups,
 # which are never issued -- that is what keeps a date-like 123-45-6789 from
 # being the only thing this matches.
-_SSN = re.compile(r"(?<!\d)(?!000|666|9\d\d)(\d{3})-(?!00)(\d{2})-(?!0000)(\d{4})(?!\d)")
+_SSN = re.compile(
+    r"(?<!\d)(?!000|666|9\d\d)(\d{3})-(?!00)(\d{2})-(?!0000)(\d{4})(?!\d)"
+)
 
 #: Token shapes excluded from *entropy* scoring only (critique C1). These are
 #: structural shape rules, not corpus-tuned heuristics: they encode "this is
@@ -239,7 +240,7 @@ def _shannon_entropy(token: str) -> float:
     """Shannon entropy of ``token`` in bits per character."""
     if not token:
         return 0.0
-    counts: dict = {}
+    counts: dict[str, int] = {}
     for char in token:
         counts[char] = counts.get(char, 0) + 1
     length = len(token)
@@ -330,7 +331,7 @@ def _scan_high_entropy(text: str) -> Optional[NeverRecordVerdict]:
     return None
 
 
-def scan_never_record(text) -> NeverRecordVerdict:
+def scan_never_record(text: Any) -> NeverRecordVerdict:
     """Scan ``text`` for content that must never be recorded.
 
     Pure and deterministic: no Redis, no model, no network, no clock. Safe to
@@ -410,7 +411,11 @@ def never_record_key(class_name: str, kind: str) -> str:
     return f"$NR:{class_name}:{kind}"
 
 
-def write_tombstone(class_name: str, verdict: NeverRecordVerdict, redis_client=None):
+def write_tombstone(
+    class_name: str,
+    verdict: NeverRecordVerdict,
+    redis_client: Any = None,
+) -> str:
     """Record that a drop happened, without recording what was dropped.
 
     Writes two plain Redis/Valkey structures (no modules):
@@ -510,7 +515,12 @@ class NeverRecordMixin:
     # round trip. Matches WriteFilterMixin's precedent.
     roundtrip_policy: str = "rebuild"
 
-    def _never_record_scan_values(self):
+    if TYPE_CHECKING:
+        # Supplied by Model, which every user of this mixin also
+        # inherits from. Declared for the type checker only.
+        _meta: Any
+
+    def _never_record_scan_values(self) -> Iterator[str]:
         """Yield the string field values this instance exposes to the scan.
 
         Excludes key fields (see the class docstring) and any non-string
@@ -526,7 +536,7 @@ class NeverRecordMixin:
             if isinstance(value, str) and value.strip():
                 yield value
 
-    def _check_never_record(self):
+    def _check_never_record(self) -> NeverRecordVerdict:
         """Evaluate the firewall and gate the save.
 
         Each field is scanned independently under both renderings. There is
@@ -559,7 +569,7 @@ class NeverRecordMixin:
         return _CLEAN
 
     @classmethod
-    def never_record_counts(cls, redis_client=None) -> dict:
+    def never_record_counts(cls, redis_client: Any = None) -> dict[str, int]:
         """Return ``{reason_code: count}`` of drops for this model.
 
         Content-free by construction -- this is the auditable half of the
@@ -576,7 +586,7 @@ class NeverRecordMixin:
 
             redis_client = POPOTO_REDIS_DB
         raw = redis_client.hgetall(never_record_key(cls.__name__, "counts")) or {}
-        counts = {}
+        counts: dict[str, int] = {}
         for key, value in raw.items():
             if isinstance(key, bytes):
                 key = key.decode("utf-8")
@@ -584,7 +594,9 @@ class NeverRecordMixin:
         return counts
 
     @classmethod
-    def never_record_log(cls, limit: int = 100, redis_client=None) -> list:
+    def never_record_log(
+        cls, limit: int = 100, redis_client: Any = None
+    ) -> list[dict[str, Any]]:
         """Return the most recent drop tombstones, newest first.
 
         Args:
@@ -600,7 +612,7 @@ class NeverRecordMixin:
 
             redis_client = POPOTO_REDIS_DB
         raw = redis_client.lrange(never_record_key(cls.__name__, "drops"), 0, limit - 1)
-        entries = []
+        entries: list[dict[str, Any]] = []
         for item in raw or []:
             if isinstance(item, bytes):
                 item = item.decode("utf-8")
