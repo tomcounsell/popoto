@@ -1,0 +1,10 @@
+{
+  "_provenance": "captured-from: live claude-code 2.1.220 headless run on 2026-08-07. Recapture: write a settings file whose UserPromptSubmit and Stop hooks run a script containing `cat > \"$(dirname \"$0\")/$(date +%s%N).json\"`, then `claude --settings <that file> --model haiku -p 'Reply with exactly: capture ok'`. Session ids, paths, and prompt text below were replaced with placeholders; every key and its type is exactly as emitted.",
+  "session_id": "9126bdcd-0385-4411-b61d-2373fd346a80",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-src-demo/9126bdcd-0385-4411-b61d-2373fd346a80.jsonl",
+  "cwd": "/Users/dev/src/demo",
+  "prompt_id": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "how does the deploy roll back when health checks fail?"
+}

@@ -250,6 +250,19 @@ class SubconsciousMemory:
             content_field=content_field,
         )
 
+    @property
+    def assembler(self) -> ContextAssembler:
+        """The :class:`ContextAssembler` this recipe assembles context with.
+
+        Public accessor for callers (e.g. ``MemoryService``) that need to
+        reuse this recipe's already-configured assembler -- same
+        ``score_weights``, ``max_items``, ``max_tokens`` and
+        ``output_format`` -- instead of constructing a second one or
+        reaching through the private ``_assembler`` attribute, which would
+        break silently on a rename.
+        """
+        return self._assembler
+
     def inject_context(self, messages):
         """Pre-turn: assemble memories and inject into the messages array.
 

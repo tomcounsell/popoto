@@ -1,0 +1,7 @@
+{
+  "_provenance": "captured-from: the OpenClaw plugin hook reference (docs.openclaw.ai/plugins/hooks, read 2026-08-07), not from a live turn. Recapture: see openclaw_before_prompt_build.json.",
+  "event": "llm_output",
+  "session_id": "openclaw-7f2b",
+  "cwd": "/Users/dev/src/demo",
+  "text": "A failed health check triggers an automatic rollback to the previous green environment, and the deploy is marked failed in the pipeline."
+}

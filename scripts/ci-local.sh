@@ -62,10 +62,11 @@ GATES=()
 case "${1:-}" in
   -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
 esac
+FAST=0
 for arg in "$@"; do
   case "$arg" in
     --all)  GATES=(lint tests stress docs build lock guard) ;;
-    --fast) GATES=(tests) ;;
+    --fast) GATES=(tests); FAST=1 ;;
     lint|tests|stress|docs|build|lock|guard) GATES+=("$arg") ;;
     *) fail "unknown argument: $arg"; exit 2 ;;
   esac
@@ -152,13 +153,17 @@ if $needs_redis; then
   missing_extras="$("$PY" - <<'PYEOF' 2>/dev/null || true
 from importlib.util import find_spec
 
-missing = [m for m in ("numpy", "sentence_transformers") if find_spec(m) is None]
+missing = [
+    m for m in ("numpy", "sentence_transformers", "mcp") if find_spec(m) is None
+]
 print(" ".join(missing))
 PYEOF
 )"
   if [ -n "${missing_extras// /}" ]; then
-    warn "optional extras missing ($missing_extras) — ~95 tests will be silently skipped"
-    warn "  a green run here does NOT match CI coverage; install: uv pip install -e '.[dev,embeddings,benchmark]'"
+    warn "optional extras missing ($missing_extras) — tests will be silently skipped"
+    warn "  (numpy/sentence_transformers deselect ~95; mcp skips the MCP server tests)"
+    warn "  a green run here does NOT match CI coverage; install:"
+    warn "    uv pip install -e '.[dev,embeddings,benchmark,mcp]'"
   fi
 
   # 3. redis-py 8.x breaks the plugin's subprocess isolation test
@@ -216,7 +221,17 @@ gate_lint() {
   printf 'using %s\n' "$("$RUFF" --version)"
   "$RUFF" check src/
 }
-gate_tests()  { "$PYTEST" -v --tb=short; }
+gate_tests() {
+  # --fast deselects `slow`, which is what keeps the read-hook latency
+  # measurement (tests/test_integrations_latency.py, 25 subprocess spawns)
+  # out of the quick loop. A full run includes it: the 400 ms p95 budget is
+  # a shipped promise and wants a gate, not a manual check.
+  if [ "$FAST" -eq 1 ]; then
+    "$PYTEST" -v --tb=short -m "not slow"
+  else
+    "$PYTEST" -v --tb=short
+  fi
+}
 gate_stress() { "$PYTEST" tests/test_stress.py -v --tb=short --durations=10; }
 gate_docs()   { "$MKDOCS" build --strict; }
 gate_build()  {

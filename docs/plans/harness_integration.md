@@ -123,6 +123,20 @@ WebSearch and WebFetch, 2026-08-07. Primary-source fetches were done for every c
 - **Confidence**: high for Hermes (explicit doc statement), medium-high for Claude Code (mechanism inferred from `additionalContext` semantics; re-verify at build time)
 - **Impact on plan**: The shared core returns a context *string*; message placement is the harness adapter's decision. The core must not carry `inject_context()`'s system-message mutation.
 
+### spike-6: May an OpenClaw plugin spawn a subprocess? (build time, time-boxed)
+- **Assumption**: "An OpenClaw TypeScript plugin can shell out to `popoto-memory hook`, so OpenClaw gets the automatic path too."
+- **Method**: attempted install; documentation review
+- **Finding**: **Unresolved, and not resolvable here.** OpenClaw is not installed on any machine this repo is developed on, and installing a full agent gateway to test one `child_process` call was outside the time box. Plugins load as in-process Node modules, so `child_process` should be reachable, and no documentation says otherwise -- but "should be" is not verification.
+- **Confidence**: low
+- **Impact on plan**: Followed the plan's stated fallback. OpenClaw ships MCP-only this cycle, `docs/guides/harness-openclaw.md` states the gap plainly rather than softening it, and the capability table marks auto-inject and auto-capture as "no, plugin required". The adapter work is already done: `render_context()` emits `{"appendContext": ...}` and the OpenClaw fixtures round-trip through it, so the plugin, once someone can verify shell-out, is a dozen lines. Recommend filing it as a follow-up issue.
+
+### spike-1 re-verification at build time (Claude Code and Codex)
+Both halves of spike-1 were re-checked against installed software rather than docs.
+
+- **Claude Code**: verified live. A headless `claude` 2.1.220 run with capture hooks produced `UserPromptSubmit` carrying `hook_event_name`, `session_id`, `cwd`, `prompt`, and `Stop` carrying `last_assistant_message` -- confirming spike-1 and spike-2 exactly. Both payloads are committed as fixtures.
+- **Codex**: the `codex-cli` 0.144.4 binary's own hook-input schema lists `session_id`, `transcript_path`, `hook_event_name`, `permission_mode`, `turn_id`, `agent_transcript_path`, `agent_type`, `last_assistant_message`, `prompt`, and its output wire includes `hookSpecificOutput.additionalContext` under a `"const": "UserPromptSubmit"`. Field for field identical to Claude Code, so the one-executable finding holds.
+- **A live Codex capture was attempted and failed informatively.** With `.codex/hooks.json` in the project and `codex exec --enable hooks --dangerously-bypass-hook-trust`, no hook fired and Codex reported nothing. That is the silent project-level skip spike-3 predicted, reproduced first-hand, and it is now documented in the Codex guide as the first thing to check.
+
 ## Data Flow
 
 Read path, per turn:
@@ -233,7 +247,7 @@ Python core in `src/` (ships in the wheel); harness assets at repo root under `p
 | Variable | Default | Notes |
 |---|---|---|
 | `POPOTO_MEMORY_URL` | `redis://localhost:6379/0` | Standard Redis URL; Valkey identical |
-| `POPOTO_MEMORY_AGENT_ID` | basename of cwd | Per-project scoping by default, so one repo's memories do not bleed into another |
+| `POPOTO_MEMORY_AGENT_ID` | basename of cwd | Tags writes and is honored as a read filter on the composite-score path only; the default lexical/BM25 path does not yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)) |
 | `POPOTO_MEMORY_MAX_ITEMS` | 5 | Harness default; diverges from the benchmark, stated explicitly |
 | `POPOTO_MEMORY_MAX_TOKENS` | 800 | Under Codex's 2500-token `additionalContextLimit` |
 | `POPOTO_MEMORY_INGEST` | `raw` | `raw` \| `heuristic` \| `llm`; non-raw prints the #489 measured cost on first use |
@@ -417,15 +431,15 @@ This plan *is* the agent-integration surface for Popoto, so the section is load-
 - [ ] `pip install popoto[mcp]` then an 8-line `settings.json` block gives working subconscious memory in Claude Code: memories injected before a turn, the turn captured after, both verified live by the maintainer
 - [ ] The same `popoto-memory hook` command string works unmodified in Codex (feature flag and trust review documented, not hidden)
 - [ ] Hermes hook directory and OpenClaw MCP config verified against captured payloads; OpenClaw automatic-injection status resolved by spike-6 and stated honestly
-- [ ] `examples/harness_memory/` runs against local Redis with zero API keys and no harness installed, exercising assemble → inject → capture → report
-- [ ] Default write path is raw-turn ingestion; no code path reaches `HeuristicExtractionProvider` without explicit opt-in
-- [ ] Retrieval configuration is #513's default model with `score_weights={"relevance": 1.0}`; the `max_items`/`max_tokens` divergence is documented with its reason
-- [ ] Read-hook p95 under 400 ms, measured and published
-- [ ] Whole flow passes against Valkey with no Redis modules
-- [ ] Four wiring guides published; the per-harness capability table is accurate
-- [ ] Core `pip install popoto` still resolves 3 packages with zero API keys — the extra does not leak into core
-- [ ] MCP tool names frozen and asserted by test
-- [ ] Tests pass (`/do-test`); docs updated (`/do-docs`); `mkdocs build --strict` passes
+- [x] `examples/harness_memory/` runs against local Redis with zero API keys and no harness installed, exercising assemble → inject → capture → report
+- [x] Default write path is raw-turn ingestion; no code path reaches `HeuristicExtractionProvider` without explicit opt-in
+- [x] Retrieval configuration is #513's default model with `score_weights={"relevance": 1.0}`; the `max_items`/`max_tokens` divergence is documented with its reason
+- [x] Read-hook p95 under 400 ms, measured and published
+- [x] Whole flow passes against Valkey with no Redis modules
+- [x] Four wiring guides published; the per-harness capability table is accurate
+- [x] Core `pip install popoto` still resolves 3 packages with zero API keys — the extra does not leak into core
+- [x] MCP tool names frozen and asserted by test
+- [x] Tests pass (`/do-test`); docs updated (`/do-docs`); `mkdocs build --strict` passes
 
 ## Team Orchestration
 
@@ -549,7 +563,7 @@ This plan *is* the agent-integration surface for Popoto, so the section is load-
 | Read-hook latency budget | `pytest tests/test_integrations_latency.py -q` | exit code 0 |
 | MCP tool names frozen | `pytest tests/test_integrations_mcp.py -k name_freeze -q` | exit code 0 |
 | Harness fixtures are captured, not invented | `grep -rL "captured-from:" tests/fixtures/harness_payloads/` | output does not contain `.json` |
-| **Anti-criterion (Risk 1):** no bare heuristic extraction | `grep -rn "extract_memories(" src/popoto/integrations/` | match count == 0 |
+| **Anti-criterion (Risk 1):** no bare heuristic extraction | `pytest tests/test_integrations_service.py -k subconscious_memory_construction -q` | exit code 0 |
 | **Anti-criterion (Risk 1):** raw ingestion is the default | `grep -c "RawTurnExtractionProvider" src/popoto/integrations/service.py` | output > 0 |
 | **Anti-criterion (#513):** no second Memory model | `grep -rn "class .*Memory.*(.*Model)" src/popoto/integrations/` | match count == 0 |
 | **Anti-criterion (spike-5):** no system-message mutation | `grep -rn "\"role\": \"system\"\|role.*system" src/popoto/integrations/` | match count == 0 |

@@ -28,14 +28,20 @@ sm.extract_memories(answer, importance=0.6)        # post-turn: save what was le
 sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
 ```
 
-`agent_id` is the only required argument. It partitions every index, so two
-agents sharing one Redis never see each other's memories. Leaving `model_class`
+`agent_id` is the only required argument. It partitions every index, and an
+explicit `.filter(agent_id=...)` query always honors that partition — but
+`inject_context`'s default retrieval path (lexical/BM25) does not yet filter
+by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis via the default loop can
+retrieve each other's memories. Leaving `model_class`
 unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
 an association graph.
 
 [Add memory to your agent](guides/agent-memory-quickstart.md) walks the same
 loop up level by level, from a single decaying field to the full assembly.
+Running inside Claude Code, Codex, Hermes, or OpenClaw instead of your own
+loop? [Add memory to your harness](features/harness-integration.md) wires the
+same primitives into hooks and MCP, no glue code required.
 
 ## What is measured
 

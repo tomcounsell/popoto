@@ -2,6 +2,11 @@
 
 An interactive Terminal User Interface (TUI) demo application showcasing the Popoto Redis ORM.
 
+> Looking for the harness-memory example instead? See
+> [`examples/harness_memory/`](harness_memory/README.md) — the Claude Code
+> / Codex / Hermes / OpenClaw hook loop, runnable against local Redis with
+> no harness installed. This README covers Popoto Kitchen, the ORM demo app.
+
 ![Popoto Kitchen](https://img.shields.io/badge/TUI-Textual-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 

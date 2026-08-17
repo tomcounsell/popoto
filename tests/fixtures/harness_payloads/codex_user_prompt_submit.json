@@ -1,0 +1,10 @@
+{
+  "_provenance": "captured-from: the codex-cli 0.144.4 binary's own hook-input field list, extracted 2026-08-07, not from a live turn. Recapture the field list: `strings $(readlink -f $(which codex)) | grep -o 'session_idtranscript_pathhook_event_namepermission_modeturn_idagent_transcript_pathagent_typelast_assistant_messageprompt'`. A live capture was attempted and failed: with `.codex/hooks.json` in the project and `codex exec --enable hooks --dangerously-bypass-hook-trust`, no hook fired and nothing was reported, which is the silent project-level skip documented in docs/guides/harness-codex.md. A live capture on a trusted project is part of the maintainer's acceptance pass.",
+  "session_id": "019fdbed-9e5b-79c1-8234-e45a63fc5807",
+  "transcript_path": "/Users/dev/.codex/sessions/019fdbed-9e5b-79c1-8234-e45a63fc5807.jsonl",
+  "cwd": "/Users/dev/src/demo",
+  "turn_id": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "how does the deploy roll back when health checks fail?"
+}

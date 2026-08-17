@@ -1,0 +1,9 @@
+{
+  "_provenance": "captured-from: the Hermes hook contract as documented by Nous Research (docs.nousresearch.com Hermes hooks reference, read 2026-08-07), not from a live turn. Recapture: see hermes_pre_llm_call.json.",
+  "event_type": "post_llm_call",
+  "session_id": "hermes-6c1c1f0a",
+  "cwd": "/Users/dev/src/demo",
+  "extra": {
+    "response": "A failed health check triggers an automatic rollback to the previous green environment, and the deploy is marked failed in the pipeline."
+  }
+}

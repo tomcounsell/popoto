@@ -1,0 +1,22 @@
+{
+  "name": "popoto",
+  "owner": {
+    "name": "Tom Counsell",
+    "email": "other@tomcounsell.com",
+    "url": "https://popoto.io/"
+  },
+  "metadata": {
+    "description": "Agent memory on Redis or Valkey, with no API keys.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "popoto-memory",
+      "source": "./plugins/claude-code",
+      "description": "Subconscious memory for Claude Code: recall before every turn, capture after every turn, backed by your own Redis or Valkey.",
+      "version": "1.8.2",
+      "category": "memory",
+      "keywords": ["memory", "redis", "valkey", "context", "recall"]
+    }
+  ]
+}

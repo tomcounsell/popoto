@@ -1,0 +1,15 @@
+# Append to ~/.codex/config.toml. Two separate things are needed: the
+# feature flag that turns hooks on at all, and the MCP server registration.
+
+[features]
+hooks = true
+
+[mcp_servers.popoto-memory]
+command = "popoto-memory"
+args = ["mcp"]
+
+# Optional. Every one of these has a default; see
+# docs/features/harness-integration.md.
+# [mcp_servers.popoto-memory.env_vars]
+# POPOTO_MEMORY_URL = "redis://localhost:6379/0"
+# POPOTO_MEMORY_AGENT_ID = "my-project"

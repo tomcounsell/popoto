@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "user_prompt_submit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "popoto-memory hook"
+          }
+        ]
+      }
+    ],
+    "stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "popoto-memory hook",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
