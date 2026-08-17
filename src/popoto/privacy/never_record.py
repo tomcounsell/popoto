@@ -51,11 +51,17 @@ This is a deterministic pattern gate, not an oracle. Read the holes:
   excluded from entropy scoring** (:func:`_entropy_candidate`). Entropy per
   character does not separate ``ExtractionProviderRegistry`` (3.87 bits) or
   ``text-embedding-3-small`` from a real secret, so scoring whole tokens
-  voided 11.6% of this repo's own documentation paragraphs. The cost: a
-  secret escapes the backstop if it contains no digit (~3% of 20-char base64,
-  ~0.4% at 32) or if a separator breaks it at least every
-  ``NR_ENTROPY_MIN_TOKEN_LEN`` characters. Only ``high_entropy`` is affected;
-  every named format has its own detector.
+  voided 11.6% of this repo's own documentation paragraphs.
+
+  **The cost is large and should not be read as a footnote.** A secret
+  escapes the backstop if it contains no digit, or if a separator breaks it
+  so no unbroken run reaches ``NR_ENTROPY_MIN_TOKEN_LEN``. The separator case
+  dominates, because base64's own alphabet includes ``-`` and ``_``. Measured
+  over 200k random base64url tokens per length: **~49% escape at 20
+  characters, ~27% at 32, ~12% at 43** (compare the digit-free case alone at
+  ~3% and ~0.4%). Treat ``high_entropy`` as opportunistic, not as a second
+  guarantee. Only ``high_entropy`` is affected; every named format has its
+  own detector, and that is where the guarantee lives.
 - **A novel credential format with no known prefix, low entropy, and no
   assignment context can pass.** The detector corpus is explicit and lives in
   one module so it can be extended; issue #561's module M9 (seeded audit) is
@@ -276,13 +282,19 @@ def _entropy_candidate(token: str) -> Optional[str]:
 
     The run must still meet ``NR_ENTROPY_MIN_TOKEN_LEN`` on its own.
 
-    **The enumerated cost.** A randomly generated secret escapes the entropy
-    backstop if it contains no digit at all (~3% of 20-character base64
-    strings, ~0.4% at 32) or if it is broken by a separator at least every
-    ``NR_ENTROPY_MIN_TOKEN_LEN`` characters. Both apply *only* to
-    ``high_entropy``, the unknown-format backstop -- every vendor-prefixed
-    token, JWT, PEM block, URL userinfo, and assignment form has its own
-    detector and is unaffected.
+    **The enumerated cost, with its magnitude.** A randomly generated secret
+    escapes the entropy backstop if it contains no digit at all (~3% of
+    20-character base64 strings, ~0.4% at 32), or if a separator breaks it so
+    that no unbroken run reaches ``NR_ENTROPY_MIN_TOKEN_LEN``. The second case
+    dominates, because base64url's own alphabet contains ``-`` and ``_``:
+    measured over 200k random tokens per length, **~49% escape at 20
+    characters, ~27% at 32, ~12% at 43**.
+
+    That is a big hole, and it is the deliberate price of not voiding 11.6% of
+    ordinary technical prose. Both cases apply *only* to ``high_entropy``, the
+    opportunistic unknown-format backstop -- every vendor-prefixed token, JWT,
+    PEM block, URL userinfo, and assignment form has its own detector, is
+    unaffected by these cuts, and is where the actual guarantee lives.
     """
     if not any(char.isdigit() for char in token):
         return None

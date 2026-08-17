@@ -88,18 +88,30 @@ entire turn. Three structural cuts apply before scoring:
   `text-embedding-3-small` and `POPOTO_MEMORY_MAX_ITEMS=10` from
   `Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe`.
 
-Together these take the measured false-positive rate on that corpus (5147
+Together these take the measured false-positive rate on that corpus (5282
 paragraphs, including this repo's plan documents) to zero `high_entropy`
-blocks, at 0.47% of paragraphs blocked overall — all by the named detectors,
+blocks, at 0.51% of paragraphs blocked overall — all by the named detectors,
 mostly documentation that literally discusses off-the-record markers.
 
-Each cut is a real hole, stated precisely. A secret escapes the entropy
-backstop if it is a bare 40-hex-character string, if it contains no digit at
-all (~3% of 20-character base64 strings, ~0.4% at 32), or if a separator
-breaks it at least every 20 characters. **No cut touches any other
-detector** — the same secret is still caught as `password=<value>`, behind a
-vendor prefix, in a URL, or in any other named shape. The backstop exists
-for unknown formats; it is not the guarantee.
+**These cuts cost the backstop a lot, and the number is worth knowing.** A
+secret escapes `high_entropy` if it is a bare 40-hex-character string, if it
+contains no digit at all, or if a separator (`-` `_` `/` `=` `+`) breaks it
+so that no unbroken run reaches 20 characters. The separator case dominates,
+because base64's own alphabet includes `-` and `_`. Measured over 200,000
+random base64url tokens per length:
+
+| Token length | Escapes the entropy backstop |
+|---|---|
+| 20 characters | **~49%** |
+| 32 characters | **~27%** |
+| 43 characters (256-bit) | **~12%** |
+
+So the entropy backstop should be read as *opportunistic*, not as a second
+guarantee. **No cut touches any other detector** — the same secret is still
+caught as `password=<value>`, behind a vendor prefix, in a URL, or in any
+other named shape, and those named detectors are where the guarantee lives.
+The backstop exists to catch unknown formats sometimes; it is not a promise
+that an unknown format will be caught.
 
 **A novel credential format can pass** if it has no recognized prefix, no
 assignment context, and entropy below the threshold. The detector corpus

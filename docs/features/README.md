@@ -6,7 +6,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| [Agent Memory](agent-memory.md) | The map: 14 primitives, the layers composed on them, and where each reference lives | Stable |
+| [Agent Memory](agent-memory.md) | The map: 17 primitives, the layers composed on them, and where each reference lives | Stable |
 | [CoOccurrenceField](co-occurrence-field.md) | Associative co-occurrence graph for candidate expansion | Stable |
 | [CompositeScoreQuery](composite-score-query.md) | Multi-factor ranked retrieval across sorted indexes | Stable |
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |

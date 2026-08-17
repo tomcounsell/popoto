@@ -649,6 +649,20 @@ Critic result files: `scratchpad/critique_561/`. No `docs/sdlc/do-plan-critique.
 exists in this repo, so the critique ran on the generic path and recorded no
 verdict to any substrate — this table is the record.
 
+## Review Results (round 3)
+
+`/do-pr-review` at `972b9e0`, rebased onto `a4f7fbf` with all three CI checks
+green. Verdict: **CHANGES REQUESTED** — 0 blockers, 1 tech debt, 2 nits. All
+round-2 items verified resolved and every rebase conflict resolution confirmed
+correct (including the union merge that keeps both #580's and #561's constants
+in `test_defaults_sync.py`).
+
+| Finding | Resolution |
+|---|---|
+| Tech debt — the separator cut's *magnitude* was never stated, only its existence. The reviewer measured that a separator breaks randomly generated base64 often enough to void the backstop ~49% of the time at 20 chars, ~27% at 32, ~11% at 43. | Re-measured independently at this HEAD over 200k random base64url tokens per length: **48.6% / 27.3% / 11.7%** escape. Confirms the reviewer. The figure is now stated on the same scale as the ~3%/~0.4% digit-free numbers in all three locations (feature page as a table, module docstring, `_entropy_candidate` docstring), with the framing that `high_entropy` is *opportunistic* rather than a second guarantee — the named detectors are where the guarantee lives. |
+| Nit — feature page carried pre-rebase corpus figures (5147 / 0.47%) | Updated to the post-rebase measurement (5282 paragraphs / 0.51%, zero `high_entropy`). |
+| Nit — `docs/features/README.md:9` still said "14 primitives" | Bumped to 17, matching `agent-memory.md` after the #580 rebase. |
+
 ## Review Results (round 2)
 
 `/do-pr-review` at `a9c4066`. Verdict: **CHANGES REQUESTED** — 0 blockers, 2
@@ -684,7 +698,21 @@ debt, 2 nits. Resolution:
 Both remaining questions are decisions for the PM/principal, not blockers on
 the build. The build proceeds on the stated default; each is cheap to reverse.
 
-1. **Scope of default-on (the load-bearing decision).** This plan gates
+1. **RESOLVED — scope of default-on.** PM ruling: **confirmed as built.** The
+   firewall defaults ON for the memory surface (`DefaultMemory` + the
+   `SubconsciousMemory` turn path); general ORM models opt in via the mixin.
+   Rationale: this matches the repo's default-on-with-kill-switch doctrine for
+   memory capabilities, and gating every `Model.save()` would break adopters
+   legitimately storing credentials in Redis. No code change — the shipped
+   behavior already matches the ruling.
+2. **RESOLVED — git-SHA/UUID structural exclusions.** PM ruling: **trade
+   confirmed.** Blocking every commit SHA in agent memory is unacceptable. The
+   hole is enumerated, disclosed on the feature page and in the module
+   docstring, and pinned by `test_enumerated_entropy_holes_are_pinned`.
+
+Superseded (kept for the record):
+
+3. **Scope of default-on (the load-bearing decision).** This plan gates
    `DefaultMemory` and the `SubconsciousMemory` turn path by default, and leaves
    arbitrary user models opt-in via the mixin. The issue's recon argues "a gate
    that only fires when someone remembered a mixin is not a firewall." The plan
