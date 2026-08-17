@@ -58,7 +58,12 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
-from ..exceptions import ModelException, KeyMutationError, SkipSaveException
+from ..exceptions import (
+    ModelException,
+    KeyMutationError,
+    NeverRecordException,
+    SkipSaveException,
+)
 
 logger = logging.getLogger("POPOTO.model_base")
 
@@ -1213,6 +1218,20 @@ class Model(metaclass=ModelBase):
                         f"migrate_key=True. KeyField values form the model's "
                         f"Redis identity and cannot be changed accidentally."
                     )
+
+        # NeverRecordMixin: the never-record firewall (#561). Runs BEFORE the
+        # write filter and before pre_save(), so blocked content is never
+        # serialized, never HSET, and never reaches an index, BM25 tokenizer,
+        # embedding provider, or co-occurrence edge. This ordering is the
+        # whole guarantee -- do not move it below pre_save().
+        from ..fields.constants import Defaults
+        from ..privacy.never_record import NeverRecordMixin
+
+        if isinstance(self, NeverRecordMixin) and Defaults.NEVER_RECORD_ENABLED:
+            try:
+                self._check_never_record()
+            except NeverRecordException:
+                return pipeline if pipeline else False
 
         # WriteFilterMixin: check write filter before any save work
         from ..fields.write_filter import WriteFilterMixin

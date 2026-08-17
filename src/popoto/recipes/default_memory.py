@@ -45,6 +45,20 @@ Field choices and why:
     retrieval and receives write-time entity links from
     ``SubconsciousMemory.extract_memories()``.
 
+``NeverRecordMixin``
+    The never-record firewall (#561). Included where ``WriteFilterMixin``
+    is not, and the difference is not inconsistency: the write filter drops
+    records it *guesses* are unimportant, which is the wrong default because
+    a wrong guess is silent data loss. The firewall drops content that is
+    *deterministically* a credential or explicitly marked off-the-record,
+    where a wrong guess costs one memory and the alternative costs a leaked
+    secret. It also drops loudly -- every drop increments an auditable
+    per-reason counter (``DefaultMemory.never_record_counts()``).
+    This matters most because the Claude Code / Codex / Hermes / OpenClaw
+    harness writes through this model on every turn using raw turn ingestion
+    (#515), so a pasted API key would otherwise be persisted verbatim.
+    Deploy-level escape hatch: ``POPOTO_NEVER_RECORD_DISABLE=1``.
+
 Deliberately **not** included:
 
 ``WriteFilterMixin``
@@ -76,9 +90,10 @@ from ..fields.confidence_field import ConfidenceField
 from ..fields.decaying_sorted_field import DecayingSortedField
 from ..fields.shortcuts import AutoKeyField, FloatField, KeyField, StringField
 from ..models.base import Model
+from ..privacy.never_record import NeverRecordMixin
 
 
-class DefaultMemory(AccessTrackerMixin, Model):
+class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
     """Batteries-included agent memory: query-sensitive retrieval, no schema.
 
     Equivalent to the quickstart's Level 4 model minus ``WriteFilterMixin``.

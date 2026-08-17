@@ -11,6 +11,7 @@ from .exceptions import (
     PublisherException,
     SubscriberException,
     SkipSaveException,
+    NeverRecordException,
     KeyMutationError,
 )
 from .fields.field import Field
@@ -39,6 +40,11 @@ from .fields.shortcuts import (
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
 from .fields.write_filter import WriteFilterMixin
+from .privacy.never_record import (
+    NeverRecordMixin,
+    NeverRecordVerdict,
+    scan_never_record,
+)
 from .fields.event_stream import EventStreamMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.confidence_field import ConfidenceField
@@ -190,6 +196,10 @@ __all__ = [
     "WriteFilterMixin",
     "EventStreamMixin",
     "SkipSaveException",
+    "NeverRecordException",
+    "NeverRecordMixin",
+    "NeverRecordVerdict",
+    "scan_never_record",
     "CyclicDecayField",
     "ConfidenceField",
     "CoOccurrenceField",
