@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2956,7 +2984,7 @@ async def my_async_function():
 </code></pre></div>
 <p>For dynamic reconfiguration (e.g., testing), use set_REDIS_DB_settings()::</p>
 <div class="highlight"><pre><span></span><code>from popoto.redis_db import set_REDIS_DB_settings
-set_REDIS_DB_settings(host=&#39;test-redis&#39;, port=6380)
+set_REDIS_DB_settings(host='test-redis', port=6380)
 </code></pre></div>
 </details>
 
@@ -3074,16 +3102,16 @@ complexity and circular import risks.</p>
 <span class="normal"><a href="#__codelineno-0-560">560</a></span>
 <span class="normal"><a href="#__codelineno-0-561">561</a></span>
 <span class="normal"><a href="#__codelineno-0-562">562</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="k">class</span><span class="w"> </span><span class="nc">PopotoException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Base exception for Popoto framework errors. Logs the message on init.</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="w">    </span><span class="sd">"""Base exception for Popoto framework errors. Logs the message on init.</span>
 <a id="__codelineno-0-541" name="__codelineno-0-541"></a>
 <a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">    Centralizes error handling across the ORM by ensuring all Popoto exceptions</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">    are automatically logged at ERROR level when raised. This design decision</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">    means developers don&#39;t need to add separate logging calls when catching</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">    means developers don't need to add separate logging calls when catching</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">    and re-raising errors - the logging happens automatically at exception</span>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a><span class="sd">    creation time.</span>
 <a id="__codelineno-0-547" name="__codelineno-0-547"></a>
 <a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">    This class is intentionally placed in redis_db.py (rather than a dedicated</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">    exceptions module) because it&#39;s imported by nearly every Popoto module,</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">    exceptions module) because it's imported by nearly every Popoto module,</span>
 <a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="sd">    and redis_db.py is already a universal dependency. This minimizes import</span>
 <a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">    complexity and circular import risks.</span>
 <a id="__codelineno-0-552" name="__codelineno-0-552"></a>
@@ -3091,8 +3119,8 @@ complexity and circular import risks.</p>
 <a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">        message: Human-readable error description, also logged automatically.</span>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        raise PopotoException(&quot;Model &#39;User&#39; has no KeyField defined&quot;)</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        raise PopotoException("Model 'User' has no KeyField defined")</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    """</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a>
 <a id="__codelineno-0-560" name="__codelineno-0-560"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
@@ -3126,7 +3154,7 @@ complexity and circular import risks.</p>
 
 
 <h3 id="popoto.redis_db.set_REDIS_DB_settings" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">env_partition_name</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">env_partition_name</span><span class="o">=</span><span class="s1">''</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
 
 <a href="#popoto.redis_db.set_REDIS_DB_settings" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -3255,8 +3283,8 @@ args, bypasses the managed pool (see below).</p>
 <span class="normal"><a href="#__codelineno-0-210">210</a></span>
 <span class="normal"><a href="#__codelineno-0-211">211</a></span>
 <span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">env_partition_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reset the global Redis connection with new settings.</span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">env_partition_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="w">    </span><span class="sd">"""Reset the global Redis connection with new settings.</span>
 <a id="__codelineno-0-165" name="__codelineno-0-165"></a>
 <a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">    This function enables dynamic connection switching, which is essential for:</span>
 <a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">    - Test isolation: Point tests at a separate Redis instance or database</span>
@@ -3279,24 +3307,24 @@ args, bypasses the managed pool (see below).</p>
 <a id="__codelineno-0-184" name="__codelineno-0-184"></a>
 <a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    Example:</span>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        # For testing with a dedicated test database</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        set_REDIS_DB_settings(host=&#39;localhost&#39;, port=6379, db=15)</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        set_REDIS_DB_settings(host='localhost', port=6379, db=15)</span>
 <a id="__codelineno-0-188" name="__codelineno-0-188"></a>
 <a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        # With authentication</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        set_REDIS_DB_settings(host=&#39;redis.prod&#39;, password=&#39;secret&#39;)</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        set_REDIS_DB_settings(host='redis.prod', password='secret')</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    """</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>    <span class="c1"># todo: use this to mark keys in redis db, so they can be separated and deleted</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="n">env_partition_name</span> <span class="o">=</span> <span class="n">env_partition_name</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ENV&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="n">env_partition_name</span> <span class="o">=</span> <span class="n">env_partition_name</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ENV"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="c1"># Apply default socket timeouts if not provided</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;socket_timeout&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;socket_connect_timeout&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_connect_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a>
 <a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="k">global</span> <span class="n">POPOTO_REDIS_DB</span>
 <a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="c1"># ``redis.Redis`` and ``BlockingConnectionPool`` do not share a positional</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="c1"># signature, so positional args can&#39;t be forwarded to the pool. A caller</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="c1"># signature, so positional args can't be forwarded to the pool. A caller</span>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="c1"># supplying its own ``connection_pool`` has already chosen its pooling</span>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a>    <span class="c1"># policy. Both cases fall through to the direct constructor.</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>    <span class="k">if</span> <span class="n">args</span> <span class="ow">or</span> <span class="s2">&quot;connection_pool&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>    <span class="k">if</span> <span class="n">args</span> <span class="ow">or</span> <span class="s2">"connection_pool"</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
 <a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="n">POPOTO_REDIS_DB</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span>
@@ -3304,8 +3332,8 @@ args, bypasses the managed pool (see below).</p>
 <a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="p">)</span>
 <a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="n">POPOTO_REDIS_DB</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="c1"># global REDIS_GRAPH</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="c1"># REDIS_GRAPH = Graph(&#39;social&#39;, POPOTO_REDIS_DB)</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Redis connection reset.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="c1"># REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"Redis connection reset."</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3466,9 +3494,9 @@ db0 = redis.Redis(**kwargs)
 <span class="normal"><a href="#__codelineno-0-282">282</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="k">def</span><span class="w"> </span><span class="nf">sibling_client_kwargs</span><span class="p">(</span>
 <a id="__codelineno-0-245" name="__codelineno-0-245"></a>    <span class="n">source_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">],</span> <span class="o">**</span><span class="n">overrides</span><span class="p">:</span> <span class="nb">object</span>
 <a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Whitelist connection kwargs safe to splat into ``redis.Redis(**kw)``.</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="w">    </span><span class="sd">"""Whitelist connection kwargs safe to splat into ``redis.Redis(**kw)``.</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">    A connection pool&#39;s ``connection_kwargs`` cannot be passed wholesale to the</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">    A connection pool's ``connection_kwargs`` cannot be passed wholesale to the</span>
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">    ``redis.Redis`` constructor on redis-py 8: the pool injects internal keys</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">    (``himport_registry``, ``maint_notifications_pool_handler``, ``orig_*`` …)</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">    that ``Redis.__init__`` rejects. This returns only the standard connection</span>
@@ -3477,7 +3505,7 @@ db0 = redis.Redis(**kwargs)
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    the same host/port/auth).</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">        source_kwargs: A pool&#39;s ``connection_kwargs`` (or any mapping of</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">        source_kwargs: A pool's ``connection_kwargs`` (or any mapping of</span>
 <a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">            connection parameters) to copy the safe subset from.</span>
 <a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">        **overrides: Parameters to set/replace on the returned dict, applied</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">            after the whitelist (so ``db=0`` wins over any inherited ``db``).</span>
@@ -3494,7 +3522,7 @@ db0 = redis.Redis(**kwargs)
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">            POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        )</span>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        db0 = redis.Redis(**kwargs)</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    """</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">out</span> <span class="o">=</span> <span class="p">{</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="n">key</span><span class="p">:</span> <span class="n">source_kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">_SIBLING_CONNECTION_KEYS</span>
@@ -3564,7 +3592,7 @@ and easier mocking in tests.</p>
 <span class="normal"><a href="#__codelineno-0-295">295</a></span>
 <span class="normal"><a href="#__codelineno-0-296">296</a></span>
 <span class="normal"><a href="#__codelineno-0-297">297</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_REDIS_DB</span><span class="p">():</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the current global Redis connection instance.</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="w">    </span><span class="sd">"""Return the current global Redis connection instance.</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    Provides function-based access to the connection for cases where importing</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    the global directly is problematic (e.g., circular imports, lazy evaluation).</span>
@@ -3574,7 +3602,7 @@ and easier mocking in tests.</p>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        redis.Redis: The configured Redis client instance.</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    """</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -3724,16 +3752,16 @@ connection before creating a new one.</p>
 <span class="normal"><a href="#__codelineno-0-365">365</a></span>
 <span class="normal"><a href="#__codelineno-0-366">366</a></span>
 <span class="normal"><a href="#__codelineno-0-367">367</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_async_redis_db</span><span class="p">():</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the global async Redis connection, creating it lazily if needed.</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="w">    </span><span class="sd">"""Return the global async Redis connection, creating it lazily if needed.</span>
 <a id="__codelineno-0-302" name="__codelineno-0-302"></a>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">    This function provides access to an async Redis client for use in async/await</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    contexts. The connection is created lazily on first call to avoid event loop</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    issues at module import time.</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    The async client mirrors the *current* sync client&#39;s connection parameters</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    The async client mirrors the *current* sync client's connection parameters</span>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    (host, port, db, auth) rather than re-reading ``REDIS_URL`` independently.</span>
 <a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    This is what makes the async path follow any runtime connection swap — most</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    importantly the pytest plugin&#39;s switch to the test DB. Re-reading</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    importantly the pytest plugin's switch to the test DB. Re-reading</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    ``REDIS_URL`` here would silently pin the async client to DB 0 while sync</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    writes go to the test DB, so async reads would never see them.</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>
@@ -3743,7 +3771,7 @@ connection before creating a new one.</p>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    Example:</span>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">        async def save_data():</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">            redis = await get_async_redis_db()</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">            await redis.hset(&quot;key&quot;, mapping={&quot;field&quot;: &quot;value&quot;})</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">            await redis.hset("key", mapping={"field": "value"})</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">    Thread Safety:</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">        Uses an asyncio lock to ensure only one async connection is created</span>
@@ -3756,7 +3784,7 @@ connection before creating a new one.</p>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        to reconfigure the connection at runtime, use</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        ``set_async_redis_db_settings()`` which handles closing the old</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">        connection before creating a new one.</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    """</span>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="k">global</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -3767,19 +3795,19 @@ connection before creating a new one.</p>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>            <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>        <span class="c1"># Mirror the sync connection&#39;s parameters so the async client always</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="c1"># targets the same server/DB as POPOTO_REDIS_DB. The sync pool&#39;s</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>        <span class="c1"># Mirror the sync connection's parameters so the async client always</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="c1"># targets the same server/DB as POPOTO_REDIS_DB. The sync pool's</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="c1"># connection_kwargs were built from REDIS_URL (or the localhost</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="c1"># default) and reflect any later swap of the DB, so reusing them keeps</span>
 <a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="c1"># the two clients in lockstep without re-parsing REDIS_URL.</span>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="n">sync_kwargs</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="n">async_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;host&quot;</span><span class="p">,</span> <span class="s2">&quot;port&quot;</span><span class="p">,</span> <span class="s2">&quot;db&quot;</span><span class="p">,</span> <span class="s2">&quot;password&quot;</span><span class="p">,</span> <span class="s2">&quot;username&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"host"</span><span class="p">,</span> <span class="s2">"port"</span><span class="p">,</span> <span class="s2">"db"</span><span class="p">,</span> <span class="s2">"password"</span><span class="p">,</span> <span class="s2">"username"</span><span class="p">):</span>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a>            <span class="n">value</span> <span class="o">=</span> <span class="n">sync_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
 <a id="__codelineno-0-353" name="__codelineno-0-353"></a>            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>                <span class="n">async_kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;socket_timeout&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;socket_connect_timeout&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_connect_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a>            <span class="n">max_connections</span><span class="o">=</span><span class="n">_ASYNC_MAX_CONNECTIONS</span><span class="p">,</span>
@@ -3787,8 +3815,8 @@ connection before creating a new one.</p>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="p">)</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>            <span class="s2">&quot;Async Redis connection established (db=</span><span class="si">%s</span><span class="s2">).&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="n">async_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;db&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>            <span class="s2">"Async Redis connection established (db=</span><span class="si">%s</span><span class="s2">)."</span><span class="p">,</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="n">async_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"db"</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="p">)</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
 </code></pre></div></td></tr></table></div>
@@ -3801,7 +3829,7 @@ connection before creating a new one.</p>
 
 
 <h3 id="popoto.redis_db.set_async_redis_db_settings" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">set_async_redis_db_settings</span><span class="p">(</span><span class="n">env_partition_name</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">set_async_redis_db_settings</span><span class="p">(</span><span class="n">env_partition_name</span><span class="o">=</span><span class="s1">''</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-async"><code>async</code></small>
@@ -3914,9 +3942,9 @@ bypasses the managed pool.</p>
 <span class="normal"><a href="#__codelineno-0-406">406</a></span>
 <span class="normal"><a href="#__codelineno-0-407">407</a></span>
 <span class="normal"><a href="#__codelineno-0-408">408</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">set_async_redis_db_settings</span><span class="p">(</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="n">env_partition_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="n">env_partition_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reset the global async Redis connection with new settings.</span>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="w">    </span><span class="sd">"""Reset the global async Redis connection with new settings.</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="sd">    This is the async equivalent of set_REDIS_DB_settings(). Use it to</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a><span class="sd">    reconfigure the async connection for testing or multi-tenant scenarios.</span>
@@ -3932,26 +3960,26 @@ bypasses the managed pool.</p>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a><span class="sd">            bypasses the managed pool.</span>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        await set_async_redis_db_settings(host=&#39;localhost&#39;, port=6379, db=15)</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        await set_async_redis_db_settings(host='localhost', port=6379, db=15)</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">    """</span>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="k">global</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
-<a id="__codelineno-0-393" name="__codelineno-0-393"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;socket_timeout&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;socket_connect_timeout&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-393" name="__codelineno-0-393"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_connect_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_async_redis_lock</span><span class="p">:</span>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a>        <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a>            <span class="k">await</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>        <span class="c1"># See set_REDIS_DB_settings for why positional args and an explicit</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>        <span class="c1"># connection_pool bypass the managed pool.</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="k">if</span> <span class="n">args</span> <span class="ow">or</span> <span class="s2">&quot;connection_pool&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="k">if</span> <span class="n">args</span> <span class="ow">or</span> <span class="s2">"connection_pool"</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>            <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a>            <span class="n">pool</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a>                <span class="n">max_connections</span><span class="o">=</span><span class="n">_ASYNC_MAX_CONNECTIONS</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a>            <span class="p">)</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>            <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Async Redis connection reset.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"Async Redis connection reset."</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4027,7 +4055,7 @@ if check_connection():
 <span class="normal"><a href="#__codelineno-0-425">425</a></span>
 <span class="normal"><a href="#__codelineno-0-426">426</a></span>
 <span class="normal"><a href="#__codelineno-0-427">427</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="k">def</span><span class="w"> </span><span class="nf">check_connection</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">    Check if the Redis connection is healthy.</span>
 <a id="__codelineno-0-414" name="__codelineno-0-414"></a>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">    Returns:</span>
@@ -4036,8 +4064,8 @@ if check_connection():
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">    Example:</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">        &gt;&gt;&gt; from popoto.redis_db import check_connection</span>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">        &gt;&gt;&gt; if check_connection():</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">        ...     print(&quot;Redis is healthy&quot;)</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">        ...     print("Redis is healthy")</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">    """</span>
 <a id="__codelineno-0-423" name="__codelineno-0-423"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">ping</span><span class="p">()</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>        <span class="k">return</span> <span class="kc">True</span>
@@ -4123,7 +4151,7 @@ if await async_check_connection():
 <span class="normal"><a href="#__codelineno-0-445">445</a></span>
 <span class="normal"><a href="#__codelineno-0-446">446</a></span>
 <span class="normal"><a href="#__codelineno-0-447">447</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_check_connection</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">    Async version of check_connection().</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    Returns:</span>
@@ -4132,8 +4160,8 @@ if await async_check_connection():
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">    Example:</span>
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">        &gt;&gt;&gt; from popoto.redis_db import async_check_connection</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">        &gt;&gt;&gt; if await async_check_connection():</span>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">        ...     print(&quot;Redis is healthy&quot;)</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">        ...     print("Redis is healthy")</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">    """</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>        <span class="n">redis</span> <span class="o">=</span> <span class="k">await</span> <span class="n">get_async_redis_db</span><span class="p">()</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a>        <span class="k">await</span> <span class="n">redis</span><span class="o">.</span><span class="n">ping</span><span class="p">()</span>
@@ -4283,7 +4311,7 @@ across multiple SCAN iterations before returning.</p>
 <span class="normal"><a href="#__codelineno-0-482">482</a></span>
 <span class="normal"><a href="#__codelineno-0-483">483</a></span>
 <span class="normal"><a href="#__codelineno-0-484">484</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="k">def</span><span class="w"> </span><span class="nf">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Non-blocking replacement for KEYS using cursor-based SCAN.</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="w">    </span><span class="sd">"""Non-blocking replacement for KEYS using cursor-based SCAN.</span>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a><span class="sd">    The Redis KEYS command blocks the server while scanning the entire keyspace,</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a><span class="sd">    which can cause multi-second delays at scale (100K+ keys). SCAN iterates</span>
@@ -4293,7 +4321,7 @@ across multiple SCAN iterations before returning.</p>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">    the Redis server, making it safe for production use.</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>
 <a id="__codelineno-0-460" name="__codelineno-0-460"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="sd">        pattern: Glob-style pattern to match keys (e.g., &quot;User:*&quot;, &quot;*:active&quot;).</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="sd">        pattern: Glob-style pattern to match keys (e.g., "User:*", "*:active").</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">        count: Hint for how many keys to return per iteration. Redis may return</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">            more or fewer. Higher values reduce round-trips but increase per-call</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">            latency. Default 1000 balances throughput and responsiveness.</span>
@@ -4304,11 +4332,11 @@ across multiple SCAN iterations before returning.</p>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a><span class="sd">    Example:</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">        # Find all User model keys</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">        user_keys = scan_keys(&quot;User:*&quot;)</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">        user_keys = scan_keys("User:*")</span>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="sd">        # Find keys ending with a pattern</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a><span class="sd">        active_keys = scan_keys(&quot;*:active&quot;)</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a><span class="sd">        active_keys = scan_keys("*:active")</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a><span class="sd">    """</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>    <span class="n">cursor</span> <span class="o">=</span> <span class="mi">0</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
@@ -4440,18 +4468,18 @@ across multiple SCAN iterations before returning.</p>
 <span class="normal"><a href="#__codelineno-0-506">506</a></span>
 <span class="normal"><a href="#__codelineno-0-507">507</a></span>
 <span class="normal"><a href="#__codelineno-0-508">508</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-487" name="__codelineno-0-487"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Async version of scan_keys() using cursor-based SCAN.</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a><span class="w">    </span><span class="sd">"""Async version of scan_keys() using cursor-based SCAN.</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="sd">        pattern: Glob-style pattern to match keys (e.g., &quot;User:*&quot;, &quot;*:active&quot;).</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="sd">        pattern: Glob-style pattern to match keys (e.g., "User:*", "*:active").</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="sd">        count: Hint for how many keys to return per iteration.</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">        list: All keys matching the pattern.</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">        user_keys = await async_scan_keys(&quot;User:*&quot;)</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">        user_keys = await async_scan_keys("User:*")</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="sd">    """</span>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>    <span class="n">redis</span> <span class="o">=</span> <span class="k">await</span> <span class="n">get_async_redis_db</span><span class="p">()</span>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="n">cursor</span> <span class="o">=</span> <span class="mi">0</span>
@@ -4521,7 +4549,7 @@ overhead but should not be called in tight loops.</p>
 <span class="normal"><a href="#__codelineno-0-534">534</a></span>
 <span class="normal"><a href="#__codelineno-0-535">535</a></span>
 <span class="normal"><a href="#__codelineno-0-536">536</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="k">def</span><span class="w"> </span><span class="nf">print_redis_info</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Log Redis server info and memory usage to the POPOTO-REDIS_DB logger.</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="w">    </span><span class="sd">"""Log Redis server info and memory usage to the POPOTO-REDIS_DB logger.</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a><span class="sd">    A diagnostic utility for monitoring Redis health in production. When Redis</span>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="sd">    has a maxmemory limit configured, this function calculates and logs the</span>
@@ -4534,17 +4562,17 @@ overhead but should not be called in tight loops.</p>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">        This function makes multiple INFO calls to Redis, which has minimal</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">        overhead but should not be called in tight loops.</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    """</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">())</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a>    <span class="n">used_memory</span><span class="p">,</span> <span class="n">maxmemory</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">()[</span><span class="s2">&quot;used_memory&quot;</span><span class="p">]),</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">()[</span><span class="s2">&quot;maxmemory&quot;</span><span class="p">]),</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">()[</span><span class="s2">"used_memory"</span><span class="p">]),</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="nb">int</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">()[</span><span class="s2">"maxmemory"</span><span class="p">]),</span>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a>    <span class="p">)</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>    <span class="n">maxmemory_human</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">()[</span><span class="s2">&quot;maxmemory_human&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>    <span class="n">maxmemory_human</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">info</span><span class="p">()[</span><span class="s2">"maxmemory_human"</span><span class="p">]</span>
 <a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="k">if</span> <span class="n">maxmemory</span> <span class="ow">and</span> <span class="n">maxmemory</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-534" name="__codelineno-0-534"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="sa">f</span><span class="s2">&quot;Redis currently consumes </span><span class="si">{</span><span class="nb">round</span><span class="p">(</span><span class="mi">100</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">used_memory</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">maxmemory</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="si">}</span><span class="s2">% out of </span><span class="si">{</span><span class="n">maxmemory_human</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="sa">f</span><span class="s2">"Redis currently consumes </span><span class="si">{</span><span class="nb">round</span><span class="p">(</span><span class="mi">100</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">used_memory</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">maxmemory</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="si">}</span><span class="s2">% out of </span><span class="si">{</span><span class="n">maxmemory_human</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>

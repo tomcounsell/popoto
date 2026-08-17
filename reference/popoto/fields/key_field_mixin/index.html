@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2863,19 +2891,19 @@ so they cannot be changed after creation without deleting and recreating the ins
 from popoto.fields import KeyField, UniqueKeyField
 
 class Product(Model):
-    # Category enables filtering: Product.query.filter(category=&quot;electronics&quot;)
+    # Category enables filtering: Product.query.filter(category="electronics")
     category = KeyField(type=str)
     # SKU is unique within category, together they form the Redis key
     sku = KeyField(type=str)
     name = Field(type=str)
 
-# Stored at Redis key: &quot;Product:electronics:ABC123&quot;
-product = Product(category=&quot;electronics&quot;, sku=&quot;ABC123&quot;, name=&quot;Widget&quot;)
+# Stored at Redis key: "Product:electronics:ABC123"
+product = Product(category="electronics", sku="ABC123", name="Widget")
 product.save()
 
 # Efficient queries using key field indexes
-electronics = Product.query.filter(category=&quot;electronics&quot;)
-product = Product.query.get(category=&quot;electronics&quot;, sku=&quot;ABC123&quot;)
+electronics = Product.query.filter(category="electronics")
+product = Product.query.get(category="electronics", sku="ABC123")
 </code></pre></div>
 <h4 id="popoto.fields.key_field_mixin--see-also">See Also<a class="headerlink" href="#popoto.fields.key_field_mixin--see-also" title="Permanent link">&para;</a></h4>
 <ul>
@@ -2930,9 +2958,9 @@ a second instance with identical key field values will overwrite the first.</p>
 <p><strong>Secondary Indexing</strong></p>
 <p>For each key field value, KeyFieldMixin maintains a Redis Set containing the
 Redis keys of all instances with that value. This enables efficient filtering:</p>
-<div class="highlight"><pre><span></span><code># Behind the scenes, this queries the Set at &quot;$KeyF:Account:region:us-west&quot;
-# which contains all Account redis keys where region=&quot;us-west&quot;
-Account.query.filter(region=&quot;us-west&quot;)
+<div class="highlight"><pre><span></span><code># Behind the scenes, this queries the Set at "$KeyF:Account:region:us-west"
+# which contains all Account redis keys where region="us-west"
+Account.query.filter(region="us-west")
 </code></pre></div>
 <p>The Set-based indexing enables query patterns like exact match, __in (OR queries),
 __startswith, __endswith, and __isnull using Redis's native Set intersection.</p>
@@ -3411,10 +3439,10 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <span class="normal"><a href="#__codelineno-0-554">554</a></span>
 <span class="normal"><a href="#__codelineno-0-555">555</a></span>
 <span class="normal"><a href="#__codelineno-0-556">556</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="k">class</span><span class="w"> </span><span class="nc">KeyFieldMixin</span><span class="p">:</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-145" name="__codelineno-0-145"></a><span class="sd">    Mixin that transforms a Field into a key field for model identity and indexing.</span>
 <a id="__codelineno-0-146" name="__codelineno-0-146"></a>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">    KeyFieldMixin is the core abstraction that enables Popoto&#39;s Django-like query</span>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">    KeyFieldMixin is the core abstraction that enables Popoto's Django-like query</span>
 <a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">    interface over Redis. It provides two interconnected capabilities:</span>
 <a id="__codelineno-0-149" name="__codelineno-0-149"></a>
 <a id="__codelineno-0-150" name="__codelineno-0-150"></a><span class="sd">    **Identity (Primary Key Construction)**</span>
@@ -3431,12 +3459,12 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">    For each key field value, KeyFieldMixin maintains a Redis Set containing the</span>
 <a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">    Redis keys of all instances with that value. This enables efficient filtering:</span>
 <a id="__codelineno-0-163" name="__codelineno-0-163"></a>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        # Behind the scenes, this queries the Set at &quot;$KeyF:Account:region:us-west&quot;</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        # which contains all Account redis keys where region=&quot;us-west&quot;</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">        Account.query.filter(region=&quot;us-west&quot;)</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        # Behind the scenes, this queries the Set at "$KeyF:Account:region:us-west"</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        # which contains all Account redis keys where region="us-west"</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">        Account.query.filter(region="us-west")</span>
 <a id="__codelineno-0-167" name="__codelineno-0-167"></a>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    The Set-based indexing enables query patterns like exact match, __in (OR queries),</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    __startswith, __endswith, and __isnull using Redis&#39;s native Set intersection.</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    __startswith, __endswith, and __isnull using Redis's native Set intersection.</span>
 <a id="__codelineno-0-170" name="__codelineno-0-170"></a>
 <a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    **Mixin Architecture**</span>
 <a id="__codelineno-0-172" name="__codelineno-0-172"></a>
@@ -3449,14 +3477,14 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        key (bool): Always True for key fields. Used by ModelOptions to identify</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">            which fields participate in primary key construction.</span>
 <a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        max_length (int): Maximum string length for key field values. Defaults to 128.</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">            Shorter than regular Field&#39;s 1024 because key field values become part</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">            Shorter than regular Field's 1024 because key field values become part</span>
 <a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">            of Redis keys, where extremely long keys impact performance.</span>
 <a id="__codelineno-0-184" name="__codelineno-0-184"></a>
 <a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    See Also:</span>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        AutoFieldMixin: Generates UUID values for automatic unique identification.</span>
 <a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        UniqueFieldMixin: Enforces single-field uniqueness constraints.</span>
 <a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">        shortcuts.KeyField: The concrete class combining this mixin with Field.</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">    """</span>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>    <span class="n">key</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>    <span class="n">max_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span>
@@ -3465,10 +3493,10 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="c1"># value by on_save(); identity itself round-trips via the preserved</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="c1"># redis_key (v1 always preserves keys -- see #557 for the deferred</span>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="c1"># key-regeneration opt-out).</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rebuild&quot;</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rebuild"</span>
 <a id="__codelineno-0-199" name="__codelineno-0-199"></a>
 <a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">        Initialize KeyFieldMixin defaults and validate the field type.</span>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a>
 <a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">        Calls super().__init__() to support cooperative multiple inheritance with</span>
@@ -3478,27 +3506,27 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="sd">            ModelException: If the field type is not in VALID_KEYFIELD_TYPES.</span>
 <a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">                Complex types like dict and list cannot be key fields because</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">                they don&#39;t have canonical string representations for Redis keys.</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">                they don't have canonical string representations for Redis keys.</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">        """</span>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="n">keyfield_defaults</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>            <span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>            <span class="s2">&quot;max_length&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>            <span class="s2">"key"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>            <span class="s2">"max_length"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="p">}</span>
 <a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">field_defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">keyfield_defaults</span><span class="p">)</span>
 <a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="c1"># set field options, let kwargs override</span>
 <a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">keyfield_defaults</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-221" name="__codelineno-0-221"></a>            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">))</span>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_KEYFIELD_TYPES</span><span class="p">:</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span><span class="si">}</span><span class="s2"> is not a valid KeyField type&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span><span class="si">}</span><span class="s2"> is not a valid KeyField type"</span><span class="p">)</span>
 <a id="__codelineno-0-224" name="__codelineno-0-224"></a>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">        Validate that a value is acceptable for this key field.</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        Delegates to the parent Field&#39;s validation (type checking, null handling,</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">        max_length). Key fields don&#39;t add additional validation constraints beyond</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        Delegates to the parent Field's validation (type checking, null handling,</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">        max_length). Key fields don't add additional validation constraints beyond</span>
 <a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">        the type restriction enforced at __init__ time.</span>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">        This method is called during model.save() to ensure data integrity before</span>
@@ -3512,7 +3540,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-242" name="__codelineno-0-242"></a>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">            bool: True if the value is valid for this field, False otherwise.</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">        """</span>
 <a id="__codelineno-0-246" name="__codelineno-0-246"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="p">):</span>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a>            <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>        <span class="k">return</span> <span class="kc">True</span>
@@ -3520,24 +3548,24 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="p">):</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">        Maintain the secondary index Set when a model instance is saved.</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        This hook is called by Model.save() for each field. For key fields,</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        it adds the model instance&#39;s Redis key to the index Set for this</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">        field&#39;s value, enabling queries like `Model.query.filter(field=value)`.</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        it adds the model instance's Redis key to the index Set for this</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">        field's value, enabling queries like `Model.query.filter(field=value)`.</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">        **Index Structure**</span>
 <a id="__codelineno-0-267" name="__codelineno-0-267"></a>
 <a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">        The index Set key follows the pattern: `$KeyF:ModelName:field_name:value`</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        For example, saving a Product with category=&quot;electronics&quot; adds the</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        Product&#39;s Redis key to the Set at `$KeyF:Product:category:electronics`.</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        For example, saving a Product with category="electronics" adds the</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        Product's Redis key to the Set at `$KeyF:Product:category:electronics`.</span>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        **AutoField Exception**</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a>
@@ -3559,15 +3587,15 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">            The pipeline (if provided) or the SADD result.</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        """</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>        <span class="k">if</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">auto</span><span class="p">:</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="c1"># Remove from old index if the KeyField value changed.</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>        <span class="c1"># _saved_field_values tracks values at last save/load. If the current</span>
 <a id="__codelineno-0-298" name="__codelineno-0-298"></a>        <span class="c1"># value differs from the saved value, the old index Set still contains</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>        <span class="c1"># this instance&#39;s key — remove it to prevent ghost entries in queries.</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>        <span class="c1"># this instance's key — remove it to prevent ghost entries in queries.</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_saved_field_values"</span><span class="p">,</span> <span class="p">{})</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>        <span class="n">old_value</span> <span class="o">=</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-302" name="__codelineno-0-302"></a>        <span class="k">if</span> <span class="n">old_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">old_value</span> <span class="o">!=</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a>            <span class="n">old_set_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
@@ -3595,23 +3623,23 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="p">):</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        Clean up the secondary index Set when a model instance is deleted.</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        The counterpart to on_save(), this removes the model instance&#39;s Redis key</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        from the index Set for this field&#39;s value. This ensures that queries don&#39;t</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        The counterpart to on_save(), this removes the model instance's Redis key</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        from the index Set for this field's value. This ensures that queries don't</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        return stale references to deleted instances.</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">        **Index Cleanup**</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">        For a Product with category=&quot;electronics&quot; being deleted, this removes the</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">        Product&#39;s Redis key from the Set at `$KeyF:Product:category:electronics`.</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">        For a Product with category="electronics" being deleted, this removes the</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">        Product's Redis key from the Set at `$KeyF:Product:category:electronics`.</span>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">        Note: This only removes the instance from the Set - it does not delete</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">        the Set itself even if it becomes empty. Empty Sets are cleaned up lazily</span>
@@ -3620,7 +3648,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">        **AutoField Exception**</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">        Like on_save(), auto-generated key fields skip index cleanup because</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">        they don&#39;t maintain index Sets.</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">        they don't maintain index Sets.</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">            model_instance: The Model instance being deleted.</span>
@@ -3630,7 +3658,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">            The pipeline (if provided) or the SREM result.</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">        """</span>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="k">if</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">auto</span><span class="p">:</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>
@@ -3638,25 +3666,25 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span> <span class="n">field_value</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>        <span class="p">)</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="c1"># Use saved_redis_key if provided, otherwise fall back to current db_key</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="k">return</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a><span class="sd">        Return the set of valid query parameter names for filtering on this field.</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">        This method enables Django-style query syntax like `Model.query.filter(name=&quot;X&quot;)`</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">        and `Model.query.filter(name__startswith=&quot;A&quot;)`. The Query class uses this to</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">        This method enables Django-style query syntax like `Model.query.filter(name="X")`</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">        and `Model.query.filter(name__startswith="A")`. The Query class uses this to</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">        validate filter parameters and route them to the appropriate filter_query method.</span>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">        **Supported Query Lookups**</span>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">        - `field_name`: Exact match using Set lookup (O(1) via SMEMBERS)</span>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">        - `field_name__in`: OR query across multiple values (Set UNION)</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        - `field_name__isnull`: Match instances where field is/isn&#39;t None</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        - `field_name__isnull`: Match instances where field is/isn't None</span>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">        - `field_name__startswith`: Pattern match using Redis KEYS (O(N), use sparingly)</span>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="sd">        - `field_name__endswith`: Pattern match using Redis KEYS (O(N), use sparingly)</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a><span class="sd">        - `field_name__contains`: Pattern match - currently not implemented in filter_query</span>
@@ -3672,29 +3700,29 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">            set: Valid query parameter strings that filter_query can process.</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        """</span>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a>        <span class="k">return</span> <span class="p">(</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>            <span class="nb">super</span><span class="p">()</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a>            <span class="o">.</span><span class="n">get_filter_query_params</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a>            <span class="o">.</span><span class="n">union</span><span class="p">(</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>                <span class="p">{</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, exact match :x:</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull&quot;</span><span class="p">,</span>  <span class="c1"># Takes boolean, to match for [^None]</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__contains&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x*:</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, matches :x*:</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x:</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in&quot;</span><span class="p">,</span>  <span class="c1"># takes a list, returns any matches</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>  <span class="c1"># takes a str, exact match :x:</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull"</span><span class="p">,</span>  <span class="c1"># Takes boolean, to match for [^None]</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__contains"</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x*:</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith"</span><span class="p">,</span>  <span class="c1"># takes a str, matches :x*:</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith"</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x:</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in"</span><span class="p">,</span>  <span class="c1"># takes a list, returns any matches</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a>                <span class="p">}</span>
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a>            <span class="p">)</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>        <span class="p">)</span>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a>
 <a id="__codelineno-0-421" name="__codelineno-0-421"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">        Execute a filter query on this key field and return matching Redis keys.</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">        This is the workhorse method that translates Django-style query parameters</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        into Redis operations. It&#39;s called by Query.filter_for_keys_set() after</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        into Redis operations. It's called by Query.filter_for_keys_set() after</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        validating that the query parameters belong to this field.</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>
 <a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">        **Query Strategy**</span>
@@ -3711,7 +3739,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">        **Multiple Filters**</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        When multiple query parameters are provided (e.g., filter(status=&quot;active&quot;, type=&quot;premium&quot;)),</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        When multiple query parameters are provided (e.g., filter(status="active", type="premium")),</span>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        each parameter produces a set of matching keys. The final result is the intersection</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        of all sets, implementing AND semantics.</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>
@@ -3719,11 +3747,11 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">        For pattern queries, the method must construct a Redis key pattern like</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">        `ModelName:*:value:*` where the value appears at the correct position.</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        It calculates this position from the field&#39;s order in the model&#39;s key fields.</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        It calculates this position from the field's order in the model's key fields.</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a><span class="sd">        **__in Query Optimization**</span>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">        The __in lookup (e.g., filter(status__in=[&quot;active&quot;, &quot;pending&quot;])) uses a nested</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">        The __in lookup (e.g., filter(status__in=["active", "pending"])) uses a nested</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a><span class="sd">        pipeline to fetch all relevant Sets in one round-trip, then performs a Python</span>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">        set union to implement OR semantics.</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>
@@ -3731,7 +3759,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="sd">            model: The Model class being queried.</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">            field_name: The name of this field on the model.</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">            **query_params: Dict mapping query parameter names to values.</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">                Example: {&quot;status&quot;: &quot;active&quot;} or {&quot;status__in&quot;: [&quot;active&quot;, &quot;pending&quot;]}</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">                Example: {"status": "active"} or {"status__in": ["active", "pending"]}</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a><span class="sd">            set: Redis keys (as bytes) of matching model instances. These keys can be</span>
@@ -3739,7 +3767,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">            QueryException: If __isnull receives a non-boolean value.</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">        """</span>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="n">keys_lists_to_intersect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="p">(</span>
@@ -3750,11 +3778,11 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-480" name="__codelineno-0-480"></a>        <span class="n">num_keys_after</span> <span class="o">=</span> <span class="n">db_key_length</span> <span class="o">-</span> <span class="n">field_key_position</span> <span class="o">-</span> <span class="mi">1</span>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">get_key_pattern</span><span class="p">(</span><span class="n">query_value_pattern</span><span class="p">):</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="w">            </span><span class="sd">&quot;&quot;&quot;Build a Redis KEYS pattern with the value at the correct position.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>            <span class="n">key_pattern</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_class_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">&quot;*:&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="n">num_keys_before</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="w">            </span><span class="sd">"""Build a Redis KEYS pattern with the value at the correct position."""</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>            <span class="n">key_pattern</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_class_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":"</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">"*:"</span> <span class="o">*</span> <span class="p">(</span><span class="n">num_keys_before</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="n">key_pattern</span> <span class="o">+=</span> <span class="n">query_value_pattern</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">&quot;:*&quot;</span> <span class="o">*</span> <span class="n">num_keys_after</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">":*"</span> <span class="o">*</span> <span class="n">num_keys_after</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>            <span class="k">return</span> <span class="n">key_pattern</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="n">redis_set_key_prefix</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span>
@@ -3762,7 +3790,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>        <span class="p">]</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="k">for</span> <span class="n">query_param</span><span class="p">,</span> <span class="n">query_value</span> <span class="ow">in</span> <span class="n">query_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>            <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__in&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>            <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__in"</span><span class="p">):</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>                <span class="c1"># Use SUNION for efficient server-side set union (single command vs N SMEMBERS)</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>                <span class="n">set_keys</span> <span class="o">=</span> <span class="p">[</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a>                    <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value_elem</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -3774,9 +3802,9 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>                <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>                <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>                    <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">auto</span><span class="p">:</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                        <span class="c1"># Auto fields use pattern scan since they don&#39;t maintain index sets</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                        <span class="c1"># Auto fields use pattern scan since they don't maintain index sets</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>                        <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>                            <span class="n">_scan_hash_keys</span><span class="p">(</span><span class="n">get_key_pattern</span><span class="p">(</span><span class="n">query_value</span><span class="p">))</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>                        <span class="p">)</span>
@@ -3787,7 +3815,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>                            <span class="p">)</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-519" name="__codelineno-0-519"></a>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__isnull&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__isnull"</span><span class="p">):</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>                    <span class="k">if</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>                        <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a>                            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
@@ -3797,25 +3825,25 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>                    <span class="k">elif</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a>                        <span class="c1"># Use SCAN instead of KEYS to avoid blocking Redis</span>
 <a id="__codelineno-0-529" name="__codelineno-0-529"></a>                        <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>                            <span class="n">_scan_hash_keys</span><span class="p">(</span><span class="n">get_key_pattern</span><span class="p">(</span><span class="s2">&quot;[^None]&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>                            <span class="n">_scan_hash_keys</span><span class="p">(</span><span class="n">get_key_pattern</span><span class="p">(</span><span class="s2">"[^None]"</span><span class="p">))</span>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-532" name="__codelineno-0-532"></a>                    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-533" name="__codelineno-0-533"></a>                        <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False&quot;</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False"</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__startswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__startswith"</span><span class="p">):</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>                    <span class="c1"># Use SCAN instead of KEYS to avoid blocking Redis</span>
 <a id="__codelineno-0-539" name="__codelineno-0-539"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>                        <span class="n">_scan_hash_keys</span><span class="p">(</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>                            <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>                            <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*"</span><span class="p">)</span>
 <a id="__codelineno-0-542" name="__codelineno-0-542"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__endswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__endswith"</span><span class="p">):</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>                    <span class="c1"># Use SCAN instead of KEYS to avoid blocking Redis</span>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-547" name="__codelineno-0-547"></a>                        <span class="n">_scan_hash_keys</span><span class="p">(</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>                            <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>                            <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">"*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-549" name="__codelineno-0-549"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-550" name="__codelineno-0-550"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-551" name="__codelineno-0-551"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">keys_lists_to_intersect</span><span class="p">)</span>
@@ -3974,11 +4002,11 @@ Used internally during partial updates.</p>
 <span class="normal"><a href="#__codelineno-0-247">247</a></span>
 <span class="normal"><a href="#__codelineno-0-248">248</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">    Validate that a value is acceptable for this key field.</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    Delegates to the parent Field&#39;s validation (type checking, null handling,</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    max_length). Key fields don&#39;t add additional validation constraints beyond</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    Delegates to the parent Field's validation (type checking, null handling,</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    max_length). Key fields don't add additional validation constraints beyond</span>
 <a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    the type restriction enforced at __init__ time.</span>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">    This method is called during model.save() to ensure data integrity before</span>
@@ -3992,7 +4020,7 @@ Used internally during partial updates.</p>
 <a id="__codelineno-0-242" name="__codelineno-0-242"></a>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">        bool: True if the value is valid for this field, False otherwise.</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    """</span>
 <a id="__codelineno-0-246" name="__codelineno-0-246"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="p">):</span>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a>        <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>    <span class="k">return</span> <span class="kc">True</span>
@@ -4213,24 +4241,24 @@ batched into a single round-trip to Redis.</p>
 <span class="normal"><a href="#__codelineno-0-323">323</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="p">):</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Maintain the secondary index Set when a model instance is saved.</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    This hook is called by Model.save() for each field. For key fields,</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    it adds the model instance&#39;s Redis key to the index Set for this</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    field&#39;s value, enabling queries like `Model.query.filter(field=value)`.</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    it adds the model instance's Redis key to the index Set for this</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    field's value, enabling queries like `Model.query.filter(field=value)`.</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    **Index Structure**</span>
 <a id="__codelineno-0-267" name="__codelineno-0-267"></a>
 <a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    The index Set key follows the pattern: `$KeyF:ModelName:field_name:value`</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    For example, saving a Product with category=&quot;electronics&quot; adds the</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    Product&#39;s Redis key to the Set at `$KeyF:Product:category:electronics`.</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    For example, saving a Product with category="electronics" adds the</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    Product's Redis key to the Set at `$KeyF:Product:category:electronics`.</span>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    **AutoField Exception**</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a>
@@ -4252,15 +4280,15 @@ batched into a single round-trip to Redis.</p>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        The pipeline (if provided) or the SADD result.</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">    """</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>    <span class="k">if</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">auto</span><span class="p">:</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a>    <span class="c1"># Remove from old index if the KeyField value changed.</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="c1"># _saved_field_values tracks values at last save/load. If the current</span>
 <a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="c1"># value differs from the saved value, the old index Set still contains</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="c1"># this instance&#39;s key — remove it to prevent ghost entries in queries.</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="c1"># this instance's key — remove it to prevent ghost entries in queries.</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_saved_field_values"</span><span class="p">,</span> <span class="p">{})</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="n">old_value</span> <span class="o">=</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="k">if</span> <span class="n">old_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">old_value</span> <span class="o">!=</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="n">old_set_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
@@ -4475,23 +4503,23 @@ they don't maintain index Sets.</p>
 <span class="normal"><a href="#__codelineno-0-375">375</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="p">):</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">    Clean up the secondary index Set when a model instance is deleted.</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    The counterpart to on_save(), this removes the model instance&#39;s Redis key</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">    from the index Set for this field&#39;s value. This ensures that queries don&#39;t</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    The counterpart to on_save(), this removes the model instance's Redis key</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">    from the index Set for this field's value. This ensures that queries don't</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">    return stale references to deleted instances.</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">    **Index Cleanup**</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">    For a Product with category=&quot;electronics&quot; being deleted, this removes the</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">    Product&#39;s Redis key from the Set at `$KeyF:Product:category:electronics`.</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">    For a Product with category="electronics" being deleted, this removes the</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">    Product's Redis key from the Set at `$KeyF:Product:category:electronics`.</span>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">    Note: This only removes the instance from the Set - it does not delete</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">    the Set itself even if it becomes empty. Empty Sets are cleaned up lazily</span>
@@ -4500,7 +4528,7 @@ they don't maintain index Sets.</p>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">    **AutoField Exception**</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">    Like on_save(), auto-generated key fields skip index cleanup because</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">    they don&#39;t maintain index Sets.</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">    they don't maintain index Sets.</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">        model_instance: The Model instance being deleted.</span>
@@ -4510,7 +4538,7 @@ they don't maintain index Sets.</p>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">        The pipeline (if provided) or the SREM result.</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">    """</span>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="k">if</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">auto</span><span class="p">:</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>
@@ -4518,7 +4546,7 @@ they don't maintain index Sets.</p>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span> <span class="n">field_value</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="p">)</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="c1"># Use saved_redis_key if provided, otherwise fall back to current db_key</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="k">return</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="k">else</span><span class="p">:</span>
@@ -4658,18 +4686,18 @@ which scans all keys and should be avoided in production with large datasets.</p
 <span class="normal"><a href="#__codelineno-0-417">417</a></span>
 <span class="normal"><a href="#__codelineno-0-418">418</a></span>
 <span class="normal"><a href="#__codelineno-0-419">419</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a><span class="sd">    Return the set of valid query parameter names for filtering on this field.</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">    This method enables Django-style query syntax like `Model.query.filter(name=&quot;X&quot;)`</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">    and `Model.query.filter(name__startswith=&quot;A&quot;)`. The Query class uses this to</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">    This method enables Django-style query syntax like `Model.query.filter(name="X")`</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">    and `Model.query.filter(name__startswith="A")`. The Query class uses this to</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">    validate filter parameters and route them to the appropriate filter_query method.</span>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">    **Supported Query Lookups**</span>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">    - `field_name`: Exact match using Set lookup (O(1) via SMEMBERS)</span>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">    - `field_name__in`: OR query across multiple values (Set UNION)</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">    - `field_name__isnull`: Match instances where field is/isn&#39;t None</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">    - `field_name__isnull`: Match instances where field is/isn't None</span>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">    - `field_name__startswith`: Pattern match using Redis KEYS (O(N), use sparingly)</span>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="sd">    - `field_name__endswith`: Pattern match using Redis KEYS (O(N), use sparingly)</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a><span class="sd">    - `field_name__contains`: Pattern match - currently not implemented in filter_query</span>
@@ -4685,18 +4713,18 @@ which scans all keys and should be avoided in production with large datasets.</p
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">        set: Valid query parameter strings that filter_query can process.</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    """</span>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a>    <span class="k">return</span> <span class="p">(</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>        <span class="nb">super</span><span class="p">()</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a>        <span class="o">.</span><span class="n">get_filter_query_params</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a>        <span class="o">.</span><span class="n">union</span><span class="p">(</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>            <span class="p">{</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, exact match :x:</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull&quot;</span><span class="p">,</span>  <span class="c1"># Takes boolean, to match for [^None]</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__contains&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x*:</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, matches :x*:</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith&quot;</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x:</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in&quot;</span><span class="p">,</span>  <span class="c1"># takes a list, returns any matches</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>  <span class="c1"># takes a str, exact match :x:</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull"</span><span class="p">,</span>  <span class="c1"># Takes boolean, to match for [^None]</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__contains"</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x*:</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith"</span><span class="p">,</span>  <span class="c1"># takes a str, matches :x*:</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith"</span><span class="p">,</span>  <span class="c1"># takes a str, matches :*x:</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in"</span><span class="p">,</span>  <span class="c1"># takes a list, returns any matches</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a>            <span class="p">}</span>
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a>        <span class="p">)</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="p">)</span>
@@ -5001,12 +5029,12 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <span class="normal"><a href="#__codelineno-0-554">554</a></span>
 <span class="normal"><a href="#__codelineno-0-555">555</a></span>
 <span class="normal"><a href="#__codelineno-0-556">556</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">    Execute a filter query on this key field and return matching Redis keys.</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    This is the workhorse method that translates Django-style query parameters</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    into Redis operations. It&#39;s called by Query.filter_for_keys_set() after</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    into Redis operations. It's called by Query.filter_for_keys_set() after</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    validating that the query parameters belong to this field.</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>
 <a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">    **Query Strategy**</span>
@@ -5023,7 +5051,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    **Multiple Filters**</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">    When multiple query parameters are provided (e.g., filter(status=&quot;active&quot;, type=&quot;premium&quot;)),</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">    When multiple query parameters are provided (e.g., filter(status="active", type="premium")),</span>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">    each parameter produces a set of matching keys. The final result is the intersection</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    of all sets, implementing AND semantics.</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>
@@ -5031,11 +5059,11 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">    For pattern queries, the method must construct a Redis key pattern like</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">    `ModelName:*:value:*` where the value appears at the correct position.</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">    It calculates this position from the field&#39;s order in the model&#39;s key fields.</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">    It calculates this position from the field's order in the model's key fields.</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a><span class="sd">    **__in Query Optimization**</span>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">    The __in lookup (e.g., filter(status__in=[&quot;active&quot;, &quot;pending&quot;])) uses a nested</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">    The __in lookup (e.g., filter(status__in=["active", "pending"])) uses a nested</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a><span class="sd">    pipeline to fetch all relevant Sets in one round-trip, then performs a Python</span>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">    set union to implement OR semantics.</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>
@@ -5043,7 +5071,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="sd">        model: The Model class being queried.</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">        field_name: The name of this field on the model.</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">        **query_params: Dict mapping query parameter names to values.</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">            Example: {&quot;status&quot;: &quot;active&quot;} or {&quot;status__in&quot;: [&quot;active&quot;, &quot;pending&quot;]}</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">            Example: {"status": "active"} or {"status__in": ["active", "pending"]}</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a><span class="sd">        set: Redis keys (as bytes) of matching model instances. These keys can be</span>
@@ -5051,7 +5079,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">        QueryException: If __isnull receives a non-boolean value.</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">    """</span>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="n">keys_lists_to_intersect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="p">(</span>
@@ -5062,11 +5090,11 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-480" name="__codelineno-0-480"></a>    <span class="n">num_keys_after</span> <span class="o">=</span> <span class="n">db_key_length</span> <span class="o">-</span> <span class="n">field_key_position</span> <span class="o">-</span> <span class="mi">1</span>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_key_pattern</span><span class="p">(</span><span class="n">query_value_pattern</span><span class="p">):</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a Redis KEYS pattern with the value at the correct position.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="n">key_pattern</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_class_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">&quot;*:&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="n">num_keys_before</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="w">        </span><span class="sd">"""Build a Redis KEYS pattern with the value at the correct position."""</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="n">key_pattern</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_class_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":"</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">"*:"</span> <span class="o">*</span> <span class="p">(</span><span class="n">num_keys_before</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>        <span class="n">key_pattern</span> <span class="o">+=</span> <span class="n">query_value_pattern</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">&quot;:*&quot;</span> <span class="o">*</span> <span class="n">num_keys_after</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="n">key_pattern</span> <span class="o">+=</span> <span class="s2">":*"</span> <span class="o">*</span> <span class="n">num_keys_after</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="k">return</span> <span class="n">key_pattern</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">redis_set_key_prefix</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span>
@@ -5074,7 +5102,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>    <span class="p">]</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>    <span class="k">for</span> <span class="n">query_param</span><span class="p">,</span> <span class="n">query_value</span> <span class="ow">in</span> <span class="n">query_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__in&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__in"</span><span class="p">):</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>            <span class="c1"># Use SUNION for efficient server-side set union (single command vs N SMEMBERS)</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="n">set_keys</span> <span class="o">=</span> <span class="p">[</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a>                <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value_elem</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -5086,9 +5114,9 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>                <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">auto</span><span class="p">:</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                    <span class="c1"># Auto fields use pattern scan since they don&#39;t maintain index sets</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                    <span class="c1"># Auto fields use pattern scan since they don't maintain index sets</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>                        <span class="n">_scan_hash_keys</span><span class="p">(</span><span class="n">get_key_pattern</span><span class="p">(</span><span class="n">query_value</span><span class="p">))</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>                    <span class="p">)</span>
@@ -5099,7 +5127,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-519" name="__codelineno-0-519"></a>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__isnull&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__isnull"</span><span class="p">):</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>                <span class="k">if</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a>                        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
@@ -5109,25 +5137,25 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>                <span class="k">elif</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a>                    <span class="c1"># Use SCAN instead of KEYS to avoid blocking Redis</span>
 <a id="__codelineno-0-529" name="__codelineno-0-529"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>                        <span class="n">_scan_hash_keys</span><span class="p">(</span><span class="n">get_key_pattern</span><span class="p">(</span><span class="s2">&quot;[^None]&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>                        <span class="n">_scan_hash_keys</span><span class="p">(</span><span class="n">get_key_pattern</span><span class="p">(</span><span class="s2">"[^None]"</span><span class="p">))</span>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-532" name="__codelineno-0-532"></a>                <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-533" name="__codelineno-0-533"></a>                    <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False&quot;</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False"</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__startswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__startswith"</span><span class="p">):</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>                <span class="c1"># Use SCAN instead of KEYS to avoid blocking Redis</span>
 <a id="__codelineno-0-539" name="__codelineno-0-539"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>                    <span class="n">_scan_hash_keys</span><span class="p">(</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>                        <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>                        <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*"</span><span class="p">)</span>
 <a id="__codelineno-0-542" name="__codelineno-0-542"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a>                <span class="p">)</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__endswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__endswith"</span><span class="p">):</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>                <span class="c1"># Use SCAN instead of KEYS to avoid blocking Redis</span>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-547" name="__codelineno-0-547"></a>                    <span class="n">_scan_hash_keys</span><span class="p">(</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>                        <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>                        <span class="n">get_key_pattern</span><span class="p">(</span><span class="sa">f</span><span class="s2">"*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-549" name="__codelineno-0-549"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-550" name="__codelineno-0-550"></a>                <span class="p">)</span>
 <a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">keys_lists_to_intersect</span><span class="p">)</span>

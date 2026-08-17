@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2992,17 +3020,17 @@ connections are managed differently.</p>
 <span class="normal"><a href="#__codelineno-0-85">85</a></span>
 <span class="normal"><a href="#__codelineno-0-86">86</a></span>
 <span class="normal"><a href="#__codelineno-0-87">87</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="k">def</span><span class="w"> </span><span class="nf">start_new_thread</span><span class="p">(</span><span class="n">function</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">    Decorator that runs a function in a background daemon thread.</span>
 <a id="__codelineno-0-45" name="__codelineno-0-45"></a>
 <a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="sd">    This decorator transforms a synchronous function into one that returns</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">    immediately while the actual work continues in the background. It&#39;s</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    particularly useful for Redis operations where you don&#39;t need to wait</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">    immediately while the actual work continues in the background. It's</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    particularly useful for Redis operations where you don't need to wait</span>
 <a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">    for confirmation, such as publishing events or updating caches.</span>
 <a id="__codelineno-0-50" name="__codelineno-0-50"></a>
 <a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">    The decorated function will:</span>
 <a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">        - Start immediately in a new thread</span>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">        - Run as a daemon (won&#39;t prevent program exit)</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">        - Run as a daemon (won't prevent program exit)</span>
 <a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">        - Not return any value to the caller (fire-and-forget pattern)</span>
 <a id="__codelineno-0-55" name="__codelineno-0-55"></a>
 <a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    Example:</span>
@@ -3011,10 +3039,10 @@ connections are managed differently.</p>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">            redis_client.publish(channel, message)</span>
 <a id="__codelineno-0-60" name="__codelineno-0-60"></a>
 <a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">        # Returns immediately, publish happens in background</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        publish_event(&quot;updates&quot;, &quot;model_saved&quot;)</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        publish_event("updates", "model_saved")</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    Warning:</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">        When using this with Django&#39;s ORM alongside Popoto, you must close</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">        When using this with Django's ORM alongside Popoto, you must close</span>
 <a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">        the database connection at the end of your function to prevent</span>
 <a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">        connection leaks::</span>
 <a id="__codelineno-0-68" name="__codelineno-0-68"></a>
@@ -3029,7 +3057,7 @@ connections are managed differently.</p>
 <a id="__codelineno-0-77" name="__codelineno-0-77"></a>
 <a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">        A wrapper function that spawns the original in a daemon thread.</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    """</span>
 <a id="__codelineno-0-81" name="__codelineno-0-81"></a>
 <a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
 <a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="n">t</span> <span class="o">=</span> <span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">function</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">)</span>
@@ -3225,7 +3253,7 @@ For multi-argument functions, pass tuples and unpack in function.</p>
 <span class="normal"><a href="#__codelineno-0-144">144</a></span>
 <span class="normal"><a href="#__codelineno-0-145">145</a></span>
 <span class="normal"><a href="#__codelineno-0-146">146</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_all_multithreaded</span><span class="p">(</span><span class="n">function_def</span><span class="p">,</span> <span class="n">list_of_params</span><span class="p">):</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a><span class="sd">    Execute a function across multiple inputs using a thread pool.</span>
 <a id="__codelineno-0-93" name="__codelineno-0-93"></a>
 <a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">    This function provides a simple way to parallelize Redis operations when</span>
@@ -3270,7 +3298,7 @@ For multi-argument functions, pass tuples and unpack in function.</p>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">        List of results from each function call, in the same order as inputs.</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    """</span>
 <a id="__codelineno-0-137" name="__codelineno-0-137"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">multiprocessing.dummy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pool</span> <span class="k">as</span> <span class="n">ThreadPool</span>
 <a id="__codelineno-0-138" name="__codelineno-0-138"></a>
 <a id="__codelineno-0-139" name="__codelineno-0-139"></a>    <span class="n">pool</span> <span class="o">=</span> <span class="n">ThreadPool</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">list_of_params</span><span class="p">),</span> <span class="n">os</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()</span> <span class="ow">or</span> <span class="mi">4</span><span class="p">))</span>

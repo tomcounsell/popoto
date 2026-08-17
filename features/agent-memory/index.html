@@ -979,10 +979,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-16-primitives" class="md-nav__link">
+  <a href="#the-17-primitives" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The 16 primitives
+        The 17 primitives
       
     </span>
   </a>
@@ -1448,6 +1448,34 @@
     
   
     Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
   
 
     
@@ -2804,10 +2832,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-16-primitives" class="md-nav__link">
+  <a href="#the-17-primitives" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The 16 primitives
+        The 17 primitives
       
     </span>
   </a>
@@ -2903,7 +2931,7 @@ cannot do unaided is decide what belongs there:</p>
 <li><strong>Filter noise.</strong> Keep low-value observations out of storage entirely.</li>
 </ul>
 <p>Each primitive below covers one of those. Each is independently useful.</p>
-<h2 id="the-16-primitives">The 16 primitives<a class="headerlink" href="#the-16-primitives" title="Permanent link">&para;</a></h2>
+<h2 id="the-17-primitives">The 17 primitives<a class="headerlink" href="#the-17-primitives" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2972,6 +3000,11 @@ cannot do unaided is decide what belongs there:</p>
 <td>WriteFilterMixin</td>
 <td>Gates persistence: low-value records are discarded before they reach Redis</td>
 <td><a href="../../fields/#writefiltermixin">reference</a></td>
+</tr>
+<tr>
+<td>NeverRecordMixin</td>
+<td>Deterministic privacy gate: credentials and secrets are blocked before they reach Redis</td>
+<td><a href="../never-record-firewall/">page</a></td>
 </tr>
 <tr>
 <td>EventStreamMixin</td>
@@ -3068,7 +3101,7 @@ counted separately, never summed into the primitive count.</p>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>  underneath, on every record:
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    DecayingSortedField · ConfidenceField · WriteFilterMixin ·
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    PredictionLedger · TagField · EventStreamMixin
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    NeverRecordMixin · PredictionLedger · TagField · EventStreamMixin
 <a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>  over time, across the corpus:
 <a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    MemoryLifecycle: promote, forget, tombstone, restore
 </code></pre></div>

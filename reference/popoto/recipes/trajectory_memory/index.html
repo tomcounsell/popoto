@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2937,7 +2965,7 @@ patterns = tm.recall(
 
 
 <h3 id="popoto.recipes.trajectory_memory.DEFAULT_SCORE_WEIGHTS" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">DEFAULT_SCORE_WEIGHTS</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;confidence&#39;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s1">&#39;last_reinforced&#39;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">}</span></code>
+            <code class="highlight language-python"><span class="n">DEFAULT_SCORE_WEIGHTS</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'confidence'</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s1">'last_reinforced'</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">}</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
@@ -3808,7 +3836,7 @@ field of the wrong type.</p>
 <span class="normal"><a href="#__codelineno-0-710">710</a></span>
 <span class="normal"><a href="#__codelineno-0-711">711</a></span>
 <span class="normal"><a href="#__codelineno-0-712">712</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="k">class</span><span class="w"> </span><span class="nc">TrajectoryMemory</span><span class="p">:</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Fingerprint-keyed procedural-pattern recipe.</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="w">    </span><span class="sd">"""Fingerprint-keyed procedural-pattern recipe.</span>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">    Generic over ``episode_model`` and ``pattern_model``. The recipe</span>
 <a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    introspects the supplied model classes — it does not define them.</span>
@@ -3831,29 +3859,29 @@ field of the wrong type.</p>
 <a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="sd">            crystallization promotes the group into a pattern. Defaults to</span>
 <a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="sd">            ``Defaults.TRAJECTORY_CLUSTER_THRESHOLD`` when ``None``.</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">        score_weights: ``composite_score`` weights for recall. Defaults to</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">            ``{&quot;confidence&quot;: 0.6, &quot;last_reinforced&quot;: 0.4}``.</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">            ``{"confidence": 0.6, "last_reinforced": 0.4}``.</span>
 <a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">        partition_field: Name of the partition ``KeyField`` on both models.</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">            Default ``&quot;partition&quot;``.</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">            Default ``"partition"``.</span>
 <a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">        confidence_field: Name of the ``ConfidenceField`` on</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">            ``pattern_model``. Default ``&quot;confidence&quot;``.</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">            ``pattern_model``. Default ``"confidence"``.</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">        recency_field: Name of the ``DecayingSortedField`` on</span>
 <a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">            ``pattern_model`` tracking last-reinforced time. Default</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">            ``&quot;last_reinforced&quot;``.</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">            ``"last_reinforced"``.</span>
 <a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        trajectory_field: Name of the trajectory ``ListField`` on</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">            ``episode_model``. Default ``&quot;trajectory&quot;``.</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">            ``episode_model``. Default ``"trajectory"``.</span>
 <a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">        outcome_field: Name of the outcome field on ``episode_model``.</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">            Default ``&quot;outcome&quot;``.</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">            Default ``"outcome"``.</span>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        canonical_sequence_field: Name of the canonical-sequence</span>
 <a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">            ``ListField`` on ``pattern_model``. Default</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">            ``&quot;canonical_sequence&quot;``.</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">            ``"canonical_sequence"``.</span>
 <a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">        episode_recency_field: Name of the ``DecayingSortedField`` (or</span>
 <a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">            equivalent sortable timestamp) on ``episode_model``. Default</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">            ``&quot;recorded_at&quot;``.</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">            ``"recorded_at"``.</span>
 <a id="__codelineno-0-174" name="__codelineno-0-174"></a>
 <a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">        TypeError: If either model is missing a required field or has a</span>
 <a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">            field of the wrong type.</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">    """</span>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
 <a id="__codelineno-0-181" name="__codelineno-0-181"></a>        <span class="bp">self</span><span class="p">,</span>
@@ -3872,7 +3900,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="p">):</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint_fields</span><span class="p">:</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>                <span class="s2">&quot;fingerprint_fields must be a non-empty list of field names&quot;</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>                <span class="s2">"fingerprint_fields must be a non-empty list of field names"</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="p">)</span>
 <a id="__codelineno-0-199" name="__codelineno-0-199"></a>
 <a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span> <span class="o">=</span> <span class="n">episode_model</span>
@@ -3903,12 +3931,12 @@ field of the wrong type.</p>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="c1"># ------------------------------------------------------------------</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_models</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate required fields exist with the expected types.</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="w">        </span><span class="sd">"""Validate required fields exist with the expected types.</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        Raises ``TypeError`` listing every missing/wrong-typed field so the</span>
 <a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">        consumer gets a single descriptive error rather than discovering</span>
 <a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">        them one at a time inside :meth:`crystallize`.</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">        """</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-235" name="__codelineno-0-235"></a>
 <a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="n">pattern_fields</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span>
@@ -3919,57 +3947,57 @@ field of the wrong type.</p>
 <a id="__codelineno-0-241" name="__codelineno-0-241"></a>            <span class="n">f</span> <span class="o">=</span> <span class="n">pattern_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fp_field</span><span class="p">)</span>
 <a id="__codelineno-0-242" name="__codelineno-0-242"></a>            <span class="k">if</span> <span class="n">f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a>                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a>                    <span class="sa">f</span><span class="s2">&quot;pattern_model </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="vm">__name__</span><span class="si">!s}</span><span class="s2"> is missing &quot;</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>                    <span class="sa">f</span><span class="s2">&quot;fingerprint field &#39;</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>                    <span class="sa">f</span><span class="s2">"pattern_model </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="vm">__name__</span><span class="si">!s}</span><span class="s2"> is missing "</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>                    <span class="sa">f</span><span class="s2">"fingerprint field '</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-246" name="__codelineno-0-246"></a>                <span class="p">)</span>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">):</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>                    <span class="sa">f</span><span class="s2">&quot;pattern_model field &#39;</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">&#39; must be a KeyField &quot;</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>                    <span class="sa">f</span><span class="s2">&quot;(got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>                    <span class="sa">f</span><span class="s2">"pattern_model field '</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">' must be a KeyField "</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>                    <span class="sa">f</span><span class="s2">"(got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a>                <span class="p">)</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a>
 <a id="__codelineno-0-253" name="__codelineno-0-253"></a>        <span class="n">partition_pattern</span> <span class="o">=</span> <span class="n">pattern_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">)</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="k">if</span> <span class="n">partition_pattern</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model is missing partition field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>                <span class="sa">f</span><span class="s2">"pattern_model is missing partition field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a>            <span class="p">)</span>
 <a id="__codelineno-0-258" name="__codelineno-0-258"></a>        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">partition_pattern</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">):</span>
 <a id="__codelineno-0-259" name="__codelineno-0-259"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">&#39; must be a &quot;</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>                <span class="sa">f</span><span class="s2">&quot;KeyField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">partition_pattern</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>                <span class="sa">f</span><span class="s2">"pattern_model field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">' must be a "</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>                <span class="sa">f</span><span class="s2">"KeyField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">partition_pattern</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a>            <span class="p">)</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a>
 <a id="__codelineno-0-264" name="__codelineno-0-264"></a>        <span class="n">conf_f</span> <span class="o">=</span> <span class="n">pattern_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="p">)</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a>        <span class="k">if</span> <span class="n">conf_f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model is missing ConfidenceField &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>                <span class="sa">f</span><span class="s2">"pattern_model is missing ConfidenceField '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-268" name="__codelineno-0-268"></a>            <span class="p">)</span>
 <a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conf_f</span><span class="p">,</span> <span class="n">ConfidenceField</span><span class="p">):</span>
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="si">}</span><span class="s2">&#39; must be a &quot;</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>                <span class="sa">f</span><span class="s2">&quot;ConfidenceField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">conf_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>                <span class="sa">f</span><span class="s2">"pattern_model field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="si">}</span><span class="s2">' must be a "</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>                <span class="sa">f</span><span class="s2">"ConfidenceField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">conf_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a>            <span class="p">)</span>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="n">rec_f</span> <span class="o">=</span> <span class="n">pattern_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">)</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="k">if</span> <span class="n">rec_f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model is missing DecayingSortedField &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>                <span class="sa">f</span><span class="s2">"pattern_model is missing DecayingSortedField '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>            <span class="p">)</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rec_f</span><span class="p">,</span> <span class="n">DecayingSortedField</span><span class="p">):</span>
 <a id="__codelineno-0-281" name="__codelineno-0-281"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="si">}</span><span class="s2">&#39; must be a &quot;</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                <span class="sa">f</span><span class="s2">&quot;DecayingSortedField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">rec_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="sa">f</span><span class="s2">"pattern_model field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="si">}</span><span class="s2">' must be a "</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                <span class="sa">f</span><span class="s2">"DecayingSortedField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">rec_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>            <span class="p">)</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="n">canon_f</span> <span class="o">=</span> <span class="n">pattern_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">)</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="k">if</span> <span class="n">canon_f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model is missing ListField &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>                <span class="sa">f</span><span class="s2">"pattern_model is missing ListField '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>            <span class="p">)</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">canon_f</span><span class="p">,</span> <span class="n">ListField</span><span class="p">):</span>
 <a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="sa">f</span><span class="s2">&quot;pattern_model field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="si">}</span><span class="s2">&#39; must &quot;</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                <span class="sa">f</span><span class="s2">&quot;be a ListField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">canon_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="sa">f</span><span class="s2">"pattern_model field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="si">}</span><span class="s2">' must "</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                <span class="sa">f</span><span class="s2">"be a ListField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">canon_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>            <span class="p">)</span>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>        <span class="c1"># Episode model checks</span>
@@ -3977,53 +4005,53 @@ field of the wrong type.</p>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a>            <span class="n">f</span> <span class="o">=</span> <span class="n">episode_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fp_field</span><span class="p">)</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>            <span class="k">if</span> <span class="n">f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                    <span class="sa">f</span><span class="s2">&quot;episode_model </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="vm">__name__</span><span class="si">!s}</span><span class="s2"> is missing &quot;</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>                    <span class="sa">f</span><span class="s2">&quot;fingerprint field &#39;</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                    <span class="sa">f</span><span class="s2">"episode_model </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="vm">__name__</span><span class="si">!s}</span><span class="s2"> is missing "</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>                    <span class="sa">f</span><span class="s2">"fingerprint field '</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a>                <span class="p">)</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">):</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>                    <span class="sa">f</span><span class="s2">&quot;episode_model field &#39;</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">&#39; must be a KeyField &quot;</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>                    <span class="sa">f</span><span class="s2">&quot;(got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>                    <span class="sa">f</span><span class="s2">"episode_model field '</span><span class="si">{</span><span class="n">fp_field</span><span class="si">}</span><span class="s2">' must be a KeyField "</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>                    <span class="sa">f</span><span class="s2">"(got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-309" name="__codelineno-0-309"></a>                <span class="p">)</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="n">partition_ep</span> <span class="o">=</span> <span class="n">episode_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">)</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="k">if</span> <span class="n">partition_ep</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>                <span class="sa">f</span><span class="s2">&quot;episode_model is missing partition field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>                <span class="sa">f</span><span class="s2">"episode_model is missing partition field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a>            <span class="p">)</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">partition_ep</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">):</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="sa">f</span><span class="s2">&quot;episode_model field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">&#39; must be a &quot;</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>                <span class="sa">f</span><span class="s2">&quot;KeyField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">partition_ep</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="sa">f</span><span class="s2">"episode_model field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="si">}</span><span class="s2">' must be a "</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>                <span class="sa">f</span><span class="s2">"KeyField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">partition_ep</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="p">)</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="n">traj_f</span> <span class="o">=</span> <span class="n">episode_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="p">)</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="k">if</span> <span class="n">traj_f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>                <span class="sa">f</span><span class="s2">&quot;episode_model is missing trajectory field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>                <span class="sa">f</span><span class="s2">"episode_model is missing trajectory field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a>            <span class="p">)</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">traj_f</span><span class="p">,</span> <span class="n">ListField</span><span class="p">):</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>                <span class="sa">f</span><span class="s2">&quot;episode_model field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="si">}</span><span class="s2">&#39; must be a &quot;</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>                <span class="sa">f</span><span class="s2">&quot;ListField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">traj_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>                <span class="sa">f</span><span class="s2">"episode_model field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="si">}</span><span class="s2">' must be a "</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>                <span class="sa">f</span><span class="s2">"ListField (got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">traj_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>            <span class="p">)</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">episode_fields</span><span class="p">:</span>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>                <span class="sa">f</span><span class="s2">&quot;episode_model is missing outcome field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>                <span class="sa">f</span><span class="s2">"episode_model is missing outcome field '</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>            <span class="p">)</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="n">ep_recency_f</span> <span class="o">=</span> <span class="n">episode_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="k">if</span> <span class="n">ep_recency_f</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>                <span class="sa">f</span><span class="s2">&quot;episode_model is missing episode-recency field &quot;</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>                <span class="sa">f</span><span class="s2">"episode_model is missing episode-recency field "</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="si">}</span><span class="s2">'"</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>            <span class="p">)</span>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>                <span class="s2">&quot;TrajectoryMemory model validation failed:</span><span class="se">\n</span><span class="s2">  - &quot;</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>                <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">  - &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">errors</span><span class="p">)</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>                <span class="s2">"TrajectoryMemory model validation failed:</span><span class="se">\n</span><span class="s2">  - "</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>                <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">  - "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">errors</span><span class="p">)</span>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>            <span class="p">)</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="c1"># ------------------------------------------------------------------</span>
@@ -4031,7 +4059,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="c1"># ------------------------------------------------------------------</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">record_episode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Persist a single trajectory episode (write path).</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="w">        </span><span class="sd">"""Persist a single trajectory episode (write path).</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">            fingerprint: Dict of fingerprint-field values. Must contain</span>
@@ -4046,11 +4074,11 @@ field of the wrong type.</p>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">            ValueError: If ``fingerprint`` is missing any required field.</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">        """</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fingerprint</span><span class="p">]</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>                <span class="sa">f</span><span class="s2">&quot;record_episode fingerprint is missing required field(s): </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>                <span class="sa">f</span><span class="s2">"record_episode fingerprint is missing required field(s): </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>            <span class="p">)</span>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
@@ -4066,7 +4094,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a>        <span class="k">return</span> <span class="n">episode</span>
 <a id="__codelineno-0-389" name="__codelineno-0-389"></a>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">crystallize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Cluster recent episodes into canonical patterns.</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">        </span><span class="sd">"""Cluster recent episodes into canonical patterns.</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">        Loads every episode in ``partition``, groups them by their</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">        fingerprint tuple, and for each group at least</span>
@@ -4075,10 +4103,10 @@ field of the wrong type.</p>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">        * Upserts a ``pattern_model`` record keyed by ``(partition,</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">          *fingerprint_values)``.</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">        * On existing patterns, observes only episodes strictly newer</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">          than the pattern&#39;s recency score (the watermark filter below).</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">          than the pattern's recency score (the watermark filter below).</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">        * Recomputes the canonical sequence as the modal trajectory</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">          across the group, ties broken by the most recent episode.</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        * Advances the pattern&#39;s recency field (``last_reinforced``) to</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        * Advances the pattern's recency field (``last_reinforced``) to</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">          the **max observed episode timestamp** (the watermark), saved</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">          with ``skip_auto_now=True`` — never to the wall-clock time of</span>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">          the save.</span>
@@ -4102,11 +4130,11 @@ field of the wrong type.</p>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">        Watermark semantics to be aware of:</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        * The recency field&#39;s stored score equals the max **observed</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        * The recency field's stored score equals the max **observed</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">          episode** ``recorded_at``, which may predate the wall-clock</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">          crystallize call. A ZSCORE read of the recency index therefore</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">          means &quot;newest episode processed&quot;, not &quot;when crystallize last</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">          ran&quot;, and recency-weighted recall ranks patterns by *episode*</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">          means "newest episode processed", not "when crystallize last</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">          ran", and recency-weighted recall ranks patterns by *episode*</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">          time — batched/nightly crystallization makes patterns appear</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">          correspondingly older.</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        * **Clock-sync assumption:** episode writers and the</span>
@@ -4124,7 +4152,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">            List of ``pattern_model`` instances that were created or</span>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">            reinforced by this call.</span>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">        """</span>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">})</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="p">)</span>
@@ -4190,7 +4218,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>                <span class="c1"># Bootstrap save: ConfidenceField.update_confidence is an</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                <span class="c1"># atomic Lua read-modify-write keyed on the member&#39;s redis</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                <span class="c1"># atomic Lua read-modify-write keyed on the member's redis</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>                <span class="c1"># key, and requires the instance to already exist in Redis.</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>                <span class="c1"># skip_auto_now keeps the explicit watermark here too, so</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>                <span class="c1"># the new-pattern path never carries wall-clock semantics.</span>
@@ -4198,7 +4226,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_observe_episodes</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">observed_episodes</span><span class="p">)</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>            <span class="c1"># Single authoritative save for both branches: persists the</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>            <span class="c1"># watermark (skip_auto_now suppresses the DecayingSortedField&#39;s</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>            <span class="c1"># watermark (skip_auto_now suppresses the DecayingSortedField's</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a>            <span class="c1"># auto_now wall-clock overwrite) and the canonical_sequence</span>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a>            <span class="c1"># update. Note: skip_auto_now also freezes any OTHER auto_now</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="c1"># field on pattern_model for crystallize-triggered saves.</span>
@@ -4209,7 +4237,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="k">return</span> <span class="n">affected</span>
 <a id="__codelineno-0-532" name="__codelineno-0-532"></a>
 <a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Recall ranked patterns for the given fingerprint (read path).</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">        </span><span class="sd">"""Recall ranked patterns for the given fingerprint (read path).</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">        Recall is keyed exact-match by fingerprint plus partition. Because</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">        fingerprint fields are ``KeyField`` s and the (partition,</span>
@@ -4239,7 +4267,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">            ValueError: If ``fingerprint`` contains a key not in</span>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">                ``fingerprint_fields``.</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">        """</span>
 <a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint</span><span class="p">:</span>
 <a id="__codelineno-0-566" name="__codelineno-0-566"></a>            <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a>        <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -4251,8 +4279,8 @@ field of the wrong type.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fingerprint</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">]</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>                <span class="sa">f</span><span class="s2">&quot;recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="sa">f</span><span class="s2">&quot;expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>                <span class="sa">f</span><span class="s2">"recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="sa">f</span><span class="s2">"expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>            <span class="p">)</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="n">weights</span> <span class="o">=</span> <span class="n">score_weights</span> <span class="k">if</span> <span class="n">score_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span>
@@ -4292,13 +4320,13 @@ field of the wrong type.</p>
 <a id="__codelineno-0-614" name="__codelineno-0-614"></a>    <span class="c1"># ------------------------------------------------------------------</span>
 <a id="__codelineno-0-615" name="__codelineno-0-615"></a>
 <a id="__codelineno-0-616" name="__codelineno-0-616"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_canonical_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episodes</span><span class="p">):</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Modal trajectory across the group, ties broken by recency.</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="w">        </span><span class="sd">"""Modal trajectory across the group, ties broken by recency.</span>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        The trajectory is rendered as a tuple for hashability, then</span>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        returned as a list. If multiple trajectories share the top</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        frequency, the most-recent episode&#39;s trajectory wins (deterministic</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        frequency, the most-recent episode's trajectory wins (deterministic</span>
 <a id="__codelineno-0-622" name="__codelineno-0-622"></a><span class="sd">        as long as episode timestamps are stable).</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">        """</span>
 <a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">episodes</span><span class="p">:</span>
 <a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-626" name="__codelineno-0-626"></a>
@@ -4323,12 +4351,12 @@ field of the wrong type.</p>
 <a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">winner</span><span class="p">)</span>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_create_pattern</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">canonical</span><span class="p">):</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate a new pattern record WITHOUT saving it.</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="w">        </span><span class="sd">"""Instantiate a new pattern record WITHOUT saving it.</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>
 <a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">        :meth:`crystallize` owns the save: it sets the recency watermark</span>
 <a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        first and persists with ``save(skip_auto_now=True)``, so no</span>
 <a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">        auto_now wall-clock score is ever written for a new pattern.</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        """</span>
 <a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
 <a id="__codelineno-0-655" name="__codelineno-0-655"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span>
 <a id="__codelineno-0-656" name="__codelineno-0-656"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">canonical</span><span class="p">),</span>
@@ -4338,8 +4366,8 @@ field of the wrong type.</p>
 <a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-661" name="__codelineno-0-661"></a>
 <a id="__codelineno-0-662" name="__codelineno-0-662"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_observe_episodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">episodes</span><span class="p">):</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Bayesian-update the pattern&#39;s confidence using each episode&#39;s</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">        outcome signal.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="w">        </span><span class="sd">"""Bayesian-update the pattern's confidence using each episode's</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">        outcome signal."""</span>
 <a id="__codelineno-0-665" name="__codelineno-0-665"></a>        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
 <a id="__codelineno-0-666" name="__codelineno-0-666"></a>            <span class="n">signal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_signal</span><span class="p">(</span><span class="n">ep</span><span class="p">)</span>
 <a id="__codelineno-0-667" name="__codelineno-0-667"></a>            <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span>
@@ -4349,19 +4377,19 @@ field of the wrong type.</p>
 <a id="__codelineno-0-671" name="__codelineno-0-671"></a>            <span class="p">)</span>
 <a id="__codelineno-0-672" name="__codelineno-0-672"></a>
 <a id="__codelineno-0-673" name="__codelineno-0-673"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_signal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episode</span><span class="p">):</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Derive a 0..1 confidence signal from an episode&#39;s outcome.</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="w">        </span><span class="sd">"""Derive a 0..1 confidence signal from an episode's outcome.</span>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a>
 <a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">        Default heuristic:</span>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">          * If outcome is a dict with a ``&quot;success&quot;`` key: True -&gt; 0.9,</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">          * If outcome is a dict with a ``"success"`` key: True -&gt; 0.9,</span>
 <a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">            False -&gt; 0.1, float -&gt; clamped to [0, 1].</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">          * If outcome is a numeric value: clamped to [0, 1].</span>
 <a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">          * Otherwise: 0.5 (neutral).</span>
 <a id="__codelineno-0-681" name="__codelineno-0-681"></a>
 <a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        Subclass to plug in a different mapping.</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        """</span>
 <a id="__codelineno-0-684" name="__codelineno-0-684"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;success&quot;</span> <span class="ow">in</span> <span class="n">outcome</span><span class="p">:</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a>            <span class="n">val</span> <span class="o">=</span> <span class="n">outcome</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">"success"</span> <span class="ow">in</span> <span class="n">outcome</span><span class="p">:</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a>            <span class="n">val</span> <span class="o">=</span> <span class="n">outcome</span><span class="p">[</span><span class="s2">"success"</span><span class="p">]</span>
 <a id="__codelineno-0-687" name="__codelineno-0-687"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
 <a id="__codelineno-0-688" name="__codelineno-0-688"></a>                <span class="k">return</span> <span class="mf">0.9</span> <span class="k">if</span> <span class="n">val</span> <span class="k">else</span> <span class="mf">0.1</span>
 <a id="__codelineno-0-689" name="__codelineno-0-689"></a>            <span class="k">try</span><span class="p">:</span>
@@ -4374,13 +4402,13 @@ field of the wrong type.</p>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a>
 <a id="__codelineno-0-697" name="__codelineno-0-697"></a>    <span class="nd">@staticmethod</span>
 <a id="__codelineno-0-698" name="__codelineno-0-698"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_score</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the raw stored score for a DecayingSortedField on an</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="w">        </span><span class="sd">"""Return the raw stored score for a DecayingSortedField on an</span>
 <a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        instance, or 0 if it cannot be read.</span>
 <a id="__codelineno-0-701" name="__codelineno-0-701"></a>
 <a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        DecayingSortedField stores its score as the field attribute on a</span>
 <a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">        saved instance (set via ``auto_now``). This method is tolerant of</span>
 <a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">        missing values during testing or unsaved instances.</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        """</span>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-708" name="__codelineno-0-708"></a>            <span class="k">return</span> <span class="mf">0.0</span>
@@ -4576,7 +4604,7 @@ in the trajectory <code>ListField</code>).</p>
 <span class="normal"><a href="#__codelineno-0-386">386</a></span>
 <span class="normal"><a href="#__codelineno-0-387">387</a></span>
 <span class="normal"><a href="#__codelineno-0-388">388</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="k">def</span><span class="w"> </span><span class="nf">record_episode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Persist a single trajectory episode (write path).</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="w">    </span><span class="sd">"""Persist a single trajectory episode (write path).</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">        fingerprint: Dict of fingerprint-field values. Must contain</span>
@@ -4591,11 +4619,11 @@ in the trajectory <code>ListField</code>).</p>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">        ValueError: If ``fingerprint`` is missing any required field.</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">    """</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fingerprint</span><span class="p">]</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="sa">f</span><span class="s2">&quot;record_episode fingerprint is missing required field(s): </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="sa">f</span><span class="s2">"record_episode fingerprint is missing required field(s): </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>        <span class="p">)</span>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>    <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
@@ -4884,7 +4912,7 @@ scoped per partition.</p>
 <span class="normal"><a href="#__codelineno-0-529">529</a></span>
 <span class="normal"><a href="#__codelineno-0-530">530</a></span>
 <span class="normal"><a href="#__codelineno-0-531">531</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="k">def</span><span class="w"> </span><span class="nf">crystallize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Cluster recent episodes into canonical patterns.</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">    </span><span class="sd">"""Cluster recent episodes into canonical patterns.</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">    Loads every episode in ``partition``, groups them by their</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">    fingerprint tuple, and for each group at least</span>
@@ -4893,10 +4921,10 @@ scoped per partition.</p>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">    * Upserts a ``pattern_model`` record keyed by ``(partition,</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">      *fingerprint_values)``.</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    * On existing patterns, observes only episodes strictly newer</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">      than the pattern&#39;s recency score (the watermark filter below).</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">      than the pattern's recency score (the watermark filter below).</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    * Recomputes the canonical sequence as the modal trajectory</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">      across the group, ties broken by the most recent episode.</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">    * Advances the pattern&#39;s recency field (``last_reinforced``) to</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">    * Advances the pattern's recency field (``last_reinforced``) to</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">      the **max observed episode timestamp** (the watermark), saved</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">      with ``skip_auto_now=True`` — never to the wall-clock time of</span>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">      the save.</span>
@@ -4920,11 +4948,11 @@ scoped per partition.</p>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    Watermark semantics to be aware of:</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    * The recency field&#39;s stored score equals the max **observed</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    * The recency field's stored score equals the max **observed</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">      episode** ``recorded_at``, which may predate the wall-clock</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">      crystallize call. A ZSCORE read of the recency index therefore</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">      means &quot;newest episode processed&quot;, not &quot;when crystallize last</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">      ran&quot;, and recency-weighted recall ranks patterns by *episode*</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">      means "newest episode processed", not "when crystallize last</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">      ran", and recency-weighted recall ranks patterns by *episode*</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">      time — batched/nightly crystallization makes patterns appear</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">      correspondingly older.</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    * **Clock-sync assumption:** episode writers and the</span>
@@ -4942,7 +4970,7 @@ scoped per partition.</p>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">        List of ``pattern_model`` instances that were created or</span>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        reinforced by this call.</span>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">    """</span>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a>    <span class="n">episodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">})</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a>    <span class="p">)</span>
@@ -5008,7 +5036,7 @@ scoped per partition.</p>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>            <span class="c1"># Bootstrap save: ConfidenceField.update_confidence is an</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>            <span class="c1"># atomic Lua read-modify-write keyed on the member&#39;s redis</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>            <span class="c1"># atomic Lua read-modify-write keyed on the member's redis</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="c1"># key, and requires the instance to already exist in Redis.</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>            <span class="c1"># skip_auto_now keeps the explicit watermark here too, so</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>            <span class="c1"># the new-pattern path never carries wall-clock semantics.</span>
@@ -5016,7 +5044,7 @@ scoped per partition.</p>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_observe_episodes</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">observed_episodes</span><span class="p">)</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="c1"># Single authoritative save for both branches: persists the</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="c1"># watermark (skip_auto_now suppresses the DecayingSortedField&#39;s</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="c1"># watermark (skip_auto_now suppresses the DecayingSortedField's</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="c1"># auto_now wall-clock overwrite) and the canonical_sequence</span>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="c1"># update. Note: skip_auto_now also freezes any OTHER auto_now</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="c1"># field on pattern_model for crystallize-triggered saves.</span>
@@ -5269,7 +5297,7 @@ this call.</p>
 <span class="normal"><a href="#__codelineno-0-608">608</a></span>
 <span class="normal"><a href="#__codelineno-0-609">609</a></span>
 <span class="normal"><a href="#__codelineno-0-610">610</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-533" name="__codelineno-0-533"></a><span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Recall ranked patterns for the given fingerprint (read path).</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">    </span><span class="sd">"""Recall ranked patterns for the given fingerprint (read path).</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">    Recall is keyed exact-match by fingerprint plus partition. Because</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    fingerprint fields are ``KeyField`` s and the (partition,</span>
@@ -5299,7 +5327,7 @@ this call.</p>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">        ValueError: If ``fingerprint`` contains a key not in</span>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">            ``fingerprint_fields``.</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">    """</span>
 <a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint</span><span class="p">:</span>
 <a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a>    <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -5311,8 +5339,8 @@ this call.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>    <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fingerprint</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">]</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="sa">f</span><span class="s2">&quot;recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="sa">f</span><span class="s2">&quot;expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="sa">f</span><span class="s2">"recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="sa">f</span><span class="s2">"expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="p">)</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>    <span class="n">weights</span> <span class="o">=</span> <span class="n">score_weights</span> <span class="k">if</span> <span class="n">score_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span>
@@ -5470,15 +5498,15 @@ for time-unique fingerprints. The bucket is the current hour
 
 
 <p><span class="doc-section-title">Examples:</span></p>
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">&#39;a1b2c3d4e5f6a7b8&#39;</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">})</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">'a1b2c3d4e5f6a7b8'</span>
 </code></pre></div>
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">... </span>                    <span class="n">include_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;task&quot;</span><span class="p">])</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="go">&#39;f8e7d6c5b4a39281&#39;  # Different — only &#39;task&#39; included</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">},</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">... </span>                    <span class="n">include_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">"task"</span><span class="p">])</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="go">'f8e7d6c5b4a39281'  # Different — only 'task' included</span>
 </code></pre></div>
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span> <span class="n">include_timestamp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">&#39;1234567890abcdef&#39;  # Different per hour</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span> <span class="n">include_timestamp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">'1234567890abcdef'  # Different per hour</span>
 </code></pre></div>
 
 
@@ -5533,7 +5561,7 @@ for time-unique fingerprints. The bucket is the current hour
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="n">include_fields</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="n">include_timestamp</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate a stable fingerprint from state features.</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">    </span><span class="sd">"""Generate a stable fingerprint from state features.</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    Creates a SHA-256 hash (truncated to 16 hex chars) from a dict of</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    state features. The hash is deterministic for the same input, making</span>
@@ -5544,7 +5572,7 @@ for time-unique fingerprints. The bucket is the current hour
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">            JSON-serializable.</span>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        include_fields: Optional list of field names to include. If None,</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">            all fields are included. Useful for per-model customization</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">            of which features define &quot;same state.&quot;</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">            of which features define "same state."</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        include_timestamp: If True, includes current hour-bucket timestamp</span>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">            for time-unique fingerprints. The bucket is the current hour</span>
 <a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">            (Unix timestamp truncated to 3600s).</span>
@@ -5553,26 +5581,26 @@ for time-unique fingerprints. The bucket is the current hour
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        str: SHA-256 truncated to 16 hex chars.</span>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    Examples:</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;, &quot;env&quot;: &quot;staging&quot;})</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        &#39;a1b2c3d4e5f6a7b8&#39;</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({"task": "deploy", "env": "staging"})</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        'a1b2c3d4e5f6a7b8'</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;, &quot;env&quot;: &quot;staging&quot;},</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        ...                     include_fields=[&quot;task&quot;])</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        &#39;f8e7d6c5b4a39281&#39;  # Different — only &#39;task&#39; included</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({"task": "deploy", "env": "staging"},</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        ...                     include_fields=["task"])</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        'f8e7d6c5b4a39281'  # Different — only 'task' included</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;}, include_timestamp=True)</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        &#39;1234567890abcdef&#39;  # Different per hour</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({"task": "deploy"}, include_timestamp=True)</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        '1234567890abcdef'  # Different per hour</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    """</span>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="k">if</span> <span class="n">include_fields</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>        <span class="n">features</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">features</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">include_fields</span><span class="p">}</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="k">if</span> <span class="n">include_timestamp</span><span class="p">:</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="n">features</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">features</span><span class="p">[</span><span class="s2">&quot;__hour_bucket__&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span> <span class="o">//</span> <span class="mi">3600</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">features</span><span class="p">[</span><span class="s2">"__hour_bucket__"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span> <span class="o">//</span> <span class="mi">3600</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="c1"># Sort keys for deterministic ordering</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">16</span><span class="p">]</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">16</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

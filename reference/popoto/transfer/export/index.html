@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2939,42 +2967,42 @@ between a wrong vector space that errors and one that lands silently.</p>
 <span class="normal"><a href="#__codelineno-0-93">93</a></span>
 <span class="normal"><a href="#__codelineno-0-94">94</a></span>
 <span class="normal"><a href="#__codelineno-0-95">95</a></span>
-<span class="normal"><a href="#__codelineno-0-96">96</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="k">def</span><span class="w"> </span><span class="nf">field_provenance</span><span class="p">(</span><span class="n">model_field</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;dict | None&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return ``{provider, model, dimensions}`` for a field that has a provider.</span>
+<span class="normal"><a href="#__codelineno-0-96">96</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="k">def</span><span class="w"> </span><span class="nf">field_provenance</span><span class="p">(</span><span class="n">model_field</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"dict | None"</span><span class="p">:</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="w">    </span><span class="sd">"""Return ``{provider, model, dimensions}`` for a field that has a provider.</span>
 <a id="__codelineno-0-62" name="__codelineno-0-62"></a>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    Duck-typed on the presence of a ``provider`` attribute that exposes</span>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    ``dimensions``; no concrete field class is named. Popoto stores no</span>
 <a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    provider or model identity alongside an embedding today, so this</span>
 <a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    fingerprint exists only in the export file. Import compares it against the</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    destination&#39;s provider and refuses a mismatch by default -- the difference</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    destination's provider and refuses a mismatch by default -- the difference</span>
 <a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    between a wrong vector space that errors and one that lands silently.</span>
 <a id="__codelineno-0-69" name="__codelineno-0-69"></a>
 <a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">        The provenance dict, or ``None`` when the field has no provider at all.</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">        A field whose provider cannot be resolved yields ``&quot;unknown&quot;`` values</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">        A field whose provider cannot be resolved yields ``"unknown"`` values</span>
 <a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">        rather than nothing, so the ambiguity is carried rather than hidden.</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">model_field</span><span class="p">),</span> <span class="s2">&quot;provider&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    """</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">model_field</span><span class="p">),</span> <span class="s2">"provider"</span><span class="p">):</span>
 <a id="__codelineno-0-76" name="__codelineno-0-76"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-78" name="__codelineno-0-78"></a>        <span class="n">provider</span> <span class="o">=</span> <span class="n">model_field</span><span class="o">.</span><span class="n">provider</span>
 <a id="__codelineno-0-79" name="__codelineno-0-79"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;provider lookup failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;unknown&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"provider lookup failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"provider"</span><span class="p">:</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"dimensions"</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
 <a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="k">if</span> <span class="n">provider</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;unknown&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"provider"</span><span class="p">:</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"dimensions"</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
 <a id="__codelineno-0-84" name="__codelineno-0-84"></a>
 <a id="__codelineno-0-85" name="__codelineno-0-85"></a>    <span class="n">model_name</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="k">for</span> <span class="n">attribute</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;model_name&quot;</span><span class="p">,</span> <span class="s2">&quot;_model_name&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">,</span> <span class="s2">&quot;_model&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="k">for</span> <span class="n">attribute</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"model_name"</span><span class="p">,</span> <span class="s2">"_model_name"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">,</span> <span class="s2">"_model"</span><span class="p">):</span>
 <a id="__codelineno-0-87" name="__codelineno-0-87"></a>        <span class="n">candidate</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="n">attribute</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-88" name="__codelineno-0-88"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
 <a id="__codelineno-0-89" name="__codelineno-0-89"></a>            <span class="n">model_name</span> <span class="o">=</span> <span class="n">candidate</span>
 <a id="__codelineno-0-90" name="__codelineno-0-90"></a>            <span class="k">break</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">dimensions</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">&quot;dimensions&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">dimensions</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">"dimensions"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="k">return</span> <span class="p">{</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">provider</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>        <span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="n">dimensions</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dimensions</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="s2">"provider"</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">provider</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-94" name="__codelineno-0-94"></a>        <span class="s2">"model"</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
+<a id="__codelineno-0-95" name="__codelineno-0-95"></a>        <span class="s2">"dimensions"</span><span class="p">:</span> <span class="n">dimensions</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dimensions</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="p">}</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -3006,7 +3034,7 @@ between a wrong vector space that errors and one that lands silently.</p>
 <span class="normal"><a href="#__codelineno-0-104">104</a></span>
 <span class="normal"><a href="#__codelineno-0-105">105</a></span>
 <span class="normal"><a href="#__codelineno-0-106">106</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="k">def</span><span class="w"> </span><span class="nf">collect_embedding_provenance</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return per-field provider fingerprints for every provider-backed field.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">"""Return per-field provider fingerprints for every provider-backed field."""</span>
 <a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="n">provenance</span> <span class="o">=</span> <span class="p">{}</span>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">model_field</span> <span class="ow">in</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-103" name="__codelineno-0-103"></a>        <span class="n">found</span> <span class="o">=</span> <span class="n">field_provenance</span><span class="p">(</span><span class="n">model_field</span><span class="p">)</span>
@@ -3045,13 +3073,13 @@ between a wrong vector space that errors and one that lands silently.</p>
 <span class="normal"><a href="#__codelineno-0-116">116</a></span>
 <span class="normal"><a href="#__codelineno-0-117">117</a></span>
 <span class="normal"><a href="#__codelineno-0-118">118</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="k">def</span><span class="w"> </span><span class="nf">collect_field_policies</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the per-field ``roundtrip_policy`` roll-up for the manifest.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="w">    </span><span class="sd">"""Return the per-field ``roundtrip_policy`` roll-up for the manifest."""</span>
 <a id="__codelineno-0-111" name="__codelineno-0-111"></a>    <span class="n">policies</span> <span class="o">=</span> <span class="p">{}</span>
 <a id="__codelineno-0-112" name="__codelineno-0-112"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">model_field</span> <span class="ow">in</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-113" name="__codelineno-0-113"></a>        <span class="n">policies</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a>            <span class="s2">&quot;class&quot;</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">model_field</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-115" name="__codelineno-0-115"></a>            <span class="s2">&quot;policy&quot;</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="s2">&quot;roundtrip_policy&quot;</span><span class="p">,</span> <span class="s2">&quot;rebuild&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-116" name="__codelineno-0-116"></a>            <span class="s2">&quot;note&quot;</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="s2">&quot;roundtrip_note&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a>            <span class="s2">"class"</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">model_field</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a>            <span class="s2">"policy"</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="s2">"roundtrip_policy"</span><span class="p">,</span> <span class="s2">"rebuild"</span><span class="p">),</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a>            <span class="s2">"note"</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="s2">"roundtrip_note"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
 <a id="__codelineno-0-117" name="__codelineno-0-117"></a>        <span class="p">}</span>
 <a id="__codelineno-0-118" name="__codelineno-0-118"></a>    <span class="k">return</span> <span class="n">policies</span>
 </code></pre></div></td></tr></table></div>
@@ -3098,21 +3126,21 @@ declares neither, so a model with no mixins yields <code>{}</code>.</p>
 <span class="normal"><a href="#__codelineno-0-136">136</a></span>
 <span class="normal"><a href="#__codelineno-0-137">137</a></span>
 <span class="normal"><a href="#__codelineno-0-138">138</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="k">def</span><span class="w"> </span><span class="nf">collect_mixin_policies</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the per-model-level-mixin ``roundtrip_policy`` roll-up.</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="w">    </span><span class="sd">"""Return the per-model-level-mixin ``roundtrip_policy`` roll-up.</span>
 <a id="__codelineno-0-123" name="__codelineno-0-123"></a>
 <a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    Duck-typed on a class declaring ``roundtrip_policy`` or ``export_state``</span>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    in its own ``__dict__``, so a third-party model mixin with independent</span>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">    Redis state appears in the report with no change here. ``Model`` itself</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    declares neither, so a model with no mixins yields ``{}``.</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    """</span>
 <a id="__codelineno-0-129" name="__codelineno-0-129"></a>    <span class="n">policies</span> <span class="o">=</span> <span class="p">{}</span>
 <a id="__codelineno-0-130" name="__codelineno-0-130"></a>    <span class="k">for</span> <span class="n">klass</span> <span class="ow">in</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__mro__</span><span class="p">:</span>
 <a id="__codelineno-0-131" name="__codelineno-0-131"></a>        <span class="n">own</span> <span class="o">=</span> <span class="n">klass</span><span class="o">.</span><span class="vm">__dict__</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a>        <span class="k">if</span> <span class="s2">&quot;roundtrip_policy&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">own</span> <span class="ow">and</span> <span class="s2">&quot;export_state&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">own</span><span class="p">:</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a>        <span class="k">if</span> <span class="s2">"roundtrip_policy"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">own</span> <span class="ow">and</span> <span class="s2">"export_state"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">own</span><span class="p">:</span>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a>        <span class="n">policies</span><span class="p">[</span><span class="n">klass</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a>            <span class="s2">&quot;policy&quot;</span><span class="p">:</span> <span class="n">own</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;roundtrip_policy&quot;</span><span class="p">,</span> <span class="s2">&quot;rebuild&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a>            <span class="s2">&quot;note&quot;</span><span class="p">:</span> <span class="n">own</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;roundtrip_note&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a>            <span class="s2">"policy"</span><span class="p">:</span> <span class="n">own</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"roundtrip_policy"</span><span class="p">,</span> <span class="s2">"rebuild"</span><span class="p">),</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a>            <span class="s2">"note"</span><span class="p">:</span> <span class="n">own</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"roundtrip_note"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
 <a id="__codelineno-0-137" name="__codelineno-0-137"></a>        <span class="p">}</span>
 <a id="__codelineno-0-138" name="__codelineno-0-138"></a>    <span class="k">return</span> <span class="n">policies</span>
 </code></pre></div></td></tr></table></div>
@@ -3426,15 +3454,15 @@ print(result.summary())</p>
 <span class="normal"><a href="#__codelineno-0-335">335</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="k">def</span><span class="w"> </span><span class="nf">export_records</span><span class="p">(</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">model_class</span><span class="p">,</span>
 <a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="o">*</span><span class="n">q_objects</span><span class="p">,</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="n">stream</span><span class="p">:</span> <span class="s2">&quot;TextIO | None&quot;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="n">stream</span><span class="p">:</span> <span class="s2">"TextIO | None"</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="n">chunk_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_CHUNK_SIZE</span><span class="p">,</span>
 <a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="o">**</span><span class="n">filters</span><span class="p">,</span>
 <a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExportResult</span><span class="p">:</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Export a model&#39;s records as JSON Lines.</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">"""Export a model's records as JSON Lines.</span>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>
 <a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    Writes a manifest line followed by one line per record. Filter arguments</span>
 <a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    are forwarded verbatim to ``model_class.query.filter(...)``; with no</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    arguments the model&#39;s full key set is exported. An unknown filter</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    arguments the model's full key set is exported. An unknown filter</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    parameter raises ``QueryException`` from the query layer rather than being</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">    quietly ignored.</span>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a>
@@ -3459,10 +3487,10 @@ print(result.summary())</p>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">        QueryException: If a filter parameter matches no known field.</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>
 <a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">        with open(&quot;memories.jsonl&quot;, &quot;w&quot;) as fh:</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">            result = export_records(Memory, project_key=&quot;ai&quot;, stream=fh)</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">        with open("memories.jsonl", "w") as fh:</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">            result = export_records(Memory, project_key="ai", stream=fh)</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        print(result.summary())</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    """</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">Query</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">own_buffer</span> <span class="o">=</span> <span class="kc">None</span>
@@ -3486,12 +3514,12 @@ print(result.summary())</p>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a>        <span class="c1"># Evaluation happens after provenance capture, so a zero-match filter</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="c1"># is still fully reported. Unknown params raise from here.</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="n">resolved</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">_evaluate_filter_args</span><span class="p">(</span><span class="n">builder_q_objects</span><span class="p">,</span> <span class="n">builder_filters</span><span class="p">)</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="n">client_filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="s2">&quot;_pending_client_filters&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="n">client_filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="s2">"_pending_client_filters"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span>
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a>        <span class="k">if</span> <span class="n">client_filters</span><span class="p">:</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>            <span class="n">result</span><span class="o">.</span><span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a>                <span class="sa">f</span><span class="s2">&quot;client-side (unindexed) equality filter applied after &quot;</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a>                <span class="sa">f</span><span class="s2">&quot;hydration for: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">client_filters</span><span class="p">))</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="sa">f</span><span class="s2">&quot;matched_count counts keys before this filter&quot;</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>                <span class="sa">f</span><span class="s2">"client-side (unindexed) equality filter applied after "</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>                <span class="sa">f</span><span class="s2">"hydration for: </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">client_filters</span><span class="p">))</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="sa">f</span><span class="s2">"matched_count counts keys before this filter"</span>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>            <span class="p">)</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="n">resolved</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
@@ -3528,14 +3556,14 @@ print(result.summary())</p>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>            <span class="n">redis_key</span> <span class="o">=</span> <span class="n">instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a>            <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="n">record</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>                    <span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="n">redis_key</span><span class="p">,</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>                    <span class="s2">&quot;values&quot;</span><span class="p">:</span> <span class="n">to_jsonable</span><span class="p">(</span><span class="n">_record_values</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">instance</span><span class="p">)),</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>                    <span class="s2">&quot;state&quot;</span><span class="p">:</span> <span class="n">_field_state</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="n">result</span><span class="p">),</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>                    <span class="s2">&quot;model_state&quot;</span><span class="p">:</span> <span class="n">_model_state</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">result</span><span class="p">),</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>                    <span class="s2">"key"</span><span class="p">:</span> <span class="n">redis_key</span><span class="p">,</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>                    <span class="s2">"values"</span><span class="p">:</span> <span class="n">to_jsonable</span><span class="p">(</span><span class="n">_record_values</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">instance</span><span class="p">)),</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>                    <span class="s2">"state"</span><span class="p">:</span> <span class="n">_field_state</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="n">result</span><span class="p">),</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>                    <span class="s2">"model_state"</span><span class="p">:</span> <span class="n">_model_state</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">result</span><span class="p">),</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>                <span class="p">}</span>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a>                <span class="n">result</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>                <span class="p">)</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a>            <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dump_line</span><span class="p">(</span><span class="n">record</span><span class="p">))</span>

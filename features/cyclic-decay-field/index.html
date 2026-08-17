@@ -1602,6 +1602,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3273,7 +3301,7 @@
 </code></pre></div>
 <h3 id="querying-top-results">Querying Top Results<a class="headerlink" href="#querying-top-results" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Top 10 directives by combined decay + cyclic + pressure score</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">top</span> <span class="o">=</span> <span class="n">Directive</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">top</span> <span class="o">=</span> <span class="n">Directive</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title"><code>top_by_decay()</code> on a <code>CyclicDecayField</code> is not gated by <code>ValidityField</code></p>
@@ -3287,15 +3315,15 @@ for the full accounting.</p>
 </div>
 <h3 id="resolving-pressure">Resolving Pressure<a class="headerlink" href="#resolving-pressure" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Discharge accumulated urgency for a directive</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">resolve_pressure</span><span class="p">(</span><span class="s2">&quot;relevance&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">resolve_pressure</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="adjusting-cycle-amplitudes">Adjusting Cycle Amplitudes<a class="headerlink" href="#adjusting-cycle-amplitudes" title="Permanent link">&para;</a></h3>
 <p>Use <code>strengthen_cycle()</code> and <code>weaken_cycle()</code> to dynamically adjust how strongly cycles influence a record's score. Both methods multiply all cycle amplitudes by a factor, with clamping to <code>[0.0, 100.0]</code>. Amplitudes below <code>0.01</code> snap to zero (effectively killing the cycle).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Strengthen: multiply all cycle amplitudes by 1.5x</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">strengthen_cycle</span><span class="p">(</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">strengthen_cycle</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Weaken: multiply all cycle amplitudes by 0.6x</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">directive</span><span class="o">.</span><span class="n">weaken_cycle</span><span class="p">(</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">directive</span><span class="o">.</span><span class="n">weaken_cycle</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
 </code></pre></div>
 <p>These methods are used internally by <a href="../observation-protocol/">ObservationProtocol</a> to adjust cycles based on agent behavior outcomes:</p>
 <ul>
@@ -3306,7 +3334,7 @@ for the full accounting.</p>
 <p>You can also call them directly for custom cycle management outside the ObservationProtocol.</p>
 <h3 id="refreshing-the-decay-clock">Refreshing the Decay Clock<a class="headerlink" href="#refreshing-the-decay-clock" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Same as DecayingSortedField — updates the timestamp</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">touch</span><span class="p">(</span><span class="s2">&quot;relevance&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">touch</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="redis-data-model">Redis Data Model<a class="headerlink" href="#redis-data-model" title="Permanent link">&para;</a></h2>
 <p>CyclicDecayField stores data in three Redis structures:</p>

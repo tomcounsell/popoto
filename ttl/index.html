@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2982,7 +3010,7 @@ or any data with a natural retention window.</p>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">AgentSession</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">session_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">agent_name</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">context</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">context</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">token_count</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
@@ -2990,7 +3018,7 @@ or any data with a natural retention window.</p>
 </code></pre></div>
 <p>When you save an instance, Popoto calls Redis <code>EXPIRE</code> on the key with the
 configured TTL. After that many seconds, Redis removes the key automatically:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">&quot;planning task&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"assistant"</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">"planning task"</span><span class="p">)</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># Redis will delete this session after 90 days</span>
 </code></pre></div>
 <h3 id="ttl-resets-on-every-save">TTL Resets on Every Save<a class="headerlink" href="#ttl-resets-on-every-save" title="Permanent link">&para;</a></h3>
@@ -3014,14 +3042,14 @@ expired keys, use <a href="../recipes/#index-maintenance"><code>Model.clean_inde
 <p>Override the model-level TTL for a specific instance by setting the <code>_ttl</code>
 attribute before saving:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Short-lived session: 1 day instead of 90</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">ephemeral</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;scratchpad&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">ephemeral</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"scratchpad"</span><span class="p">)</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">ephemeral</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="mi">86400</span>  <span class="c1"># 1 day</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">ephemeral</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="making-an-instance-permanent">Making an Instance Permanent<a class="headerlink" href="#making-an-instance-permanent" title="Permanent link">&para;</a></h3>
 <p>Set <code>_ttl</code> to <code>None</code> to disable expiration for a specific instance, even when
 the model has a default TTL:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">important_session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;long-term-memory&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">important_session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"long-term-memory"</span><span class="p">)</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">important_session</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Never expires</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">important_session</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
@@ -3035,7 +3063,7 @@ to <code>None</code> disables expiration for that instance only.</p>
 <code>_expire_at</code>. This accepts a <code>datetime</code> object and calls Redis <code>EXPIREAT</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;campaign-tracker&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"campaign-tracker"</span><span class="p">)</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">session</span><span class="o">.</span><span class="n">_expire_at</span> <span class="o">=</span> <span class="n">datetime</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">59</span><span class="p">)</span>  <span class="c1"># Expires end of year</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">session</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
@@ -3047,7 +3075,7 @@ to <code>None</code> disables expiration for that instance only.</p>
 <h2 id="mutual-exclusion-_ttl-vs-_expire_at">Mutual Exclusion: _ttl vs _expire_at<a class="headerlink" href="#mutual-exclusion-_ttl-vs-_expire_at" title="Permanent link">&para;</a></h2>
 <p>You cannot set both <code>_ttl</code> and <code>_expire_at</code> on the same instance. Popoto
 raises a <code>ModelException</code> during validation if both are set:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;conflict&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"conflict"</span><span class="p">)</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">session</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="mi">3600</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">session</span><span class="o">.</span><span class="n">_expire_at</span> <span class="o">=</span> <span class="n">datetime</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">session</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -3066,7 +3094,7 @@ to absolute expiration, clear the TTL first:</p>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">AgentSession</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">session_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">agent_name</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">context</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">context</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
 <a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">token_count</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">created_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now_add</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">updated_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -3075,24 +3103,24 @@ to absolute expiration, clear the TTL first:</p>
 <a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">7776000</span>  <span class="c1"># 90 days</span>
 <a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
 <a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="c1"># Create a session -- expires in 90 days</span>
-<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">&quot;user onboarding&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"assistant"</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">"user onboarding"</span><span class="p">)</span>
 <a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
 <a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="c1"># Update it -- TTL resets to 90 days from now</span>
 <a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="n">session</span><span class="o">.</span><span class="n">token_count</span> <span class="o">=</span> <span class="mi">2500</span>
 <a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="n">session</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>
 <a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="c1"># Override TTL for a temporary scratch session</span>
-<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="n">scratch</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;scratch&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="n">scratch</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"scratch"</span><span class="p">)</span>
 <a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="n">scratch</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="mi">3600</span>  <span class="c1"># 1 hour</span>
 <a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="n">scratch</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>
 <a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="c1"># Make a session permanent</span>
-<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="n">archival</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;archival-memory&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="n">archival</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"archival-memory"</span><span class="p">)</span>
 <a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a><span class="n">archival</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="n">archival</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>
 <a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a><span class="c1"># Set absolute expiration</span>
-<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="n">campaign</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">&quot;q4-campaign&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="n">campaign</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"q4-campaign"</span><span class="p">)</span>
 <a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a><span class="n">campaign</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Clear model-level TTL</span>
 <a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a><span class="n">campaign</span><span class="o">.</span><span class="n">_expire_at</span> <span class="o">=</span> <span class="n">datetime</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">59</span><span class="p">)</span>
 <a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a><span class="n">campaign</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>

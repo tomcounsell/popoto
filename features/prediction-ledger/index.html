@@ -1524,6 +1524,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3060,16 +3088,16 @@
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">_pl_partition</span> <span class="o">=</span> <span class="s2">&quot;default&quot;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">_pl_partition</span> <span class="o">=</span> <span class="s2">"default"</span>
 </code></pre></div>
 <h3 id="recording-and-resolving-predictions">Recording and Resolving Predictions<a class="headerlink" href="#recording-and-resolving-predictions" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;sky is blue&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"fact1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"sky is blue"</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># Record a prediction before acting</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">record_prediction</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="n">predicted</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">})</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">record_prediction</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="n">predicted</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">})</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="c1"># Later, resolve against actual outcome</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="n">actual</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">})</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="n">actual</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">})</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># prediction_error = |0.9 - 0.3| / max(0.9, 0.3, 1) = 0.6</span>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># Since 0.6 &lt; 0.7 (threshold), confidence is NOT reduced</span>
 </code></pre></div>
@@ -3083,35 +3111,35 @@
 </ul>
 <h3 id="querying-prediction-errors">Querying Prediction Errors<a class="headerlink" href="#querying-prediction-errors" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Get records with highest prediction errors</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">errors</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">get_highest_errors</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">errors</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">get_highest_errors</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="error_summarygroup_by">error_summary(group_by=...)<a class="headerlink" href="#error_summarygroup_by" title="Permanent link">&para;</a></h3>
 <p>Aggregates prediction errors from the error sorted set with optional grouping. Returns per-group summary statistics: <code>count</code>, <code>mean</code>, <code>stddev</code>, <code>p50</code>, <code>p90</code>, <code>p99</code>, <code>max</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Overall stats</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">)</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># {&quot;__all__&quot;: {&quot;count&quot;: 842, &quot;mean&quot;: 0.31, ...}}</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># {"__all__": {"count": 842, "mean": 0.31, ...}}</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Group by hour of day (0–23) to find time-of-day bias</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">by_hour</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">&quot;hour&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">"hour"</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">)</span>
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Group by day of week (0=Monday, 6=Sunday)</span>
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">by_weekday</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">&quot;weekday&quot;</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">"weekday"</span>
 <a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="p">)</span>
 <a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
 <a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="c1"># Group by calendar date (YYYY-MM-DD strings)</span>
 <a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="n">by_day</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">&quot;day&quot;</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">"day"</span>
 <a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="p">)</span>
 <a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
 <a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="c1"># Custom bucketer: callable(member_key, error) -&gt; hashable label</span>
 <a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="k">def</span><span class="w"> </span><span class="nf">error_band</span><span class="p">(</span><span class="n">member_key</span><span class="p">,</span> <span class="n">error</span><span class="p">):</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="k">return</span> <span class="s2">&quot;high&quot;</span> <span class="k">if</span> <span class="n">error</span> <span class="o">&gt;=</span> <span class="mf">0.7</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;medium&quot;</span> <span class="k">if</span> <span class="n">error</span> <span class="o">&gt;=</span> <span class="mf">0.3</span> <span class="k">else</span> <span class="s2">&quot;low&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="k">return</span> <span class="s2">"high"</span> <span class="k">if</span> <span class="n">error</span> <span class="o">&gt;=</span> <span class="mf">0.7</span> <span class="k">else</span> <span class="p">(</span><span class="s2">"medium"</span> <span class="k">if</span> <span class="n">error</span> <span class="o">&gt;=</span> <span class="mf">0.3</span> <span class="k">else</span> <span class="s2">"low"</span><span class="p">)</span>
 <a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>
 <a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="n">by_band</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="n">error_band</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="n">error_band</span>
 <a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="p">)</span>
 </code></pre></div>
 <p>The function samples up to <code>limit</code> members (default 100) from the error sorted set via <code>ZREVRANGE</code>, then fetches per-instance metadata in a single pipelined batch. Corrupt entries are skipped with a warning. See <a href="../metacognitive-layer/">Metacognitive Layer</a> for full documentation.</p>

@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2868,7 +2896,7 @@ Returns an empty list if no tokens survive filtering.</p>
 <span class="normal"><a href="#__codelineno-0-105">105</a></span>
 <span class="normal"><a href="#__codelineno-0-106">106</a></span>
 <span class="normal"><a href="#__codelineno-0-107">107</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="k">def</span><span class="w"> </span><span class="nf">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Tokenize a text string into individual terms for indexing.</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="w">    </span><span class="sd">"""Tokenize a text string into individual terms for indexing.</span>
 <a id="__codelineno-0-78" name="__codelineno-0-78"></a>
 <a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    Lowercases the input, splits on non-word characters, filters out tokens</span>
 <a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    shorter than 3 characters and common English stop words.</span>
@@ -2882,7 +2910,7 @@ Returns an empty list if no tokens survive filtering.</p>
 <a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">        list[str]: Tokens suitable for indexing. Deduplicated if unique=True,</span>
 <a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">            raw (with repeats) if unique=False.</span>
 <a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">            Returns an empty list if no tokens survive filtering.</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">    """</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">text</span><span class="p">:</span>
 <a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="n">lowered</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>

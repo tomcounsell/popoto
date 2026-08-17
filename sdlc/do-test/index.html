@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2717,7 +2745,7 @@
 
 <h2 id="runner-lint-and-gates">Runner, lint, and gates<a class="headerlink" href="#runner-lint-and-gates" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; requires Redis/Valkey on localhost:6379</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;test_name&quot;</span><span class="w">     </span><span class="c1"># single test</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mypy<span class="w"> </span>src/<span class="w">                 </span><span class="c1"># type check</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format — this repo has NO ruff (line length 88; isort 79)</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate</span>

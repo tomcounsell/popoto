@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -4131,12 +4159,12 @@ instances matching all criteria are returned.</p>
 <a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">Restaurant</span><span class="p">)</span>
 <a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    <span class="n">driver</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">Driver</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="n">total</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">)</span>
 <a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="n">created_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now_add</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="n">updated_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>
 <a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;-created_at&quot;</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"-created_at"</span>
 <a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">2592000</span>  <span class="c1"># 30 days</span>
 </code></pre></div>
 <p>These models are used throughout the examples on this page. See
@@ -4145,18 +4173,18 @@ instances matching all criteria are returned.</p>
 <p>When you know the exact key values, use <code>query.get()</code> to retrieve one instance. This performs a
 direct Redis key lookup, making it the fastest way to load a model.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">burger_palace</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;American&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"American"</span><span class="p">,</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># =&gt; &quot;American&quot;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># =&gt; "American"</span>
 </code></pre></div>
 <p>You can also retrieve an object by its raw Redis key.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">redis_key</span><span class="o">=</span><span class="s2">&quot;Restaurant:Burger Palace&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">redis_key</span><span class="o">=</span><span class="s2">"Restaurant:Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="p">)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># =&gt; 4.5</span>
 </code></pre></div>
@@ -4172,7 +4200,7 @@ direct Redis key lookup, making it the fastest way to load a model.</p>
 "recently viewed" items, or a secondary index), use <code>query.get_many()</code> to hydrate them all in
 a single round-trip. Internally this uses a Redis pipeline to batch <code>HGETALL</code> calls, turning
 N sequential lookups into one network exchange.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Restaurant:Burger Palace&quot;</span><span class="p">,</span> <span class="s2">&quot;Restaurant:Sushi Zen&quot;</span><span class="p">,</span> <span class="s2">&quot;Restaurant:Gone Place&quot;</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Restaurant:Burger Palace"</span><span class="p">,</span> <span class="s2">"Restaurant:Sushi Zen"</span><span class="p">,</span> <span class="s2">"Restaurant:Gone Place"</span><span class="p">]</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get_many</span><span class="p">(</span><span class="n">redis_keys</span><span class="o">=</span><span class="n">keys</span><span class="p">)</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurants</span><span class="p">)</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># =&gt; [&lt;Restaurant&gt;, &lt;Restaurant&gt;, None]  -- third key did not exist</span>
@@ -4209,7 +4237,7 @@ to see bulk Order loading with both default and <code>skip_none=True</code> mode
 not block the event loop even when hydrating hundreds of keys. It accepts the same
 parameters and preserves the same ordering guarantees as the synchronous version.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">bulk_lookup</span><span class="p">():</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Restaurant:Burger Palace&quot;</span><span class="p">,</span> <span class="s2">&quot;Restaurant:Sushi Zen&quot;</span><span class="p">,</span> <span class="s2">&quot;Restaurant:Gone Place&quot;</span><span class="p">]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Restaurant:Burger Palace"</span><span class="p">,</span> <span class="s2">"Restaurant:Sushi Zen"</span><span class="p">,</span> <span class="s2">"Restaurant:Gone Place"</span><span class="p">]</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">restaurants</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">async_get_many</span><span class="p">(</span><span class="n">redis_keys</span><span class="o">=</span><span class="n">keys</span><span class="p">)</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="c1"># =&gt; [&lt;Restaurant&gt;, &lt;Restaurant&gt;, None]</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
@@ -4221,7 +4249,7 @@ parameters and preserves the same ordering guarantees as the synchronous version
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">hydrate_all</span><span class="p">():</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">async_keys</span><span class="p">()</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">restaurants</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">async_get_many</span><span class="p">(</span><span class="n">redis_keys</span><span class="o">=</span><span class="n">keys</span><span class="p">,</span> <span class="n">skip_none</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loaded </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">restaurants</span><span class="p">)</span><span class="si">}</span><span class="s2"> restaurants&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Loaded </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">restaurants</span><span class="p">)</span><span class="si">}</span><span class="s2"> restaurants"</span><span class="p">)</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -4238,14 +4266,14 @@ to that model and loads each one.</p>
 </code></pre></div>
 <p>The <code>all()</code> method accepts the same <code>order_by</code>, <code>limit</code>, and <code>values</code> parameters as <code>filter()</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># All restaurants ordered by name</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"name"</span><span class="p">)</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># First 5 restaurants</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
 <a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># All restaurants as dicts with only the name field</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,))</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;}]</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,))</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># =&gt; [{"name": "Burger Palace"}]</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -4257,17 +4285,17 @@ at query time by passing a different <code>order_by</code> value.</p>
 <p>Use <code>query.filter()</code> to retrieve instances matching specific criteria. Filters are expressed as
 keyword arguments using Django-style lookup expressions.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">sushi_zen</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Sushi Zen&quot;</span><span class="p">,</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Sushi Zen"</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">,</span>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.8</span><span class="p">,</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7580</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9855</span><span class="p">),</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">)</span>
 <a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">japanese</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__contains</span><span class="o">=</span><span class="s2">&quot;Sushi&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">japanese</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__contains</span><span class="o">=</span><span class="s2">"Sushi"</span><span class="p">)</span>
 <a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">japanese</span><span class="p">))</span>
 <a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># =&gt; 1</span>
 <a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">japanese</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># =&gt; &quot;Sushi Zen&quot;</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># =&gt; "Sushi Zen"</span>
 </code></pre></div>
 <p>You can combine multiple filters. Only instances matching all criteria are returned.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">top_restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
@@ -4288,13 +4316,13 @@ interchangeably based on your preference.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Kwargs API - all parameters in one call</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">,</span>
 <a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span>
 <a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">)</span>
 </code></pre></div>
 <p>The chainable API builds queries incrementally with method chaining.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Chainable API - fluent method chaining</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 </code></pre></div>
 <p>Both approaches produce identical results. The chainable API can be more readable when building
 complex queries dynamically or when you prefer a fluent interface style.</p>
@@ -4373,8 +4401,8 @@ QueryBuilder with the combined filters.</p>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">results</span> <span class="o">=</span> <span class="p">(</span>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span>
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span>
 <a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="p">)</span>
@@ -4383,8 +4411,8 @@ QueryBuilder with the combined filters.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Same query using kwargs API</span>
 <a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">,</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">,</span>
 <a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span>
 <a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="p">)</span>
 </code></pre></div>
@@ -4394,19 +4422,19 @@ This is more efficient than calling <code>all()[0]</code> when you only need one
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Get the highest-rated Japanese restaurant</span>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">top_japanese</span> <span class="o">=</span> <span class="p">(</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span>
 <a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="o">.</span><span class="n">first</span><span class="p">()</span>
 <a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="p">)</span>
 <a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
 <a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="k">if</span> <span class="n">top_japanese</span><span class="p">:</span>
-<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Best Japanese: </span><span class="si">{</span><span class="n">top_japanese</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">top_japanese</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Best Japanese: </span><span class="si">{</span><span class="n">top_japanese</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">top_japanese</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="counting-without-loading">Counting Without Loading<a class="headerlink" href="#counting-without-loading" title="Permanent link">&para;</a></h3>
 <p>Use <code>count()</code> on a QueryBuilder to count matching results without loading objects into memory.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Count premium menu items without loading them</span>
 <a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">expensive_count</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">price__gte</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Premium items: </span><span class="si">{</span><span class="n">expensive_count</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Premium items: </span><span class="si">{</span><span class="n">expensive_count</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="using-values-with-chainable-api">Using Values with Chainable API<a class="headerlink" href="#using-values-with-chainable-api" title="Permanent link">&para;</a></h3>
 <p>The <code>values()</code> method specifies which fields to return as dictionaries.</p>
@@ -4414,11 +4442,11 @@ This is more efficient than calling <code>all()[0]</code> when you only need one
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">restaurant_data</span> <span class="o">=</span> <span class="p">(</span>
 <a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span>
 <a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">)</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"rating"</span><span class="p">)</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span>
 <a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="p">)</span>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Sushi Zen&quot;, &quot;rating&quot;: 4.8}, {&quot;name&quot;: &quot;Burger Palace&quot;, &quot;rating&quot;: 4.5}]</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="c1"># =&gt; [{"name": "Sushi Zen", "rating": 4.8}, {"name": "Burger Palace", "rating": 4.5}]</span>
 </code></pre></div>
 <h3 id="sorting-by-computed-values">Sorting by Computed Values<a class="headerlink" href="#sorting-by-computed-values" title="Permanent link">&para;</a></h3>
 <p>Use <code>computed_sort()</code> to sort results by a value computed in Python rather than a stored
@@ -4439,8 +4467,8 @@ get the correct top-N results.</p>
 <a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">data</span> <span class="o">=</span> <span class="p">(</span>
 <a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span>
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">available</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="o">.</span><span class="n">computed_sort</span><span class="p">(</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;price&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;rating&quot;</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="o">.</span><span class="n">computed_sort</span><span class="p">(</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="s2">"price"</span><span class="p">]</span> <span class="o">/</span> <span class="n">d</span><span class="p">[</span><span class="s2">"rating"</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"price"</span><span class="p">,</span> <span class="s2">"rating"</span><span class="p">)</span>
 <a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>    <span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="p">)</span>
@@ -4471,7 +4499,7 @@ You can iterate over a QueryBuilder directly, use <code>len()</code>, or access 
 <a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>
 <a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a><span class="c1"># Boolean check</span>
 <a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a><span class="k">if</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Found matches!&quot;</span><span class="p">)</span>
+<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">"Found matches!"</span><span class="p">)</span>
 <a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a>
 <a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a><span class="c1"># Comparison with list</span>
 <a id="__codelineno-20-19" name="__codelineno-20-19" href="#__codelineno-20-19"></a><span class="k">assert</span> <span class="n">results</span> <span class="o">==</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
@@ -4499,7 +4527,7 @@ at the end.</p>
 <a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="k">if</span> <span class="n">cuisine_type</span><span class="p">:</span>
 <a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>    <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="n">cuisine_type</span><span class="p">)</span>
 <a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>
-<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="n">results</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="n">results</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 </code></pre></div>
 <h2 id="q-objects-or-and-not">Q Objects (OR, AND, NOT)<a class="headerlink" href="#q-objects-or-and-not" title="Permanent link">&para;</a></h2>
 <p>Q objects enable complex query logic with OR, AND, and NOT operators. They provide a Django-style
@@ -4510,7 +4538,7 @@ interface for building expressive filter expressions that go beyond simple AND-e
 </code></pre></div>
 <h3 id="basic-q-object-usage">Basic Q Object Usage<a class="headerlink" href="#basic-q-object-usage" title="Permanent link">&para;</a></h3>
 <p>A Q object wraps filter kwargs, which can then be combined with other Q objects using operators.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="c1"># Simple Q object - equivalent to filter(status=&quot;active&quot;)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="c1"># Simple Q object - equivalent to filter(status="active")</span>
 <a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="n">active</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">active</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
 <a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
 <a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="c1"># Q objects support all the same lookups as regular filter kwargs</span>
@@ -4521,13 +4549,13 @@ interface for building expressive filter expressions that go beyond simple AND-e
 either condition.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Find restaurants that are Japanese OR have a high rating</span>
 <a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
 <a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="p">)</span>
 </code></pre></div>
 <p>You can chain multiple OR conditions.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1"># Find restaurants matching any of three cuisines</span>
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Italian&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Mexican&quot;</span><span class="p">)</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Italian"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Mexican"</span><span class="p">)</span>
 <a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="p">)</span>
 </code></pre></div>
 <div class="admonition tip">
@@ -4560,8 +4588,8 @@ condition.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1"># Find all restaurants that are NOT inactive</span>
 <a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">Q</span><span class="p">(</span><span class="n">active</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
 <a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
-<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="c1"># Find restaurants not in the &quot;Fast Food&quot; cuisine</span>
-<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Fast Food&quot;</span><span class="p">))</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="c1"># Find restaurants not in the "Fast Food" cuisine</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Fast Food"</span><span class="p">))</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -4574,32 +4602,32 @@ caution in production, and prefer positive filters when possible.</p>
 operator precedence.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="c1"># Active OR premium restaurants, with high ratings</span>
 <a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>    <span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">active</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Premium&quot;</span><span class="p">))</span> <span class="o">&amp;</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>    <span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">active</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Premium"</span><span class="p">))</span> <span class="o">&amp;</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
 <a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="p">)</span>
 <a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>
 <a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="c1"># Complex: (active AND high-rated) OR (premium AND any rating)</span>
 <a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>    <span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">active</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.5</span><span class="p">))</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Premium&quot;</span><span class="p">)</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>    <span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">active</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.5</span><span class="p">))</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Premium"</span><span class="p">)</span>
 <a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a><span class="p">)</span>
 <a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>
 <a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="c1"># Exclude specific combinations</span>
 <a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Fast Food&quot;</span><span class="p">)</span>
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Fast Food"</span><span class="p">)</span>
 <a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="mixing-q-objects-with-kwargs">Mixing Q Objects with Kwargs<a class="headerlink" href="#mixing-q-objects-with-kwargs" title="Permanent link">&para;</a></h3>
 <p>You can pass Q objects alongside regular kwargs to <code>filter()</code>. The Q objects are evaluated first,
 then AND-ed with the kwargs filters.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="c1"># Q object OR combined with kwarg filter</span>
-<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="c1"># Equivalent to: (cuisine=&quot;Japanese&quot; OR cuisine=&quot;Italian&quot;) AND active=True</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="c1"># Equivalent to: (cuisine="Japanese" OR cuisine="Italian") AND active=True</span>
 <a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Italian&quot;</span><span class="p">),</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>    <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Italian"</span><span class="p">),</span>
 <a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>    <span class="n">active</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="p">)</span>
 </code></pre></div>
 <p>This is useful when you have a dynamic OR condition but always want to apply a static filter.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1"># Dynamic cuisine filter with static active=True</span>
-<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">cuisines</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Japanese&quot;</span><span class="p">,</span> <span class="s2">&quot;Italian&quot;</span><span class="p">,</span> <span class="s2">&quot;Mexican&quot;</span><span class="p">]</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">cuisines</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Japanese"</span><span class="p">,</span> <span class="s2">"Italian"</span><span class="p">,</span> <span class="s2">"Mexican"</span><span class="p">]</span>
 <a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="n">cuisine_q</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="n">cuisines</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 <a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cuisines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
 <a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>    <span class="n">cuisine_q</span> <span class="o">=</span> <span class="n">cuisine_q</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
@@ -4610,9 +4638,9 @@ then AND-ed with the kwargs filters.</p>
 <p>Q objects work seamlessly with the chainable query builder.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">results</span> <span class="o">=</span> <span class="p">(</span>
 <a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>    <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Italian&quot;</span><span class="p">))</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Italian"</span><span class="p">))</span>
 <a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
-<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span>
 <a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
 <a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a>    <span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a><span class="p">)</span>
@@ -4653,7 +4681,7 @@ then AND-ed with the kwargs filters.</p>
 <a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">rating__lte</span><span class="o">=</span><span class="mf">2.0</span><span class="p">))</span>
 <a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>
 <a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="c1"># Q with KeyField pattern matching</span>
-<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;A&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;B&quot;</span><span class="p">))</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">"A"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">"B"</span><span class="p">))</span>
 </code></pre></div>
 <h3 id="performance-considerations">Performance Considerations<a class="headerlink" href="#performance-considerations" title="Permanent link">&para;</a></h3>
 <p>Q objects provide expressive query syntax, but understanding their performance characteristics
@@ -4661,10 +4689,10 @@ helps you write efficient code.</p>
 <p><strong>OR queries execute both sides</strong>: When you use <code>|</code>, Popoto evaluates both Q objects and computes
 the union of their result sets. This means two separate filter operations are performed.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="c1"># This executes TWO filter operations, then unions the results</span>
-<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Italian&quot;</span><span class="p">))</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span> <span class="o">|</span> <span class="n">Q</span><span class="p">(</span><span class="n">cuisine</span><span class="o">=</span><span class="s2">"Italian"</span><span class="p">))</span>
 <a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>
 <a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="c1"># This is more efficient for simple value matching</span>
-<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine__in</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Japanese&quot;</span><span class="p">,</span> <span class="s2">&quot;Italian&quot;</span><span class="p">])</span>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">cuisine__in</span><span class="o">=</span><span class="p">[</span><span class="s2">"Japanese"</span><span class="p">,</span> <span class="s2">"Italian"</span><span class="p">])</span>
 </code></pre></div>
 <p><strong>AND queries use set intersection</strong>: When you use <code>&amp;</code>, Popoto evaluates both Q objects and
 computes the intersection. This is similar to passing multiple kwargs.</p>
@@ -4708,11 +4736,11 @@ support for autocomplete and error detection.</p>
 <h3 id="expression-vs-kwargs-syntax">Expression vs Kwargs Syntax<a class="headerlink" href="#expression-vs-kwargs-syntax" title="Permanent link">&para;</a></h3>
 <p>The traditional kwargs syntax uses field names as strings with lookup suffixes.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="c1"># Kwargs syntax</span>
-<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;active&quot;</span><span class="p">)</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"active"</span><span class="p">)</span>
 </code></pre></div>
 <p>The expression syntax uses Python operators on Field classes accessed through the Model.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="c1"># Expression syntax</span>
-<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">&gt;=</span> <span class="mf">4.0</span><span class="p">,</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">&quot;active&quot;</span><span class="p">)</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">&gt;=</span> <span class="mf">4.0</span><span class="p">,</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">"active"</span><span class="p">)</span>
 </code></pre></div>
 <p>Both approaches produce identical results. The expression syntax offers IDE autocomplete on field
 names, compile-time detection of typos, and a more natural Python feel.</p>
@@ -4761,10 +4789,10 @@ names, compile-time detection of typos, and a more natural Python feel.</p>
 </table>
 <p>Here are examples using different operators.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="c1"># Equal to</span>
-<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">"Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>
 <a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="c1"># Not equal to</span>
-<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="s2">&quot;closed&quot;</span><span class="p">)</span>
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="s2">"closed"</span><span class="p">)</span>
 <a id="__codelineno-38-6" name="__codelineno-38-6" href="#__codelineno-38-6"></a>
 <a id="__codelineno-38-7" name="__codelineno-38-7" href="#__codelineno-38-7"></a><span class="c1"># Greater than</span>
 <a id="__codelineno-38-8" name="__codelineno-38-8" href="#__codelineno-38-8"></a><span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">MenuItem</span><span class="o">.</span><span class="n">price</span> <span class="o">&gt;</span> <span class="mf">20.0</span><span class="p">)</span>
@@ -4788,13 +4816,13 @@ control operator precedence.</p>
 <a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>
 <a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a><span class="c1"># OR: restaurants that are Japanese OR Italian</span>
 <a id="__codelineno-39-7" name="__codelineno-39-7" href="#__codelineno-39-7"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a>    <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">==</span> <span class="s2">&quot;Japanese&quot;</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">==</span> <span class="s2">&quot;Italian&quot;</span><span class="p">)</span>
+<a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a>    <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">==</span> <span class="s2">"Japanese"</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">==</span> <span class="s2">"Italian"</span><span class="p">)</span>
 <a id="__codelineno-39-9" name="__codelineno-39-9" href="#__codelineno-39-9"></a><span class="p">)</span>
 <a id="__codelineno-39-10" name="__codelineno-39-10" href="#__codelineno-39-10"></a>
 <a id="__codelineno-39-11" name="__codelineno-39-11" href="#__codelineno-39-11"></a><span class="c1"># Complex: (high-rated AND active) OR premium cuisine</span>
 <a id="__codelineno-39-12" name="__codelineno-39-12" href="#__codelineno-39-12"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-39-13" name="__codelineno-39-13" href="#__codelineno-39-13"></a>    <span class="p">((</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">&gt;=</span> <span class="mf">4.5</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">active</span> <span class="o">==</span> <span class="kc">True</span><span class="p">))</span>
-<a id="__codelineno-39-14" name="__codelineno-39-14" href="#__codelineno-39-14"></a>    <span class="o">|</span> <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">==</span> <span class="s2">&quot;Premium&quot;</span><span class="p">)</span>
+<a id="__codelineno-39-14" name="__codelineno-39-14" href="#__codelineno-39-14"></a>    <span class="o">|</span> <span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">==</span> <span class="s2">"Premium"</span><span class="p">)</span>
 <a id="__codelineno-39-15" name="__codelineno-39-15" href="#__codelineno-39-15"></a><span class="p">)</span>
 </code></pre></div>
 <div class="admonition note">
@@ -4826,7 +4854,7 @@ useful when some conditions are more naturally expressed one way or the other.</
 <a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>    <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span>
 <a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">&gt;=</span> <span class="mf">4.0</span><span class="p">)</span>
 <a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">active</span> <span class="o">==</span> <span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"-rating"</span><span class="p">)</span>
 <a id="__codelineno-41-7" name="__codelineno-41-7" href="#__codelineno-41-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
 <a id="__codelineno-41-8" name="__codelineno-41-8" href="#__codelineno-41-8"></a>    <span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-41-9" name="__codelineno-41-9" href="#__codelineno-41-9"></a><span class="p">)</span>
@@ -4836,7 +4864,7 @@ useful when some conditions are more naturally expressed one way or the other.</
 <a id="__codelineno-41-13" name="__codelineno-41-13" href="#__codelineno-41-13"></a>    <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span>
 <a id="__codelineno-41-14" name="__codelineno-41-14" href="#__codelineno-41-14"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">MenuItem</span><span class="o">.</span><span class="n">price</span> <span class="o">&lt;=</span> <span class="mf">20.0</span><span class="p">)</span>
 <a id="__codelineno-41-15" name="__codelineno-41-15" href="#__codelineno-41-15"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">available</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-41-16" name="__codelineno-41-16" href="#__codelineno-41-16"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;price&quot;</span><span class="p">)</span>
+<a id="__codelineno-41-16" name="__codelineno-41-16" href="#__codelineno-41-16"></a>    <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">"price"</span><span class="p">)</span>
 <a id="__codelineno-41-17" name="__codelineno-41-17" href="#__codelineno-41-17"></a>    <span class="o">.</span><span class="n">first</span><span class="p">()</span>
 <a id="__codelineno-41-18" name="__codelineno-41-18" href="#__codelineno-41-18"></a><span class="p">)</span>
 </code></pre></div>
@@ -4875,12 +4903,12 @@ queries automatically. String-based kwargs require manual find-and-replace.</p>
 <a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">&gt;=</span> <span class="mf">4.0</span><span class="p">)</span>
 <a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>
 <a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a><span class="c1"># Kwargs are concise for pattern matching</span>
-<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;B&quot;</span><span class="p">)</span>
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">"B"</span><span class="p">)</span>
 <a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>
 <a id="__codelineno-43-7" name="__codelineno-43-7" href="#__codelineno-43-7"></a><span class="c1"># Mix both as needed</span>
 <a id="__codelineno-43-8" name="__codelineno-43-8" href="#__codelineno-43-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-43-9" name="__codelineno-43-9" href="#__codelineno-43-9"></a>    <span class="n">Restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">&gt;=</span> <span class="mf">4.0</span><span class="p">,</span>
-<a id="__codelineno-43-10" name="__codelineno-43-10" href="#__codelineno-43-10"></a>    <span class="n">name__contains</span><span class="o">=</span><span class="s2">&quot;Sushi&quot;</span>
+<a id="__codelineno-43-10" name="__codelineno-43-10" href="#__codelineno-43-10"></a>    <span class="n">name__contains</span><span class="o">=</span><span class="s2">"Sushi"</span>
 <a id="__codelineno-43-11" name="__codelineno-43-11" href="#__codelineno-43-11"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="count-results">Count Results<a class="headerlink" href="#count-results" title="Permanent link">&para;</a></h2>
@@ -4899,7 +4927,7 @@ filter arguments, it computes the intersection of matching key sets.</p>
 <p>Use <code>query.keys()</code> to retrieve the raw Redis keys for all instances of a model. This is useful
 for debugging or performing custom Redis operations.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="n">keys</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a><span class="c1"># =&gt; [b&quot;Restaurant:Burger Palace&quot;, b&quot;Restaurant:Sushi Zen&quot;]</span>
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a><span class="c1"># =&gt; [b"Restaurant:Burger Palace", b"Restaurant:Sushi Zen"]</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -4910,15 +4938,15 @@ orphan removal that covers all five index types.</p>
 <h2 id="values">Values<a class="headerlink" href="#values" title="Permanent link">&para;</a></h2>
 <p>Return results as dictionaries instead of model instances by passing a <code>values</code> tuple. Specify
 which fields to include. This is faster and uses less memory when you only need a few fields.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a><span class="n">names_and_cuisines</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;cuisine&quot;</span><span class="p">))</span>
-<a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;, &quot;cuisine&quot;: &quot;American&quot;}, ...]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a><span class="n">names_and_cuisines</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"cuisine"</span><span class="p">))</span>
+<a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a><span class="c1"># =&gt; [{"name": "Burger Palace", "cuisine": "American"}, ...]</span>
 </code></pre></div>
 <p>You can combine <code>values</code> with <code>filter()</code> for targeted queries.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a><span class="n">cheap_items</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>    <span class="n">price__lte</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span>
-<a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a>    <span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">),</span>
+<a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a>    <span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"price"</span><span class="p">),</span>
 <a id="__codelineno-47-4" name="__codelineno-47-4" href="#__codelineno-47-4"></a><span class="p">)</span>
-<a id="__codelineno-47-5" name="__codelineno-47-5" href="#__codelineno-47-5"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Fries&quot;, &quot;price&quot;: 4.99}, ...]</span>
+<a id="__codelineno-47-5" name="__codelineno-47-5" href="#__codelineno-47-5"></a><span class="c1"># =&gt; [{"name": "Fries", "price": 4.99}, ...]</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -4930,15 +4958,15 @@ result sets.</p>
 <p>Use <code>order_by</code> to sort results by any field. Prefix the field name with <code>-</code> for descending
 order. Ascending order is the default.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a><span class="c1"># Cheapest menu items first</span>
-<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a><span class="n">items</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;price&quot;</span><span class="p">)</span>
+<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a><span class="n">items</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"price"</span><span class="p">)</span>
 <a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>
 <a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a><span class="c1"># Highest-rated restaurants first</span>
-<a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">)</span>
+<a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">)</span>
 </code></pre></div>
 <p>Ordering works with <code>filter()</code> as well.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a><span class="n">affordable</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>    <span class="n">price__lte</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
-<a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;price&quot;</span><span class="p">,</span>
+<a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">"price"</span><span class="p">,</span>
 <a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a><span class="p">)</span>
 </code></pre></div>
 <p>You can set a default ordering in the model's <code>Meta</code> class. The <code>Order</code> model above uses
@@ -4948,7 +4976,7 @@ override this at query time.</p>
 <a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a><span class="n">recent_orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>
 <a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a><span class="c1"># Override: sort by total ascending</span>
-<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a><span class="n">orders_by_total</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;total&quot;</span><span class="p">)</span>
+<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a><span class="n">orders_by_total</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"total"</span><span class="p">)</span>
 </code></pre></div>
 <p>See <a href="../meta/">Model Meta Options</a> for more on configuring default ordering.</p>
 <div class="admonition note">
@@ -4959,18 +4987,18 @@ together. Otherwise Popoto raises a <code>QueryException</code>.</p>
 <h2 id="limit-results">Limit Results<a class="headerlink" href="#limit-results" title="Permanent link">&para;</a></h2>
 <p>Use <code>limit</code> to cap the number of returned instances. The limit is applied after filtering and
 ordering.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="n">top_5</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="n">top_5</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
 <a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">top_5</span><span class="p">))</span>
 <a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a><span class="c1"># =&gt; 2</span>
 </code></pre></div>
 <p>You can also use Python slice notation on the result list.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="n">top_5</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">)[:</span><span class="mi">5</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="n">top_5</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">)[:</span><span class="mi">5</span><span class="p">]</span>
 </code></pre></div>
 <p>Both approaches return the same results. The explicit <code>limit</code> parameter may be slightly more
 efficient because it can short-circuit internal sorting. Combine <code>limit</code> with <code>order_by</code> to
 get "top N" style queries.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="c1"># The 3 cheapest items on the menu</span>
-<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a><span class="n">cheapest</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;price&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a><span class="n">cheapest</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"price"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="keyfield-filters">KeyField Filters<a class="headerlink" href="#keyfield-filters" title="Permanent link">&para;</a></h2>
 <p>KeyField filters support string matching operations on the values that make up the Redis key.
@@ -5011,19 +5039,19 @@ All lookups are case-sensitive.</p>
 </table>
 <p>Here are examples using the <code>Restaurant</code> model's <code>name</code> KeyField.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a><span class="c1"># Exact match</span>
-<a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
+<a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-54-3" name="__codelineno-54-3" href="#__codelineno-54-3"></a>
-<a id="__codelineno-54-4" name="__codelineno-54-4" href="#__codelineno-54-4"></a><span class="c1"># Restaurants whose name contains &quot;Sushi&quot;</span>
-<a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__contains</span><span class="o">=</span><span class="s2">&quot;Sushi&quot;</span><span class="p">)</span>
+<a id="__codelineno-54-4" name="__codelineno-54-4" href="#__codelineno-54-4"></a><span class="c1"># Restaurants whose name contains "Sushi"</span>
+<a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__contains</span><span class="o">=</span><span class="s2">"Sushi"</span><span class="p">)</span>
 <a id="__codelineno-54-6" name="__codelineno-54-6" href="#__codelineno-54-6"></a>
-<a id="__codelineno-54-7" name="__codelineno-54-7" href="#__codelineno-54-7"></a><span class="c1"># Restaurants whose name starts with &quot;B&quot;</span>
-<a id="__codelineno-54-8" name="__codelineno-54-8" href="#__codelineno-54-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;B&quot;</span><span class="p">)</span>
+<a id="__codelineno-54-7" name="__codelineno-54-7" href="#__codelineno-54-7"></a><span class="c1"># Restaurants whose name starts with "B"</span>
+<a id="__codelineno-54-8" name="__codelineno-54-8" href="#__codelineno-54-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">"B"</span><span class="p">)</span>
 <a id="__codelineno-54-9" name="__codelineno-54-9" href="#__codelineno-54-9"></a>
-<a id="__codelineno-54-10" name="__codelineno-54-10" href="#__codelineno-54-10"></a><span class="c1"># Restaurants whose name ends with &quot;Zen&quot;</span>
-<a id="__codelineno-54-11" name="__codelineno-54-11" href="#__codelineno-54-11"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__endswith</span><span class="o">=</span><span class="s2">&quot;Zen&quot;</span><span class="p">)</span>
+<a id="__codelineno-54-10" name="__codelineno-54-10" href="#__codelineno-54-10"></a><span class="c1"># Restaurants whose name ends with "Zen"</span>
+<a id="__codelineno-54-11" name="__codelineno-54-11" href="#__codelineno-54-11"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__endswith</span><span class="o">=</span><span class="s2">"Zen"</span><span class="p">)</span>
 <a id="__codelineno-54-12" name="__codelineno-54-12" href="#__codelineno-54-12"></a>
 <a id="__codelineno-54-13" name="__codelineno-54-13" href="#__codelineno-54-13"></a><span class="c1"># Match any of several names</span>
-<a id="__codelineno-54-14" name="__codelineno-54-14" href="#__codelineno-54-14"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__in</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span> <span class="s2">&quot;Sushi Zen&quot;</span><span class="p">,</span> <span class="s2">&quot;Taco Town&quot;</span><span class="p">])</span>
+<a id="__codelineno-54-14" name="__codelineno-54-14" href="#__codelineno-54-14"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__in</span><span class="o">=</span><span class="p">[</span><span class="s2">"Burger Palace"</span><span class="p">,</span> <span class="s2">"Sushi Zen"</span><span class="p">,</span> <span class="s2">"Taco Town"</span><span class="p">])</span>
 <a id="__codelineno-54-15" name="__codelineno-54-15" href="#__codelineno-54-15"></a>
 <a id="__codelineno-54-16" name="__codelineno-54-16" href="#__codelineno-54-16"></a><span class="c1"># All restaurants that have a name set (non-null)</span>
 <a id="__codelineno-54-17" name="__codelineno-54-17" href="#__codelineno-54-17"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__isnull</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
@@ -5076,19 +5104,19 @@ on non-key fields. They support the same lookups as KeyField (except <code>__con
 <a id="__codelineno-55-6" name="__codelineno-55-6" href="#__codelineno-55-6"></a>    <span class="n">total</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 <a id="__codelineno-55-7" name="__codelineno-55-7" href="#__codelineno-55-7"></a>
 <a id="__codelineno-55-8" name="__codelineno-55-8" href="#__codelineno-55-8"></a><span class="c1"># Exact match</span>
-<a id="__codelineno-55-9" name="__codelineno-55-9" href="#__codelineno-55-9"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="s2">&quot;shipped&quot;</span><span class="p">)</span>
+<a id="__codelineno-55-9" name="__codelineno-55-9" href="#__codelineno-55-9"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="s2">"shipped"</span><span class="p">)</span>
 <a id="__codelineno-55-10" name="__codelineno-55-10" href="#__codelineno-55-10"></a>
 <a id="__codelineno-55-11" name="__codelineno-55-11" href="#__codelineno-55-11"></a><span class="c1"># Match any of several statuses (server-side SUNION)</span>
-<a id="__codelineno-55-12" name="__codelineno-55-12" href="#__codelineno-55-12"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status__in</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;pending&quot;</span><span class="p">,</span> <span class="s2">&quot;processing&quot;</span><span class="p">])</span>
+<a id="__codelineno-55-12" name="__codelineno-55-12" href="#__codelineno-55-12"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status__in</span><span class="o">=</span><span class="p">[</span><span class="s2">"pending"</span><span class="p">,</span> <span class="s2">"processing"</span><span class="p">])</span>
 <a id="__codelineno-55-13" name="__codelineno-55-13" href="#__codelineno-55-13"></a>
 <a id="__codelineno-55-14" name="__codelineno-55-14" href="#__codelineno-55-14"></a><span class="c1"># Orders with a non-null status</span>
 <a id="__codelineno-55-15" name="__codelineno-55-15" href="#__codelineno-55-15"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status__isnull</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-55-16" name="__codelineno-55-16" href="#__codelineno-55-16"></a>
 <a id="__codelineno-55-17" name="__codelineno-55-17" href="#__codelineno-55-17"></a><span class="c1"># Prefix match</span>
-<a id="__codelineno-55-18" name="__codelineno-55-18" href="#__codelineno-55-18"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status__startswith</span><span class="o">=</span><span class="s2">&quot;ship&quot;</span><span class="p">)</span>
+<a id="__codelineno-55-18" name="__codelineno-55-18" href="#__codelineno-55-18"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status__startswith</span><span class="o">=</span><span class="s2">"ship"</span><span class="p">)</span>
 <a id="__codelineno-55-19" name="__codelineno-55-19" href="#__codelineno-55-19"></a>
 <a id="__codelineno-55-20" name="__codelineno-55-20" href="#__codelineno-55-20"></a><span class="c1"># Combine with SortedField range queries</span>
-<a id="__codelineno-55-21" name="__codelineno-55-21" href="#__codelineno-55-21"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">,</span> <span class="n">total__gte</span><span class="o">=</span><span class="mf">100.0</span><span class="p">)</span>
+<a id="__codelineno-55-21" name="__codelineno-55-21" href="#__codelineno-55-21"></a><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">,</span> <span class="n">total__gte</span><span class="o">=</span><span class="mf">100.0</span><span class="p">)</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -5150,7 +5178,7 @@ These are the fastest way to filter on continuous values.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a><span class="c1"># Top-rated restaurants, highest first, limit to 10</span>
 <a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a><span class="n">best</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a>    <span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
-<a id="__codelineno-58-4" name="__codelineno-58-4" href="#__codelineno-58-4"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span>
+<a id="__codelineno-58-4" name="__codelineno-58-4" href="#__codelineno-58-4"></a>    <span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">,</span>
 <a id="__codelineno-58-5" name="__codelineno-58-5" href="#__codelineno-58-5"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-58-6" name="__codelineno-58-6" href="#__codelineno-58-6"></a><span class="p">)</span>
 </code></pre></div>
@@ -5215,7 +5243,7 @@ referencing another model instance.</p>
 <a id="__codelineno-60-2" name="__codelineno-60-2" href="#__codelineno-60-2"></a><span class="n">nearby</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-60-3" name="__codelineno-60-3" href="#__codelineno-60-3"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7580</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9855</span><span class="p">),</span>
 <a id="__codelineno-60-4" name="__codelineno-60-4" href="#__codelineno-60-4"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-60-5" name="__codelineno-60-5" href="#__codelineno-60-5"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
+<a id="__codelineno-60-5" name="__codelineno-60-5" href="#__codelineno-60-5"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">'km'</span><span class="p">,</span>
 <a id="__codelineno-60-6" name="__codelineno-60-6" href="#__codelineno-60-6"></a><span class="p">)</span>
 <a id="__codelineno-60-7" name="__codelineno-60-7" href="#__codelineno-60-7"></a><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">nearby</span><span class="p">:</span>
 <a id="__codelineno-60-8" name="__codelineno-60-8" href="#__codelineno-60-8"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
@@ -5225,23 +5253,23 @@ referencing another model instance.</p>
 <a id="__codelineno-61-2" name="__codelineno-61-2" href="#__codelineno-61-2"></a>    <span class="n">location_latitude</span><span class="o">=</span><span class="mf">40.7580</span><span class="p">,</span>
 <a id="__codelineno-61-3" name="__codelineno-61-3" href="#__codelineno-61-3"></a>    <span class="n">location_longitude</span><span class="o">=-</span><span class="mf">73.9855</span><span class="p">,</span>
 <a id="__codelineno-61-4" name="__codelineno-61-4" href="#__codelineno-61-4"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
-<a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;mi&#39;</span><span class="p">,</span>
+<a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">'mi'</span><span class="p">,</span>
 <a id="__codelineno-61-6" name="__codelineno-61-6" href="#__codelineno-61-6"></a><span class="p">)</span>
 </code></pre></div>
 <p>Use another model instance as the center point for the search. This is handy when you already
 have a loaded customer or driver and want to find nearby restaurants.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a><span class="n">customer</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-62-2" name="__codelineno-62-2" href="#__codelineno-62-2"></a>    <span class="n">username</span><span class="o">=</span><span class="s2">&quot;janedoe&quot;</span><span class="p">,</span>
-<a id="__codelineno-62-3" name="__codelineno-62-3" href="#__codelineno-62-3"></a>    <span class="n">email</span><span class="o">=</span><span class="s2">&quot;jane@example.com&quot;</span><span class="p">,</span>
-<a id="__codelineno-62-4" name="__codelineno-62-4" href="#__codelineno-62-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Jane Doe&quot;</span><span class="p">,</span>
+<a id="__codelineno-62-2" name="__codelineno-62-2" href="#__codelineno-62-2"></a>    <span class="n">username</span><span class="o">=</span><span class="s2">"janedoe"</span><span class="p">,</span>
+<a id="__codelineno-62-3" name="__codelineno-62-3" href="#__codelineno-62-3"></a>    <span class="n">email</span><span class="o">=</span><span class="s2">"jane@example.com"</span><span class="p">,</span>
+<a id="__codelineno-62-4" name="__codelineno-62-4" href="#__codelineno-62-4"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Jane Doe"</span><span class="p">,</span>
 <a id="__codelineno-62-5" name="__codelineno-62-5" href="#__codelineno-62-5"></a>    <span class="n">address</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7484</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9857</span><span class="p">),</span>
 <a id="__codelineno-62-6" name="__codelineno-62-6" href="#__codelineno-62-6"></a><span class="p">)</span>
 <a id="__codelineno-62-7" name="__codelineno-62-7" href="#__codelineno-62-7"></a>
-<a id="__codelineno-62-8" name="__codelineno-62-8" href="#__codelineno-62-8"></a><span class="c1"># Restaurants within 2km of Jane&#39;s address</span>
+<a id="__codelineno-62-8" name="__codelineno-62-8" href="#__codelineno-62-8"></a><span class="c1"># Restaurants within 2km of Jane's address</span>
 <a id="__codelineno-62-9" name="__codelineno-62-9" href="#__codelineno-62-9"></a><span class="n">nearby</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-62-10" name="__codelineno-62-10" href="#__codelineno-62-10"></a>    <span class="n">location_member</span><span class="o">=</span><span class="n">customer</span><span class="p">,</span>
 <a id="__codelineno-62-11" name="__codelineno-62-11" href="#__codelineno-62-11"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-62-12" name="__codelineno-62-12" href="#__codelineno-62-12"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
+<a id="__codelineno-62-12" name="__codelineno-62-12" href="#__codelineno-62-12"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">'km'</span><span class="p">,</span>
 <a id="__codelineno-62-13" name="__codelineno-62-13" href="#__codelineno-62-13"></a><span class="p">)</span>
 </code></pre></div>
 <div class="admonition note">
@@ -5257,13 +5285,13 @@ Results are automatically sorted by distance, closest first.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-63-1" name="__codelineno-63-1" href="#__codelineno-63-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-63-2" name="__codelineno-63-2" href="#__codelineno-63-2"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
 <a id="__codelineno-63-3" name="__codelineno-63-3" href="#__codelineno-63-3"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-<a id="__codelineno-63-4" name="__codelineno-63-4" href="#__codelineno-63-4"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
+<a id="__codelineno-63-4" name="__codelineno-63-4" href="#__codelineno-63-4"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">'km'</span><span class="p">,</span>
 <a id="__codelineno-63-5" name="__codelineno-63-5" href="#__codelineno-63-5"></a>    <span class="n">location_with_distances</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-63-6" name="__codelineno-63-6" href="#__codelineno-63-6"></a><span class="p">)</span>
 <a id="__codelineno-63-7" name="__codelineno-63-7" href="#__codelineno-63-7"></a>
 <a id="__codelineno-63-8" name="__codelineno-63-8" href="#__codelineno-63-8"></a><span class="k">for</span> <span class="n">restaurant</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-63-9" name="__codelineno-63-9" href="#__codelineno-63-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> &quot;</span>
-<a id="__codelineno-63-10" name="__codelineno-63-10" href="#__codelineno-63-10"></a>          <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">_geo_distance_unit</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-63-9" name="__codelineno-63-9" href="#__codelineno-63-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> "</span>
+<a id="__codelineno-63-10" name="__codelineno-63-10" href="#__codelineno-63-10"></a>          <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">_geo_distance_unit</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-63-11" name="__codelineno-63-11" href="#__codelineno-63-11"></a><span class="c1"># =&gt; Burger Palace: 0.0 km</span>
 <a id="__codelineno-63-12" name="__codelineno-63-12" href="#__codelineno-63-12"></a><span class="c1"># =&gt; Sushi Zen: 5.2 km</span>
 </code></pre></div>
@@ -5273,8 +5301,8 @@ displaying "2.3 km away" in a delivery app interface.</p>
 <h3 id="finding-nearby-drivers">Finding Nearby Drivers<a class="headerlink" href="#finding-nearby-drivers" title="Permanent link">&para;</a></h3>
 <p>A common delivery-app pattern is finding the closest available driver to a restaurant.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a><span class="n">driver</span> <span class="o">=</span> <span class="n">Driver</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alex&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a>    <span class="n">phone</span><span class="o">=</span><span class="s2">&quot;555-0101&quot;</span><span class="p">,</span>
+<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Alex"</span><span class="p">,</span>
+<a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a>    <span class="n">phone</span><span class="o">=</span><span class="s2">"555-0101"</span><span class="p">,</span>
 <a id="__codelineno-64-4" name="__codelineno-64-4" href="#__codelineno-64-4"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.9</span><span class="p">,</span>
 <a id="__codelineno-64-5" name="__codelineno-64-5" href="#__codelineno-64-5"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7120</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0050</span><span class="p">),</span>
 <a id="__codelineno-64-6" name="__codelineno-64-6" href="#__codelineno-64-6"></a><span class="p">)</span>
@@ -5282,14 +5310,14 @@ displaying "2.3 km away" in a delivery app interface.</p>
 <a id="__codelineno-64-8" name="__codelineno-64-8" href="#__codelineno-64-8"></a><span class="n">nearby_drivers</span> <span class="o">=</span> <span class="n">Driver</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
 <a id="__codelineno-64-9" name="__codelineno-64-9" href="#__codelineno-64-9"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
 <a id="__codelineno-64-10" name="__codelineno-64-10" href="#__codelineno-64-10"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-64-11" name="__codelineno-64-11" href="#__codelineno-64-11"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
+<a id="__codelineno-64-11" name="__codelineno-64-11" href="#__codelineno-64-11"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">'km'</span><span class="p">,</span>
 <a id="__codelineno-64-12" name="__codelineno-64-12" href="#__codelineno-64-12"></a>    <span class="n">location_with_distances</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-64-13" name="__codelineno-64-13" href="#__codelineno-64-13"></a><span class="p">)</span>
 <a id="__codelineno-64-14" name="__codelineno-64-14" href="#__codelineno-64-14"></a>
 <a id="__codelineno-64-15" name="__codelineno-64-15" href="#__codelineno-64-15"></a><span class="k">if</span> <span class="n">nearby_drivers</span><span class="p">:</span>
 <a id="__codelineno-64-16" name="__codelineno-64-16" href="#__codelineno-64-16"></a>    <span class="n">closest</span> <span class="o">=</span> <span class="n">nearby_drivers</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-64-17" name="__codelineno-64-17" href="#__codelineno-64-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Assigning </span><span class="si">{</span><span class="n">closest</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> &quot;</span>
-<a id="__codelineno-64-18" name="__codelineno-64-18" href="#__codelineno-64-18"></a>          <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">closest</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">closest</span><span class="o">.</span><span class="n">_geo_distance_unit</span><span class="si">}</span><span class="s2"> away)&quot;</span><span class="p">)</span>
+<a id="__codelineno-64-17" name="__codelineno-64-17" href="#__codelineno-64-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Assigning </span><span class="si">{</span><span class="n">closest</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> "</span>
+<a id="__codelineno-64-18" name="__codelineno-64-18" href="#__codelineno-64-18"></a>          <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">closest</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">closest</span><span class="o">.</span><span class="n">_geo_distance_unit</span><span class="si">}</span><span class="s2"> away)"</span><span class="p">)</span>
 <a id="__codelineno-64-19" name="__codelineno-64-19" href="#__codelineno-64-19"></a>    <span class="c1"># =&gt; Assigning Alex (0.1 km away)</span>
 </code></pre></div>
 <p>See <a href="../fields/#geofield">Models and Fields</a> for more on defining GeoFields, and
@@ -5343,18 +5371,18 @@ and returns the top-K most similar instances.</p>
 <a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a>    <span class="n">topic</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-66-6" name="__codelineno-66-6" href="#__codelineno-66-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
 <a id="__codelineno-66-7" name="__codelineno-66-7" href="#__codelineno-66-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-66-8" name="__codelineno-66-8" href="#__codelineno-66-8"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+<a id="__codelineno-66-8" name="__codelineno-66-8" href="#__codelineno-66-8"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
 <a id="__codelineno-66-9" name="__codelineno-66-9" href="#__codelineno-66-9"></a>
 <a id="__codelineno-66-10" name="__codelineno-66-10" href="#__codelineno-66-10"></a><span class="c1"># Find memories semantically similar to a query</span>
-<a id="__codelineno-66-11" name="__codelineno-66-11" href="#__codelineno-66-11"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-66-11" name="__codelineno-66-11" href="#__codelineno-66-11"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">"revenue trends"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
 </code></pre></div>
 <p>When called without <code>indexes</code>, results are ranked purely by cosine similarity.</p>
 <h3 id="combined-with-sorted-indexes">Combined with Sorted Indexes<a class="headerlink" href="#combined-with-sorted-indexes" title="Permanent link">&para;</a></h3>
 <p>Pass <code>indexes</code> to blend semantic similarity with other sorted field scores using
 <code>composite_score()</code> under the hood:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a>    <span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span>
-<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">},</span>
+<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a>    <span class="s2">"revenue trends"</span><span class="p">,</span>
+<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">},</span>
 <a id="__codelineno-67-4" name="__codelineno-67-4" href="#__codelineno-67-4"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-67-5" name="__codelineno-67-5" href="#__codelineno-67-5"></a>    <span class="n">temperature</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
 <a id="__codelineno-67-6" name="__codelineno-67-6" href="#__codelineno-67-6"></a><span class="p">)</span>
@@ -5440,11 +5468,11 @@ This is approximately 186x faster than loading all objects just to count them.</
 <p>When you only need a few fields, use the <code>values</code> parameter. This is 2-4x faster than loading
 full model instances because it uses <code>HMGET</code> instead of <code>HGETALL</code> and skips model instantiation.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a><span class="c1"># Good: Only fetches name and rating fields</span>
-<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a><span class="n">data</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">))</span>
-<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;, &quot;rating&quot;: 4.5}, ...]</span>
+<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a><span class="n">data</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"rating"</span><span class="p">))</span>
+<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a><span class="c1"># =&gt; [{"name": "Burger Palace", "rating": 4.5}, ...]</span>
 <a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a>
 <a id="__codelineno-69-5" name="__codelineno-69-5" href="#__codelineno-69-5"></a><span class="c1"># Better: If all fields are KeyFields, no Redis commands needed at all</span>
-<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a><span class="n">names</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,))</span>
+<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a><span class="n">names</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,))</span>
 </code></pre></div>
 <p>When all requested fields are KeyFields, Popoto extracts values directly from the Redis key
 strings without any additional Redis commands.</p>
@@ -5453,13 +5481,13 @@ strings without any additional Redis commands.</p>
 like <code>__startswith</code>, <code>__endswith</code>, and <code>__contains</code> use Redis <code>SCAN</code> which iterates through
 keys.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a><span class="c1"># Good: Uses Redis set lookup - O(1)</span>
-<a id="__codelineno-70-2" name="__codelineno-70-2" href="#__codelineno-70-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
+<a id="__codelineno-70-2" name="__codelineno-70-2" href="#__codelineno-70-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-70-3" name="__codelineno-70-3" href="#__codelineno-70-3"></a>
 <a id="__codelineno-70-4" name="__codelineno-70-4" href="#__codelineno-70-4"></a><span class="c1"># Good: Uses SUNION for efficient OR queries</span>
-<a id="__codelineno-70-5" name="__codelineno-70-5" href="#__codelineno-70-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__in</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span> <span class="s2">&quot;Sushi Zen&quot;</span><span class="p">])</span>
+<a id="__codelineno-70-5" name="__codelineno-70-5" href="#__codelineno-70-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__in</span><span class="o">=</span><span class="p">[</span><span class="s2">"Burger Palace"</span><span class="p">,</span> <span class="s2">"Sushi Zen"</span><span class="p">])</span>
 <a id="__codelineno-70-6" name="__codelineno-70-6" href="#__codelineno-70-6"></a>
 <a id="__codelineno-70-7" name="__codelineno-70-7" href="#__codelineno-70-7"></a><span class="c1"># Slower: Scans all keys matching pattern</span>
-<a id="__codelineno-70-8" name="__codelineno-70-8" href="#__codelineno-70-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;B&quot;</span><span class="p">)</span>
+<a id="__codelineno-70-8" name="__codelineno-70-8" href="#__codelineno-70-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">"B"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="use-sortedfield-for-range-queries">Use SortedField for Range Queries<a class="headerlink" href="#use-sortedfield-for-range-queries" title="Permanent link">&para;</a></h3>
 <p>SortedField filters use Redis sorted sets with O(log N + M) time complexity where N is the
@@ -5468,21 +5496,21 @@ index size and M is the result count. This is much faster than filtering in Pyth
 <a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">price__gte</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">price__lte</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
 <a id="__codelineno-71-3" name="__codelineno-71-3" href="#__codelineno-71-3"></a>
 <a id="__codelineno-71-4" name="__codelineno-71-4" href="#__codelineno-71-4"></a><span class="c1"># Avoid: Would require loading all items and filtering in Python</span>
-<a id="__codelineno-71-5" name="__codelineno-71-5" href="#__codelineno-71-5"></a><span class="c1"># (Popoto doesn&#39;t support this pattern, but the principle applies)</span>
+<a id="__codelineno-71-5" name="__codelineno-71-5" href="#__codelineno-71-5"></a><span class="c1"># (Popoto doesn't support this pattern, but the principle applies)</span>
 </code></pre></div>
 <h3 id="limit-results-when-possible">Limit Results When Possible<a class="headerlink" href="#limit-results-when-possible" title="Permanent link">&para;</a></h3>
 <p>Apply <code>limit</code> to reduce the number of objects loaded from Redis. When combined with
 <code>order_by</code> on a KeyField, the limit is applied before loading objects.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a><span class="c1"># Good: Only loads 10 objects</span>
-<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="n">top_10</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="n">top_10</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"-rating"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="lazy-loading-for-bulk-queries">Lazy Loading for Bulk Queries<a class="headerlink" href="#lazy-loading-for-bulk-queries" title="Permanent link">&para;</a></h3>
 <p>When iterating over query results, Popoto uses lazy deserialization by default. Field values
 are only decoded from msgpack when you access them. This significantly reduces overhead when
 you only use a subset of fields.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a><span class="c1"># Only decodes &#39;name&#39; and &#39;rating&#39; fields, not &#39;location&#39; or &#39;cuisine&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a><span class="c1"># Only decodes 'name' and 'rating' fields, not 'location' or 'cuisine'</span>
 <a id="__codelineno-73-2" name="__codelineno-73-2" href="#__codelineno-73-2"></a><span class="k">for</span> <span class="n">restaurant</span> <span class="ow">in</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
-<a id="__codelineno-73-3" name="__codelineno-73-3" href="#__codelineno-73-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-73-3" name="__codelineno-73-3" href="#__codelineno-73-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <p>Fields absent from the stored Redis hash (e.g., a row written before the field was added
 to the model, or a hash partially written by a crashed process) resolve to the field's

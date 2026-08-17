@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3032,7 +3060,7 @@ datetime on every save. Useful for updated_at timestamps.</p>
 <span class="normal"><a href="#__codelineno-0-127">127</a></span>
 <span class="normal"><a href="#__codelineno-0-128">128</a></span>
 <span class="normal"><a href="#__codelineno-0-129">129</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-28" name="__codelineno-0-28"></a><span class="k">class</span><span class="w"> </span><span class="nc">DatetimeField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-29" name="__codelineno-0-29"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-30" name="__codelineno-0-30"></a><span class="sd">    A field for storing datetime values with optional automatic timestamp management.</span>
 <a id="__codelineno-0-31" name="__codelineno-0-31"></a>
 <a id="__codelineno-0-32" name="__codelineno-0-32"></a><span class="sd">    DatetimeField provides Django-compatible auto_now and auto_now_add functionality</span>
@@ -3065,10 +3093,10 @@ datetime on every save. Useful for updated_at timestamps.</p>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a>
 <a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">        class User(Timestampable):</span>
 <a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">            username = popoto.KeyField()</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    """</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">        Initialize a DatetimeField with optional automatic timestamp behavior.</span>
 <a id="__codelineno-0-67" name="__codelineno-0-67"></a>
 <a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">        The auto_now_add and auto_now parameters are extracted before calling the</span>
@@ -3085,21 +3113,21 @@ datetime on every save. Useful for updated_at timestamps.</p>
 <a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">        Note:</span>
 <a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">            Setting both auto_now_add=True and auto_now=True is redundant since</span>
 <a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">            auto_now will overwrite the value on every save including the first.</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">datetime</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        """</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">=</span> <span class="n">datetime</span>
 <a id="__codelineno-0-84" name="__codelineno-0-84"></a>        <span class="c1"># Extract auto_now_add and auto_now before calling super</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">auto_now_add</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;auto_now_add&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">auto_now</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;auto_now&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">auto_now_add</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"auto_now_add"</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">auto_now</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"auto_now"</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-87" name="__codelineno-0-87"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-88" name="__codelineno-0-88"></a>
 <a id="__codelineno-0-89" name="__codelineno-0-89"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">format_value_pre_save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">skip_auto_now</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">        Apply automatic timestamp logic before persisting to Redis.</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">        This method is called by the model&#39;s save pipeline, allowing DatetimeField</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">        This method is called by the model's save pipeline, allowing DatetimeField</span>
 <a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">        to intercept and modify the value based on auto_now and auto_now_add settings.</span>
 <a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">        The hook pattern (format_value_pre_save) enables field-specific transformation</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">        logic without coupling to the model&#39;s save implementation.</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">        logic without coupling to the model's save implementation.</span>
 <a id="__codelineno-0-97" name="__codelineno-0-97"></a>
 <a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">            field_value: The current datetime value, or None if not set.</span>
@@ -3127,7 +3155,7 @@ datetime on every save. Useful for updated_at timestamps.</p>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">            auto_now takes precedence if both flags are set, as it unconditionally</span>
 <a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">            returns the current UTC time regardless of existing value (unless</span>
 <a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">            skipped).</span>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">        """</span>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_now_add</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a>            <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_now</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">skip_auto_now</span><span class="p">:</span>
@@ -3312,13 +3340,13 @@ skipped).</p>
 <span class="normal"><a href="#__codelineno-0-127">127</a></span>
 <span class="normal"><a href="#__codelineno-0-128">128</a></span>
 <span class="normal"><a href="#__codelineno-0-129">129</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="k">def</span><span class="w"> </span><span class="nf">format_value_pre_save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">skip_auto_now</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">    Apply automatic timestamp logic before persisting to Redis.</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">    This method is called by the model&#39;s save pipeline, allowing DatetimeField</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">    This method is called by the model's save pipeline, allowing DatetimeField</span>
 <a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">    to intercept and modify the value based on auto_now and auto_now_add settings.</span>
 <a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">    The hook pattern (format_value_pre_save) enables field-specific transformation</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">    logic without coupling to the model&#39;s save implementation.</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">    logic without coupling to the model's save implementation.</span>
 <a id="__codelineno-0-97" name="__codelineno-0-97"></a>
 <a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">        field_value: The current datetime value, or None if not set.</span>
@@ -3346,7 +3374,7 @@ skipped).</p>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">        auto_now takes precedence if both flags are set, as it unconditionally</span>
 <a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">        returns the current UTC time regardless of existing value (unless</span>
 <a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">        skipped).</span>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    """</span>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_now_add</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a>        <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_now</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">skip_auto_now</span><span class="p">:</span>

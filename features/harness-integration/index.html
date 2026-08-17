@@ -827,6 +827,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The write path is raw ingestion, on purpose">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#credentials-and-off-the-record-turns-are-dropped-before-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials and off-the-record turns are dropped before ingestion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1545,6 +1562,34 @@
     
   
     Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
   
 
     
@@ -2942,6 +2987,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The write path is raw ingestion, on purpose">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#credentials-and-off-the-record-turns-are-dropped-before-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials and off-the-record turns are dropped before ingestion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3072,7 +3134,7 @@
 <h1 id="harness-integration">Harness Integration<a class="headerlink" href="#harness-integration" title="Permanent link">&para;</a></h1>
 <p>Subconscious memory for Claude Code, Codex, Hermes, and OpenClaw, backed by
 your own Redis or Valkey. No API keys, no hosted service, no schema to write.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;popoto[mcp]&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[mcp]'</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>popoto-memory<span class="w"> </span>doctor
 </code></pre></div>
 <p>Then paste your harness's config block. The next turn silently carries
@@ -3191,7 +3253,7 @@ capability table:</p>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>turn saved verbatim, outcomes reported
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    |
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    v
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>next turn&#39;s assembly is better
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>next turn's assembly is better
 </code></pre></div>
 <p><strong>Read path.</strong> The harness fires its pre-model event with the user's prompt.
 The adapter normalizes the payload to <code>(event, query_text, session_id, cwd)</code>,
@@ -3249,6 +3311,30 @@ judges the product on. So
 one turn in, one record out, stored verbatim.</p>
 <p><code>POPOTO_MEMORY_INGEST=heuristic</code> switches to sentence-splitting and logs
 that measured cost the first time it is used.</p>
+<h3 id="credentials-and-off-the-record-turns-are-dropped-before-ingestion">Credentials and off-the-record turns are dropped before ingestion<a class="headerlink" href="#credentials-and-off-the-record-turns-are-dropped-before-ingestion" title="Permanent link">&para;</a></h3>
+<p>"Stored verbatim" is the point of raw ingestion and also its hazard: a hook
+fires on every turn, and terminal turns contain pasted API keys. The
+<a href="../never-record-firewall/">never-record firewall</a> runs ahead of the write
+path so that class of content never reaches Redis.</p>
+<p>It is deterministic — regex and entropy, no model — and it runs at two
+points. At the turn level, inside <code>SubconsciousMemory.extract_memories()</code>,
+<em>before</em> the extraction provider is called: an off-the-record marker voids
+the entire turn rather than a guessed span, and on the
+<code>ClaudeExtractionProvider</code> path the text is never sent to the API at all. At
+the record level, inside <code>Model.save()</code>, before serialization or any index
+write. <code>DefaultMemory</code> — the model this harness writes through — carries the
+mixin, so this is on by default with no configuration.</p>
+<p>A drop leaves a content-free tombstone: a random id and a reason code, never
+a fragment of the text. Read the tally with
+<code>DefaultMemory.never_record_counts()</code>.</p>
+<p>Two caveats worth knowing before you rely on it. Over-blocking is accepted by
+design, so a long random-looking token in an otherwise useful turn can cost
+you that memory. And the guarantee covers an enumerated class of shapes, not
+"secrets" in general — the <a href="../never-record-firewall/#what-this-does-not-guarantee">feature
+page</a> lists the holes
+explicitly. <code>POPOTO_NEVER_RECORD_DISABLE=1</code> turns it off entirely; note that
+this is a core Popoto variable, not one of the <code>POPOTO_MEMORY_*</code> harness
+variables below.</p>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Every variable is optional. The zero-configuration path is "local Redis or
 Valkey on the default port, memories tagged with this project's agent id" —
@@ -3395,6 +3481,10 @@ exactly when <code>doctor</code> has nothing to read back anyway.</p>
 <tr>
 <td>Nothing retrieved</td>
 <td>no <code>additionalContext</code> key at all, rather than an empty header</td>
+</tr>
+<tr>
+<td>Turn dropped by the never-record firewall</td>
+<td>nothing written, <strong>no log line, no counter increment</strong> -- a deliberate drop is not a failure. Counted in <code>$NR:DefaultMemory:counts</code> instead</td>
 </tr>
 </tbody>
 </table>

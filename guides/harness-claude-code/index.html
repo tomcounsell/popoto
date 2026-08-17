@@ -1519,6 +1519,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3002,7 +3030,7 @@ checkout: <code>pip install -e '.[mcp]'</code>. Hooks work on a bare
 <code>pip install popoto</code>; the extra is only for the MCP tools.</p>
 </div>
 <h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;popoto[mcp]&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[mcp]'</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>popoto-memory<span class="w"> </span>doctor
 </code></pre></div>
 <p><code>doctor</code> must print <code>redis reachable</code> and <code>retrieval lexical
@@ -3017,12 +3045,12 @@ checkout: <code>pip install -e '.[mcp]'</code>. Hooks work on a bare
 <h3 id="manual">Manual<a class="headerlink" href="#manual" title="Permanent link">&para;</a></h3>
 <p>Add to <code>~/.claude/settings.json</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;hooks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">&quot;UserPromptSubmit&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;hooks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;command&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;popoto-memory hook&quot;</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">"hooks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">"UserPromptSubmit"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"hooks"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"command"</span><span class="p">,</span><span class="w"> </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"popoto-memory hook"</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="p">],</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">&quot;Stop&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;hooks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;command&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;popoto-memory hook&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;async&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">"Stop"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">"hooks"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"command"</span><span class="p">,</span><span class="w"> </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"popoto-memory hook"</span><span class="p">,</span><span class="w"> </span><span class="nt">"async"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="p">}</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="p">]</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="p">}</span>
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="p">}</span>
@@ -3064,7 +3092,7 @@ raw ingestion on the same slice, so raw is the default here.</p>
 <p>Nothing leaves your machine. There is no API key because there is nothing to
 authenticate to.</p>
 <p>Inspect it directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s1">&#39;DefaultMemory:*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s1">'DefaultMemory:*'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head
 </code></pre></div>
 <h2 id="latency">Latency<a class="headerlink" href="#latency" title="Permanent link">&para;</a></h2>
 <p>Measured on an Apple M-series laptop, Python 3.12.13, redis 8.6.2 on
@@ -3075,7 +3103,7 @@ localhost, 50 records in scope, 25 subprocess invocations of the read hook:
 1-2 ms.</p>
 <h2 id="the-mcp-tools">The MCP tools<a class="headerlink" href="#the-mcp-tools" title="Permanent link">&para;</a></h2>
 <p>The plugin also registers a stdio MCP server, or add it yourself:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;popoto-memory&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;popoto-memory&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;mcp&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"mcpServers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"popoto-memory"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"popoto-memory"</span><span class="p">,</span><span class="w"> </span><span class="nt">"args"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"mcp"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
 <p><code>memory_search</code>, <code>memory_save</code>, <code>memory_feedback</code>, <code>memory_status</code>. These
 are for deliberate use: searching for something specific mid-task, saving a
@@ -3126,7 +3154,7 @@ profile is enough.</p>
 </tbody>
 </table>
 <p>Test a hook by hand, which is exactly what Claude Code does:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;hook_event_name&quot;:&quot;UserPromptSubmit&quot;,&quot;session_id&quot;:&quot;t&quot;,&quot;prompt&quot;:&quot;how do deploys work?&quot;}&#39;</span><span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">'{"hook_event_name":"UserPromptSubmit","session_id":"t","prompt":"how do deploys work?"}'</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>popoto-memory<span class="w"> </span>hook
 </code></pre></div>
 <p>You should get one line of JSON, or nothing at all if no memory matched.
@@ -3136,7 +3164,7 @@ Never a traceback, and never a non-zero exit.</p>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>pip<span class="w"> </span>uninstall<span class="w"> </span>popoto
 </code></pre></div>
 <p>Your memories stay in your Redis until you delete them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s1">&#39;DefaultMemory:*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>redis-cli<span class="w"> </span>del
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s1">'DefaultMemory:*'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>redis-cli<span class="w"> </span>del
 </code></pre></div>
 <h2 id="verified-against">Verified against<a class="headerlink" href="#verified-against" title="Permanent link">&para;</a></h2>
 <p><code>claude</code> 2.1.220, on macOS, 2026-08-07. The <code>UserPromptSubmit</code> and <code>Stop</code>

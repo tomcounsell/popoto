@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3348,9 +3376,9 @@ Inherited from SortedFieldMixin.</p>
 <span class="normal"><a href="#__codelineno-0-523">523</a></span>
 <span class="normal"><a href="#__codelineno-0-524">524</a></span>
 <span class="normal"><a href="#__codelineno-0-525">525</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="k">class</span><span class="w"> </span><span class="nc">CyclicDecayField</span><span class="p">(</span><span class="n">DecayingSortedField</span><span class="p">):</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A DecayingSortedField with cyclical resonance and homeostatic pressure.</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="w">    </span><span class="sd">"""A DecayingSortedField with cyclical resonance and homeostatic pressure.</span>
 <a id="__codelineno-0-210" name="__codelineno-0-210"></a>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    Extends the parent&#39;s power-law decay with two additional forces:</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    Extends the parent's power-law decay with two additional forces:</span>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    1. **Cyclical resonance** via ``cycles`` parameter: each cycle is a</span>
 <a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">       ``(period, amplitude, phase)`` tuple defining a cosine curve.</span>
@@ -3392,25 +3420,25 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">                cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">                pressure_rate=0.1,</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">            )</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    """</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="c1"># Export/import: two companion hashes hold state a plain re-save cannot</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="c1"># reconstruct. Per-member cycle amplitudes are LEARNED (mutated by</span>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="c1"># strengthen_cycle / weaken_cycle) and diverge from the class-level</span>
 <a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="c1"># ``cycles`` defaults; ``pressure.last_resolved`` is genuine independent</span>
 <a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="c1"># state whose age is the whole point of homeostatic pressure.</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;carry&quot;</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"carry"</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Export the per-member cycles and pressure companion data.</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">        </span><span class="sd">"""Export the per-member cycles and pressure companion data.</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">            ``{&quot;cycles&quot;: [[period, amplitude, phase], ...],</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">                &quot;pressure&quot;: {&quot;rate&quot;: float, &quot;last_resolved&quot;: float}}``</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">            ``{"cycles": [[period, amplitude, phase], ...],</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">                "pressure": {"rate": float, "last_resolved": float}}``</span>
 <a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">            with either key omitted when that companion hash has no entry for</span>
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">            this instance, or ``None`` when neither does.</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        """</span>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">CyclicDecayField</span><span class="p">):</span>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a>            <span class="k">return</span> <span class="kc">None</span>
@@ -3426,12 +3454,12 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>                <span class="n">cycles</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">cycles_raw</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a>                    <span class="sa">f</span><span class="s2">&quot;Could not decode cycles data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>                    <span class="sa">f</span><span class="s2">&quot;skipping cycles export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>                    <span class="sa">f</span><span class="s2">"Could not decode cycles data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>                    <span class="sa">f</span><span class="s2">"skipping cycles export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>                <span class="p">)</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>                <span class="n">cycles</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cycles</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;cycles&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span> <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="n">cycles</span><span class="p">]</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="n">state</span><span class="p">[</span><span class="s2">"cycles"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span> <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="n">cycles</span><span class="p">]</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="n">pressure_raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>            <span class="n">field</span><span class="o">.</span><span class="n">get_pressure_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span> <span class="n">member_key</span>
@@ -3441,21 +3469,21 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a>                <span class="n">pressure</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">pressure_raw</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                    <span class="sa">f</span><span class="s2">&quot;Could not decode pressure data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>                    <span class="sa">f</span><span class="s2">&quot;skipping pressure export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                    <span class="sa">f</span><span class="s2">"Could not decode pressure data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>                    <span class="sa">f</span><span class="s2">"skipping pressure export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a>                <span class="p">)</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a>                <span class="n">pressure</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pressure</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;pressure&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>                    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rate&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>                    <span class="s2">&quot;last_resolved&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;last_resolved&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>                <span class="n">state</span><span class="p">[</span><span class="s2">"pressure"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>                    <span class="s2">"rate"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"rate"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>                    <span class="s2">"last_resolved"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"last_resolved"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>                <span class="p">}</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="k">return</span> <span class="n">state</span> <span class="ow">or</span> <span class="kc">None</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>
 <a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Restore per-member cycles and pressure companion data after import.</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="w">        </span><span class="sd">"""Restore per-member cycles and pressure companion data after import.</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">        Ordering note -- this looks wrong but is correct:</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">        ``CyclicDecayField.on_save`` UNCONDITIONALLY overwrites the cycles</span>
@@ -3468,7 +3496,7 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">        (The unconditional clobber in ``on_save`` is a known pre-existing bug</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        on ordinary saves -- deliberately not fixed here; see #556.)</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">        """</span>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">state</span><span class="p">:</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>
@@ -3478,7 +3506,7 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="n">cycles</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cycles&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="n">cycles</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cycles"</span><span class="p">)</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="k">if</span> <span class="n">cycles</span><span class="p">:</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>            <span class="n">normalized</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>            <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="n">cycles</span><span class="p">:</span>
@@ -3492,16 +3520,16 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>                <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">normalized</span><span class="p">),</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>            <span class="p">)</span>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="n">pressure</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pressure&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="n">pressure</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"pressure"</span><span class="p">)</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="k">if</span> <span class="n">pressure</span><span class="p">:</span>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>                <span class="n">field</span><span class="o">.</span><span class="n">get_pressure_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>                <span class="n">member_key</span><span class="p">,</span>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>                <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a>                    <span class="p">{</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>                        <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rate&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>                        <span class="s2">&quot;last_resolved&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>                            <span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;last_resolved&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>                        <span class="s2">"rate"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"rate"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>                        <span class="s2">"last_resolved"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>                            <span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"last_resolved"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>                        <span class="p">),</span>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>                    <span class="p">}</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>                <span class="p">),</span>
@@ -3509,82 +3537,82 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">cycles</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;cycles&quot;</span><span class="p">,</span> <span class="p">[])</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">pressure_rate</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;pressure_rate&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">cycles</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"cycles"</span><span class="p">,</span> <span class="p">[])</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">pressure_rate</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"pressure_rate"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="c1"># Validate cycles</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cycles</span><span class="p">:</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a>                    <span class="sa">f</span><span class="s2">&quot;Each cycle must be (period, amplitude) or &quot;</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a>                    <span class="sa">f</span><span class="s2">&quot;(period, amplitude, phase), got </span><span class="si">{</span><span class="n">cycle</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>                    <span class="sa">f</span><span class="s2">"Each cycle must be (period, amplitude) or "</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a>                    <span class="sa">f</span><span class="s2">"(period, amplitude, phase), got </span><span class="si">{</span><span class="n">cycle</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>                <span class="p">)</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>            <span class="n">period</span><span class="p">,</span> <span class="n">amplitude</span> <span class="o">=</span> <span class="n">cycle</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">cycle</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 <a id="__codelineno-0-381" name="__codelineno-0-381"></a>            <span class="k">if</span> <span class="n">period</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cycle period must be &gt; 0 (got </span><span class="si">{</span><span class="n">period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cycle period must be &gt; 0 (got </span><span class="si">{</span><span class="n">period</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a>            <span class="k">if</span> <span class="n">amplitude</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cycle amplitude must be &gt;= 0 (got </span><span class="si">{</span><span class="n">amplitude</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-384" name="__codelineno-0-384"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cycle amplitude must be &gt;= 0 (got </span><span class="si">{</span><span class="n">amplitude</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a>        <span class="c1"># Validate pressure_rate</span>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pressure_rate</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                <span class="sa">f</span><span class="s2">&quot;pressure_rate must be &gt;= 0 (got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">pressure_rate</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                <span class="sa">f</span><span class="s2">"pressure_rate must be &gt;= 0 (got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">pressure_rate</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a>            <span class="p">)</span>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_cycles_hash_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Redis key for the cycles companion hash.</span>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="w">        </span><span class="sd">"""Build the Redis key for the cycles companion hash.</span>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">        Public API for external callers that need direct Redis access to</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">        cycle data (e.g., bulk inspection, custom cycle updates, monitoring).</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">        Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:cycles</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">        """</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>        <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_partitioned_sortedset_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:cycles&quot;</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":cycles"</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_pressure_hash_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Redis key for the pressure companion hash.</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">        </span><span class="sd">"""Build the Redis key for the pressure companion hash.</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">        Public API for external callers that need direct Redis access to</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">        pressure data (e.g., bulk pressure resets, monitoring dashboards).</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">        Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:pressure</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">        """</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_partitioned_sortedset_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:pressure&quot;</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":pressure"</span>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_cycles_hash_key_from_parts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span><span class="p">):</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build cycles hash key from model class and explicit partition values.</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="w">        </span><span class="sd">"""Build cycles hash key from model class and explicit partition values.</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">        Public API for query paths and external callers that have partition</span>
 <a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">        values but not a model instance.</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">        """</span>
 <a id="__codelineno-0-423" name="__codelineno-0-423"></a>        <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_sortedset_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span><span class="p">)</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:cycles&quot;</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":cycles"</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_pressure_hash_key_from_parts</span><span class="p">(</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="p">):</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build pressure hash key from model class and explicit partition values.</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="w">        </span><span class="sd">"""Build pressure hash key from model class and explicit partition values.</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">        Public API for query paths and external callers that have partition</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">        values but not a model instance.</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        """</span>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a>        <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_sortedset_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span><span class="p">)</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:pressure&quot;</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>        <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":pressure"</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Store timestamp (parent) then store cycle/pressure companion data.</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="w">        </span><span class="sd">"""Store timestamp (parent) then store cycle/pressure companion data.</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">        On first save (no existing entry in pressure hash), writes the full</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        pressure dict with last_resolved=now. On subsequent saves, only</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        updates the rate — never overwrites last_resolved.</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        """</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a>        <span class="c1"># Call parent to store timestamp in sorted set</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a>            <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
@@ -3624,13 +3652,13 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>            <span class="k">if</span> <span class="n">existing_raw</span><span class="p">:</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>                <span class="c1"># Only update rate, preserve last_resolved</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>                <span class="n">existing</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">existing_raw</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                <span class="n">existing</span><span class="p">[</span><span class="s2">&quot;rate&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                <span class="n">existing</span><span class="p">[</span><span class="s2">"rate"</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>                <span class="n">db</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">pressure_hash_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">existing</span><span class="p">))</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>                <span class="c1"># First save: set last_resolved to now</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>                <span class="n">pressure_data</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>                    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span><span class="p">,</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                    <span class="s2">&quot;last_resolved&quot;</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>                    <span class="s2">"rate"</span><span class="p">:</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span><span class="p">,</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                    <span class="s2">"last_resolved"</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>                <span class="p">}</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>                <span class="n">db</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">pressure_hash_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">pressure_data</span><span class="p">))</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="k">else</span><span class="p">:</span>
@@ -3643,12 +3671,12 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="p">):</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove companion hash entries then delegate to parent.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="w">        </span><span class="sd">"""Remove companion hash entries then delegate to parent."""</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">CyclicDecayField</span><span class="p">):</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>            <span class="n">member_key</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>            <span class="p">)</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>            <span class="n">cycles_hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_cycles_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>            <span class="n">pressure_hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_pressure_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
@@ -3794,14 +3822,14 @@ Inherited from SortedFieldMixin.</p>
 <span class="normal"><a href="#__codelineno-0-311">311</a></span>
 <span class="normal"><a href="#__codelineno-0-312">312</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Export the per-member cycles and pressure companion data.</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">    </span><span class="sd">"""Export the per-member cycles and pressure companion data.</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        ``{&quot;cycles&quot;: [[period, amplitude, phase], ...],</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">            &quot;pressure&quot;: {&quot;rate&quot;: float, &quot;last_resolved&quot;: float}}``</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        ``{"cycles": [[period, amplitude, phase], ...],</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">            "pressure": {"rate": float, "last_resolved": float}}``</span>
 <a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        with either key omitted when that companion hash has no entry for</span>
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        this instance, or ``None`` when neither does.</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    """</span>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">CyclicDecayField</span><span class="p">):</span>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a>        <span class="k">return</span> <span class="kc">None</span>
@@ -3817,12 +3845,12 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>            <span class="n">cycles</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">cycles_raw</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a>                <span class="sa">f</span><span class="s2">&quot;Could not decode cycles data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>                <span class="sa">f</span><span class="s2">&quot;skipping cycles export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>                <span class="sa">f</span><span class="s2">"Could not decode cycles data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>                <span class="sa">f</span><span class="s2">"skipping cycles export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>            <span class="p">)</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>            <span class="n">cycles</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cycles</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;cycles&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span> <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="n">cycles</span><span class="p">]</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="n">state</span><span class="p">[</span><span class="s2">"cycles"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span> <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="n">cycles</span><span class="p">]</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>    <span class="n">pressure_raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="n">field</span><span class="o">.</span><span class="n">get_pressure_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span> <span class="n">member_key</span>
@@ -3832,14 +3860,14 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a>            <span class="n">pressure</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">pressure_raw</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                <span class="sa">f</span><span class="s2">&quot;Could not decode pressure data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>                <span class="sa">f</span><span class="s2">&quot;skipping pressure export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                <span class="sa">f</span><span class="s2">"Could not decode pressure data for </span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>                <span class="sa">f</span><span class="s2">"skipping pressure export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a>            <span class="p">)</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="n">pressure</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pressure</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;pressure&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>                <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rate&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>                <span class="s2">&quot;last_resolved&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;last_resolved&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>            <span class="n">state</span><span class="p">[</span><span class="s2">"pressure"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>                <span class="s2">"rate"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"rate"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>                <span class="s2">"last_resolved"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"last_resolved"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>            <span class="p">}</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="k">return</span> <span class="n">state</span> <span class="ow">or</span> <span class="kc">None</span>
@@ -3934,7 +3962,7 @@ on ordinary saves -- deliberately not fixed here; see #556.)</p>
 <span class="normal"><a href="#__codelineno-0-366">366</a></span>
 <span class="normal"><a href="#__codelineno-0-367">367</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Restore per-member cycles and pressure companion data after import.</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="w">    </span><span class="sd">"""Restore per-member cycles and pressure companion data after import.</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">    Ordering note -- this looks wrong but is correct:</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">    ``CyclicDecayField.on_save`` UNCONDITIONALLY overwrites the cycles</span>
@@ -3947,7 +3975,7 @@ on ordinary saves -- deliberately not fixed here; see #556.)</p>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">    (The unconditional clobber in ``on_save`` is a known pre-existing bug</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    on ordinary saves -- deliberately not fixed here; see #556.)</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    """</span>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">state</span><span class="p">:</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>
@@ -3957,7 +3985,7 @@ on ordinary saves -- deliberately not fixed here; see #556.)</p>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="n">cycles</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cycles&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="n">cycles</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cycles"</span><span class="p">)</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="k">if</span> <span class="n">cycles</span><span class="p">:</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="n">normalized</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="k">for</span> <span class="n">cycle</span> <span class="ow">in</span> <span class="n">cycles</span><span class="p">:</span>
@@ -3971,16 +3999,16 @@ on ordinary saves -- deliberately not fixed here; see #556.)</p>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>            <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">normalized</span><span class="p">),</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="p">)</span>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="n">pressure</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pressure&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="n">pressure</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"pressure"</span><span class="p">)</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="k">if</span> <span class="n">pressure</span><span class="p">:</span>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>            <span class="n">field</span><span class="o">.</span><span class="n">get_pressure_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>            <span class="n">member_key</span><span class="p">,</span>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>            <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a>                <span class="p">{</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>                    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rate&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>                    <span class="s2">&quot;last_resolved&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>                        <span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;last_resolved&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>                    <span class="s2">"rate"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"rate"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>                    <span class="s2">"last_resolved"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>                        <span class="n">pressure</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"last_resolved"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>                    <span class="p">),</span>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>                <span class="p">}</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="p">),</span>
@@ -4021,15 +4049,15 @@ cycle data (e.g., bulk inspection, custom cycle updates, monitoring).</p>
 <span class="normal"><a href="#__codelineno-0-401">401</a></span>
 <span class="normal"><a href="#__codelineno-0-402">402</a></span>
 <span class="normal"><a href="#__codelineno-0-403">403</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_cycles_hash_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the Redis key for the cycles companion hash.</span>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="w">    </span><span class="sd">"""Build the Redis key for the cycles companion hash.</span>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">    Public API for external callers that need direct Redis access to</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">    cycle data (e.g., bulk inspection, custom cycle updates, monitoring).</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">    Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:cycles</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    """</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>    <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_partitioned_sortedset_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:cycles&quot;</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":cycles"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4065,15 +4093,15 @@ pressure data (e.g., bulk pressure resets, monitoring dashboards).</p>
 <span class="normal"><a href="#__codelineno-0-412">412</a></span>
 <span class="normal"><a href="#__codelineno-0-413">413</a></span>
 <span class="normal"><a href="#__codelineno-0-414">414</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_pressure_hash_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the Redis key for the pressure companion hash.</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">    </span><span class="sd">"""Build the Redis key for the pressure companion hash.</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    Public API for external callers that need direct Redis access to</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    pressure data (e.g., bulk pressure resets, monitoring dashboards).</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">    Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:pressure</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">    """</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_partitioned_sortedset_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:pressure&quot;</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":pressure"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4112,13 +4140,13 @@ values but not a model instance.</p>
 <span class="normal"><a href="#__codelineno-0-423">423</a></span>
 <span class="normal"><a href="#__codelineno-0-424">424</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_cycles_hash_key_from_parts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span><span class="p">):</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build cycles hash key from model class and explicit partition values.</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="w">    </span><span class="sd">"""Build cycles hash key from model class and explicit partition values.</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">    Public API for query paths and external callers that have partition</span>
 <a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">    values but not a model instance.</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">    """</span>
 <a id="__codelineno-0-423" name="__codelineno-0-423"></a>    <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_sortedset_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span><span class="p">)</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:cycles&quot;</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":cycles"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4161,13 +4189,13 @@ values but not a model instance.</p>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_pressure_hash_key_from_parts</span><span class="p">(</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>    <span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="p">):</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build pressure hash key from model class and explicit partition values.</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="w">    </span><span class="sd">"""Build pressure hash key from model class and explicit partition values.</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">    Public API for query paths and external callers that have partition</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">    values but not a model instance.</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    """</span>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a>    <span class="n">ss_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_sortedset_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="n">partition_values</span><span class="p">)</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:pressure&quot;</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="k">return</span> <span class="n">ss_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":pressure"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4259,12 +4287,12 @@ updates the rate — never overwrites last_resolved.</p>
 <span class="normal"><a href="#__codelineno-0-497">497</a></span>
 <span class="normal"><a href="#__codelineno-0-498">498</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Store timestamp (parent) then store cycle/pressure companion data.</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="w">    </span><span class="sd">"""Store timestamp (parent) then store cycle/pressure companion data.</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    On first save (no existing entry in pressure hash), writes the full</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">    pressure dict with last_resolved=now. On subsequent saves, only</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">    updates the rate — never overwrites last_resolved.</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">    """</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a>    <span class="c1"># Call parent to store timestamp in sorted set</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>    <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a>        <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
@@ -4304,13 +4332,13 @@ updates the rate — never overwrites last_resolved.</p>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="k">if</span> <span class="n">existing_raw</span><span class="p">:</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>            <span class="c1"># Only update rate, preserve last_resolved</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>            <span class="n">existing</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">existing_raw</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="n">existing</span><span class="p">[</span><span class="s2">&quot;rate&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="n">existing</span><span class="p">[</span><span class="s2">"rate"</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="n">db</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">pressure_hash_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">existing</span><span class="p">))</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>            <span class="c1"># First save: set last_resolved to now</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>            <span class="n">pressure_data</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>                <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span><span class="p">,</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                <span class="s2">&quot;last_resolved&quot;</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>                <span class="s2">"rate"</span><span class="p">:</span> <span class="n">field</span><span class="o">.</span><span class="n">pressure_rate</span><span class="p">,</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                <span class="s2">"last_resolved"</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>            <span class="p">}</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>            <span class="n">db</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">pressure_hash_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">pressure_data</span><span class="p">))</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>    <span class="k">else</span><span class="p">:</span>
@@ -4373,12 +4401,12 @@ updates the rate — never overwrites last_resolved.</p>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="p">):</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove companion hash entries then delegate to parent.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="w">    </span><span class="sd">"""Remove companion hash entries then delegate to parent."""</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">CyclicDecayField</span><span class="p">):</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>            <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>            <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>        <span class="p">)</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="n">cycles_hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_cycles_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>        <span class="n">pressure_hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_pressure_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>

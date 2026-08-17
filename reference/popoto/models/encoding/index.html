@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2868,7 +2896,7 @@ person.save()  # Internally calls encode_popoto_model_obj</p>
 
 
 <h3 id="popoto.models.encoding.EncoderDecoder" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">EncoderDecoder</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">&#39;EncoderDecoder&#39;</span><span class="p">,</span> <span class="s1">&#39;key, encoder, decoder&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">EncoderDecoder</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">'EncoderDecoder'</span><span class="p">,</span> <span class="s1">'key, encoder, decoder'</span><span class="p">)</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
@@ -3077,7 +3105,7 @@ for the common case.</p>
 <span class="normal"><a href="#__codelineno-0-297">297</a></span>
 <span class="normal"><a href="#__codelineno-0-298">298</a></span>
 <span class="normal"><a href="#__codelineno-0-299">299</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_custom_types</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Msgpack object-hook that restores tagged dicts to their Python types.</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">    </span><span class="sd">"""Msgpack object-hook that restores tagged dicts to their Python types.</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    This is the counterpart to the type-specific encoders in TYPE_ENCODER_DECODERS.</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    When MessagePack deserializes data, custom types come back as plain dicts</span>
@@ -3085,8 +3113,8 @@ for the common case.</p>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    the appropriate decoder to reconstruct the original Python type.</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>
 <a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        obj: Any value returned from msgpack.unpackb(). If it&#39;s a dict with</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">             &quot;as_encodable&quot; and a recognized sentinel key, it will be decoded.</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        obj: Any value returned from msgpack.unpackb(). If it's a dict with</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">             "as_encodable" and a recognized sentinel key, it will be decoded.</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">             Otherwise, returned unchanged.</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    Returns:</span>
@@ -3094,11 +3122,11 @@ for the common case.</p>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        encoded custom type, otherwise obj unchanged.</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Design Note:</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        The &quot;as_encodable&quot; check is a fast-path optimization. Most dicts in</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        user data won&#39;t have this key, so we can skip the sentinel key scan</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        The "as_encodable" check is a fast-path optimization. Most dicts in</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        user data won't have this key, so we can skip the sentinel key scan</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        for the common case.</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    """</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">"as_encodable"</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="k">for</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>            <span class="k">if</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
 <a id="__codelineno-0-298" name="__codelineno-0-298"></a>                <span class="k">return</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="p">[</span><span class="n">keystring</span><span class="p">](</span><span class="n">obj</span><span class="p">)</span>
@@ -3324,14 +3352,14 @@ fields to store numpy arrays efficiently.</p>
 <span class="normal"><a href="#__codelineno-0-379">379</a></span>
 <span class="normal"><a href="#__codelineno-0-380">380</a></span>
 <span class="normal"><a href="#__codelineno-0-381">381</a></span>
-<span class="normal"><a href="#__codelineno-0-382">382</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="k">def</span><span class="w"> </span><span class="nf">encode_popoto_model_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Encode a model instance into a dict of ``{field_name_bytes: msgpack_bytes}``.</span>
+<span class="normal"><a href="#__codelineno-0-382">382</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="k">def</span><span class="w"> </span><span class="nf">encode_popoto_model_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="w">    </span><span class="sd">"""Encode a model instance into a dict of ``{field_name_bytes: msgpack_bytes}``.</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    Transforms all field values on a model into a dictionary suitable for</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    Redis HSET operations. Each field name becomes a UTF-8 encoded key,</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    and each value is MessagePack-serialized (with custom type handling).</span>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    Relationship fields are stored as the related instance&#39;s ``redis_key``.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    Relationship fields are stored as the related instance's ``redis_key``.</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    Custom types (Decimal, datetime, etc.) use tagged-dict encoding.</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    Args:</span>
@@ -3343,11 +3371,11 @@ fields to store numpy arrays efficiently.</p>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">        for direct use with Redis HSET/HMSET commands.</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        ModelException: If a Relationship field contains a value that isn&#39;t</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        ModelException: If a Relationship field contains a value that isn't</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">                        an instance of the expected related model.</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    Encoding Strategy:</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        1. Relationship fields: Store the related object&#39;s db_key (Redis key</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        1. Relationship fields: Store the related object's db_key (Redis key</span>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">           string), not the full object. This enables lazy loading and avoids</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">           circular serialization.</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        2. Custom types (Decimal, datetime, etc.): Use TYPE_ENCODER_DECODERS</span>
@@ -3362,7 +3390,7 @@ fields to store numpy arrays efficiently.</p>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        NumPy array support is enabled via msgpack_numpy patching, allowing</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        fields to store numpy arrays efficiently.</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    """</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">msgpack_numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">m</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>
@@ -3389,7 +3417,7 @@ fields to store numpy arrays efficiently.</p>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">):</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>                    <span class="sa">f</span><span class="s2">&quot;Relationship field requires </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2"> model instance. got </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> instead&quot;</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>                    <span class="sa">f</span><span class="s2">"Relationship field requires </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2"> model instance. got </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> instead"</span>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>                <span class="p">)</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>            <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
@@ -3600,7 +3628,7 @@ when accessed.</p>
     the row is written to a second hash and the original is orphaned with
     no exception and no log line.</p>
 <div class="highlight"><pre><span></span><code>Passing the real source key converts that silent duplication into
-``save()``&#39;s existing *rename* path. It also makes the datetime-key
+``save()``'s existing *rename* path. It also makes the datetime-key
 migration lazily self-healing: a pre-migration row that happens to be
 re-saved before the operator runs the migration moves itself.
 </code></pre></div>
@@ -3732,13 +3760,13 @@ re-saved before the operator runs the migration moves itself.
 <span class="normal"><a href="#__codelineno-0-511">511</a></span>
 <span class="normal"><a href="#__codelineno-0-512">512</a></span>
 <span class="normal"><a href="#__codelineno-0-513">513</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_popoto_model_hashmap</span><span class="p">(</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>    <span class="n">redis_hash</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a>    <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a>    <span class="n">source_redis_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Model&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a Redis hash into a model instance (or a raw fields dict).</span>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Model"</span><span class="p">:</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="w">    </span><span class="sd">"""Decode a Redis hash into a model instance (or a raw fields dict).</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    The inverse of encode_popoto_model_obj(). Takes raw Redis hash data</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">    (bytes keys and MessagePack-encoded values) and reconstructs either</span>
@@ -3755,7 +3783,7 @@ re-saved before the operator runs the migration moves itself.
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">              decoded on-demand when first accessed, reducing overhead for bulk</span>
 <a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">              queries where only a subset of fields are used.</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">        source_redis_key: The key this hash was actually read from. When given</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">              it becomes the instance&#39;s ``_redis_key``, so the instance knows</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">              it becomes the instance's ``_redis_key``, so the instance knows</span>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">              where it came from rather than inferring it from the decoded</span>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">              values. Callers that have the key should always pass it; the</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">              fallback recomputation is for callers that genuinely do not</span>
@@ -3780,27 +3808,27 @@ re-saved before the operator runs the migration moves itself.
 <a id="__codelineno-0-436" name="__codelineno-0-436"></a>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">        Relationship fields are stored as Redis key strings, not full objects.</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">        The Model&#39;s __getattribute__ handles lazy loading of related objects</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">        The Model's __getattribute__ handles lazy loading of related objects</span>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">        when accessed.</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    Identity provenance (#537/#538):</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        Without *source_redis_key* an instance&#39;s ``_redis_key`` is recomputed</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        from its decoded KeyField values, so the instance&#39;s idea of where it</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        Without *source_redis_key* an instance's ``_redis_key`` is recomputed</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        from its decoded KeyField values, so the instance's idea of where it</span>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        came from follows the decode. That is the precise mechanism by which</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        row duplication was *silent*: when a decode change shifts a KeyField&#39;s</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        row duplication was *silent*: when a decode change shifts a KeyField's</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">        rendering, ``_saved_field_values`` and the attribute still agree (both</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        hold the decoded value) so ``save()``&#39;s KeyMutationError guard sees no</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        hold the decoded value) so ``save()``'s KeyMutationError guard sees no</span>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">        change, and the recomputed ``_redis_key`` already matches the new</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">        derivation so ``save()``&#39;s obsolete-key branch never fires either.</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">        derivation so ``save()``'s obsolete-key branch never fires either.</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">        Two independent safety nets, both blinded by the same recomputation;</span>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        the row is written to a second hash and the original is orphaned with</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a><span class="sd">        no exception and no log line.</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">        Passing the real source key converts that silent duplication into</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">        ``save()``&#39;s existing *rename* path. It also makes the datetime-key</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">        ``save()``'s existing *rename* path. It also makes the datetime-key</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a><span class="sd">        migration lazily self-healing: a pre-migration row that happens to be</span>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">        re-saved before the operator runs the migration moves itself.</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a><span class="sd">    """</span>
 <a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">redis_hash</span><span class="p">):</span>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="k">if</span> <span class="n">fields_only</span><span class="p">:</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
@@ -3812,7 +3840,7 @@ re-saved before the operator runs the migration moves itself.
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a>                <span class="c1"># writes these into the hash; kept for pre-#476 legacy</span>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>                <span class="c1"># records until they self-heal on next write.</span>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                    <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">key_b</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key_b</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">key_b</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                    <span class="sa">b</span><span class="s2">"</span><span class="se">\x00</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">key_b</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key_b</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="s2">"</span><span class="se">\x00</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">key_b</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>                <span class="p">)</span>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>            <span class="p">}</span>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="k">return</span> <span class="n">model_attrs</span>
@@ -3828,14 +3856,14 @@ re-saved before the operator runs the migration moves itself.
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>                <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="p">)</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="k">if</span> <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">key_b</span>  <span class="c1"># skip internal pointer fields (e.g. \x00idxset)</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="k">if</span> <span class="sa">b</span><span class="s2">"</span><span class="se">\x00</span><span class="s2">"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">key_b</span>  <span class="c1"># skip internal pointer fields (e.g. \x00idxset)</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="p">}</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="c1"># Create the model instance</span>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>        <span class="n">model_instance</span> <span class="o">=</span> <span class="n">model_class</span><span class="p">(</span><span class="o">**</span><span class="n">model_attrs</span><span class="p">)</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="c1"># Identity provenance: prefer the key this hash was actually read from</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="c1"># over __init__&#39;s recomputation from the decoded values. Set before</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="c1"># over __init__'s recomputation from the decoded values. Set before</span>
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="c1"># _load_capped_list_fields, which reads _redis_key to find the list keys.</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="k">if</span> <span class="n">source_redis_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="n">model_instance</span><span class="o">.</span><span class="n">_redis_key</span> <span class="o">=</span> <span class="n">_as_key_str</span><span class="p">(</span><span class="n">source_redis_key</span><span class="p">)</span>
@@ -3945,7 +3973,7 @@ for the first time.</p>
 <span class="normal"><a href="#__codelineno-0-654">654</a></span>
 <span class="normal"><a href="#__codelineno-0-655">655</a></span>
 <span class="normal"><a href="#__codelineno-0-656">656</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_lazy_field</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a single msgpack-encoded field value.</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="w">    </span><span class="sd">"""Decode a single msgpack-encoded field value.</span>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">    Called by Model.__getattribute__ when accessing a lazily-loaded field</span>
 <a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">    for the first time.</span>
@@ -3955,7 +3983,7 @@ for the first time.</p>
 <a id="__codelineno-0-652" name="__codelineno-0-652"></a>
 <a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">        The decoded Python value with custom types restored.</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">    """</span>
 <a id="__codelineno-0-656" name="__codelineno-0-656"></a>    <span class="k">return</span> <span class="n">decode_custom_types</span><span class="p">(</span><span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>

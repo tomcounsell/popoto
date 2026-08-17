@@ -1348,6 +1348,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3123,8 +3151,8 @@
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">problem_topology</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                <span class="c1"># part of the fingerprint</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">affected_layer</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                  <span class="c1"># part of the fingerprint</span>
 <a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">trajectory</span> <span class="o">=</span> <span class="n">ListField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">[])</span>           <span class="c1"># ordered actions taken</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">outcome</span> <span class="o">=</span> <span class="n">DictField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">{})</span>              <span class="c1"># {&quot;success&quot;: True, ...}</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">recorded_at</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;partition&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">outcome</span> <span class="o">=</span> <span class="n">DictField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">{})</span>              <span class="c1"># {"success": True, ...}</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">recorded_at</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">partition_by</span><span class="o">=</span><span class="s2">"partition"</span><span class="p">)</span>
 <a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>
 <a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
 <a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProceduralPattern</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
@@ -3132,15 +3160,15 @@
 <a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">partition</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">problem_topology</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="n">affected_layer</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="n">canonical_sequence</span> <span class="o">=</span> <span class="n">ListField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">[])</span>   <span class="c1"># the &quot;what worked&quot; sequence</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="n">canonical_sequence</span> <span class="o">=</span> <span class="n">ListField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">[])</span>   <span class="c1"># the "what worked" sequence</span>
 <a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="n">last_reinforced</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;partition&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="n">last_reinforced</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">partition_by</span><span class="o">=</span><span class="s2">"partition"</span><span class="p">)</span>
 <a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
 <a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>
 <a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="n">tm</span> <span class="o">=</span> <span class="n">TrajectoryMemory</span><span class="p">(</span>
 <a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>    <span class="n">episode_model</span><span class="o">=</span><span class="n">CyclicEpisode</span><span class="p">,</span>
 <a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="n">pattern_model</span><span class="o">=</span><span class="n">ProceduralPattern</span><span class="p">,</span>
-<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>    <span class="n">fingerprint_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;problem_topology&quot;</span><span class="p">,</span> <span class="s2">&quot;affected_layer&quot;</span><span class="p">],</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>    <span class="n">fingerprint_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">"problem_topology"</span><span class="p">,</span> <span class="s2">"affected_layer"</span><span class="p">],</span>
 <a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>    <span class="n">cluster_threshold</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="p">)</span>
 </code></pre></div>
@@ -3148,17 +3176,17 @@
 <h3 id="record_episodefingerprint-trajectory-outcome-partition"><code>record_episode(fingerprint, trajectory, outcome, partition)</code><a class="headerlink" href="#record_episodefingerprint-trajectory-outcome-partition" title="Permanent link">&para;</a></h3>
 <p>Persist a single completed trajectory. The write path is intentionally cheap — no clustering happens here.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">tm</span><span class="o">.</span><span class="n">record_episode</span><span class="p">(</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">fingerprint</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;problem_topology&quot;</span><span class="p">:</span> <span class="s2">&quot;bug_fix&quot;</span><span class="p">,</span> <span class="s2">&quot;affected_layer&quot;</span><span class="p">:</span> <span class="s2">&quot;agent&quot;</span><span class="p">},</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">trajectory</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;read_logs&quot;</span><span class="p">,</span> <span class="s2">&quot;edit_file&quot;</span><span class="p">,</span> <span class="s2">&quot;run_tests&quot;</span><span class="p">],</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">outcome</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">fingerprint</span><span class="o">=</span><span class="p">{</span><span class="s2">"problem_topology"</span><span class="p">:</span> <span class="s2">"bug_fix"</span><span class="p">,</span> <span class="s2">"affected_layer"</span><span class="p">:</span> <span class="s2">"agent"</span><span class="p">},</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">trajectory</span><span class="o">=</span><span class="p">[</span><span class="s2">"read_logs"</span><span class="p">,</span> <span class="s2">"edit_file"</span><span class="p">,</span> <span class="s2">"run_tests"</span><span class="p">],</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">outcome</span><span class="o">=</span><span class="p">{</span><span class="s2">"success"</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">partition</span><span class="o">=</span><span class="s2">"team-a"</span><span class="p">,</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
 </code></pre></div>
 <p>The recipe validates that <code>fingerprint</code> contains every name in <code>fingerprint_fields</code>. Missing fields raise <code>ValueError</code>.</p>
 <h3 id="crystallizepartition"><code>crystallize(partition)</code><a class="headerlink" href="#crystallizepartition" title="Permanent link">&para;</a></h3>
 <p>Periodic (e.g. nightly reflection): cluster recent episodes by their fingerprint tuple, then upsert one <code>pattern_model</code> per cluster that exceeds <code>cluster_threshold</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Triggered by a cron or reflection step, not on every write.</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">new_or_reinforced</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">crystallize</span><span class="p">(</span><span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">new_or_reinforced</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">crystallize</span><span class="p">(</span><span class="n">partition</span><span class="o">=</span><span class="s2">"team-a"</span><span class="p">)</span>
 </code></pre></div>
 <p>Crystallization is <strong>idempotent via watermark</strong>: re-running on an unchanged episode set produces zero drift in confidence or <code>last_reinforced</code>. After each run, <code>last_reinforced</code> is set to the maximum <code>recorded_at</code> timestamp across all observed episodes (the watermark). Subsequent runs observe only episodes strictly newer than that watermark, so the same episodes are never double-counted.</p>
 <p><strong>Operational constraints for idempotence:</strong></p>
@@ -3172,11 +3200,11 @@
 <h3 id="recallfingerprint-partition-limit5"><code>recall(fingerprint, partition, limit=5)</code><a class="headerlink" href="#recallfingerprint-partition-limit5" title="Permanent link">&para;</a></h3>
 <p>Keyed exact-match retrieval. Returns at most <code>limit</code> patterns matching the supplied fingerprint dimensions, ranked by composite score.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">patterns</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">recall</span><span class="p">(</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">fingerprint</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;problem_topology&quot;</span><span class="p">:</span> <span class="s2">&quot;bug_fix&quot;</span><span class="p">,</span> <span class="s2">&quot;affected_layer&quot;</span><span class="p">:</span> <span class="s2">&quot;agent&quot;</span><span class="p">},</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">fingerprint</span><span class="o">=</span><span class="p">{</span><span class="s2">"problem_topology"</span><span class="p">:</span> <span class="s2">"bug_fix"</span><span class="p">,</span> <span class="s2">"affected_layer"</span><span class="p">:</span> <span class="s2">"agent"</span><span class="p">},</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">partition</span><span class="o">=</span><span class="s2">"team-a"</span><span class="p">,</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">)</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">canonical_sequence</span><span class="p">,</span> <span class="s2">&quot;conf=&quot;</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">confidence</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">canonical_sequence</span><span class="p">,</span> <span class="s2">"conf="</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">confidence</span><span class="p">)</span>
 </code></pre></div>
 <p>A <strong>partial fingerprint</strong> is allowed (a subset of <code>fingerprint_fields</code>) — useful when an agent only knows part of the context. Empty <code>fingerprint</code> returns <code>[]</code> deliberately, so callers commit to at least one dimension rather than scanning the partition.</p>
 <h2 id="required-fields">Required Fields<a class="headerlink" href="#required-fields" title="Permanent link">&para;</a></h2>
@@ -3270,7 +3298,7 @@
 <p>Missing or wrong-typed fields raise a single <code>TypeError</code> at <code>__init__</code> listing every problem — you do not discover them one at a time inside <code>crystallize()</code>.</p>
 <h2 id="defaults-tuning">Defaults &amp; Tuning<a class="headerlink" href="#defaults-tuning" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">DEFAULT_RECALL_LIMIT</span> <span class="o">=</span> <span class="mi">5</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">DEFAULT_SCORE_WEIGHTS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;last_reinforced&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">}</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">DEFAULT_SCORE_WEIGHTS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"last_reinforced"</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">}</span>
 </code></pre></div>
 <p>Confidence dominates; freshness breaks ties between equally-confident patterns. Override per-call via <code>recall(..., score_weights={"confidence": 1.0, "last_reinforced": 0.0})</code>.</p>
 <div class="admonition note">
@@ -3294,7 +3322,7 @@ pass <code>confidence_modulation_field=False</code> on <code>last_reinforced</co
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_signal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episode</span><span class="p">):</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>        <span class="c1"># Map a richer outcome schema to a [0, 1] confidence signal</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>        <span class="n">score</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user_rating&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span> <span class="mf">5.0</span>  <span class="c1"># rating out of 5</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>        <span class="n">score</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"user_rating"</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span> <span class="mf">5.0</span>  <span class="c1"># rating out of 5</span>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">score</span><span class="p">))</span>
 </code></pre></div>
 <h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
@@ -3308,7 +3336,7 @@ pass <code>confidence_modulation_field=False</code> on <code>last_reinforced</co
 <p>For consumers that need a stable fingerprint from a dict of features (rather than passing fingerprint fields directly), the recipe re-exports <code>compute_fingerprint</code> from <code>popoto.recipes.policy_cache</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.trajectory_memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_fingerprint</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>  <span class="c1"># SHA-256, 16 hex chars</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">})</span>  <span class="c1"># SHA-256, 16 hex chars</span>
 </code></pre></div>
 <p>This produces deterministic 16-hex-char fingerprints suitable for use as a <code>KeyField</code> value.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>

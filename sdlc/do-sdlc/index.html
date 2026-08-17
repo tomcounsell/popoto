@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2755,8 +2783,8 @@
 <code>/do-pr-review</code> is expected to have called <code>sdlc-tool verdict finalize</code>
 itself before returning.</p>
 <p>If you see the halt:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;verdict_present&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;trailer_matches_head&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w"> </span><span class="nt">&quot;marker_completed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;REVIEW_VERDICT_MISSING&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">"ok"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"verdict_present"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"trailer_matches_head"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w"> </span><span class="nt">"marker_completed"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"REVIEW_VERDICT_MISSING"</span><span class="p">}</span>
 </code></pre></div>
 <p>…the review was almost certainly posted to GitHub correctly and only the
 recording is missing. Historically this happened because popoto had no
@@ -2779,7 +2807,7 @@ selfcheck result rather than assuming this file settled it.</p>
 flags are integers, not prose (<code>--blockers "3 blockers found"</code> fails with
 <code>argument --blockers: invalid int value</code>; <code>tomcounsell/ai#2767</code>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sdlc-tool<span class="w"> </span>verdict<span class="w"> </span>finalize<span class="w"> </span>--pr<span class="w"> </span><span class="m">558</span><span class="w"> </span>--issue-number<span class="w"> </span><span class="m">554</span><span class="w"> </span>--run-id<span class="w"> </span>&lt;hex&gt;<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--verdict<span class="w"> </span><span class="s2">&quot;CHANGES REQUESTED&quot;</span><span class="w"> </span>--blockers<span class="w"> </span><span class="m">3</span><span class="w"> </span>--tech-debt<span class="w"> </span><span class="m">5</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--verdict<span class="w"> </span><span class="s2">"CHANGES REQUESTED"</span><span class="w"> </span>--blockers<span class="w"> </span><span class="m">3</span><span class="w"> </span>--tech-debt<span class="w"> </span><span class="m">5</span>
 </code></pre></div>
 <p>If the router stops producing a dispatch after a second REVIEW→PATCH cycle
 (falls off the rule table rather than blocking with a named guard), that is the

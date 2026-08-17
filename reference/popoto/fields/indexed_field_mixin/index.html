@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2851,9 +2879,9 @@ class User(Model):
     status = IndexedField(type=str)     # indexed, not unique
 
 # Efficient exact-match queries without making email a KeyField
-User.query.filter(email=&quot;alice@example.com&quot;)
-User.query.filter(status=&quot;active&quot;)
-User.query.filter(status__in=[&quot;active&quot;, &quot;pending&quot;])
+User.query.filter(email="alice@example.com")
+User.query.filter(status="active")
+User.query.filter(status__in=["active", "pending"])
 </code></pre></div>
 
 
@@ -3391,20 +3419,20 @@ on the server.</p>
 <span class="normal"><a href="#__codelineno-0-631">631</a></span>
 <span class="normal"><a href="#__codelineno-0-632">632</a></span>
 <span class="normal"><a href="#__codelineno-0-633">633</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="k">class</span><span class="w"> </span><span class="nc">IndexedFieldMixin</span><span class="p">:</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">    Mixin that provides Set-based secondary indexing for non-key fields.</span>
 <a id="__codelineno-0-189" name="__codelineno-0-189"></a>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">    When mixed with Field, this mixin maintains Redis Sets that track which</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    model instances have a given value for the indexed field. This enables</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    efficient exact-match queries without making the field part of the</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">    model&#39;s Redis key (identity).</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">    model's Redis key (identity).</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    Supports the same query lookups as KeyFieldMixin:</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    - Exact match: ``filter(field=value)``</span>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    - IN queries: ``filter(field__in=[v1, v2])``</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    - Null checks: ``filter(field__isnull=True/False)``</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    - Pattern matching: ``filter(field__startswith=&quot;prefix&quot;)``</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">    - Pattern matching: ``filter(field__endswith=&quot;suffix&quot;)``</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    - Pattern matching: ``filter(field__startswith="prefix")``</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">    - Pattern matching: ``filter(field__endswith="suffix")``</span>
 <a id="__codelineno-0-201" name="__codelineno-0-201"></a>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">    Uniqueness enforcement is available via ``unique=True``. The check is</span>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="sd">    performed server-side inside the atomic INDEX_SWAP_LUA script, eliminating</span>
@@ -3417,25 +3445,25 @@ on the server.</p>
 <a id="__codelineno-0-210" name="__codelineno-0-210"></a>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    Attributes:</span>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">        indexed (bool): Always True for indexed fields.</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    """</span>
 <a id="__codelineno-0-214" name="__codelineno-0-214"></a>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">indexed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
 <a id="__codelineno-0-216" name="__codelineno-0-216"></a>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="c1"># Export/import: the atomic index Set/pointer is fully rebuilt from the</span>
 <a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="c1"># field value by on_save() (via the INDEX_SWAP_LUA script), so nothing</span>
 <a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="c1"># needs to be carried across export/import.</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rebuild&quot;</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rebuild"</span>
 <a id="__codelineno-0-221" name="__codelineno-0-221"></a>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="nd">@staticmethod</span>
 <a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_pointer_side_key</span><span class="p">(</span><span class="n">model_hash_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the side key that stores the server-authoritative index pointer.</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="w">        </span><span class="sd">"""Build the side key that stores the server-authoritative index pointer.</span>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        This is a standalone Redis key (STRING type), NOT a field inside the</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">        model hash — see #476.</span>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">        It is namespaced under ``$IdxPtr:``, alongside Popoto&#39;s other internal</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">        It is namespaced under ``$IdxPtr:``, alongside Popoto's other internal</span>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        keys (``$Class:``, ``$KeyF:``, ``$SortedF:``), so it lives outside</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">        every model&#39;s own key space. 1.8.1/1.8.2 instead derived it by</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">        every model's own key space. 1.8.1/1.8.2 instead derived it by</span>
 <a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">        suffixing the model hash key with ``\\x00idxptr\\x00{field}`` on the</span>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">        theory that a NUL byte keeps it out of user-written globs. It does</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">        not: Redis glob ``*`` matches any byte, NUL included, so that key was</span>
@@ -3448,40 +3476,40 @@ on the server.</p>
 <a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">        A model name can never begin with ``$``, so this key can never be</span>
 <a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">        matched by a model key glob. ``field_name`` is a Python identifier and</span>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">        cannot contain ``:``, so the trailing segment stays unambiguous.</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;$IdxPtr:</span><span class="si">{</span><span class="n">model_hash_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">        """</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"$IdxPtr:</span><span class="si">{</span><span class="n">model_hash_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-246" name="__codelineno-0-246"></a>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="nd">@staticmethod</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_pre_540_pointer_side_key</span><span class="p">(</span><span class="n">model_hash_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;The 1.8.1/1.8.2 pointer side key. Read-only migration fallback.</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="w">        </span><span class="sd">"""The 1.8.1/1.8.2 pointer side key. Read-only migration fallback.</span>
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">        Never written by current code. Read once and then DEL&#39;d (in</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">        Never written by current code. Read once and then DEL'd (in</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        INDEX_SWAP_LUA and on_delete) so records written by those versions</span>
 <a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        self-heal off the colliding key space without an offline migration.</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_hash_key</span><span class="si">}</span><span class="se">\x00</span><span class="s2">idxptr</span><span class="se">\x00</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        """</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_hash_key</span><span class="si">}</span><span class="se">\x00</span><span class="s2">idxptr</span><span class="se">\x00</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="nd">@staticmethod</span>
 <a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_legacy_pointer_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Pre-#476 in-hash pointer field name, kept for migration fallback only.</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">        </span><span class="sd">"""Pre-#476 in-hash pointer field name, kept for migration fallback only.</span>
 <a id="__codelineno-0-260" name="__codelineno-0-260"></a>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">        Never written by current code. Only read (and then scrubbed via HDEL</span>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        inside INDEX_SWAP_LUA / on_delete) so records written before this fix</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        shipped continue to be cleaned up correctly, and self-heal off the</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">        polluted hash schema the first time they&#39;re touched again.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="se">\x00</span><span class="s2">idxset&quot;</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">        polluted hash schema the first time they're touched again.</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        """</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="se">\x00</span><span class="s2">idxset"</span>
 <a id="__codelineno-0-267" name="__codelineno-0-267"></a>
 <a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        Initialize IndexedFieldMixin defaults.</span>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        Sets ``indexed=True`` and updates field_defaults for introspection.</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        Calls super().__init__() for cooperative multiple inheritance.</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        """</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="n">indexed_defaults</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="s2">&quot;indexed&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="s2">"indexed"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a>        <span class="p">}</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">field_defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">indexed_defaults</span><span class="p">)</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">indexed_defaults</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -3490,13 +3518,13 @@ on the server.</p>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="p">):</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        Maintain the secondary index Set when a model instance is saved.</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        Internal path (no pipeline): queues INDEX_SWAP_LUA into an internal</span>
@@ -3508,7 +3536,7 @@ on the server.</p>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>
 <a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">        External path (pipeline provided): performs a best-effort SMEMBERS</span>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        pre-check for fast early raise on uniqueness violation, then queues</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        the EVAL into the caller&#39;s pipeline. The authoritative guarantee is</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        the EVAL into the caller's pipeline. The authoritative guarantee is</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">        enforced at execute() time when the Lua script runs on the server.</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">        The pre-check reduces latency for the common conflict case but cannot</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        close the TOCTOU window because the caller controls execute().</span>
@@ -3518,7 +3546,7 @@ on the server.</p>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">            field_name: The name of this field on the model.</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">            field_value: The value being saved for this field.</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">            pipeline: Optional Redis pipeline for batched operations.</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">                When provided, EVAL is queued into the caller&#39;s pipeline.</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">                When provided, EVAL is queued into the caller's pipeline.</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">                When omitted, an internal pipeline is used for atomicity.</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        Returns:</span>
@@ -3528,7 +3556,7 @@ on the server.</p>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">            ModelException: If unique=True and the value is already taken</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">                by a different instance. Raised immediately on the internal</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">                path; raised at execute() time on the external path.</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">        """</span>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>
@@ -3542,7 +3570,7 @@ on the server.</p>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="c1"># field inside the model hash — see IndexedFieldMixin._pointer_side_key.</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>        <span class="n">ptr_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pointer_side_key</span><span class="p">(</span><span class="n">member_key</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>        <span class="c1"># Pre-#540 side key (1.8.1/1.8.2), read-only migration fallback —</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="c1"># DEL&#39;d by the Lua once read, since it collides with the model key glob.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="c1"># DEL'd by the Lua once read, since it collides with the model key glob.</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="n">old_ptr_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pre_540_pointer_side_key</span><span class="p">(</span><span class="n">member_key</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="c1"># Legacy in-hash pointer field name, read-only migration fallback for</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="c1"># records written before #476 shipped (scrubbed via HDEL when found).</span>
@@ -3552,7 +3580,7 @@ on the server.</p>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="c1"># that predate the server-authoritative pointer. The Lua script uses</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="c1"># this only when the pointer is absent (i.e., never been written by</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="c1"># the new code path).</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_saved_field_values"</span><span class="p">,</span> <span class="p">{})</span>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="n">old_value</span> <span class="o">=</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">_SENTINEL</span><span class="p">)</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="k">if</span> <span class="n">old_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">_SENTINEL</span> <span class="ow">and</span> <span class="n">old_value</span> <span class="o">!=</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>            <span class="c1"># Use the saved value (even if it was None) as the legacy SREM hint.</span>
@@ -3563,7 +3591,7 @@ on the server.</p>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>                <span class="n">old_value</span><span class="p">,</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>            <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>            <span class="n">legacy_old_set</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>            <span class="n">legacy_old_set</span> <span class="o">=</span> <span class="s2">""</span>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="c1"># Pack field value with msgpack to match encode_popoto_model_obj()</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="c1"># output. Types in TYPE_ENCODER_DECODERS (datetime, date, time,</span>
@@ -3579,11 +3607,11 @@ on the server.</p>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>            <span class="p">)</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>            <span class="n">new_bytes</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="n">is_unique</span> <span class="o">=</span> <span class="s2">&quot;1&quot;</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;unique&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;0&quot;</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="n">is_unique</span> <span class="o">=</span> <span class="s2">"1"</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">"unique"</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="k">else</span> <span class="s2">"0"</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span><span class="p">):</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>            <span class="c1"># External pipeline path: best-effort pre-check for fast early raise</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a>            <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;unique&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>            <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">"unique"</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>                <span class="n">existing_members</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">new_set_key</span><span class="p">)</span>
 <a id="__codelineno-0-381" name="__codelineno-0-381"></a>                <span class="n">other_members</span> <span class="o">=</span> <span class="p">{</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>                    <span class="n">m</span>
@@ -3592,11 +3620,11 @@ on the server.</p>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a>                <span class="p">}</span>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a>                <span class="k">if</span> <span class="n">other_members</span><span class="p">:</span>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a>                    <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>                        <span class="sa">f</span><span class="s2">&quot;Uniqueness violation on &quot;</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: &quot;</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a>                        <span class="sa">f</span><span class="s2">&quot;value &#39;</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">&#39; is already taken by another instance&quot;</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a>                        <span class="sa">f</span><span class="s2">"Uniqueness violation on "</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a>                        <span class="sa">f</span><span class="s2">"value '</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">' is already taken by another instance"</span>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a>            <span class="c1"># Queue EVAL into caller&#39;s pipeline — authoritative check at execute()</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a>            <span class="c1"># Queue EVAL into caller's pipeline — authoritative check at execute()</span>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a>                <span class="n">INDEX_SWAP_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a>                <span class="mi">4</span><span class="p">,</span>
@@ -3631,11 +3659,11 @@ on the server.</p>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>                    <span class="n">legacy_ptr_field</span><span class="p">,</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>                <span class="p">)</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>                <span class="k">if</span> <span class="s2">&quot;POPOTO_UNIQUE_CONFLICT&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a>                <span class="k">if</span> <span class="s2">"POPOTO_UNIQUE_CONFLICT"</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>                    <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a>                        <span class="sa">f</span><span class="s2">&quot;Uniqueness violation on &quot;</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: &quot;</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>                        <span class="sa">f</span><span class="s2">&quot;value &#39;</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">&#39; is already taken by another instance&quot;</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>                        <span class="sa">f</span><span class="s2">"Uniqueness violation on "</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>                        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>                        <span class="sa">f</span><span class="s2">"value '</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">' is already taken by another instance"</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>                <span class="k">raise</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a>            <span class="k">return</span> <span class="n">result</span>
@@ -3643,13 +3671,13 @@ on the server.</p>
 <a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>        <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a>    <span class="p">):</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        Remove the model instance from the index Set on delete.</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        Uses the server-authoritative pointer side key (#476) — if present —</span>
@@ -3673,8 +3701,8 @@ on the server.</p>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a><span class="sd">            The pipeline (if provided) or the SREM result.</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a><span class="sd">        """</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a>        <span class="n">model_hash_key</span> <span class="o">=</span> <span class="n">member_key</span>  <span class="c1"># model hash key = redis_key for this record</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>        <span class="c1"># 1. Server-authoritative pointer side key (current scheme, #476/#540).</span>
@@ -3714,7 +3742,7 @@ on the server.</p>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="k">return</span> <span class="n">result</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">        Return the set of valid query parameter names for filtering on this field.</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">        Supports the same lookups as KeyFieldMixin:</span>
@@ -3729,24 +3757,24 @@ on the server.</p>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">            set: Valid query parameter strings.</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">        """</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="k">return</span> <span class="p">(</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>            <span class="nb">super</span><span class="p">()</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a>            <span class="o">.</span><span class="n">get_filter_query_params</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-529" name="__codelineno-0-529"></a>            <span class="o">.</span><span class="n">union</span><span class="p">(</span>
 <a id="__codelineno-0-530" name="__codelineno-0-530"></a>                <span class="p">{</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull"</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith"</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith"</span><span class="p">,</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in"</span><span class="p">,</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>                <span class="p">}</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="p">)</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>        <span class="p">)</span>
 <a id="__codelineno-0-539" name="__codelineno-0-539"></a>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">        Execute a filter query on this indexed field and return matching Redis keys.</span>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">        Uses Set-based lookups for exact match and __in queries. Falls back</span>
@@ -3762,7 +3790,7 @@ on the server.</p>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">            QueryException: If __isnull receives a non-boolean value.</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">        """</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a>        <span class="n">keys_lists_to_intersect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
 <a id="__codelineno-0-560" name="__codelineno-0-560"></a>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a>        <span class="n">redis_set_key_prefix</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span>
@@ -3770,7 +3798,7 @@ on the server.</p>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a>        <span class="p">]</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-564" name="__codelineno-0-564"></a>
 <a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="k">for</span> <span class="n">query_param</span><span class="p">,</span> <span class="n">query_value</span> <span class="ow">in</span> <span class="n">query_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a>            <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__in&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>            <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__in"</span><span class="p">):</span>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a>                <span class="c1"># Use SUNION for efficient server-side set union</span>
 <a id="__codelineno-0-568" name="__codelineno-0-568"></a>                <span class="n">set_keys</span> <span class="o">=</span> <span class="p">[</span>
 <a id="__codelineno-0-569" name="__codelineno-0-569"></a>                    <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value_elem</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -3781,14 +3809,14 @@ on the server.</p>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>                <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span>
 <a id="__codelineno-0-576" name="__codelineno-0-576"></a>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="k">elif</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="k">elif</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>                    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>                        <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>                <span class="p">)</span>
 <a id="__codelineno-0-583" name="__codelineno-0-583"></a>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__isnull&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__isnull"</span><span class="p">):</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>                <span class="k">if</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a>                        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
@@ -3797,7 +3825,7 @@ on the server.</p>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-591" name="__codelineno-0-591"></a>                <span class="k">elif</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
 <a id="__codelineno-0-592" name="__codelineno-0-592"></a>                    <span class="c1"># Use SCAN to find all index keys for this field, then union</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                    <span class="n">pattern</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*&quot;</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                    <span class="n">pattern</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*"</span>
 <a id="__codelineno-0-594" name="__codelineno-0-594"></a>                    <span class="n">all_keys</span> <span class="o">=</span> <span class="n">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
 <a id="__codelineno-0-595" name="__codelineno-0-595"></a>                    <span class="c1"># Filter out the None set</span>
 <a id="__codelineno-0-596" name="__codelineno-0-596"></a>                    <span class="n">none_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -3808,12 +3836,12 @@ on the server.</p>
 <a id="__codelineno-0-601" name="__codelineno-0-601"></a>                            <span class="n">non_null_keys</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">key_str</span><span class="p">))</span>
 <a id="__codelineno-0-602" name="__codelineno-0-602"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">non_null_keys</span><span class="p">)</span>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>                <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>                    <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>                    <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False"</span><span class="p">)</span>
 <a id="__codelineno-0-605" name="__codelineno-0-605"></a>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__startswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__startswith"</span><span class="p">):</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>                <span class="c1"># Scan index keys matching the prefix pattern</span>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*&quot;</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*"</span>
 <a id="__codelineno-0-610" name="__codelineno-0-610"></a>                <span class="p">)</span>
 <a id="__codelineno-0-611" name="__codelineno-0-611"></a>                <span class="n">matching_index_keys</span> <span class="o">=</span> <span class="n">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
 <a id="__codelineno-0-612" name="__codelineno-0-612"></a>                <span class="n">members</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -3821,10 +3849,10 @@ on the server.</p>
 <a id="__codelineno-0-614" name="__codelineno-0-614"></a>                    <span class="n">members</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">idx_key</span><span class="p">))</span>
 <a id="__codelineno-0-615" name="__codelineno-0-615"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">members</span><span class="p">)</span>
 <a id="__codelineno-0-616" name="__codelineno-0-616"></a>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__endswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__endswith"</span><span class="p">):</span>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a>                <span class="c1"># Scan index keys matching the suffix pattern</span>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-621" name="__codelineno-0-621"></a>                <span class="p">)</span>
 <a id="__codelineno-0-622" name="__codelineno-0-622"></a>                <span class="n">matching_index_keys</span> <span class="o">=</span> <span class="n">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
 <a id="__codelineno-0-623" name="__codelineno-0-623"></a>                <span class="n">members</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -4167,13 +4195,13 @@ path; raised at execute() time on the external path.</p>
 <span class="normal"><a href="#__codelineno-0-434">434</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="p">):</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">    Maintain the secondary index Set when a model instance is saved.</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    Internal path (no pipeline): queues INDEX_SWAP_LUA into an internal</span>
@@ -4185,7 +4213,7 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>
 <a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    External path (pipeline provided): performs a best-effort SMEMBERS</span>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">    pre-check for fast early raise on uniqueness violation, then queues</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    the EVAL into the caller&#39;s pipeline. The authoritative guarantee is</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    the EVAL into the caller's pipeline. The authoritative guarantee is</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    enforced at execute() time when the Lua script runs on the server.</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    The pre-check reduces latency for the common conflict case but cannot</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    close the TOCTOU window because the caller controls execute().</span>
@@ -4195,7 +4223,7 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">        field_name: The name of this field on the model.</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">        field_value: The value being saved for this field.</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">        pipeline: Optional Redis pipeline for batched operations.</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">            When provided, EVAL is queued into the caller&#39;s pipeline.</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">            When provided, EVAL is queued into the caller's pipeline.</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">            When omitted, an internal pipeline is used for atomicity.</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    Returns:</span>
@@ -4205,7 +4233,7 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        ModelException: If unique=True and the value is already taken</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">            by a different instance. Raised immediately on the internal</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">            path; raised at execute() time on the external path.</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    """</span>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>
@@ -4219,7 +4247,7 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="c1"># field inside the model hash — see IndexedFieldMixin._pointer_side_key.</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="n">ptr_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pointer_side_key</span><span class="p">(</span><span class="n">member_key</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="c1"># Pre-#540 side key (1.8.1/1.8.2), read-only migration fallback —</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="c1"># DEL&#39;d by the Lua once read, since it collides with the model key glob.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="c1"># DEL'd by the Lua once read, since it collides with the model key glob.</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="n">old_ptr_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pre_540_pointer_side_key</span><span class="p">(</span><span class="n">member_key</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="c1"># Legacy in-hash pointer field name, read-only migration fallback for</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="c1"># records written before #476 shipped (scrubbed via HDEL when found).</span>
@@ -4229,7 +4257,7 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="c1"># that predate the server-authoritative pointer. The Lua script uses</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="c1"># this only when the pointer is absent (i.e., never been written by</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="c1"># the new code path).</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_saved_field_values"</span><span class="p">,</span> <span class="p">{})</span>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="n">old_value</span> <span class="o">=</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">_SENTINEL</span><span class="p">)</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="k">if</span> <span class="n">old_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">_SENTINEL</span> <span class="ow">and</span> <span class="n">old_value</span> <span class="o">!=</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="c1"># Use the saved value (even if it was None) as the legacy SREM hint.</span>
@@ -4240,7 +4268,7 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>            <span class="n">old_value</span><span class="p">,</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>        <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="n">legacy_old_set</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="n">legacy_old_set</span> <span class="o">=</span> <span class="s2">""</span>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="c1"># Pack field value with msgpack to match encode_popoto_model_obj()</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="c1"># output. Types in TYPE_ENCODER_DECODERS (datetime, date, time,</span>
@@ -4256,11 +4284,11 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="p">)</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="n">new_bytes</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="n">is_unique</span> <span class="o">=</span> <span class="s2">&quot;1&quot;</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;unique&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;0&quot;</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="n">is_unique</span> <span class="o">=</span> <span class="s2">"1"</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">"unique"</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="k">else</span> <span class="s2">"0"</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span><span class="p">):</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>        <span class="c1"># External pipeline path: best-effort pre-check for fast early raise</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a>        <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;unique&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>        <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">"unique"</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>            <span class="n">existing_members</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">new_set_key</span><span class="p">)</span>
 <a id="__codelineno-0-381" name="__codelineno-0-381"></a>            <span class="n">other_members</span> <span class="o">=</span> <span class="p">{</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="n">m</span>
@@ -4269,11 +4297,11 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a>            <span class="p">}</span>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a>            <span class="k">if</span> <span class="n">other_members</span><span class="p">:</span>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>                    <span class="sa">f</span><span class="s2">&quot;Uniqueness violation on &quot;</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: &quot;</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a>                    <span class="sa">f</span><span class="s2">&quot;value &#39;</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">&#39; is already taken by another instance&quot;</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a>                    <span class="sa">f</span><span class="s2">"Uniqueness violation on "</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a>                    <span class="sa">f</span><span class="s2">"value '</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">' is already taken by another instance"</span>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a>                <span class="p">)</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a>        <span class="c1"># Queue EVAL into caller&#39;s pipeline — authoritative check at execute()</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a>        <span class="c1"># Queue EVAL into caller's pipeline — authoritative check at execute()</span>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a>            <span class="n">INDEX_SWAP_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a>            <span class="mi">4</span><span class="p">,</span>
@@ -4308,11 +4336,11 @@ path; raised at execute() time on the external path.</p>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>                <span class="n">legacy_ptr_field</span><span class="p">,</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>            <span class="p">)</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>            <span class="k">if</span> <span class="s2">&quot;POPOTO_UNIQUE_CONFLICT&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a>            <span class="k">if</span> <span class="s2">"POPOTO_UNIQUE_CONFLICT"</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a>                    <span class="sa">f</span><span class="s2">&quot;Uniqueness violation on &quot;</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: &quot;</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>                    <span class="sa">f</span><span class="s2">&quot;value &#39;</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">&#39; is already taken by another instance&quot;</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>                    <span class="sa">f</span><span class="s2">"Uniqueness violation on "</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>                    <span class="sa">f</span><span class="s2">"value '</span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">' is already taken by another instance"</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>                <span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>            <span class="k">raise</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a>        <span class="k">return</span> <span class="n">result</span>
@@ -4527,13 +4555,13 @@ silently falling back to a possibly-stale in-memory snapshot).</p>
 <span class="normal"><a href="#__codelineno-0-507">507</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-436" name="__codelineno-0-436"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="n">field_value</span><span class="p">,</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="p">):</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    Remove the model instance from the index Set on delete.</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">    Uses the server-authoritative pointer side key (#476) — if present —</span>
@@ -4557,8 +4585,8 @@ silently falling back to a possibly-stale in-memory snapshot).</p>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a><span class="sd">        The pipeline (if provided) or the SREM result.</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a><span class="sd">    """</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a>    <span class="n">model_hash_key</span> <span class="o">=</span> <span class="n">member_key</span>  <span class="c1"># model hash key = redis_key for this record</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>    <span class="c1"># 1. Server-authoritative pointer side key (current scheme, #476/#540).</span>
@@ -4708,7 +4736,7 @@ silently falling back to a possibly-stale in-memory snapshot).</p>
 <span class="normal"><a href="#__codelineno-0-536">536</a></span>
 <span class="normal"><a href="#__codelineno-0-537">537</a></span>
 <span class="normal"><a href="#__codelineno-0-538">538</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-509" name="__codelineno-0-509"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    Return the set of valid query parameter names for filtering on this field.</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    Supports the same lookups as KeyFieldMixin:</span>
@@ -4723,17 +4751,17 @@ silently falling back to a possibly-stale in-memory snapshot).</p>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">        set: Valid query parameter strings.</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    """</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>    <span class="k">return</span> <span class="p">(</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="nb">super</span><span class="p">()</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a>        <span class="o">.</span><span class="n">get_filter_query_params</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="o">.</span><span class="n">union</span><span class="p">(</span>
 <a id="__codelineno-0-530" name="__codelineno-0-530"></a>            <span class="p">{</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__isnull"</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__startswith"</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__endswith"</span><span class="p">,</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__in"</span><span class="p">,</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="p">}</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a>        <span class="p">)</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>    <span class="p">)</span>
@@ -4967,8 +4995,8 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <span class="normal"><a href="#__codelineno-0-631">631</a></span>
 <span class="normal"><a href="#__codelineno-0-632">632</a></span>
 <span class="normal"><a href="#__codelineno-0-633">633</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">    Execute a filter query on this indexed field and return matching Redis keys.</span>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">    Uses Set-based lookups for exact match and __in queries. Falls back</span>
@@ -4984,7 +5012,7 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        QueryException: If __isnull receives a non-boolean value.</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    """</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="n">keys_lists_to_intersect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
 <a id="__codelineno-0-560" name="__codelineno-0-560"></a>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="n">redis_set_key_prefix</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span>
@@ -4992,7 +5020,7 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a>    <span class="p">]</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-564" name="__codelineno-0-564"></a>
 <a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="k">for</span> <span class="n">query_param</span><span class="p">,</span> <span class="n">query_value</span> <span class="ow">in</span> <span class="n">query_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__in&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="k">if</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__in"</span><span class="p">):</span>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a>            <span class="c1"># Use SUNION for efficient server-side set union</span>
 <a id="__codelineno-0-568" name="__codelineno-0-568"></a>            <span class="n">set_keys</span> <span class="o">=</span> <span class="p">[</span>
 <a id="__codelineno-0-569" name="__codelineno-0-569"></a>                <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value_elem</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -5003,14 +5031,14 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>            <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span>
 <a id="__codelineno-0-576" name="__codelineno-0-576"></a>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>        <span class="k">elif</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>        <span class="k">elif</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>            <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>                    <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>                <span class="p">)</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>            <span class="p">)</span>
 <a id="__codelineno-0-583" name="__codelineno-0-583"></a>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__isnull&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__isnull"</span><span class="p">):</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>            <span class="k">if</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a>                    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
@@ -5019,7 +5047,7 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a>                <span class="p">)</span>
 <a id="__codelineno-0-591" name="__codelineno-0-591"></a>            <span class="k">elif</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
 <a id="__codelineno-0-592" name="__codelineno-0-592"></a>                <span class="c1"># Use SCAN to find all index keys for this field, then union</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*&quot;</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*"</span>
 <a id="__codelineno-0-594" name="__codelineno-0-594"></a>                <span class="n">all_keys</span> <span class="o">=</span> <span class="n">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
 <a id="__codelineno-0-595" name="__codelineno-0-595"></a>                <span class="c1"># Filter out the None set</span>
 <a id="__codelineno-0-596" name="__codelineno-0-596"></a>                <span class="n">none_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -5030,12 +5058,12 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <a id="__codelineno-0-601" name="__codelineno-0-601"></a>                        <span class="n">non_null_keys</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">key_str</span><span class="p">))</span>
 <a id="__codelineno-0-602" name="__codelineno-0-602"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">non_null_keys</span><span class="p">)</span>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>                <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>                <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">query_param</span><span class="si">}</span><span class="s2"> filter must be True or False"</span><span class="p">)</span>
 <a id="__codelineno-0-605" name="__codelineno-0-605"></a>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__startswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__startswith"</span><span class="p">):</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>            <span class="c1"># Scan index keys matching the prefix pattern</span>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a>            <span class="n">pattern</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*&quot;</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">*"</span>
 <a id="__codelineno-0-610" name="__codelineno-0-610"></a>            <span class="p">)</span>
 <a id="__codelineno-0-611" name="__codelineno-0-611"></a>            <span class="n">matching_index_keys</span> <span class="o">=</span> <span class="n">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
 <a id="__codelineno-0-612" name="__codelineno-0-612"></a>            <span class="n">members</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -5043,10 +5071,10 @@ to SCAN for pattern queries (__startswith, __endswith).</p>
 <a id="__codelineno-0-614" name="__codelineno-0-614"></a>                <span class="n">members</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">idx_key</span><span class="p">))</span>
 <a id="__codelineno-0-615" name="__codelineno-0-615"></a>            <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">members</span><span class="p">)</span>
 <a id="__codelineno-0-616" name="__codelineno-0-616"></a>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;__endswith&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__endswith"</span><span class="p">):</span>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a>            <span class="c1"># Scan index keys matching the suffix pattern</span>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a>            <span class="n">pattern</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">redis_set_key_prefix</span><span class="o">.</span><span class="n">redis_key</span><span class="si">}</span><span class="s2">:*</span><span class="si">{</span><span class="n">DB_key</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">query_value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-621" name="__codelineno-0-621"></a>            <span class="p">)</span>
 <a id="__codelineno-0-622" name="__codelineno-0-622"></a>            <span class="n">matching_index_keys</span> <span class="o">=</span> <span class="n">scan_keys</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
 <a id="__codelineno-0-623" name="__codelineno-0-623"></a>            <span class="n">members</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>

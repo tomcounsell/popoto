@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3265,7 +3293,7 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-112" name="__codelineno-0-112"></a>    <span class="n">decay_per_hop</span><span class="o">=</span><span class="n">RELATIONSHIP_HOP_DECAY</span><span class="p">,</span>
 <a id="__codelineno-0-113" name="__codelineno-0-113"></a>    <span class="n">fanout_limit</span><span class="o">=</span><span class="n">RELATIONSHIP_HOP_FANOUT_LIMIT</span><span class="p">,</span>
 <a id="__codelineno-0-114" name="__codelineno-0-114"></a><span class="p">):</span>
-<a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;BFS-style expansion over self-referential Relationship field(s).</span>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="w">    </span><span class="sd">"""BFS-style expansion over self-referential Relationship field(s).</span>
 <a id="__codelineno-0-116" name="__codelineno-0-116"></a>
 <a id="__codelineno-0-117" name="__codelineno-0-117"></a><span class="sd">    Only ``Relationship`` fields declared on ``model_class`` whose ``model``</span>
 <a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="sd">    is ``model_class`` itself are honored (self-referential edges) — a</span>
@@ -3278,7 +3306,7 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">        model_class: The Popoto Model class being traversed.</span>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">        seed_pks: Starting PK (redis_key) strings.</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">        relationship_field_names: Names of self-referential Relationship</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">            field(s) on ``model_class`` to walk, both forward (a node&#39;s own</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">            field(s) on ``model_class`` to walk, both forward (a node's own</span>
 <a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">            relationship value) and reverse (other nodes pointing at it).</span>
 <a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">        depth: Max hops. Default 2.</span>
 <a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">        decay_per_hop: Weight multiplier applied per hop.</span>
@@ -3287,7 +3315,7 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">        dict[str, float]: Discovered PKs (excluding seeds) mapped to their</span>
 <a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">        propagated weight (max across all discovered paths).</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">    """</span>
 <a id="__codelineno-0-138" name="__codelineno-0-138"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.relationship</span><span class="w"> </span><span class="kn">import</span> <span class="n">Relationship</span>
 <a id="__codelineno-0-139" name="__codelineno-0-139"></a>
 <a id="__codelineno-0-140" name="__codelineno-0-140"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">seed_pks</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">relationship_field_names</span> <span class="ow">or</span> <span class="n">depth</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
@@ -3298,19 +3326,19 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-145" name="__codelineno-0-145"></a>        <span class="n">f</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-146" name="__codelineno-0-146"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">Relationship</span><span class="p">):</span>
 <a id="__codelineno-0-147" name="__codelineno-0-147"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a>                <span class="s2">&quot;graph_traversal: </span><span class="si">%s</span><span class="s2"> is not a Relationship field on </span><span class="si">%s</span><span class="s2"> — skipped&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a>                <span class="s2">"graph_traversal: </span><span class="si">%s</span><span class="s2"> is not a Relationship field on </span><span class="si">%s</span><span class="s2"> — skipped"</span><span class="p">,</span>
 <a id="__codelineno-0-149" name="__codelineno-0-149"></a>                <span class="n">field_name</span><span class="p">,</span>
 <a id="__codelineno-0-150" name="__codelineno-0-150"></a>                <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
 <a id="__codelineno-0-151" name="__codelineno-0-151"></a>            <span class="p">)</span>
 <a id="__codelineno-0-152" name="__codelineno-0-152"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-153" name="__codelineno-0-153"></a>        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">model</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">model_class</span><span class="p">:</span>
 <a id="__codelineno-0-154" name="__codelineno-0-154"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>                <span class="s2">&quot;graph_traversal: Relationship field </span><span class="si">%s</span><span class="s2"> on </span><span class="si">%s</span><span class="s2"> points to </span><span class="si">%s</span><span class="s2">, &quot;</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>                <span class="s2">&quot;not itself — only self-referential relationships are &quot;</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>                <span class="s2">&quot;traversed, skipped&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a>                <span class="s2">"graph_traversal: Relationship field </span><span class="si">%s</span><span class="s2"> on </span><span class="si">%s</span><span class="s2"> points to </span><span class="si">%s</span><span class="s2">, "</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a>                <span class="s2">"not itself — only self-referential relationships are "</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>                <span class="s2">"traversed, skipped"</span><span class="p">,</span>
 <a id="__codelineno-0-158" name="__codelineno-0-158"></a>                <span class="n">field_name</span><span class="p">,</span>
 <a id="__codelineno-0-159" name="__codelineno-0-159"></a>                <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>                <span class="nb">getattr</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;__name__&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">model</span><span class="p">),</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a>                <span class="nb">getattr</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s2">"__name__"</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">model</span><span class="p">),</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a>            <span class="p">)</span>
 <a id="__codelineno-0-162" name="__codelineno-0-162"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-163" name="__codelineno-0-163"></a>        <span class="n">valid_fields</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">field_name</span><span class="p">,</span> <span class="n">f</span><span class="p">))</span>
@@ -3334,8 +3362,8 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-181" name="__codelineno-0-181"></a>                    <span class="n">instance</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">db_key</span><span class="o">=</span><span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-182" name="__codelineno-0-182"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-183" name="__codelineno-0-183"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a>                        <span class="s2">&quot;graph_traversal: failed to load </span><span class="si">%s</span><span class="s2"> for forward &quot;</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>                        <span class="s2">&quot;relationship expansion: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>                        <span class="s2">"graph_traversal: failed to load </span><span class="si">%s</span><span class="s2"> for forward "</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>                        <span class="s2">"relationship expansion: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a>                        <span class="n">pk</span><span class="p">,</span>
 <a id="__codelineno-0-187" name="__codelineno-0-187"></a>                        <span class="n">e</span><span class="p">,</span>
 <a id="__codelineno-0-188" name="__codelineno-0-188"></a>                    <span class="p">)</span>
@@ -3345,7 +3373,7 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>                        <span class="n">related_pk</span> <span class="o">=</span> <span class="n">_resolve_pk</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">))</span>
 <a id="__codelineno-0-193" name="__codelineno-0-193"></a>                    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>                        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>                            <span class="s2">&quot;graph_traversal: failed to resolve </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>                            <span class="s2">"graph_traversal: failed to resolve </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>                            <span class="n">pk</span><span class="p">,</span>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a>                            <span class="n">field_name</span><span class="p">,</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a>                            <span class="n">e</span><span class="p">,</span>
@@ -3366,7 +3394,7 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a>                    <span class="n">members</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_key</span><span class="p">,</span> <span class="n">fanout_limit</span><span class="p">)</span>
 <a id="__codelineno-0-214" name="__codelineno-0-214"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>                        <span class="s2">&quot;graph_traversal: reverse lookup failed for </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>                        <span class="s2">"graph_traversal: reverse lookup failed for </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>                        <span class="n">pk</span><span class="p">,</span>
 <a id="__codelineno-0-218" name="__codelineno-0-218"></a>                        <span class="n">field_name</span><span class="p">,</span>
 <a id="__codelineno-0-219" name="__codelineno-0-219"></a>                        <span class="n">e</span><span class="p">,</span>
@@ -3374,7 +3402,7 @@ relationship value) and reverse (other nodes pointing at it).</p>
 <a id="__codelineno-0-221" name="__codelineno-0-221"></a>                    <span class="n">members</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>                <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]:</span>
 <a id="__codelineno-0-223" name="__codelineno-0-223"></a>                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>                        <span class="n">member</span> <span class="o">=</span> <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>                        <span class="n">member</span> <span class="o">=</span> <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>                    <span class="k">if</span> <span class="n">member</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">visited</span><span class="p">:</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>                        <span class="k">if</span> <span class="n">next_weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">hop_weight</span><span class="p">:</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>                            <span class="n">next_weights</span><span class="p">[</span><span class="n">member</span><span class="p">]</span> <span class="o">=</span> <span class="n">hop_weight</span>
@@ -3768,7 +3796,7 @@ hop admission.</p>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="n">confidence_field_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>    <span class="n">decay_field_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="p">):</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Seed→expand traversal: co-occurrence BFS + relationship walk, merged,</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="w">    </span><span class="sd">"""Seed→expand traversal: co-occurrence BFS + relationship walk, merged,</span>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">    budget-capped, and confidence/decay-modulated.</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">    Drop-in replacement for a bare ``CoOccurrenceField.propagate()`` call —</span>
@@ -3807,7 +3835,7 @@ hop admission.</p>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        list[tuple[str, float]]: Discovered PKs (excluding seeds) with</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">        their final weight, sorted descending. Empty list on no signal or</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        on any internal failure (logs a warning, never raises).</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    """</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">seed_pks</span><span class="p">:</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a>        <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a>    <span class="k">if</span> <span class="n">co_occurrence_field</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">relationship_field_names</span><span class="p">:</span>
@@ -3829,7 +3857,7 @@ hop admission.</p>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>                <span class="k">if</span> <span class="n">candidate_weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">w</span><span class="p">:</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>                    <span class="n">candidate_weights</span><span class="p">[</span><span class="n">pk</span><span class="p">]</span> <span class="o">=</span> <span class="n">w</span>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;graph_traversal: co-occurrence propagation failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"graph_traversal: co-occurrence propagation failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>
 <a id="__codelineno-0-430" name="__codelineno-0-430"></a>    <span class="k">if</span> <span class="n">relationship_field_names</span><span class="p">:</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="k">try</span><span class="p">:</span>
@@ -3844,7 +3872,7 @@ hop admission.</p>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a>                <span class="k">if</span> <span class="n">candidate_weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">w</span><span class="p">:</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>                    <span class="n">candidate_weights</span><span class="p">[</span><span class="n">pk</span><span class="p">]</span> <span class="o">=</span> <span class="n">w</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;graph_traversal: relationship expansion failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"graph_traversal: relationship expansion failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a>    <span class="k">for</span> <span class="n">seed</span> <span class="ow">in</span> <span class="n">seed_pks</span><span class="p">:</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a>        <span class="n">candidate_weights</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
@@ -3865,7 +3893,7 @@ hop admission.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>                <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">,</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="p">)</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;graph_traversal: admission modulation failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"graph_traversal: admission modulation failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">capped</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">kv</span><span class="p">:</span> <span class="n">kv</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>

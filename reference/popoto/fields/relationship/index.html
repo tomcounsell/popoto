@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3463,11 +3491,11 @@ class level and needs to accept any Model subclass.</p>
 <span class="normal"><a href="#__codelineno-0-525">525</a></span>
 <span class="normal"><a href="#__codelineno-0-526">526</a></span>
 <span class="normal"><a href="#__codelineno-0-527">527</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">Relationship</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    A field that stores references to other model instances, analogous to a ForeignKey.</span>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a>
 <a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    The first positional argument is the related Model class. Internally the</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">    relationship is stored as the related instance&#39;s ``redis_key`` string,</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">    relationship is stored as the related instance's ``redis_key`` string,</span>
 <a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    which is lazily loaded back into a full model instance on access. This</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    prevents infinite recursion with circular references.</span>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a>
@@ -3477,8 +3505,8 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    related object.</span>
 <a id="__codelineno-0-69" name="__codelineno-0-69"></a>
 <a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    This bidirectional indexing is the key innovation: traditional key-value stores</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    only allow lookup by key, but Popoto&#39;s relationship Sets enable efficient</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    reverse lookups (&quot;find all X that reference Y&quot;) without scanning all records.</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    only allow lookup by key, but Popoto's relationship Sets enable efficient</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    reverse lookups ("find all X that reference Y") without scanning all records.</span>
 <a id="__codelineno-0-73" name="__codelineno-0-73"></a>
 <a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    A field value can be one of three types at runtime:</span>
 <a id="__codelineno-0-75" name="__codelineno-0-75"></a>
@@ -3506,21 +3534,21 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-97" name="__codelineno-0-97"></a><span class="sd">            title = KeyField()</span>
 <a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">            author = Relationship(model=Author)</span>
 <a id="__codelineno-0-99" name="__codelineno-0-99"></a>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="sd">        tolkien = Author.create(name=&quot;Tolkien&quot;)</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">        Book.create(title=&quot;The Hobbit&quot;, author=tolkien)</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="sd">        Book.create(title=&quot;LOTR&quot;, author=tolkien)</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="sd">        tolkien = Author.create(name="Tolkien")</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">        Book.create(title="The Hobbit", author=tolkien)</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="sd">        Book.create(title="LOTR", author=tolkien)</span>
 <a id="__codelineno-0-103" name="__codelineno-0-103"></a>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a><span class="sd">        # Efficient lookup: &quot;all books by Tolkien&quot;</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a><span class="sd">        # Efficient lookup: "all books by Tolkien"</span>
 <a id="__codelineno-0-105" name="__codelineno-0-105"></a><span class="sd">        books = Book.query.filter(author=tolkien)  # Returns both books</span>
 <a id="__codelineno-0-106" name="__codelineno-0-106"></a>
 <a id="__codelineno-0-107" name="__codelineno-0-107"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-108" name="__codelineno-0-108"></a><span class="sd">        The `type` attribute is set to Model (the base class), not the specific</span>
 <a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="sd">        related model. This is because type checking happens at the Field base</span>
 <a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="sd">        class level and needs to accept any Model subclass.</span>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">    """</span>
 <a id="__codelineno-0-112" name="__codelineno-0-112"></a>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a>    <span class="nb">type</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a>    <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a>    <span class="nb">type</span><span class="p">:</span> <span class="s2">"Model"</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a>    <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-115" name="__codelineno-0-115"></a>    <span class="n">many</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <a id="__codelineno-0-116" name="__codelineno-0-116"></a>    <span class="n">null</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
 <a id="__codelineno-0-117" name="__codelineno-0-117"></a>
@@ -3528,10 +3556,10 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-119" name="__codelineno-0-119"></a>    <span class="c1"># redis_key value by on_save(). Since v1 always preserves keys on import</span>
 <a id="__codelineno-0-120" name="__codelineno-0-120"></a>    <span class="c1"># (see #557 for the deferred key-regeneration opt-out), a carried</span>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a>    <span class="c1"># redis_key string round-trips correctly with no extra state.</span>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rebuild&quot;</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rebuild"</span>
 <a id="__codelineno-0-123" name="__codelineno-0-123"></a>
 <a id="__codelineno-0-124" name="__codelineno-0-124"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">        Initialize a Relationship field with the specified related model.</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a>
 <a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">        The initialization defers the Model import to avoid circular dependencies,</span>
@@ -3543,15 +3571,15 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">                - model: The Model class this relationship points to (required for queries)</span>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">                - many: Boolean for many-to-many relationships (future feature)</span>
 <a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">                - null: Whether None is allowed (default True)</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">        """</span>
 <a id="__codelineno-0-138" name="__codelineno-0-138"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-139" name="__codelineno-0-139"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 <a id="__codelineno-0-140" name="__codelineno-0-140"></a>
 <a id="__codelineno-0-141" name="__codelineno-0-141"></a>        <span class="n">relationship_field_defaults</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>            <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>            <span class="s2">&quot;many&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>            <span class="s2">&quot;null&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a>            <span class="s2">"type"</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a>            <span class="s2">"model"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a>            <span class="s2">"many"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>            <span class="s2">"null"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-146" name="__codelineno-0-146"></a>        <span class="p">}</span>
 <a id="__codelineno-0-147" name="__codelineno-0-147"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">field_defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">relationship_field_defaults</span><span class="p">)</span>
 <a id="__codelineno-0-148" name="__codelineno-0-148"></a>        <span class="c1"># set field options, let kwargs override</span>
@@ -3560,30 +3588,30 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-151" name="__codelineno-0-151"></a>
 <a id="__codelineno-0-152" name="__codelineno-0-152"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-153" name="__codelineno-0-153"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">        Validate a Relationship field value.</span>
 <a id="__codelineno-0-156" name="__codelineno-0-156"></a>
 <a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">        Accepts three value types as valid:</span>
 <a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">        - A Model instance (the related model)</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">        - A str containing a redis_key reference (lazy-loaded, format &quot;ClassName:key&quot;)</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">        - A str containing a redis_key reference (lazy-loaded, format "ClassName:key")</span>
 <a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">        - None (if field.null is True)</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a>
 <a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">        This override is necessary because the base Field.is_valid() only checks</span>
 <a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">        isinstance(value, field.type), which rejects the str redis_key values</span>
 <a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        that are set during lazy loading from Redis.</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        """</span>
 <a id="__codelineno-0-166" name="__codelineno-0-166"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">null_check</span> <span class="ow">and</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-167" name="__codelineno-0-167"></a>            <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a>        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">null</span> <span class="ow">and</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-169" name="__codelineno-0-169"></a>            <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-170" name="__codelineno-0-170"></a>        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> is null but null=False&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> is null but null=False"</span><span class="p">)</span>
 <a id="__codelineno-0-172" name="__codelineno-0-172"></a>            <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-173" name="__codelineno-0-173"></a>        <span class="c1"># Accept redis_key strings (lazy-loaded relationship references)</span>
 <a id="__codelineno-0-174" name="__codelineno-0-174"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>            <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>            <span class="k">if</span> <span class="s2">":"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
 <a id="__codelineno-0-176" name="__codelineno-0-176"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>                    <span class="sa">f</span><span class="s2">&quot;Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> has invalid redis_key string: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>                    <span class="sa">f</span><span class="s2">"Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> has invalid redis_key string: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-178" name="__codelineno-0-178"></a>                <span class="p">)</span>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a>                <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a>            <span class="k">return</span> <span class="kc">True</span>
@@ -3593,13 +3621,13 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-184" name="__codelineno-0-184"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-185" name="__codelineno-0-185"></a>            <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>            <span class="sa">f</span><span class="s2">&quot;Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> expected Model instance or redis_key string, &quot;</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>            <span class="sa">f</span><span class="s2">&quot;got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>            <span class="sa">f</span><span class="s2">"Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> expected Model instance or redis_key string, "</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>            <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="p">)</span>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        Build the set of valid query parameters for filtering on this relationship.</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">        This method enables Django-style double-underscore query syntax by traversing</span>
@@ -3620,7 +3648,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">                - The field name itself (for direct model instance filtering)</span>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">                - Chained parameters like `field_name__related_field` for each</span>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">                  filterable field on the related model</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        """</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="n">related_field_filter_query_params</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
 <a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="k">for</span> <span class="n">related_field_name</span><span class="p">,</span> <span class="n">related_field</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_field</span><span class="p">,</span> <span class="n">Relationship</span><span class="p">):</span>
@@ -3629,7 +3657,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-220" name="__codelineno-0-220"></a>                <span class="n">related_field_name</span>
 <a id="__codelineno-0-221" name="__codelineno-0-221"></a>            <span class="p">):</span>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>                <span class="n">related_field_filter_query_params</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">related_query_param</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">related_query_param</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-224" name="__codelineno-0-224"></a>                <span class="p">)</span>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="k">return</span> <span class="p">(</span>
@@ -3637,7 +3665,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="o">.</span><span class="n">get_filter_query_params</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="o">.</span><span class="n">union</span><span class="p">(</span>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a>                <span class="p">{</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-232" name="__codelineno-0-232"></a>                <span class="p">}</span>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="p">)</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a>            <span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">related_field_filter_query_params</span><span class="p">)</span>
@@ -3646,13 +3674,13 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-239" name="__codelineno-0-239"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">field_value</span><span class="p">:</span> <span class="s2">&quot;Model | str | None&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">field_value</span><span class="p">:</span> <span class="s2">"Model | str | None"</span><span class="p">,</span>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-245" name="__codelineno-0-245"></a>    <span class="p">):</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">        Maintain the relationship index Set when a model instance is saved.</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>
 <a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">        This hook is called automatically during model save operations. It updates</span>
@@ -3660,7 +3688,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">        This is the core mechanism that enables efficient reverse lookups.</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a>
 <a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        When the relationship value changes (e.g., player.team = team_b), the</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        instance is removed from the old related object&#39;s index set before being</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        instance is removed from the old related object's index set before being</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">        added to the new one. This prevents ghost entries that would cause stale</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        query results. The old value is detected via ``_saved_field_values``,</span>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">        which stores field values at the last save/load.</span>
@@ -3669,7 +3697,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">            `$RelationshipF:ModelClass:field_name:related_db_key`</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        For example, saving a Membership with person=alice would add the</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        Membership&#39;s db_key to the Set at `$RelationshipF:Membership:person:Person:Alice`.</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        Membership's db_key to the Set at `$RelationshipF:Membership:person:Person:Alice`.</span>
 <a id="__codelineno-0-264" name="__codelineno-0-264"></a>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">            model_instance: The model instance being saved.</span>
@@ -3684,7 +3712,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">        Note:</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">            When field_value is None, the instance is removed from the index Set.</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">            This handles the case where a relationship is being cleared.</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        """</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>
 <a id="__codelineno-0-281" name="__codelineno-0-281"></a>        <span class="c1"># Handle different field_value types:</span>
@@ -3692,15 +3720,15 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>        <span class="c1"># - Model instance: fully loaded relationship</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>        <span class="c1"># - str: lazy-loaded relationship (redis_key string due to circular reference protection)</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>            <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>            <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">"None"</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a>            <span class="n">related_db_key</span> <span class="o">=</span> <span class="n">field_value</span><span class="o">.</span><span class="n">db_key</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>            <span class="c1"># field_value is the redis_key string (lazy-loaded but never accessed)</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="c1"># Expecting format &quot;ClassName:key_value&quot;</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="c1"># Expecting format "ClassName:key_value"</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="k">if</span> <span class="s2">":"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                    <span class="sa">f</span><span class="s2">&quot;Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected &#39;ClassName:key_value&#39;&quot;</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                    <span class="sa">f</span><span class="s2">"Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected 'ClassName:key_value'"</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>                <span class="p">)</span>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a>                <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>            <span class="c1"># Parse the redis_key string into DB_key components</span>
@@ -3708,23 +3736,23 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>            <span class="c1"># Unknown type, log and return without action</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                <span class="sa">f</span><span class="s2">&quot;Unexpected field_value type in on_save: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>                <span class="sa">f</span><span class="s2">"Unexpected field_value type in on_save: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a>            <span class="p">)</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>        <span class="c1"># Remove from old index if the Relationship value changed.</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="c1"># _saved_field_values tracks values at last save/load.  If the current</span>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="c1"># value differs from the saved value, the old index Set still contains</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>        <span class="c1"># this instance&#39;s key -- remove it to prevent ghost entries in queries.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>        <span class="c1"># this instance's key -- remove it to prevent ghost entries in queries.</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="c1"># This mirrors the proven pattern from KeyFieldMixin.on_save() (PR #150).</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_saved_field_values"</span><span class="p">,</span> <span class="p">{})</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="n">old_value</span> <span class="o">=</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">if</span> <span class="n">old_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">old_value</span> <span class="o">!=</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="c1"># Resolve old value to a related_db_key using the same type-dispatch</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">old_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>                <span class="n">old_related_db_key</span> <span class="o">=</span> <span class="n">old_value</span><span class="o">.</span><span class="n">db_key</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a>            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">old_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">in</span> <span class="n">old_value</span><span class="p">:</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="k">if</span> <span class="s2">":"</span> <span class="ow">in</span> <span class="n">old_value</span><span class="p">:</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>                    <span class="n">old_related_db_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">old_value</span><span class="p">)</span>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a>                <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a>                    <span class="n">old_related_db_key</span> <span class="o">=</span> <span class="kc">None</span>
@@ -3745,8 +3773,8 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="c1"># on a one-to-many, save the set of many with the related instance</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="c1"># add this instance&#39;s id to a relationship set based on the related model</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="c1"># example: &quot;$RelationshipF:Membership:person:person_db_key&quot;</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="c1"># add this instance's id to a relationship set based on the related model</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="c1"># example: "$RelationshipF:Membership:person:person_db_key"</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="n">relationship_set_db_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>            <span class="n">related_db_key</span><span class="p">,</span>
@@ -3774,13 +3802,13 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="n">field_value</span><span class="p">:</span> <span class="s2">&quot;Model | str | None&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="n">field_value</span><span class="p">:</span> <span class="s2">"Model | str | None"</span><span class="p">,</span>
 <a id="__codelineno-0-371" name="__codelineno-0-371"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="p">):</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="sd">        Clean up the relationship index Set when a model instance is deleted.</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="sd">        This hook ensures referential integrity by removing the deleted instance</span>
@@ -3803,8 +3831,8 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">            through a chain (e.g., person.friend.friend), the field_value may</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="sd">            be a key string rather than a Model instance, causing this method</span>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="sd">            to fail when accessing field_value.db_key.</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a>        <span class="c1"># todo: it&#39;s possible this instance is not fully loaded or has been changed.</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">        """</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>        <span class="c1"># todo: it's possible this instance is not fully loaded or has been changed.</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>        <span class="c1">#  Need to reload from db before deleting</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>        <span class="c1">#  Example: on person.friend.delete() the person.friend.friend will have field_value as a keystring</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="c1">#  It will not be a model instance, so this method will fail on field_value.db_key below</span>
@@ -3815,15 +3843,15 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a>        <span class="c1"># - Model instance: fully loaded relationship</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>        <span class="c1"># - str: lazy-loaded relationship (redis_key string due to circular reference protection)</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a>        <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>            <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>            <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">"None"</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a>            <span class="n">related_db_key</span> <span class="o">=</span> <span class="n">field_value</span><span class="o">.</span><span class="n">db_key</span>
 <a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a>            <span class="c1"># field_value is the redis_key string (lazy-loaded but never accessed)</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="c1"># Expecting format &quot;ClassName:key_value&quot;</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>            <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="c1"># Expecting format "ClassName:key_value"</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>            <span class="k">if</span> <span class="s2">":"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>                    <span class="sa">f</span><span class="s2">&quot;Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected &#39;ClassName:key_value&#39;&quot;</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>                    <span class="sa">f</span><span class="s2">"Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected 'ClassName:key_value'"</span>
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a>                <span class="p">)</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>                <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a>            <span class="c1"># Parse the redis_key string into DB_key components</span>
@@ -3831,7 +3859,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-422" name="__codelineno-0-422"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-423" name="__codelineno-0-423"></a>            <span class="c1"># Unknown type, log and return without action</span>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a>                <span class="sa">f</span><span class="s2">&quot;Unexpected field_value type in on_delete: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>                <span class="sa">f</span><span class="s2">"Unexpected field_value type in on_delete: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>            <span class="p">)</span>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>
@@ -3840,15 +3868,15 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>            <span class="n">related_db_key</span><span class="p">,</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>        <span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>        <span class="c1"># Use saved_redis_key if provided, otherwise fall back to current db_key</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-436" name="__codelineno-0-436"></a>            <span class="k">return</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">relationship_set_db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">relationship_set_db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="w">        </span><span class="sd">"""</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        Execute a filter query on a Relationship field, returning matching db_keys.</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        This method handles two types of queries:</span>
@@ -3861,7 +3889,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        2. **Chained Field Filtering** (`field_name__related_field=value`):</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a><span class="sd">           First queries the related model to find matching instances, then</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a><span class="sd">           looks up each of their relationship index Sets. For example,</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">           `Membership.query.filter(person__name=&quot;Alice&quot;)` first finds all</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">           `Membership.query.filter(person__name="Alice")` first finds all</span>
 <a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">           Persons named Alice, then retrieves all Memberships pointing to them.</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">        The chained approach supports recursive traversal through multiple</span>
@@ -3870,7 +3898,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">            model: The Model class being queried.</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">            field_name: The name of the Relationship field.</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">            **query_params: Filter parameters (e.g., person=alice or person__name=&quot;Alice&quot;).</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">            **query_params: Filter parameters (e.g., person=alice or person__name="Alice").</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a><span class="sd">            A set of db_key bytes for matching model instances. Returns an empty</span>
@@ -3880,21 +3908,21 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">            QueryException: If filtering directly on the field with a non-Model value.</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="sd">        Performance Note:</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="sd">            Direct instance filtering is O(1) as it&#39;s a single Set lookup.</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="sd">            Direct instance filtering is O(1) as it's a single Set lookup.</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a><span class="sd">            Chained filtering requires querying the related model first, then</span>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a><span class="sd">            performing N Set lookups where N is the number of matching related</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">            instances. Results are intersected if multiple filters are applied.</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">        """</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 <a id="__codelineno-0-480" name="__codelineno-0-480"></a>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>        <span class="n">keys_lists_to_intersect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="k">for</span> <span class="n">query_param</span><span class="p">,</span> <span class="n">query_value</span> <span class="ow">in</span> <span class="n">query_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">query_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>                    <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a>                        <span class="sa">f</span><span class="s2">&quot;Query filter on Relationship expects model instance. Instead, got </span><span class="si">{</span><span class="n">query_value</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>                        <span class="sa">f</span><span class="s2">"Query filter on Relationship expects model instance. Instead, got </span><span class="si">{</span><span class="n">query_value</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>                <span class="n">relationship_set_db_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
@@ -3905,10 +3933,10 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>                    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">relationship_set_db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>                <span class="p">)</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__"</span><span class="p">):</span>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>                <span class="n">field</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>                <span class="n">relationship_field_name</span> <span class="o">=</span> <span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                    <span class="s2">&quot;__&quot;</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>                <span class="n">relationship_field_name</span> <span class="o">=</span> <span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__"</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                    <span class="s2">"__"</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>                <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>                <span class="n">relationship_field_values</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span>
@@ -3916,7 +3944,7 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>                <span class="p">]</span><span class="o">.</span><span class="n">filter_query</span><span class="p">(</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>                    <span class="n">model</span><span class="o">=</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>                    <span class="n">field_name</span><span class="o">=</span><span class="n">relationship_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a>                    <span class="o">**</span><span class="p">{</span><span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__&quot;</span><span class="p">):</span> <span class="n">query_value</span><span class="p">},</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>                    <span class="o">**</span><span class="p">{</span><span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__"</span><span class="p">):</span> <span class="n">query_value</span><span class="p">},</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>                <span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>                <span class="c1"># note: this will be recursive if references another relationship and so forth</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>
@@ -4017,30 +4045,30 @@ that are set during lazy loading from Redis.</p>
 <span class="normal"><a href="#__codelineno-0-189">189</a></span>
 <span class="normal"><a href="#__codelineno-0-190">190</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">    Validate a Relationship field value.</span>
 <a id="__codelineno-0-156" name="__codelineno-0-156"></a>
 <a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">    Accepts three value types as valid:</span>
 <a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">    - A Model instance (the related model)</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">    - A str containing a redis_key reference (lazy-loaded, format &quot;ClassName:key&quot;)</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">    - A str containing a redis_key reference (lazy-loaded, format "ClassName:key")</span>
 <a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">    - None (if field.null is True)</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a>
 <a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">    This override is necessary because the base Field.is_valid() only checks</span>
 <a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">    isinstance(value, field.type), which rejects the str redis_key values</span>
 <a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">    that are set during lazy loading from Redis.</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    """</span>
 <a id="__codelineno-0-166" name="__codelineno-0-166"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">null_check</span> <span class="ow">and</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-167" name="__codelineno-0-167"></a>        <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a>    <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">null</span> <span class="ow">and</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-169" name="__codelineno-0-169"></a>        <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> is null but null=False&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> is null but null=False"</span><span class="p">)</span>
 <a id="__codelineno-0-172" name="__codelineno-0-172"></a>        <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="c1"># Accept redis_key strings (lazy-loaded relationship references)</span>
 <a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>        <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>        <span class="k">if</span> <span class="s2">":"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
 <a id="__codelineno-0-176" name="__codelineno-0-176"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>                <span class="sa">f</span><span class="s2">&quot;Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> has invalid redis_key string: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>                <span class="sa">f</span><span class="s2">"Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> has invalid redis_key string: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-178" name="__codelineno-0-178"></a>            <span class="p">)</span>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a>            <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a>        <span class="k">return</span> <span class="kc">True</span>
@@ -4050,8 +4078,8 @@ that are set during lazy loading from Redis.</p>
 <a id="__codelineno-0-184" name="__codelineno-0-184"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-185" name="__codelineno-0-185"></a>        <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>        <span class="sa">f</span><span class="s2">&quot;Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> expected Model instance or redis_key string, &quot;</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="sa">f</span><span class="s2">&quot;got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>        <span class="sa">f</span><span class="s2">"Relationship field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> expected Model instance or redis_key string, "</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-189" name="__codelineno-0-189"></a>    <span class="p">)</span>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="k">return</span> <span class="kc">False</span>
 </code></pre></div></td></tr></table></div>
@@ -4185,7 +4213,7 @@ compilation tractable.</p>
 <span class="normal"><a href="#__codelineno-0-233">233</a></span>
 <span class="normal"><a href="#__codelineno-0-234">234</a></span>
 <span class="normal"><a href="#__codelineno-0-235">235</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    Build the set of valid query parameters for filtering on this relationship.</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    This method enables Django-style double-underscore query syntax by traversing</span>
@@ -4206,7 +4234,7 @@ compilation tractable.</p>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">            - The field name itself (for direct model instance filtering)</span>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">            - Chained parameters like `field_name__related_field` for each</span>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">              filterable field on the related model</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    """</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">related_field_filter_query_params</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
 <a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="k">for</span> <span class="n">related_field_name</span><span class="p">,</span> <span class="n">related_field</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_field</span><span class="p">,</span> <span class="n">Relationship</span><span class="p">):</span>
@@ -4215,7 +4243,7 @@ compilation tractable.</p>
 <a id="__codelineno-0-220" name="__codelineno-0-220"></a>            <span class="n">related_field_name</span>
 <a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="p">):</span>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>            <span class="n">related_field_filter_query_params</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">related_query_param</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__</span><span class="si">{</span><span class="n">related_query_param</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-224" name="__codelineno-0-224"></a>            <span class="p">)</span>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">return</span> <span class="p">(</span>
@@ -4223,7 +4251,7 @@ compilation tractable.</p>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="o">.</span><span class="n">get_filter_query_params</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="o">.</span><span class="n">union</span><span class="p">(</span>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="p">{</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-232" name="__codelineno-0-232"></a>            <span class="p">}</span>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="p">)</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">related_field_filter_query_params</span><span class="p">)</span>
@@ -4519,13 +4547,13 @@ This handles the case where a relationship is being cleared.</p>
 <span class="normal"><a href="#__codelineno-0-363">363</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>    <span class="n">field_value</span><span class="p">:</span> <span class="s2">&quot;Model | str | None&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>    <span class="n">field_value</span><span class="p">:</span> <span class="s2">"Model | str | None"</span><span class="p">,</span>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-244" name="__codelineno-0-244"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="p">):</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">    Maintain the relationship index Set when a model instance is saved.</span>
 <a id="__codelineno-0-248" name="__codelineno-0-248"></a>
 <a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">    This hook is called automatically during model save operations. It updates</span>
@@ -4533,7 +4561,7 @@ This handles the case where a relationship is being cleared.</p>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">    This is the core mechanism that enables efficient reverse lookups.</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a>
 <a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    When the relationship value changes (e.g., player.team = team_b), the</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    instance is removed from the old related object&#39;s index set before being</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    instance is removed from the old related object's index set before being</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    added to the new one. This prevents ghost entries that would cause stale</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    query results. The old value is detected via ``_saved_field_values``,</span>
 <a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">    which stores field values at the last save/load.</span>
@@ -4542,7 +4570,7 @@ This handles the case where a relationship is being cleared.</p>
 <a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">        `$RelationshipF:ModelClass:field_name:related_db_key`</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    For example, saving a Membership with person=alice would add the</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    Membership&#39;s db_key to the Set at `$RelationshipF:Membership:person:Person:Alice`.</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    Membership's db_key to the Set at `$RelationshipF:Membership:person:Person:Alice`.</span>
 <a id="__codelineno-0-264" name="__codelineno-0-264"></a>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">        model_instance: The model instance being saved.</span>
@@ -4557,7 +4585,7 @@ This handles the case where a relationship is being cleared.</p>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        When field_value is None, the instance is removed from the index Set.</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        This handles the case where a relationship is being cleared.</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    """</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>
 <a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="c1"># Handle different field_value types:</span>
@@ -4565,15 +4593,15 @@ This handles the case where a relationship is being cleared.</p>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="c1"># - Model instance: fully loaded relationship</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>    <span class="c1"># - str: lazy-loaded relationship (redis_key string due to circular reference protection)</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>    <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">"None"</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="n">field_value</span><span class="o">.</span><span class="n">db_key</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="c1"># field_value is the redis_key string (lazy-loaded but never accessed)</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="c1"># Expecting format &quot;ClassName:key_value&quot;</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>        <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="c1"># Expecting format "ClassName:key_value"</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>        <span class="k">if</span> <span class="s2">":"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                <span class="sa">f</span><span class="s2">&quot;Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected &#39;ClassName:key_value&#39;&quot;</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                <span class="sa">f</span><span class="s2">"Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected 'ClassName:key_value'"</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>            <span class="p">)</span>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>        <span class="c1"># Parse the redis_key string into DB_key components</span>
@@ -4581,23 +4609,23 @@ This handles the case where a relationship is being cleared.</p>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="c1"># Unknown type, log and return without action</span>
 <a id="__codelineno-0-301" name="__codelineno-0-301"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>            <span class="sa">f</span><span class="s2">&quot;Unexpected field_value type in on_save: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>            <span class="sa">f</span><span class="s2">"Unexpected field_value type in on_save: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="p">)</span>
 <a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="c1"># Remove from old index if the Relationship value changed.</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="c1"># _saved_field_values tracks values at last save/load.  If the current</span>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="c1"># value differs from the saved value, the old index Set still contains</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="c1"># this instance&#39;s key -- remove it to prevent ghost entries in queries.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="c1"># this instance's key -- remove it to prevent ghost entries in queries.</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="c1"># This mirrors the proven pattern from KeyFieldMixin.on_save() (PR #150).</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_saved_field_values"</span><span class="p">,</span> <span class="p">{})</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="n">old_value</span> <span class="o">=</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="k">if</span> <span class="n">old_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">old_value</span> <span class="o">!=</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="c1"># Resolve old value to a related_db_key using the same type-dispatch</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">old_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>            <span class="n">old_related_db_key</span> <span class="o">=</span> <span class="n">old_value</span><span class="o">.</span><span class="n">db_key</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">old_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>            <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">in</span> <span class="n">old_value</span><span class="p">:</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>            <span class="k">if</span> <span class="s2">":"</span> <span class="ow">in</span> <span class="n">old_value</span><span class="p">:</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>                <span class="n">old_related_db_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">old_value</span><span class="p">)</span>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a>                <span class="n">old_related_db_key</span> <span class="o">=</span> <span class="kc">None</span>
@@ -4618,8 +4646,8 @@ This handles the case where a relationship is being cleared.</p>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>                <span class="p">)</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="c1"># on a one-to-many, save the set of many with the related instance</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="c1"># add this instance&#39;s id to a relationship set based on the related model</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="c1"># example: &quot;$RelationshipF:Membership:person:person_db_key&quot;</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="c1"># add this instance's id to a relationship set based on the related model</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="c1"># example: "$RelationshipF:Membership:person:person_db_key"</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="n">relationship_set_db_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="n">related_db_key</span><span class="p">,</span>
@@ -4873,13 +4901,13 @@ to fail when accessing field_value.db_key.</p>
 <span class="normal"><a href="#__codelineno-0-438">438</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="n">field_value</span><span class="p">:</span> <span class="s2">&quot;Model | str | None&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="n">field_value</span><span class="p">:</span> <span class="s2">"Model | str | None"</span><span class="p">,</span>
 <a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="p">):</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="sd">    Clean up the relationship index Set when a model instance is deleted.</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="sd">    This hook ensures referential integrity by removing the deleted instance</span>
@@ -4902,8 +4930,8 @@ to fail when accessing field_value.db_key.</p>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">        through a chain (e.g., person.friend.friend), the field_value may</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="sd">        be a key string rather than a Model instance, causing this method</span>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="sd">        to fail when accessing field_value.db_key.</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a>    <span class="c1"># todo: it&#39;s possible this instance is not fully loaded or has been changed.</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">    """</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>    <span class="c1"># todo: it's possible this instance is not fully loaded or has been changed.</span>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>    <span class="c1">#  Need to reload from db before deleting</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>    <span class="c1">#  Example: on person.friend.delete() the person.friend.friend will have field_value as a keystring</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a>    <span class="c1">#  It will not be a model instance, so this method will fail on field_value.db_key below</span>
@@ -4914,15 +4942,15 @@ to fail when accessing field_value.db_key.</p>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a>    <span class="c1"># - Model instance: fully loaded relationship</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>    <span class="c1"># - str: lazy-loaded relationship (redis_key string due to circular reference protection)</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a>    <span class="k">if</span> <span class="n">field_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="s2">"None"</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="n">field_value</span><span class="o">.</span><span class="n">db_key</span>
 <a id="__codelineno-0-412" name="__codelineno-0-412"></a>    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="c1"># field_value is the redis_key string (lazy-loaded but never accessed)</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>        <span class="c1"># Expecting format &quot;ClassName:key_value&quot;</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>        <span class="c1"># Expecting format "ClassName:key_value"</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="k">if</span> <span class="s2">":"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">field_value</span><span class="p">:</span>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>                <span class="sa">f</span><span class="s2">&quot;Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected &#39;ClassName:key_value&#39;&quot;</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>                <span class="sa">f</span><span class="s2">"Invalid redis_key format for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">field_value</span><span class="si">}</span><span class="s2">. Expected 'ClassName:key_value'"</span>
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a>            <span class="p">)</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="c1"># Parse the redis_key string into DB_key components</span>
@@ -4930,7 +4958,7 @@ to fail when accessing field_value.db_key.</p>
 <a id="__codelineno-0-422" name="__codelineno-0-422"></a>    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-423" name="__codelineno-0-423"></a>        <span class="c1"># Unknown type, log and return without action</span>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a>            <span class="sa">f</span><span class="s2">&quot;Unexpected field_value type in on_delete: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>            <span class="sa">f</span><span class="s2">"Unexpected field_value type in on_delete: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field_value</span><span class="p">)</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>        <span class="p">)</span>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>
@@ -4939,7 +4967,7 @@ to fail when accessing field_value.db_key.</p>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="n">related_db_key</span><span class="p">,</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>    <span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>    <span class="c1"># Use saved_redis_key if provided, otherwise fall back to current db_key</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a>    <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-436" name="__codelineno-0-436"></a>        <span class="k">return</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">relationship_set_db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>    <span class="k">else</span><span class="p">:</span>
@@ -5202,8 +5230,8 @@ instances. Results are intersected if multiple filters are applied.</p>
 <span class="normal"><a href="#__codelineno-0-525">525</a></span>
 <span class="normal"><a href="#__codelineno-0-526">526</a></span>
 <span class="normal"><a href="#__codelineno-0-527">527</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">    Execute a filter query on a Relationship field, returning matching db_keys.</span>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">    This method handles two types of queries:</span>
@@ -5216,7 +5244,7 @@ instances. Results are intersected if multiple filters are applied.</p>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">    2. **Chained Field Filtering** (`field_name__related_field=value`):</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a><span class="sd">       First queries the related model to find matching instances, then</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a><span class="sd">       looks up each of their relationship index Sets. For example,</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">       `Membership.query.filter(person__name=&quot;Alice&quot;)` first finds all</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">       `Membership.query.filter(person__name="Alice")` first finds all</span>
 <a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">       Persons named Alice, then retrieves all Memberships pointing to them.</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">    The chained approach supports recursive traversal through multiple</span>
@@ -5225,7 +5253,7 @@ instances. Results are intersected if multiple filters are applied.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">        model: The Model class being queried.</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">        field_name: The name of the Relationship field.</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">        **query_params: Filter parameters (e.g., person=alice or person__name=&quot;Alice&quot;).</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">        **query_params: Filter parameters (e.g., person=alice or person__name="Alice").</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a><span class="sd">        A set of db_key bytes for matching model instances. Returns an empty</span>
@@ -5235,21 +5263,21 @@ instances. Results are intersected if multiple filters are applied.</p>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">        QueryException: If filtering directly on the field with a non-Model value.</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="sd">    Performance Note:</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="sd">        Direct instance filtering is O(1) as it&#39;s a single Set lookup.</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="sd">        Direct instance filtering is O(1) as it's a single Set lookup.</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a><span class="sd">        Chained filtering requires querying the related model first, then</span>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a><span class="sd">        performing N Set lookups where N is the number of matching related</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">        instances. Results are intersected if multiple filters are applied.</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">    """</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
 <a id="__codelineno-0-480" name="__codelineno-0-480"></a>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>    <span class="n">keys_lists_to_intersect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="k">for</span> <span class="n">query_param</span><span class="p">,</span> <span class="n">query_value</span> <span class="ow">in</span> <span class="n">query_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="k">if</span> <span class="n">query_param</span> <span class="o">==</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">query_value</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>                <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a>                    <span class="sa">f</span><span class="s2">&quot;Query filter on Relationship expects model instance. Instead, got </span><span class="si">{</span><span class="n">query_value</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>                    <span class="sa">f</span><span class="s2">"Query filter on Relationship expects model instance. Instead, got </span><span class="si">{</span><span class="n">query_value</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>                <span class="p">)</span>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>            <span class="n">relationship_set_db_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
@@ -5260,10 +5288,10 @@ instances. Results are intersected if multiple filters are applied.</p>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span><span class="n">relationship_set_db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="p">)</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>        <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__"</span><span class="p">):</span>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>            <span class="n">field</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>            <span class="n">relationship_field_name</span> <span class="o">=</span> <span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                <span class="s2">&quot;__&quot;</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>            <span class="n">relationship_field_name</span> <span class="o">=</span> <span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__"</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                <span class="s2">"__"</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>            <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>            <span class="n">relationship_field_values</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span>
@@ -5271,7 +5299,7 @@ instances. Results are intersected if multiple filters are applied.</p>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="p">]</span><span class="o">.</span><span class="n">filter_query</span><span class="p">(</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>                <span class="n">model</span><span class="o">=</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>                <span class="n">field_name</span><span class="o">=</span><span class="n">relationship_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a>                <span class="o">**</span><span class="p">{</span><span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__&quot;</span><span class="p">):</span> <span class="n">query_value</span><span class="p">},</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>                <span class="o">**</span><span class="p">{</span><span class="n">query_param</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">__"</span><span class="p">):</span> <span class="n">query_value</span><span class="p">},</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>            <span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>            <span class="c1"># note: this will be recursive if references another relationship and so forth</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>

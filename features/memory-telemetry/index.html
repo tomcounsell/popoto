@@ -1348,6 +1348,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2982,17 +3010,17 @@ being public-safe.</p>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">TelemetryRecorder</span><span class="p">,</span> <span class="n">TelemetryAnalyzer</span><span class="p">,</span> <span class="n">report_outcomes</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">recorder</span> <span class="o">=</span> <span class="n">TelemetryRecorder</span><span class="p">(</span><span class="n">assembler</span><span class="p">)</span>            <span class="c1"># capture=&quot;ids&quot; (private)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">recorder</span> <span class="o">=</span> <span class="n">TelemetryRecorder</span><span class="p">(</span><span class="n">assembler</span><span class="p">)</span>            <span class="c1"># capture="ids" (private)</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">result</span> <span class="o">=</span> <span class="n">recorder</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">event_id</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;telemetry_event_id&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">result</span> <span class="o">=</span> <span class="n">recorder</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">event_id</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"telemetry_event_id"</span><span class="p">]</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># ... later, when the agent&#39;s response is observed ...</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">report_outcomes</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="p">{</span><span class="n">mem</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">&quot;acted&quot;</span><span class="p">})</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># ... later, when the agent's response is observed ...</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">report_outcomes</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="p">{</span><span class="n">mem</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">"acted"</span><span class="p">})</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># ... offline ...</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">TelemetryAnalyzer</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">report</span><span class="p">())</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">TelemetryAnalyzer</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">report</span><span class="p">())</span>
 </code></pre></div>
 <p><code>TelemetryRecorder.assemble()</code> delegates to the wrapped assembler unchanged and
 returns the real <code>AssemblyResult</code>, adding <code>metadata["telemetry_event_id"]</code> when
@@ -3064,7 +3092,7 @@ telemetry can never grow a store past the scale posture.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">TelemetryRecorder</span><span class="p">(</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">inner</span><span class="p">,</span>                 <span class="c1"># a ContextAssembler</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">capture</span><span class="o">=</span><span class="s2">&quot;ids&quot;</span><span class="p">,</span>         <span class="c1"># &quot;ids&quot; (private) | &quot;content&quot; (opt-in). Invalid -&gt; ValueError</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">capture</span><span class="o">=</span><span class="s2">"ids"</span><span class="p">,</span>         <span class="c1"># "ids" (private) | "content" (opt-in). Invalid -&gt; ValueError</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">sample_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>       <span class="c1"># fraction of calls recorded, [0.0, 1.0]</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">ttl</span><span class="o">=</span><span class="n">DEFAULT_EVENT_TTL</span><span class="p">,</span>  <span class="c1"># per-instance TTL (seconds)</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">rng</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>              <span class="c1"># random.Random for deterministic sampling in tests</span>
@@ -3121,10 +3149,10 @@ joined outcome; injections without one are counted as <code>pending</code>.</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">an</span> <span class="o">=</span> <span class="n">TelemetryAnalyzer</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">an</span><span class="o">.</span><span class="n">injection_precision</span><span class="p">()</span>      <span class="c1"># {&#39;injected&#39;, &#39;labeled&#39;, &#39;pending&#39;, &#39;acted_rate&#39;, &#39;by_rank&#39;, ...}</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">an</span><span class="o">.</span><span class="n">confidence_calibration</span><span class="p">()</span>   <span class="c1"># {&#39;buckets&#39;: [{&#39;label&#39;, &#39;labeled&#39;, &#39;acted&#39;, &#39;acted_rate&#39;}, ...]}</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">an</span><span class="o">.</span><span class="n">decay_regret</span><span class="p">()</span>             <span class="c1"># {&#39;regret&#39;, &#39;acted&#39;, &#39;regret_rate&#39;, &#39;by_bucket&#39;: [...]}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">an</span> <span class="o">=</span> <span class="n">TelemetryAnalyzer</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">an</span><span class="o">.</span><span class="n">injection_precision</span><span class="p">()</span>      <span class="c1"># {'injected', 'labeled', 'pending', 'acted_rate', 'by_rank', ...}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">an</span><span class="o">.</span><span class="n">confidence_calibration</span><span class="p">()</span>   <span class="c1"># {'buckets': [{'label', 'labeled', 'acted', 'acted_rate'}, ...]}</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">an</span><span class="o">.</span><span class="n">decay_regret</span><span class="p">()</span>             <span class="c1"># {'regret', 'acted', 'regret_rate', 'by_bucket': [...]}</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">an</span><span class="o">.</span><span class="n">report</span><span class="p">())</span>            <span class="c1"># markdown</span>
 </code></pre></div>
 <p>Fusion-disagreement and refusal-threshold analyses are fast-follows (the trace

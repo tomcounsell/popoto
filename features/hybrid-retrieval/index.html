@@ -1530,6 +1530,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3055,7 +3083,7 @@
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">raw_content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;raw_content&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"raw_content"</span><span class="p">)</span>
 </code></pre></div>
 <p>BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the <code>on_save()</code> hook reads text from the <code>source</code> field, tokenizes it, and atomically updates the inverted index via a Lua script.</p>
 <p><strong>Parameters:</strong></p>
@@ -3147,10 +3175,10 @@
 <h3 id="keyword_search">keyword_search()<a class="headerlink" href="#keyword_search" title="Permanent link">&para;</a></h3>
 <p>The <code>keyword_search()</code> method on <code>QueryBuilder</code> provides the primary query interface for BM25. It tokenizes the query, executes the BM25 scoring Lua script, hydrates model instances, and attaches a <code>_bm25_score</code> attribute to each result.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Ranked keyword search</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">keyword_search</span><span class="p">(</span><span class="s2">&quot;redis deployment timeout&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">keyword_search</span><span class="p">(</span><span class="s2">"redis deployment timeout"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">_bm25_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">_bm25_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -3186,7 +3214,7 @@
 <p>You can also call <code>BM25Field.search()</code> directly for raw <code>(redis_key, bm25_score)</code> tuples without hydration -- useful when feeding results into <code>fuse()</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.bm25_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">BM25Field</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">scored</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;content_bm25&quot;</span><span class="p">,</span> <span class="s2">&quot;redis deployment&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">scored</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"content_bm25"</span><span class="p">,</span> <span class="s2">"redis deployment"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Returns [(redis_key, bm25_score), ...]</span>
 </code></pre></div>
 <p>Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
@@ -3202,8 +3230,8 @@ RRF consumes rank positions.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.bm25_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">BM25Field</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Get ranked lists from different signals</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">keyword_results</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;content_bm25&quot;</span><span class="p">,</span> <span class="s2">&quot;redis timeout&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">semantic_results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">&quot;connection issues&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">keyword_results</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"content_bm25"</span><span class="p">,</span> <span class="s2">"redis timeout"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">semantic_results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">"connection issues"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Fuse with RRF</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span>
@@ -3214,7 +3242,7 @@ RRF consumes rank positions.</p>
 <a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="p">)</span>
 <a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
 <a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2">: RRF=</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">_rrf_score</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2">: RRF=</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">_rrf_score</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -3255,7 +3283,7 @@ RRF consumes rank positions.</p>
 </table>
 <h3 id="maintenance">Maintenance<a class="headerlink" href="#maintenance" title="Permanent link">&para;</a></h3>
 <p><code>BM25Field.recompute_stats()</code> recalculates <code>avgdl</code> and <code>n</code> from scratch to correct floating-point drift that may accumulate over many incremental updates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">BM25Field</span><span class="o">.</span><span class="n">recompute_stats</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;content_bm25&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">BM25Field</span><span class="o">.</span><span class="n">recompute_stats</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"content_bm25"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="hybrid-retrieval-recipe">Hybrid Retrieval Recipe<a class="headerlink" href="#hybrid-retrieval-recipe" title="Permanent link">&para;</a></h2>
 <p>Here is a complete example wiring BM25, semantic search, and CoOccurrence graph signals into a single fused retrieval call:</p>
@@ -3271,14 +3299,14 @@ RRF consumes rank positions.</p>
 <a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">raw_content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
 <a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
 <a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="c1"># Search signals</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;raw_content&quot;</span><span class="p">)</span>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;raw_content&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"raw_content"</span><span class="p">)</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"raw_content"</span><span class="p">)</span>
 <a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">bloom</span> <span class="o">=</span> <span class="n">ExistenceFilter</span><span class="p">(</span><span class="n">error_rate</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">capacity</span><span class="o">=</span><span class="mi">100_000</span><span class="p">)</span>
 <a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="n">associations</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">()</span>
 <a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>
 <a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
 <a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="k">def</span><span class="w"> </span><span class="nf">hybrid_search</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Multi-signal retrieval with RRF fusion.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="sd">"""Multi-signal retrieval with RRF fusion."""</span>
 <a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>
 <a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>    <span class="c1"># 1. Fast pre-check: skip if definitely no matches</span>
 <a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>    <span class="k">if</span> <span class="n">Memory</span><span class="o">.</span><span class="n">bloom</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">query</span><span class="p">):</span>
@@ -3286,7 +3314,7 @@ RRF consumes rank positions.</p>
 <a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>
 <a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>    <span class="c1"># 2. Gather ranked lists from each signal</span>
 <a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>    <span class="n">keyword_results</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
-<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>        <span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;content_bm25&quot;</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>        <span class="n">Memory</span><span class="p">,</span> <span class="s2">"content_bm25"</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span>
 <a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a>    <span class="p">)</span>
 <a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a>    <span class="n">semantic_results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
 <a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>
@@ -3295,7 +3323,7 @@ RRF consumes rank positions.</p>
 <a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a>    <span class="k">if</span> <span class="n">keyword_results</span><span class="p">:</span>
 <a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>        <span class="n">seed_key</span> <span class="o">=</span> <span class="n">keyword_results</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
 <a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a>        <span class="n">propagated</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span>
-<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a>            <span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;associations&quot;</span><span class="p">,</span> <span class="n">seed_key</span><span class="p">,</span> <span class="n">hops</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a>            <span class="n">Memory</span><span class="p">,</span> <span class="s2">"associations"</span><span class="p">,</span> <span class="n">seed_key</span><span class="p">,</span> <span class="n">hops</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span>
 <a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a>        <span class="p">)</span>
 <a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a>        <span class="n">graph_results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">propagated</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
 <a id="__codelineno-6-40" name="__codelineno-6-40" href="#__codelineno-6-40"></a>

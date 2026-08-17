@@ -164,7 +164,7 @@ understand what each piece buys before you keep or drop it.
 
 > **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
 >
-> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 14
+> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 17
 > primitives and the layers composed on them.
 
 ## Level 0: Import the defaults
@@ -194,6 +194,12 @@ actual isolation boundary until that lands.
 
 This is also the configuration the published benchmarks run. If you take
 nothing else from this page, take this.
+
+`DefaultMemory` also carries `NeverRecordMixin`, so credential- and
+secret-shaped content is blocked before it reaches Redis with no extra setup
+— see [NeverRecordFirewall](../features/never-record-firewall.md). If you
+hand-build the schema at Levels 1-4 below, that protection is not there for
+free; add `NeverRecordMixin` to your own model class if you want it.
 
 The levels below exist for when you want to shape the schema yourself. See the
 [SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default
@@ -605,7 +611,7 @@ does not re-export field types. Always import from `popoto` directly.
 
 - **[SubconsciousMemory Recipe](subconscious-memory-recipe.md):** the per-turn loop from Level 0, with every knob
 - **[Query-Blind Retrieval](query-blind-retrieval.md):** when composite ranking is right, and when it costs you the answer
-- **[Agent Memory](../features/agent-memory.md):** all 16 primitives and the layers composed on them
+- **[Agent Memory](../features/agent-memory.md):** all 17 primitives and the layers composed on them
 - **[Benchmarks](../benchmarks.md):** the numbers behind the defaults, including the runs that came out badly
 - **[Tuning Magic Numbers](tuning-magic-numbers.md):** decay rates, confidence signals, and thresholds
 - **[PolicyCache Recipe](policy-cache-recipe.md):** RL-style learned action selection on these primitives
@@ -783,6 +789,40 @@ If no memories are found (or all are filtered), messages are returned unchanged.
 The query cue is only meaningful in **query-sensitive** modes (lexical or hybrid, requiring `BM25Field`). In composite mode (no `BM25Field`, no `EmbeddingField`), the query cue is ignored and ranking is driven purely by importance/confidence scores.
 
 ### Post-turn: `extract_memories(response_text, importance)`
+
+Before anything else, `extract_memories()` runs the never-record firewall
+(`scan_never_record()`) against the whole `response_text`. This is a turn-level
+gate, not a per-record one: if the text matches an off-the-record marker or any
+other blocked shape, the **entire turn is voided** — no facts are extracted, the
+extraction provider is never called, and the method returns `[]`. Running the
+check before the extractor also means that on the `ClaudeExtractionProvider`
+path, a turn carrying an off-the-record marker never reaches the API at all. A
+content-free tombstone is still written (see
+[NeverRecordFirewall](../features/never-record-firewall.md)). This applies
+regardless of `model_class` — the guarantee does not depend on the model
+carrying `NeverRecordMixin`.
+
+If the turn passes that gate, per-fact drops can still happen further down the
+pipeline: when `model_class` carries `NeverRecordMixin`, an individual fact's
+`save()` call can itself be blocked. `extract_memories()` distinguishes "nothing
+extracted" from "everything extracted was privacy-dropped" via the
+`last_extraction_privacy_dropped` property:
+
+```python
+saved = sm.extract_memories(answer, importance=0.6)
+if not saved and sm.last_extraction_privacy_dropped:
+    # The empty return is a deliberate privacy drop, not a failure.
+    ...
+```
+
+`last_extraction_privacy_dropped` is `True` when the most recent
+`extract_memories()` call returned `[]` because the turn-level gate blocked the
+whole turn, or because every extracted fact was blocked on save. It is reset to
+`False` at the top of every call, so it always describes the immediately
+preceding one. This exists because an empty return is otherwise
+indistinguishable from an extraction outage — without the flag, a caller like
+`MemoryService.capture()` would log every successful privacy drop as a broken
+write path.
 
 By default (no `extraction_provider` passed to the constructor):
 
@@ -1449,6 +1489,35 @@ one turn in, one record out, stored verbatim.
 `POPOTO_MEMORY_INGEST=heuristic` switches to sentence-splitting and logs
 that measured cost the first time it is used.
 
+### Credentials and off-the-record turns are dropped before ingestion
+
+"Stored verbatim" is the point of raw ingestion and also its hazard: a hook
+fires on every turn, and terminal turns contain pasted API keys. The
+[never-record firewall](never-record-firewall.md) runs ahead of the write
+path so that class of content never reaches Redis.
+
+It is deterministic — regex and entropy, no model — and it runs at two
+points. At the turn level, inside `SubconsciousMemory.extract_memories()`,
+*before* the extraction provider is called: an off-the-record marker voids
+the entire turn rather than a guessed span, and on the
+`ClaudeExtractionProvider` path the text is never sent to the API at all. At
+the record level, inside `Model.save()`, before serialization or any index
+write. `DefaultMemory` — the model this harness writes through — carries the
+mixin, so this is on by default with no configuration.
+
+A drop leaves a content-free tombstone: a random id and a reason code, never
+a fragment of the text. Read the tally with
+`DefaultMemory.never_record_counts()`.
+
+Two caveats worth knowing before you rely on it. Over-blocking is accepted by
+design, so a long random-looking token in an otherwise useful turn can cost
+you that memory. And the guarantee covers an enumerated class of shapes, not
+"secrets" in general — the [feature
+page](never-record-firewall.md#what-this-does-not-guarantee) lists the holes
+explicitly. `POPOTO_NEVER_RECORD_DISABLE=1` turns it off entirely; note that
+this is a core Popoto variable, not one of the `POPOTO_MEMORY_*` harness
+variables below.
+
 ## Configuration
 
 Every variable is optional. The zero-configuration path is "local Redis or
@@ -1543,6 +1612,7 @@ exactly when `doctor` has nothing to read back anyway.
 | Empty assistant message | nothing written |
 | Missing `session_id` | recall still runs; outcome reporting degrades to a no-op |
 | Nothing retrieved | no `additionalContext` key at all, rather than an empty header |
+| Turn dropped by the never-record firewall | nothing written, **no log line, no counter increment** -- a deliberate drop is not a failure. Counted in `$NR:DefaultMemory:counts` instead |
 
 Output is built as one string and written once, because Codex treats stdout
 that starts with `{` but fails to parse as a hook failure.
@@ -2213,7 +2283,7 @@ cannot do unaided is decide what belongs there:
 
 Each primitive below covers one of those. Each is independently useful.
 
-## The 16 primitives
+## The 17 primitives
 
 | Primitive | What it does | Full reference |
 |-----------|--------------|----------------|
@@ -2229,6 +2299,7 @@ Each primitive below covers one of those. Each is independently useful.
 | ObservationProtocol | Outcome-driven effects: acted, dismissed, deferred, contradicted, used | [page](observation-protocol.md) |
 | AccessTrackerMixin | Two-stage read tracking: reads stage cheaply, then promote on confirmation | [reference](../fields.md#accesstrackermixin) |
 | WriteFilterMixin | Gates persistence: low-value records are discarded before they reach Redis | [reference](../fields.md#writefiltermixin) |
+| NeverRecordMixin | Deterministic privacy gate: credentials and secrets are blocked before they reach Redis | [page](never-record-firewall.md) |
 | EventStreamMixin | Append-only mutation log via Redis Streams | [reference](../fields.md#eventstreammixin) |
 | TagField | Optional multi-value scoping for a centrally hosted Redis serving many agents | [reference](../fields.md#tagfield) |
 | ValidityField | Bitemporal validity intervals: a record is either a member of default retrieval or it isn't | [page](validity-and-supersession.md) |
@@ -2275,7 +2346,7 @@ counted separately, never summed into the primitive count.
 
   underneath, on every record:
     DecayingSortedField · ConfidenceField · WriteFilterMixin ·
-    PredictionLedger · TagField · EventStreamMixin
+    NeverRecordMixin · PredictionLedger · TagField · EventStreamMixin
   over time, across the corpus:
     MemoryLifecycle: promote, forget, tombstone, restore
 ```
@@ -5570,6 +5641,264 @@ adaptive = AdaptiveAssembler(inner, rng=rng)
 
 ---
 
+## NeverRecordFirewall
+
+# Never-Record Firewall
+
+A deterministic gate that runs before anything is written, and drops content
+that must never become a memory: credential-shaped strings, explicitly
+off-the-record turns, and a short list of enumerated sensitive categories.
+
+It exists because the rest of the memory stack cannot make this promise. The
+harness ([hook integration](harness-integration.md)) fires on every turn and
+stores raw turn text, and terminal turns contain pasted API keys. The LLM
+extraction path can be *asked* to skip secrets, but a prompt is an
+instruction, not a guarantee. So the firewall is regex and entropy — no
+model, no network, no judgment call. An LLM voter may be added later and may
+only ever *add* drops; the guarantee below rests solely on the deterministic
+core.
+
+```python
+from popoto import NeverRecordMixin, Model
+from popoto.fields.shortcuts import AutoKeyField, KeyField, StringField
+
+class Memory(NeverRecordMixin, Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+
+Memory(agent_id="a1", content="my key is sk-ant-api03-AAAA...").save()
+# False -- nothing written to Redis
+
+Memory(agent_id="a1", content="The user prefers dark mode.").save()
+# saved normally
+```
+
+`DefaultMemory` already carries the mixin, so the batteries-included path and
+the Claude Code / Codex / Hermes / OpenClaw harness are gated with no code
+change on your side.
+
+## The guaranteed class
+
+Content matching any of these never reaches Redis. Each drop records one
+reason code.
+
+| Reason code | What it catches |
+|---|---|
+| `off_the_record` | An explicit marker — "off the record", "do not record", "don't remember this", `<!-- no-memory -->`, `[[private]]`. Voids the **entire turn**, not a guessed span |
+| `private_key_block` | PEM, OpenSSH, and PuTTY private key headers |
+| `credential_prefix` | Vendor-prefixed tokens: Anthropic, OpenAI, GitHub, AWS, Google, Slack, GitLab, npm, HuggingFace, DigitalOcean, SendGrid, Stripe |
+| `jwt` | Three-segment base64url JSON Web Tokens |
+| `credential_assignment` | `password=`, `api_key:`, `token=` and friends followed by a real value |
+| `url_userinfo` | `scheme://user:password@host` |
+| `payment_card` | 13-19 digit runs that pass the Luhn checksum — not merely "any 16 digits" |
+| `government_id` | US SSN-shaped strings, with area/group guards for never-issued ranges |
+| `high_entropy` | The backstop for unknown-prefix tokens: long, credential-charset, high-Shannon-entropy strings |
+
+Every pattern-based detector runs against two renderings of the input: the
+raw text, and the text with all whitespace removed. A key split across a line
+break is still caught.
+
+Documentation placeholders are deliberately *not* treated as secrets —
+`password=<your password here>`, `api_key = YOUR_API_KEY`, and
+`export TOKEN=${GITHUB_TOKEN}` all store fine. A gate that eats the
+quickstart's own examples teaches adopters to disable it.
+
+## What this does NOT guarantee
+
+This is a pattern gate, not an oracle. The holes are enumerated on purpose.
+
+**Over-blocking is accepted and expected.** Long base64 blobs and random
+identifiers in ordinary prose will be dropped. That is the deliberate price
+of aiming at zero false negatives on the class above. If a memory you wanted
+disappeared, check `never_record_counts()` — the drop is recorded even though
+the content is not.
+
+**The entropy backstop is deliberately narrowed, in three ways.** Shannon
+entropy per character does not separate secrets from technical English at
+these lengths: `conversational-adjacency` scores 3.69 bits/char and
+`ExtractionProviderRegistry` 3.87, both over the 3.5 threshold. Measured
+against this repo's own documentation, scoring whole tokens blocked 11.6% of
+paragraphs over 200 characters — and at turn level one such token voids the
+entire turn. Three structural cuts apply before scoring:
+
+- *Canonical git SHAs and UUIDs are not scored.* Developer memory mentions
+  commit SHAs constantly.
+- *Tokens with no digit anywhere are not scored.* Encoded secrets draw from
+  an alphabet containing digits; hyphenated compounds and CamelCase
+  identifiers do not.
+- *Only the longest separator-free run is scored, and it must clear the
+  length threshold on its own.* Entropy is a property of a contiguous
+  encoded run, not of a phrase. This is what separates
+  `text-embedding-3-small` and `POPOTO_MEMORY_MAX_ITEMS=10` from
+  `Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe`.
+
+Together these take the measured false-positive rate on that corpus (5282
+paragraphs, including this repo's plan documents) to zero `high_entropy`
+blocks, at 0.51% of paragraphs blocked overall — all by the named detectors,
+mostly documentation that literally discusses off-the-record markers.
+
+**These cuts cost the backstop a lot, and the number is worth knowing.** A
+secret escapes `high_entropy` if it is a bare 40-hex-character string, if it
+contains no digit at all, or if a separator (`-` `_` `/` `=` `+`) breaks it
+so that no unbroken run reaches 20 characters. The separator case dominates,
+because base64's own alphabet includes `-` and `_`. Measured over 200,000
+random base64url tokens per length:
+
+| Token length | Escapes the entropy backstop |
+|---|---|
+| 20 characters | **~49%** |
+| 32 characters | **~27%** |
+| 43 characters (256-bit) | **~12%** |
+
+So the entropy backstop should be read as *opportunistic*, not as a second
+guarantee. **No cut touches any other detector** — the same secret is still
+caught as `password=<value>`, behind a vendor prefix, in a URL, or in any
+other named shape, and those named detectors are where the guarantee lives.
+The backstop exists to catch unknown formats sometimes; it is not a promise
+that an unknown format will be caught.
+
+**A novel credential format can pass** if it has no recognized prefix, no
+assignment context, and entropy below the threshold. The detector corpus
+lives in one module so it can be extended.
+
+**Semantic sensitivity is out of scope.** The gate matches shape, not
+meaning. It will not notice that a sentence is confidential because of what
+it says.
+
+**An unknown-prefix secret split across whitespace escapes the entropy
+backstop.** Entropy is scored on the raw rendering only — on the
+de-whitespaced rendering an ordinary paragraph collapses into one long
+high-entropy token, so scoring it there blocked ordinary sentences. Split
+*known* formats are still caught, because every vendor-prefix, JWT, and PEM
+pattern does run against both renderings.
+
+## Where the gate runs
+
+Inside `Model.save()`, before the `WriteFilterMixin` check and before
+`pre_save()` — therefore before serialization, the HSET, and every secondary
+index, BM25 posting, embedding call, and co-occurrence edge. Ordering is the
+whole guarantee: blocked content is never handed to any of those.
+
+A blocked save returns `False`, the same contract `WriteFilterMixin` already
+uses, and raises nothing at the call site. Internally it signals with
+`NeverRecordException`, a subclass of `SkipSaveException`, so existing
+handlers that already swallow a filtered save keep working unchanged.
+
+The exception message carries only a reason code and detector name. It never
+quotes the matched text, an offset, or a length — exception messages reach
+plaintext log files, and a quoted match would leak through a side channel
+that the tombstone design closes.
+
+## Auditing drops
+
+Every drop leaves a **content-free tombstone**: a random id and a reason
+code, and nothing else.
+
+```python
+Memory.never_record_counts()
+# {'credential_prefix': 3, 'off_the_record': 1}
+
+Memory.never_record_log(limit=2)
+# [{'id': 'c9f0...', 'reason': 'off_the_record',
+#   'detector': 'marker_prose', 'at': 1786943286.478}, ...]
+```
+
+The id is a `uuid4`, deliberately **not** a hash or fingerprint of the
+content. A content-derived id would be a confirmation oracle: anyone holding
+a candidate secret could reproduce the id and check the log for a match. This
+is the precise point where a never-record tombstone diverges from
+[`MemoryLifecycle`](../recipes.md)'s `Tombstone`, which stores a fingerprint
+on purpose so writes can be matched against it.
+
+### Architecture
+
+| Key | Type | Contents |
+|---|---|---|
+| `$NR:{ClassName}:counts` | HASH | `reason_code -> count`, via `HINCRBY`. Unbounded and authoritative |
+| `$NR:{ClassName}:drops` | LIST | Recent tombstones, `LPUSH` + `LTRIM` capped at `NR_TOMBSTONE_LOG_MAX` |
+
+Both are plain Redis types. No Redis modules are used, so the firewall
+behaves identically on Redis and Valkey. The namespace is disjoint from
+`$WF:` (write filter) and `$TOMB:` (lifecycle tombstones).
+
+Tombstone writes are best-effort: if Redis rejects the audit write, the drop
+is still enforced. A firewall that failed open when its log was unwritable
+would fail in the one direction it must never fail in.
+
+## With SubconsciousMemory
+
+`SubconsciousMemory.extract_memories()` runs the same scan at the **turn**
+level, before the extraction provider is invoked. Two consequences:
+
+- An off-the-record marker voids the whole turn, including facts derived from
+  adjacent sentences. A per-record gate cannot do that, because the marker
+  may sit in a sentence that produced no fact.
+- On the `ClaudeExtractionProvider` path, blocked text is never sent to the
+  API.
+
+The turn-level gate applies regardless of which `model_class` you configured,
+so this half of the guarantee does not depend on anyone remembering to add
+the mixin.
+
+`last_extraction_privacy_dropped` reports whether the last call returned
+empty because of a drop rather than a failure. `MemoryService.capture()`
+reads it so a deliberate drop is not written to the harness failure log — an
+empty result from non-empty text otherwise reads as "the write path has
+silently stopped working", and without the flag every credential paste would
+look like an outage.
+
+## Configuration
+
+`POPOTO_NEVER_RECORD_DISABLE=1` disables the firewall entirely, including the
+turn-level gate. It is read at import and exists because a PyPI adopter
+cannot always edit model code to remove a mixin. Unset means on, per Popoto's
+default-on doctrine.
+
+Equivalently, at runtime:
+
+```python
+from popoto.fields.constants import Defaults
+Defaults.NEVER_RECORD_ENABLED = False
+```
+
+The numeric constants live in `Defaults` and are pinned, not constructor
+kwargs. **None of them are sweep-backed** — there is no benchmark evidence
+for these values, unlike most constants in
+[Tuning Magic Numbers](../guides/tuning-magic-numbers.md). They are
+deliberately conservative in the over-blocking direction.
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `NR_ENTROPY_MIN_TOKEN_LEN` | `20` | Shortest token the entropy backstop considers |
+| `NR_ENTROPY_MIN_BITS` | `3.5` | Shannon bits/char threshold. Random base64 sits near 5.5-6.0, random hex near 4.0, English text over the same alphabet well below 3.5 |
+| `NR_ASSIGNMENT_MIN_VALUE_LEN` | `6` | Shortest value after `password=` that counts |
+| `NR_TOMBSTONE_LOG_MAX` | `1000` | Cap on the drop-log LIST |
+| `NEVER_RECORD_ENABLED` | env-derived | Kill switch, not a tuning constant |
+
+## Using the scanner directly
+
+`scan_never_record()` is pure — no Redis, no model, no clock — so it can gate
+a pipeline before anything is constructed.
+
+```python
+from popoto import scan_never_record
+
+verdict = scan_never_record("my key is sk-ant-api03-AAAA...")
+verdict.blocked    # True
+verdict.reason     # 'credential_prefix'
+verdict.detector   # 'vendor_token'
+```
+
+## See Also
+
+- [NeverRecordMixin reference](../fields.md#neverrecordmixin)
+- [Agent Memory](agent-memory.md)
+- [Harness Integration](harness-integration.md) — the write path this protects
+- [Memory Telemetry](memory-telemetry.md) — the read-path privacy default
+
+---
+
 ## PolicyCache
 
 # PolicyCache Recipe
@@ -7101,6 +7430,50 @@ Source: `src/popoto/fields/write_filter.py`
 |----------|---------|--------------|-------------|
 | `_wf_min_threshold` | **0.1** (sweep 2026-04-17) | [0.05, 0.5] | **Medium** (variance 0.068) |
 | `_wf_priority_threshold` | 0.7 | [0.5, 0.9] | Low |
+
+### NeverRecordMixin
+
+Source: `src/popoto/privacy/never_record.py`, constants in `src/popoto/fields/constants.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `NR_ENTROPY_MIN_TOKEN_LEN` | 20 | — | Not swept |
+| `NR_ENTROPY_MIN_BITS` | 3.5 | — | Not swept |
+| `NR_ASSIGNMENT_MIN_VALUE_LEN` | 6 | — | Not swept |
+| `NR_TOMBSTONE_LOG_MAX` | 1000 | n/a (capacity bound) | n/a |
+| `NEVER_RECORD_ENABLED` | `True` (auto-detected; env override) | n/a (boolean) | n/a |
+
+None of the four `NR_*` numeric constants have been through this guide's benchmark
+harness — there is no sweep file backing any of them, and no retrieval-quality
+metric applies to a privacy gate's block/allow decision the way it applies to a
+decay rate or a threshold. They are set by argument, not by measurement:
+
+- `NR_ENTROPY_MIN_TOKEN_LEN` (20) is the shortest whitespace token the entropy
+  backstop will score. Below 20 characters, ordinary base64-ish English words
+  start to dominate the token population and the detector becomes noise rather
+  than signal.
+- `NR_ENTROPY_MIN_BITS` (3.5) is the Shannon bits-per-character threshold above
+  which a token is treated as random rather than natural language. Random
+  base64 runs roughly 5.5-6.0 bits/char, random hex roughly 4.0; English text
+  rendered over the same character set sits well below 3.5. The value is
+  deliberately conservative toward over-blocking, not corpus-tuned.
+- `NR_ASSIGNMENT_MIN_VALUE_LEN` (6) is the shortest value after a
+  `password=`/`token:`-style prefix that counts as a credential assignment; it
+  is also the shortest accepted password in a `scheme://user:password@host`
+  URL.
+- `NR_TOMBSTONE_LOG_MAX` (1000) caps the `$NR:{Class}:drops` LIST to a recent
+  window. The `$NR:{Class}:counts` HASH is unbounded and is the authoritative
+  count; the list exists for recent-drop inspection, not auditing at scale.
+
+`NEVER_RECORD_ENABLED` is not a tuning constant at all — like
+`DATETIME_KEY_LEGACY`, it is a deploy-level kill switch. It is default `True`
+(the firewall runs), backed by the `POPOTO_NEVER_RECORD_DISABLE` environment
+variable read at import, and assignable directly at runtime to disable the
+firewall without touching model code. See
+[NeverRecordFirewall](../features/never-record-firewall.md) for the guarantee
+this gate makes and the enumerated holes in it (canonical git SHAs and UUIDs
+are excluded from entropy scoring, for example) — those are shape decisions,
+not values a sweep would tune.
 
 ### DecayingSortedField / CyclicDecayField
 
@@ -9057,6 +9430,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
+| `POPOTO_NEVER_RECORD_DISABLE` | unset (falsy) | Kill switch for the never-record firewall (`NeverRecordMixin`). The firewall is default-on: unset, it blocks credential- and secret-shaped content on `save()` for any model that carries the mixin. A truthy value disables the check globally, restoring pre-firewall behavior with no model code change. See [NeverRecordMixin](fields.md#neverrecordmixin). |
 
 ## Thread Safety
 
@@ -10617,6 +10991,72 @@ class StrictMemory(WriteFilterMixin, Model):
 
 See [Agent Memory](features/agent-memory.md) for the broader
 agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.
+
+## NeverRecordMixin
+
+`NeverRecordMixin` gates `save()` calls against a deterministic never-record firewall:
+credential- and secret-shaped content is blocked before it ever reaches Redis. It is
+**not** a `Field`, and deliberately **not** a `WriteFilterMixin` subclass — the write
+filter is a scalar salience score with one `compute_filter_score()` slot per class;
+the firewall is a boolean content predicate with its own tombstone side effect. See
+[NeverRecordFirewall](features/never-record-firewall.md) for the full guarantee,
+the nine reason codes, and the enumerated holes in the detector corpus.
+
+```python
+from popoto import Model, KeyField, Field, NeverRecordMixin
+
+class Memory(NeverRecordMixin, Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+```
+
+```python
+# Blocked — save() returns False, nothing is written to Redis
+leaked = Memory(agent_id="a1", content="my key is sk-ant-api03-AAAA...")
+leaked.save()  # => False
+
+# Ordinary content persists normally
+note = Memory(agent_id="a1", content="deploy uses blue-green")
+note.save()  # => True
+```
+
+The gate runs inside `Model.save()`, **before** the `WriteFilterMixin` check and
+before `pre_save()`. A blocked save returns `False` and writes nothing at all — no
+serialization, no HSET, no index writes, no BM25 tokenization, no embedding call, no
+co-occurrence edge.
+
+No fragment of the blocked content is ever stored. Instead, a content-free tombstone
+is written to two plain Redis structures (no modules, so this works identically on
+Redis and Valkey):
+
+- `$NR:{ClassName}:counts` — HASH, incremented per reason code via `HINCRBY`
+- `$NR:{ClassName}:drops` — LIST, capped at `Defaults.NR_TOMBSTONE_LOG_MAX` entries via `LPUSH` + `LTRIM`
+
+Two classmethods read that audit trail back:
+
+```python
+Memory.never_record_counts()
+# => {"credential_prefix": 3, "high_entropy": 1}
+
+Memory.never_record_log(limit=100)
+# => [{"id": "<uuid4>", "reason": "credential_prefix", "detector": "vendor_token", "at": 1755400000.123}, ...]
+```
+
+`never_record_counts()` returns `{reason_code: count}` for this model, and
+`never_record_log()` returns the most recent tombstones, newest first. Both are
+content-free by construction: the log's `id` is a random `uuid4`, not derived from
+the dropped content, so the log cannot be used as an oracle to confirm a guessed
+secret.
+
+Disable the firewall globally with the `POPOTO_NEVER_RECORD_DISABLE` environment
+variable, or by setting `Defaults.NEVER_RECORD_ENABLED = False` at runtime — see
+[Environment Variables](configuration.md#environment-variables).
+
+!!! tip
+    `NeverRecordMixin` composes with `WriteFilterMixin` on the same model. Order
+    them however you like in the inheritance list — the never-record check always
+    runs first inside `Model.save()`, regardless of mixin order, so a blocked save
+    never reaches `compute_filter_score()`.
 
 ## ContentField
 

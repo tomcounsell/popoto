@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2896,11 +2924,11 @@ class Product(Model):
 class Product(Model):
     sku = UniqueKeyField()
     name = Field()
-    description = Field(default=&quot;&quot;)  # old records return &quot;&quot;
+    description = Field(default="")  # old records return ""
 
 # Verify: load an old record
-product = Product.query.get(sku=&quot;ABC-123&quot;)
-print(product.description)  # &quot;&quot; (the default)
+product = Product.query.get(sku="ABC-123")
+print(product.description)  # "" (the default)
 </code></pre></div>
 <ol>
 <li>Add a Field with Backfill
@@ -2916,7 +2944,7 @@ timestamps you want to preserve.</p>
 <div class="highlight"><pre><span></span><code>class Product(Model):
     sku = UniqueKeyField()
     name = Field()
-    description = Field(default=&quot;No description provided.&quot;)
+    description = Field(default="No description provided.")
 
 # Backfill all records so the field is physically present in Redis
 pipeline = POPOTO_REDIS_DB.pipeline()
@@ -2934,8 +2962,8 @@ pipeline.execute()
 </code></pre></div>
 <p>To preserve timestamps when backfilling, use <code>update_fields</code> to skip
 <code>auto_now</code> hooks on fields you did not list::</p>
-<div class="highlight"><pre><span></span><code>product.save(update_fields=[&quot;description&quot;])
-#   -&gt; only writes &quot;description&quot; to the hash
+<div class="highlight"><pre><span></span><code>product.save(update_fields=["description"])
+#   -&gt; only writes "description" to the hash
 #   -&gt; auto_now fields are NOT auto-included (Django convention)
 #   -&gt; explicitly list auto_now fields if you want them updated
 
@@ -2971,10 +2999,10 @@ class Product(Model):
 pipeline = POPOTO_REDIS_DB.pipeline()
 for redis_key in Product.query.keys():
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
+        redis_key = redis_key.decode("utf-8")
     # Remove the orphaned field from the hash
-    pipeline.hdel(redis_key, &quot;legacy_code&quot;)
-    pipeline.hdel(redis_key, &quot;priority&quot;)
+    pipeline.hdel(redis_key, "legacy_code")
+    pipeline.hdel(redis_key, "priority")
 
     if pipeline.command_stack_size &gt;= 500:
         pipeline.execute()
@@ -2983,7 +3011,7 @@ pipeline.execute()
 
 # --- Cleanup orphaned sorted set index ---
 # SortedField indexes follow the pattern: ClassName:_field_name
-POPOTO_REDIS_DB.delete(&quot;Product:_priority&quot;)
+POPOTO_REDIS_DB.delete("Product:_priority")
 
 # --- Cleanup orphaned unique indexes (if field was UniqueKeyField) ---
 # Unique indexes follow: ClassName:field_name:value
@@ -2991,7 +3019,7 @@ POPOTO_REDIS_DB.delete(&quot;Product:_priority&quot;)
 cursor = 0
 while True:
     cursor, keys = POPOTO_REDIS_DB.scan(
-        cursor, match=&quot;Product:legacy_code:*&quot;, count=500
+        cursor, match="Product:legacy_code:*", count=500
     )
     if keys:
         POPOTO_REDIS_DB.delete(*keys)
@@ -3023,13 +3051,13 @@ class Product(Model):
 pipeline = POPOTO_REDIS_DB.pipeline()
 for redis_key in Product.query.keys():
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
+        redis_key = redis_key.decode("utf-8")
 
     # Read old field value, write to new field name, delete old
-    old_value = POPOTO_REDIS_DB.hget(redis_key, &quot;desc&quot;)
+    old_value = POPOTO_REDIS_DB.hget(redis_key, "desc")
     if old_value is not None:
-        pipeline.hset(redis_key, &quot;description&quot;, old_value)
-        pipeline.hdel(redis_key, &quot;desc&quot;)
+        pipeline.hset(redis_key, "description", old_value)
+        pipeline.hdel(redis_key, "desc")
 
     if pipeline.command_stack_size &gt;= 500:
         pipeline.execute()
@@ -3037,26 +3065,26 @@ for redis_key in Product.query.keys():
 pipeline.execute()
 
 # --- If the field was a SortedField, rename the sorted set ---
-if POPOTO_REDIS_DB.exists(&quot;Product:_desc&quot;):
-    POPOTO_REDIS_DB.rename(&quot;Product:_desc&quot;, &quot;Product:_description&quot;)
+if POPOTO_REDIS_DB.exists("Product:_desc"):
+    POPOTO_REDIS_DB.rename("Product:_desc", "Product:_description")
 </code></pre></div>
 <p>Alternative: Load-delete-recreate pattern (simpler but slower)::</p>
 <div class="highlight"><pre><span></span><code># This pattern is simpler but involves full serialization round-trips
 for redis_key in Product.query.keys():
     raw_hash = POPOTO_REDIS_DB.hgetall(redis_key)
-    if b&quot;desc&quot; in raw_hash:
+    if b"desc" in raw_hash:
         # Decode field names
         data = {
-            k.decode(&quot;utf-8&quot;): v for k, v in raw_hash.items()
+            k.decode("utf-8"): v for k, v in raw_hash.items()
         }
         # Rename the key in the dict
-        data[&quot;description&quot;] = data.pop(&quot;desc&quot;)
+        data["description"] = data.pop("desc")
         # Delete and recreate
         POPOTO_REDIS_DB.delete(redis_key)
         if isinstance(redis_key, bytes):
-            redis_key = redis_key.decode(&quot;utf-8&quot;)
+            redis_key = redis_key.decode("utf-8")
         POPOTO_REDIS_DB.hset(redis_key, mapping={
-            k.encode(&quot;utf-8&quot;): v for k, v in data.items()
+            k.encode("utf-8"): v for k, v in data.items()
         })
 </code></pre></div>
 <ol>
@@ -3085,7 +3113,7 @@ Product.rebuild_indexes()
 </code></pre></div>
 <p>Manual alternative for finer control::</p>
 <div class="highlight"><pre><span></span><code># SortedField index key: ClassName:_field_name
-sorted_set_key = &quot;Product:_price&quot;
+sorted_set_key = "Product:_price"
 pipeline = POPOTO_REDIS_DB.pipeline()
 
 for redis_key in Product.query.keys():
@@ -3104,14 +3132,14 @@ its own sorted set::</p>
 <div class="highlight"><pre><span></span><code>class Product(Model):
     sku = UniqueKeyField()
     category = KeyField()
-    price = SortedField(type=float, partition_by=&quot;category&quot;)
+    price = SortedField(type=float, partition_by="category")
 
 # Each category gets its own sorted set:
 # Product:_price:electronics, Product:_price:clothing, etc.
 for redis_key in Product.query.keys():
     product = Product.query.get(redis_key=redis_key)
     if product is not None and product.price is not None:
-        partition_key = f&quot;Product:_price:{product.category}&quot;
+        partition_key = f"Product:_price:{product.category}"
         POPOTO_REDIS_DB.zadd(
             partition_key,
             {product.db_key.redis_key: product.price},
@@ -3133,20 +3161,20 @@ class Product(Model):
     sku = UniqueKeyField()
     category = KeyField()
     region = KeyField()
-    price = SortedField(type=float, partition_by=&quot;category&quot;)
+    price = SortedField(type=float, partition_by="category")
 
 # After: price partitioned by region
 class Product(Model):
     sku = UniqueKeyField()
     category = KeyField()
     region = KeyField()
-    price = SortedField(type=float, partition_by=&quot;region&quot;)
+    price = SortedField(type=float, partition_by="region")
 
 # --- Step 1: Delete old partitioned sorted sets ---
 cursor = 0
 while True:
     cursor, keys = POPOTO_REDIS_DB.scan(
-        cursor, match=&quot;Product:_price:*&quot;, count=500
+        cursor, match="Product:_price:*", count=500
     )
     if keys:
         POPOTO_REDIS_DB.delete(*keys)
@@ -3157,7 +3185,7 @@ while True:
 for redis_key in Product.query.keys():
     product = Product.query.get(redis_key=redis_key)
     if product is not None and product.price is not None:
-        partition_key = f&quot;Product:_price:{product.region}&quot;
+        partition_key = f"Product:_price:{product.region}"
         POPOTO_REDIS_DB.zadd(
             partition_key,
             {product.db_key.redis_key: product.price},
@@ -3196,7 +3224,7 @@ class UserSession(Model):
     user_id = KeyField()  # new key field
     data = Field()
 
-# Redis key changes: &quot;UserSession:sess_abc&quot; -&gt; &quot;UserSession:sess_abc:user_123&quot;
+# Redis key changes: "UserSession:sess_abc" -&gt; "UserSession:sess_abc:user_123"
 # (KeyFields are sorted alphabetically: session_id, user_id)
 
 # --- Migrate keys using pipeline.rename ---
@@ -3207,7 +3235,7 @@ cursor = 0
 old_keys = []
 while True:
     cursor, keys = POPOTO_REDIS_DB.scan(
-        cursor, match=&quot;UserSession:*&quot;, count=500
+        cursor, match="UserSession:*", count=500
     )
     old_keys.extend(keys)
     if cursor == 0:
@@ -3215,7 +3243,7 @@ while True:
 
 for i, old_redis_key in enumerate(old_keys):
     if isinstance(old_redis_key, bytes):
-        old_redis_key = old_redis_key.decode(&quot;utf-8&quot;)
+        old_redis_key = old_redis_key.decode("utf-8")
 
     # Load old record to get field values
     old_data = POPOTO_REDIS_DB.hgetall(old_redis_key)
@@ -3225,23 +3253,23 @@ for i, old_redis_key in enumerate(old_keys):
     # Determine the new key field value.
     # You must decide what value the new KeyField gets for old records.
     # Options: derive from existing data, set a default, or look up externally.
-    new_user_id = &quot;unknown&quot;  # replace with your logic
+    new_user_id = "unknown"  # replace with your logic
 
     # Construct new key (fields sorted alphabetically: session_id, user_id)
-    old_session_id = old_redis_key.split(&quot;:&quot;)[-1]
-    new_redis_key = f&quot;UserSession:{old_session_id}:{new_user_id}&quot;
+    old_session_id = old_redis_key.split(":")[-1]
+    new_redis_key = f"UserSession:{old_session_id}:{new_user_id}"
 
     # Add new field to the hash data
     import msgpack
-    pipeline.hset(old_redis_key, &quot;user_id&quot;.encode(&quot;utf-8&quot;),
+    pipeline.hset(old_redis_key, "user_id".encode("utf-8"),
                    msgpack.packb(new_user_id))
 
     # Rename the key atomically
     pipeline.rename(old_redis_key, new_redis_key)
 
     # Update the class set (tracks all instance keys)
-    pipeline.srem(&quot;$Class:UserSession&quot;, old_redis_key)
-    pipeline.sadd(&quot;$Class:UserSession&quot;, new_redis_key)
+    pipeline.srem("$Class:UserSession", old_redis_key)
+    pipeline.sadd("$Class:UserSession", new_redis_key)
 
     if i % 500 == 0 and i &gt; 0:
         pipeline.execute()
@@ -3277,20 +3305,20 @@ class UserSession(Model):
     user_id = Field()  # demoted from KeyField to plain Field
     data = Field()
 
-# Redis key changes: &quot;UserSession:sess_abc:user_123&quot; -&gt; &quot;UserSession:sess_abc&quot;
+# Redis key changes: "UserSession:sess_abc:user_123" -&gt; "UserSession:sess_abc"
 
 # --- Step 1: Check for collisions ---
 seen_keys = {}
-for redis_key in POPOTO_REDIS_DB.smembers(&quot;$Class:UserSession&quot;):
+for redis_key in POPOTO_REDIS_DB.smembers("$Class:UserSession"):
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
-    parts = redis_key.split(&quot;:&quot;)
+        redis_key = redis_key.decode("utf-8")
+    parts = redis_key.split(":")
     # Old pattern: UserSession:session_id:user_id
     # New pattern: UserSession:session_id
-    new_key = f&quot;{parts[0]}:{parts[1]}&quot;
+    new_key = f"{parts[0]}:{parts[1]}"
     if new_key in seen_keys:
-        print(f&quot;COLLISION: {redis_key} and {seen_keys[new_key]} &quot;
-              f&quot;both map to {new_key}&quot;)
+        print(f"COLLISION: {redis_key} and {seen_keys[new_key]} "
+              f"both map to {new_key}")
         # Handle collision: merge data, pick winner, or abort
     seen_keys[new_key] = redis_key
 
@@ -3300,8 +3328,8 @@ for old_redis_key, new_redis_key in [
     (v, k) for k, v in seen_keys.items()
 ]:
     pipeline.rename(old_redis_key, new_redis_key)
-    pipeline.srem(&quot;$Class:UserSession&quot;, old_redis_key)
-    pipeline.sadd(&quot;$Class:UserSession&quot;, new_redis_key)
+    pipeline.srem("$Class:UserSession", old_redis_key)
+    pipeline.sadd("$Class:UserSession", new_redis_key)
 pipeline.execute()
 
 # Rebuild secondary indexes (see recipe 15)
@@ -3318,18 +3346,18 @@ uses the old class name as prefix.</p>
 <div class="highlight"><pre><span></span><code># Before: class User(Model):
 # After:  class Account(Model):
 
-OLD_NAME = &quot;User&quot;
-NEW_NAME = &quot;Account&quot;
+OLD_NAME = "User"
+NEW_NAME = "Account"
 
 # --- Step 1: Rename instance keys ---
 pipeline = POPOTO_REDIS_DB.pipeline()
-old_class_set = f&quot;$Class:{OLD_NAME}&quot;
-new_class_set = f&quot;$Class:{NEW_NAME}&quot;
+old_class_set = f"$Class:{OLD_NAME}"
+new_class_set = f"$Class:{NEW_NAME}"
 
 members = POPOTO_REDIS_DB.smembers(old_class_set)
 for i, old_key in enumerate(members):
     if isinstance(old_key, bytes):
-        old_key = old_key.decode(&quot;utf-8&quot;)
+        old_key = old_key.decode("utf-8")
 
     # Replace class name prefix
     new_key = NEW_NAME + old_key[len(OLD_NAME):]
@@ -3351,11 +3379,11 @@ POPOTO_REDIS_DB.delete(old_class_set)
 cursor = 0
 while True:
     cursor, keys = POPOTO_REDIS_DB.scan(
-        cursor, match=f&quot;{OLD_NAME}:_*&quot;, count=500
+        cursor, match=f"{OLD_NAME}:_*", count=500
     )
     for old_key in keys:
         if isinstance(old_key, bytes):
-            old_key = old_key.decode(&quot;utf-8&quot;)
+            old_key = old_key.decode("utf-8")
         new_key = NEW_NAME + old_key[len(OLD_NAME):]
         POPOTO_REDIS_DB.rename(old_key, new_key)
 
@@ -3367,7 +3395,7 @@ while True:
         pipe = POPOTO_REDIS_DB.pipeline()
         for member, score in members_with_scores:
             if isinstance(member, bytes):
-                member = member.decode(&quot;utf-8&quot;)
+                member = member.decode("utf-8")
             if member.startswith(OLD_NAME):
                 new_member = NEW_NAME + member[len(OLD_NAME):]
                 pipe.zrem(new_key, member)
@@ -3382,13 +3410,13 @@ while True:
 cursor = 0
 while True:
     cursor, keys = POPOTO_REDIS_DB.scan(
-        cursor, match=f&quot;{OLD_NAME}:*&quot;, count=500
+        cursor, match=f"{OLD_NAME}:*", count=500
     )
     for old_key in keys:
         if isinstance(old_key, bytes):
-            old_key = old_key.decode(&quot;utf-8&quot;)
+            old_key = old_key.decode("utf-8")
         # Skip instance keys (already handled) and sorted sets (handled above)
-        if old_key.startswith(f&quot;{NEW_NAME}:&quot;):
+        if old_key.startswith(f"{NEW_NAME}:"):
             continue
         new_key = NEW_NAME + old_key[len(OLD_NAME):]
         POPOTO_REDIS_DB.rename(old_key, new_key)
@@ -3435,12 +3463,12 @@ class Product(Model):
     sku = UniqueKeyField()
     sorted_price = SortedField(type=float)
 
-# Clean up orphaned &quot;price&quot; hash field
+# Clean up orphaned "price" hash field
 pipeline = POPOTO_REDIS_DB.pipeline()
 for redis_key in Product.query.keys():
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
-    pipeline.hdel(redis_key, &quot;price&quot;)
+        redis_key = redis_key.decode("utf-8")
+    pipeline.hdel(redis_key, "price")
 
     if pipeline.command_stack_size &gt;= 500:
         pipeline.execute()
@@ -3479,14 +3507,14 @@ for redis_key in User.query.keys():
 </code></pre></div>
 <p>Raw update version (skips hooks and validation, faster for bulk ops)::</p>
 <div class="highlight"><pre><span></span><code>keys = User.query.keys()
-User.raw_update(keys, email=&quot;normalized@example.com&quot;)
+User.raw_update(keys, email="normalized@example.com")
 
 # For per-record transforms, iterate manually:
 import msgpack
 for redis_key in User.query.keys():
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
-    old_email = msgpack.unpackb(POPOTO_REDIS_DB.hget(redis_key, &quot;email&quot;))
+        redis_key = redis_key.decode("utf-8")
+    old_email = msgpack.unpackb(POPOTO_REDIS_DB.hget(redis_key, "email"))
     normalized = old_email.strip().lower()
     if normalized != old_email:
         User.raw_update([redis_key], email=normalized)
@@ -3515,9 +3543,9 @@ class Contact(Model):
 for redis_key in Contact.query.keys():
     contact = Contact.query.get(redis_key=redis_key)
     if contact is not None and contact.name:
-        parts = contact.name.split(&quot; &quot;, 1)
+        parts = contact.name.split(" ", 1)
         contact.first_name = parts[0]
-        contact.last_name = parts[1] if len(parts) &gt; 1 else &quot;&quot;
+        contact.last_name = parts[1] if len(parts) &gt; 1 else ""
         contact.save()
 
 # --- Phase 3: CONTRACT --- remove old field from model
@@ -3526,12 +3554,12 @@ class Contact(Model):
     first_name = Field()
     last_name = Field()
 
-# Clean up orphaned &quot;name&quot; hash field
+# Clean up orphaned "name" hash field
 pipeline = POPOTO_REDIS_DB.pipeline()
 for redis_key in Contact.query.keys():
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
-    pipeline.hdel(redis_key, &quot;name&quot;)
+        redis_key = redis_key.decode("utf-8")
+    pipeline.hdel(redis_key, "name")
     if pipeline.command_stack_size &gt;= 500:
         pipeline.execute()
         pipeline = POPOTO_REDIS_DB.pipeline()
@@ -3562,9 +3590,9 @@ class Contact(Model):
 for redis_key in Contact.query.keys():
     contact = Contact.query.get(redis_key=redis_key)
     if contact is not None:
-        first = contact.first_name or &quot;&quot;
-        last = contact.last_name or &quot;&quot;
-        contact.display_name = f&quot;{first} {last}&quot;.strip()
+        first = contact.first_name or ""
+        last = contact.last_name or ""
+        contact.display_name = f"{first} {last}".strip()
         contact.save()
 
 # --- Phase 3: CONTRACT --- remove old fields
@@ -3576,9 +3604,9 @@ class Contact(Model):
 pipeline = POPOTO_REDIS_DB.pipeline()
 for redis_key in Contact.query.keys():
     if isinstance(redis_key, bytes):
-        redis_key = redis_key.decode(&quot;utf-8&quot;)
-    pipeline.hdel(redis_key, &quot;first_name&quot;)
-    pipeline.hdel(redis_key, &quot;last_name&quot;)
+        redis_key = redis_key.decode("utf-8")
+    pipeline.hdel(redis_key, "first_name")
+    pipeline.hdel(redis_key, "last_name")
     if pipeline.command_stack_size &gt;= 500:
         pipeline.execute()
         pipeline = POPOTO_REDIS_DB.pipeline()
@@ -3594,7 +3622,7 @@ format.</p>
 <p><strong>Action required</strong>: Re-load and re-save every record. The save path
 will re-encode using the new type/format.</p>
 <p>::</p>
-<div class="highlight"><pre><span></span><code># Before: priority stored as string (&quot;1&quot;, &quot;2&quot;, &quot;3&quot;)
+<div class="highlight"><pre><span></span><code># Before: priority stored as string ("1", "2", "3")
 class Task(Model):
     task_id = AutoKeyField()
     priority = Field()  # str
@@ -3637,7 +3665,7 @@ without updating indexes.</p>
 
 # One-liner: clears and rebuilds all indexes
 count = Product.rebuild_indexes()
-print(f&quot;Rebuilt indexes for {count} Product records&quot;)
+print(f"Rebuilt indexes for {count} Product records")
 
 # With smaller batches for memory-constrained environments
 count = Product.rebuild_indexes(batch_size=100)
@@ -3663,7 +3691,7 @@ count = await Product.async_rebuild_indexes()
 efficient filtering on a combination of fields.</p>
 <p><strong>Action required</strong>: Build the compound index from existing data.</p>
 <p>.. note::</p>
-<div class="highlight"><pre><span></span><code>Compound indexes use Popoto&#39;s ``Meta.indexes`` configuration.
+<div class="highlight"><pre><span></span><code>Compound indexes use Popoto's ``Meta.indexes`` configuration.
 The rebuild follows the same pattern as recipe 15 -- re-saving
 all records triggers the ``on_save()`` hooks that maintain indexes.
 </code></pre></div>
@@ -3676,7 +3704,7 @@ all records triggers the ``on_save()`` hooks that maintain indexes.
 
     class Meta:
         indexes = [
-            ((&quot;category&quot;, &quot;brand&quot;), False),  # non-unique compound index
+            (("category", "brand"), False),  # non-unique compound index
         ]
 
 # After adding the Meta.indexes entry, rebuild by re-saving all records
@@ -3692,7 +3720,7 @@ for redis_key in Product.query.keys():
         pipeline.execute()
         pipeline = POPOTO_REDIS_DB.pipeline()
 pipeline.execute()
-print(f&quot;Built compound index for {count} Product records&quot;)
+print(f"Built compound index for {count} Product records")
 </code></pre></div>
 <ol>
 <li>Remove Compound Index
@@ -3704,20 +3732,20 @@ print(f&quot;Built compound index for {count} Product records&quot;)
 <p>::</p>
 <div class="highlight"><pre><span></span><code># Compound index keys follow the pattern: $Index:ClassName:field1:field2
 # Delete the index set
-index_key = &quot;$Index:Product:category:brand&quot;
+index_key = "$Index:Product:category:brand"
 POPOTO_REDIS_DB.delete(index_key)
 
 # If there are multiple compound indexes to remove, use SCAN
 cursor = 0
 while True:
     cursor, keys = POPOTO_REDIS_DB.scan(
-        cursor, match=&quot;$Index:Product:*&quot;, count=500
+        cursor, match="$Index:Product:*", count=500
     )
     for key in keys:
         if isinstance(key, bytes):
-            key = key.decode(&quot;utf-8&quot;)
+            key = key.decode("utf-8")
         # Only delete indexes you want to remove
-        if key == &quot;$Index:Product:category:brand&quot;:
+        if key == "$Index:Product:category:brand":
             POPOTO_REDIS_DB.delete(key)
     if cursor == 0:
         break
@@ -3802,9 +3830,9 @@ print(Event.audit_datetime_keys())
 #
 #   COLLISION -&gt; Event:2026-08-07T05{&amp;#58;}00{&amp;#58;}00.123456Z
 #     Event:2026/-08/-07 12{&amp;#58;}00{&amp;#58;}00.123456+07{&amp;#58;}00  (legacy-offset)
-#       * note = &#39;original&#39;
+#       * note = 'original'
 #     Event:2026/-08/-07 05{&amp;#58;}00{&amp;#58;}00.123456  (legacy-naive)
-#       * note = &#39;the copy that drifted&#39;
+#       * note = 'the copy that drifted'
 #     copies DIFFER on: note. Keeping either loses data; reconcile by hand.
 
 # 3. Resolve any collision by hand -- see recipe 20. The migration
@@ -3900,7 +3928,7 @@ for collision in audit.collisions:
 </ol>
 <p>::</p>
 <div class="highlight"><pre><span></span><code># Having chosen, delete the loser and drop it from the class set.
-loser = &quot;Event:2026/-08/-07 05{&amp;#58;}00{&amp;#58;}00.123456&quot;
+loser = "Event:2026/-08/-07 05{&amp;#58;}00{&amp;#58;}00.123456"
 POPOTO_REDIS_DB.delete(loser)
 POPOTO_REDIS_DB.srem(Event._meta.db_class_set_key.redis_key, loser)
 

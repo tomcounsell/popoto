@@ -1348,6 +1348,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1732,6 +1760,17 @@
     <span class="md-ellipsis">
       
         WriteFilterMixin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#neverrecordmixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NeverRecordMixin
       
     </span>
   </a>
@@ -3039,6 +3078,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#neverrecordmixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NeverRecordMixin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#decayingsortedfield-cyclicdecayfield" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3375,6 +3425,81 @@
 </tr>
 </tbody>
 </table>
+<h3 id="neverrecordmixin">NeverRecordMixin<a class="headerlink" href="#neverrecordmixin" title="Permanent link">&para;</a></h3>
+<p>Source: <code>src/popoto/privacy/never_record.py</code>, constants in <code>src/popoto/fields/constants.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>Optimal Range</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NR_ENTROPY_MIN_TOKEN_LEN</code></td>
+<td>20</td>
+<td>—</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>NR_ENTROPY_MIN_BITS</code></td>
+<td>3.5</td>
+<td>—</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>NR_ASSIGNMENT_MIN_VALUE_LEN</code></td>
+<td>6</td>
+<td>—</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>NR_TOMBSTONE_LOG_MAX</code></td>
+<td>1000</td>
+<td>n/a (capacity bound)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>NEVER_RECORD_ENABLED</code></td>
+<td><code>True</code> (auto-detected; env override)</td>
+<td>n/a (boolean)</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<p>None of the four <code>NR_*</code> numeric constants have been through this guide's benchmark
+harness — there is no sweep file backing any of them, and no retrieval-quality
+metric applies to a privacy gate's block/allow decision the way it applies to a
+decay rate or a threshold. They are set by argument, not by measurement:</p>
+<ul>
+<li><code>NR_ENTROPY_MIN_TOKEN_LEN</code> (20) is the shortest whitespace token the entropy
+  backstop will score. Below 20 characters, ordinary base64-ish English words
+  start to dominate the token population and the detector becomes noise rather
+  than signal.</li>
+<li><code>NR_ENTROPY_MIN_BITS</code> (3.5) is the Shannon bits-per-character threshold above
+  which a token is treated as random rather than natural language. Random
+  base64 runs roughly 5.5-6.0 bits/char, random hex roughly 4.0; English text
+  rendered over the same character set sits well below 3.5. The value is
+  deliberately conservative toward over-blocking, not corpus-tuned.</li>
+<li><code>NR_ASSIGNMENT_MIN_VALUE_LEN</code> (6) is the shortest value after a
+  <code>password=</code>/<code>token:</code>-style prefix that counts as a credential assignment; it
+  is also the shortest accepted password in a <code>scheme://user:password@host</code>
+  URL.</li>
+<li><code>NR_TOMBSTONE_LOG_MAX</code> (1000) caps the <code>$NR:{Class}:drops</code> LIST to a recent
+  window. The <code>$NR:{Class}:counts</code> HASH is unbounded and is the authoritative
+  count; the list exists for recent-drop inspection, not auditing at scale.</li>
+</ul>
+<p><code>NEVER_RECORD_ENABLED</code> is not a tuning constant at all — like
+<code>DATETIME_KEY_LEGACY</code>, it is a deploy-level kill switch. It is default <code>True</code>
+(the firewall runs), backed by the <code>POPOTO_NEVER_RECORD_DISABLE</code> environment
+variable read at import, and assignable directly at runtime to disable the
+firewall without touching model code. See
+<a href="../../features/never-record-firewall/">NeverRecordFirewall</a> for the guarantee
+this gate makes and the enumerated holes in it (canonical git SHAs and UUIDs
+are excluded from entropy scoring, for example) — those are shape decisions,
+not values a sweep would tune.</p>
 <h3 id="decayingsortedfield-cyclicdecayfield">DecayingSortedField / CyclicDecayField<a class="headerlink" href="#decayingsortedfield-cyclicdecayfield" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

@@ -1,0 +1,4422 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://popoto.io/reference/popoto/privacy/never_record/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>popoto.privacy.never_record - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#popotoprivacynever_record" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              popoto.privacy.never_record
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../guides/agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Add Memory to Your Agent
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/harness-integration/" class="md-tabs__link">
+          
+  
+  
+  Add Memory to Your Harness
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Understand & Tune
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../benchmarks/results/" class="md-tabs__link">
+          
+  
+  
+  Benchmarks & Method
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Redis ORM
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../style-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Agent
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Agent
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SubconsciousMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/query-blind-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query-Blind Retrieval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/llm-memory-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Memory Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Harness
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Harness
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/harness-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Codex
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-hermes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hermes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-openclaw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenClaw
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understand & Tune
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Understand & Tune
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Primitives
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Primitives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/trajectory-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TrajectoryMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/rag-chatbot-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAG Chatbot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/memory-telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MemoryLifecycle and more
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tuning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/parametric-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parametric Sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks & Method
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks & Method
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/locomo_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/locomo_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/rlt_redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT (Redis)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/csr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSR Regression Gate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Method and How-To
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis ORM
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Redis ORM
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/content-and-embedding-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content & Embeddings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/export-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export & Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../field-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Custom Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        never_record
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="never_record">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record--what-this-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this guarantees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record--what-this-does-not-guarantee" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this does NOT guarantee
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record--why-patterns-are-module-constants-not-defaults-entries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why patterns are module constants, not entries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.NeverRecordVerdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NeverRecordVerdict
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.NeverRecordMixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NeverRecordMixin
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NeverRecordMixin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.NeverRecordMixin.never_record_counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        never_record_counts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.NeverRecordMixin.never_record_log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        never_record_log
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.scan_never_record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scan_never_record
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.never_record_key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        never_record_key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.privacy.never_record.write_tombstone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        write_tombstone
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="popotoprivacynever_record"><code>popoto.privacy.never_record</code><a class="headerlink" href="#popotoprivacynever_record" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="popoto.privacy.never_record" class="doc doc-heading">
+            <code>popoto.privacy.never_record</code>
+
+
+<a href="#popoto.privacy.never_record" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Never-record firewall — deterministic pre-storage privacy gate (#561).</p>
+<h4 id="popoto.privacy.never_record--what-this-guarantees">What this guarantees<a class="headerlink" href="#popoto.privacy.never_record--what-this-guarantees" title="Permanent link">&para;</a></h4>
+<p>Content matching the enumerated <em>guaranteed class</em> below never reaches Redis:
+it is dropped in :meth:<code>popoto.models.base.Model.save</code> before the write
+filter, before <code>pre_save()</code>, and therefore before serialization, HSET,
+index writes, BM25 tokenization, embedding calls, and co-occurrence edges.
+Nothing about the dropped text is persisted — only a content-free tombstone
+carrying a random id and a reason code.</p>
+<p>The guaranteed class:</p>
+<p><code>off_the_record</code>
+    An explicit human marker. Voids the <strong>entire turn</strong>, not a guessed span.
+<code>private_key_block</code>
+    PEM / OpenSSH / PuTTY private key headers.
+<code>credential_prefix</code>
+    Vendor-prefixed API tokens (Anthropic, OpenAI, GitHub, AWS, Google,
+    Slack, GitLab, npm, HuggingFace, DigitalOcean, SendGrid, Stripe).
+<code>jwt</code>
+    Three-segment base64url JSON Web Tokens.
+<code>credential_assignment</code>
+    <code>password=</code>/<code>api_key:</code>/<code>token=</code> and friends followed by a value.
+<code>url_userinfo</code>
+    <code>scheme://user:password@host</code>.
+<code>payment_card</code>
+    13-19 digit runs that pass the Luhn checksum.
+<code>government_id</code>
+    US SSN-shaped strings with a valid-area guard.
+<code>high_entropy</code>
+    The backstop for unknown-prefix tokens: long, credential-charset,
+    high-Shannon-entropy tokens.</p>
+<h4 id="popoto.privacy.never_record--what-this-does-not-guarantee">What this does NOT guarantee<a class="headerlink" href="#popoto.privacy.never_record--what-this-does-not-guarantee" title="Permanent link">&para;</a></h4>
+<p>This is a deterministic pattern gate, not an oracle. Read the holes:</p>
+<ul>
+<li><strong>Over-blocking is accepted and expected.</strong> Base64 blobs and long random
+  identifiers in ordinary prose will be dropped. That is the price of the
+  zero-false-negative goal on the class above.</li>
+<li><strong>Canonical git SHAs and UUIDs are excluded from entropy scoring</strong>
+  (:data:<code>_STRUCTURAL_EXCLUSIONS</code>). Developer memory content mentions commit
+  SHAs constantly, and dropping every one of them would make the firewall
+  worse than useless. The cost is a real, enumerated hole: a bare 40-hex-char
+  secret with no vendor prefix is not caught by the entropy backstop. It is
+  still caught if it appears as <code>password=&lt;sha&gt;</code> or similar.</li>
+<li><strong>Digit-free tokens, and tokens with no long separator-free run, are
+  excluded from entropy scoring</strong> (:func:<code>_entropy_candidate</code>). Entropy per
+  character does not separate <code>ExtractionProviderRegistry</code> (3.87 bits) or
+  <code>text-embedding-3-small</code> from a real secret, so scoring whole tokens
+  voided 11.6% of this repo's own documentation paragraphs.</li>
+</ul>
+<p><strong>The cost is large and should not be read as a footnote.</strong> A secret
+  escapes the backstop if it contains no digit, or if a separator breaks it
+  so no unbroken run reaches <code>NR_ENTROPY_MIN_TOKEN_LEN</code>. The separator case
+  dominates, because base64's own alphabet includes <code>-</code> and <code>_</code>. Measured
+  over 200k random base64url tokens per length: <strong>~49% escape at 20
+  characters, ~27% at 32, ~12% at 43</strong> (compare the digit-free case alone at
+  ~3% and ~0.4%). Treat <code>high_entropy</code> as opportunistic, not as a second
+  guarantee. Only <code>high_entropy</code> is affected; every named format has its
+  own detector, and that is where the guarantee lives.
+- <strong>A novel credential format with no known prefix, low entropy, and no
+  assignment context can pass.</strong> The detector corpus is explicit and lives in
+  one module so it can be extended; issue #561's module M9 (seeded audit) is
+  the ongoing measurement of false negatives.
+- <strong>Semantically sensitive content is out of scope.</strong> The gate matches shape,
+  not meaning. An LLM voter may be added later and may only ADD drops — the
+  guarantee above rests solely on this deterministic core.</p>
+<h4 id="popoto.privacy.never_record--why-patterns-are-module-constants-not-defaults-entries">Why patterns are module constants, not <code>Defaults</code> entries<a class="headerlink" href="#popoto.privacy.never_record--why-patterns-are-module-constants-not-defaults-entries" title="Permanent link">&para;</a></h4>
+<p>The numeric thresholds are tuning dials and live in
+:class:<code>popoto.fields.constants.Defaults</code>. The pattern corpus does not: it is
+a security-relevant list, and exposing it as a mutable registry would let a
+caller silently weaken the guarantee.</p>
+<p>No Redis modules are used — tombstones are a plain HASH and a capped LIST, so
+the firewall works identically on Redis and Valkey.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.privacy.never_record.NeverRecordVerdict" class="doc doc-heading">
+            <code>NeverRecordVerdict</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#popoto.privacy.never_record.NeverRecordVerdict" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Result of a never-record scan.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.privacy.never_record.NeverRecordVerdict.blocked">blocked</span></code></td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>True if the content must never be stored.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.privacy.never_record.NeverRecordVerdict.reason">reason</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Stable reason code from :data:<code>NEVER_RECORD_REASONS</code>, or None.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.privacy.never_record.NeverRecordVerdict.detector">detector</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Name of the specific detector that fired, or None.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+        <p>Deliberately carries no matched text, no offset, and no length. This
+object's repr reaches log files, and any of those three would be a
+content side channel that defeats the whole module.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#__codelineno-0-118">118</a></span>
+<span class="normal"><a href="#__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#__codelineno-0-135">135</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-116" name="__codelineno-0-116"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordVerdict</span><span class="p">:</span>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="w">    </span><span class="sd">"""Result of a never-record scan.</span>
+<a id="__codelineno-0-119" name="__codelineno-0-119"></a>
+<a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="sd">    Attributes:</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">        blocked: True if the content must never be stored.</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">        reason: Stable reason code from :data:`NEVER_RECORD_REASONS`, or None.</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">        detector: Name of the specific detector that fired, or None.</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    Deliberately carries no matched text, no offset, and no length. This</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">    object's repr reaches log files, and any of those three would be a</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    content side channel that defeats the whole module.</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    """</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a>    <span class="n">blocked</span><span class="p">:</span> <span class="nb">bool</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a>    <span class="n">reason</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="n">detector</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__bool__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">blocked</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.privacy.never_record.NeverRecordMixin" class="doc doc-heading">
+            <code>NeverRecordMixin</code>
+
+
+<a href="#popoto.privacy.never_record.NeverRecordMixin" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Model mixin enforcing the never-record firewall on <code>save()</code>.</p>
+<p>Deliberately <strong>not</strong> a :class:<code>~popoto.fields.write_filter.WriteFilterMixin</code>
+subclass. The write filter is a scalar salience score with one
+<code>compute_filter_score()</code> slot per class, already claimed by salience
+scoring in the documented pattern; a firewall is a boolean content
+predicate with a tombstone side effect. Different shape, different slot.</p>
+<p>Usage::</p>
+<div class="highlight"><pre><span></span><code>class Memory(NeverRecordMixin, Model):
+    content = StringField()
+
+Memory(content="my key is sk-ant-api03-AAAA...").save()  # -&gt; False
+
+Memory.never_record_counts()   # {"credential_prefix": 1}
+</code></pre></div>
+<p>:class:<code>~popoto.recipes.default_memory.DefaultMemory</code> carries this mixin
+already, so the batteries-included path and the Claude Code / Codex
+harness are gated with no adopter code change.</p>
+<p>Key fields are excluded from the scan. <code>AutoKeyField</code>/<code>KeyField</code>
+values are generated UUID/hex shapes -- exactly what the entropy detector
+targets -- so scanning them would let a model block on its own identity.
+A key is never user content.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span>
+<span class="normal"><a href="#__codelineno-0-592">592</a></span>
+<span class="normal"><a href="#__codelineno-0-593">593</a></span>
+<span class="normal"><a href="#__codelineno-0-594">594</a></span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span>
+<span class="normal"><a href="#__codelineno-0-598">598</a></span>
+<span class="normal"><a href="#__codelineno-0-599">599</a></span>
+<span class="normal"><a href="#__codelineno-0-600">600</a></span>
+<span class="normal"><a href="#__codelineno-0-601">601</a></span>
+<span class="normal"><a href="#__codelineno-0-602">602</a></span>
+<span class="normal"><a href="#__codelineno-0-603">603</a></span>
+<span class="normal"><a href="#__codelineno-0-604">604</a></span>
+<span class="normal"><a href="#__codelineno-0-605">605</a></span>
+<span class="normal"><a href="#__codelineno-0-606">606</a></span>
+<span class="normal"><a href="#__codelineno-0-607">607</a></span>
+<span class="normal"><a href="#__codelineno-0-608">608</a></span>
+<span class="normal"><a href="#__codelineno-0-609">609</a></span>
+<span class="normal"><a href="#__codelineno-0-610">610</a></span>
+<span class="normal"><a href="#__codelineno-0-611">611</a></span>
+<span class="normal"><a href="#__codelineno-0-612">612</a></span>
+<span class="normal"><a href="#__codelineno-0-613">613</a></span>
+<span class="normal"><a href="#__codelineno-0-614">614</a></span>
+<span class="normal"><a href="#__codelineno-0-615">615</a></span>
+<span class="normal"><a href="#__codelineno-0-616">616</a></span>
+<span class="normal"><a href="#__codelineno-0-617">617</a></span>
+<span class="normal"><a href="#__codelineno-0-618">618</a></span>
+<span class="normal"><a href="#__codelineno-0-619">619</a></span>
+<span class="normal"><a href="#__codelineno-0-620">620</a></span>
+<span class="normal"><a href="#__codelineno-0-621">621</a></span>
+<span class="normal"><a href="#__codelineno-0-622">622</a></span>
+<span class="normal"><a href="#__codelineno-0-623">623</a></span>
+<span class="normal"><a href="#__codelineno-0-624">624</a></span>
+<span class="normal"><a href="#__codelineno-0-625">625</a></span>
+<span class="normal"><a href="#__codelineno-0-626">626</a></span>
+<span class="normal"><a href="#__codelineno-0-627">627</a></span>
+<span class="normal"><a href="#__codelineno-0-628">628</a></span>
+<span class="normal"><a href="#__codelineno-0-629">629</a></span>
+<span class="normal"><a href="#__codelineno-0-630">630</a></span>
+<span class="normal"><a href="#__codelineno-0-631">631</a></span>
+<span class="normal"><a href="#__codelineno-0-632">632</a></span>
+<span class="normal"><a href="#__codelineno-0-633">633</a></span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span>
+<span class="normal"><a href="#__codelineno-0-642">642</a></span>
+<span class="normal"><a href="#__codelineno-0-643">643</a></span>
+<span class="normal"><a href="#__codelineno-0-644">644</a></span>
+<span class="normal"><a href="#__codelineno-0-645">645</a></span>
+<span class="normal"><a href="#__codelineno-0-646">646</a></span>
+<span class="normal"><a href="#__codelineno-0-647">647</a></span>
+<span class="normal"><a href="#__codelineno-0-648">648</a></span>
+<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span>
+<span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span>
+<span class="normal"><a href="#__codelineno-0-657">657</a></span>
+<span class="normal"><a href="#__codelineno-0-658">658</a></span>
+<span class="normal"><a href="#__codelineno-0-659">659</a></span>
+<span class="normal"><a href="#__codelineno-0-660">660</a></span>
+<span class="normal"><a href="#__codelineno-0-661">661</a></span>
+<span class="normal"><a href="#__codelineno-0-662">662</a></span>
+<span class="normal"><a href="#__codelineno-0-663">663</a></span>
+<span class="normal"><a href="#__codelineno-0-664">664</a></span>
+<span class="normal"><a href="#__codelineno-0-665">665</a></span>
+<span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span>
+<span class="normal"><a href="#__codelineno-0-670">670</a></span>
+<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+<span class="normal"><a href="#__codelineno-0-672">672</a></span>
+<span class="normal"><a href="#__codelineno-0-673">673</a></span>
+<span class="normal"><a href="#__codelineno-0-674">674</a></span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span>
+<span class="normal"><a href="#__codelineno-0-677">677</a></span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span>
+<span class="normal"><a href="#__codelineno-0-693">693</a></span>
+<span class="normal"><a href="#__codelineno-0-694">694</a></span>
+<span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span>
+<span class="normal"><a href="#__codelineno-0-711">711</a></span>
+<span class="normal"><a href="#__codelineno-0-712">712</a></span>
+<span class="normal"><a href="#__codelineno-0-713">713</a></span>
+<span class="normal"><a href="#__codelineno-0-714">714</a></span>
+<span class="normal"><a href="#__codelineno-0-715">715</a></span>
+<span class="normal"><a href="#__codelineno-0-716">716</a></span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span>
+<span class="normal"><a href="#__codelineno-0-720">720</a></span>
+<span class="normal"><a href="#__codelineno-0-721">721</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordMixin</span><span class="p">:</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="w">    </span><span class="sd">"""Model mixin enforcing the never-record firewall on ``save()``.</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">    Deliberately **not** a :class:`~popoto.fields.write_filter.WriteFilterMixin`</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    subclass. The write filter is a scalar salience score with one</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">    ``compute_filter_score()`` slot per class, already claimed by salience</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="sd">    scoring in the documented pattern; a firewall is a boolean content</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">    predicate with a tombstone side effect. Different shape, different slot.</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">    Usage::</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">        class Memory(NeverRecordMixin, Model):</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">            content = StringField()</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">        Memory(content="my key is sk-ant-api03-AAAA...").save()  # -&gt; False</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a><span class="sd">        Memory.never_record_counts()   # {"credential_prefix": 1}</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a><span class="sd">    :class:`~popoto.recipes.default_memory.DefaultMemory` carries this mixin</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a><span class="sd">    already, so the batteries-included path and the Claude Code / Codex</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a><span class="sd">    harness are gated with no adopter code change.</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a><span class="sd">    Key fields are excluded from the scan. ``AutoKeyField``/``KeyField``</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a><span class="sd">    values are generated UUID/hex shapes -- exactly what the entropy detector</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a><span class="sd">    targets -- so scanning them would let a model block on its own identity.</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">    A key is never user content.</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">    """</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>    <span class="c1"># Export/import: the $NR: keys are audit telemetry about writes that were</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>    <span class="c1"># refused, not state belonging to any record. Nothing to carry across a</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>    <span class="c1"># round trip. Matches WriteFilterMixin's precedent.</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rebuild"</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>    <span class="c1">#: Verdict from the most recent _check_never_record() on this instance:</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>    <span class="c1">#: a blocking NeverRecordVerdict, or None when the scan came back clean.</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="c1">#: Content-free by construction, like every other verdict.</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="n">_never_record_verdict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">NeverRecordVerdict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>        <span class="c1"># Supplied by Model, which every user of this mixin also</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="c1"># inherits from. Declared for the type checker only.</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>        <span class="n">_meta</span><span class="p">:</span> <span class="n">Any</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_never_record_scan_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="w">        </span><span class="sd">"""Yield the string field values this instance exposes to the scan.</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">        Excludes key fields (see the class docstring) and any non-string</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        value. Mirrors the key-field iteration the ``KeyMutationError`` guard</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        uses in ``Model.save()``.</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        """</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_meta</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="n">key_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">key_field_names</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">auto_field_names</span><span class="p">)</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">field_names</span><span class="p">:</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">key_names</span><span class="p">:</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                <span class="k">yield</span> <span class="n">value</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_check_never_record</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeverRecordVerdict</span><span class="p">:</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="w">        </span><span class="sd">"""Evaluate the firewall and gate the save.</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="sd">        Each field is scanned independently under both renderings. There is</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="sd">        deliberately no cross-field concatenated pass: with whitespace</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="sd">        removed, any join separator either vanishes -- letting two innocuous</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        adjacent values merge into a shape neither contains -- or has to be a</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        normalization-surviving sentinel, which is per-field scanning with</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">        extra steps. Issue #561 names only intra-value splitting as the</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">        adversarial case.</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">            NeverRecordVerdict: A clean verdict when the save may proceed.</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">            NeverRecordException: If any scanned value is blocked. The</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">                message carries only the reason code and detector name --</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">                never the matched text, an offset, or a length. That is</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">                load-bearing: ``MemoryService._record_failure`` writes</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">                ``f"{type(exc).__name__}: {exc}"`` into a plaintext log file,</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">                so a message quoting the match would defeat this module</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">                through a side channel.</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        """</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_scan_values</span><span class="p">():</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>            <span class="n">verdict</span> <span class="o">=</span> <span class="n">scan_never_record</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>            <span class="k">if</span> <span class="n">verdict</span><span class="o">.</span><span class="n">blocked</span><span class="p">:</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>                <span class="c1"># Recorded on the instance so a caller that only sees</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>                <span class="c1"># save() -&gt; False can tell a privacy drop from a rejected</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>                <span class="c1"># write without re-scanning the content. The verdict is</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>                <span class="c1"># content-free, so holding it costs nothing.</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_verdict</span> <span class="o">=</span> <span class="n">verdict</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>                <span class="n">write_tombstone</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">verdict</span><span class="p">)</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>                <span class="k">raise</span> <span class="n">NeverRecordException</span><span class="p">(</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>                    <span class="sa">f</span><span class="s2">"never-record: </span><span class="si">{</span><span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">verdict</span><span class="o">.</span><span class="n">detector</span><span class="si">}</span><span class="s2">)"</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>                <span class="p">)</span>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_verdict</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="k">return</span> <span class="n">_CLEAN</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">never_record_counts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="w">        </span><span class="sd">"""Return ``{reason_code: count}`` of drops for this model.</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">        Content-free by construction -- this is the auditable half of the</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">        guarantee.</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">            redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">            dict: Reason code to integer count. Empty if nothing dropped.</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">        """</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a>        <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>            <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a>        <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="k">return</span> <span class="n">counts</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">never_record_log</span><span class="p">(</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="w">        </span><span class="sd">"""Return the most recent drop tombstones, newest first.</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">            limit: Maximum entries to return.</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">            redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">            list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">            entry contains any fragment of the dropped content.</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">        """</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>            <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">lrange</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>        <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a>        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw</span> <span class="ow">or</span> <span class="p">[]:</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>                <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>                <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>  <span class="c1"># pragma: no cover - corrupt entry</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>        <span class="k">return</span> <span class="n">entries</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.privacy.never_record.NeverRecordMixin.never_record_counts" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">never_record_counts</span><span class="p">(</span><span class="n">redis_client</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#popoto.privacy.never_record.NeverRecordMixin.never_record_counts" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return <code>{reason_code: count}</code> of drops for this model.</p>
+<p>Content-free by construction -- this is the auditable half of the
+guarantee.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>redis_client</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional client override, for tests.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>dict</code></td>            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="int">int</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Reason code to integer count. Empty if nothing dropped.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-669">669</a></span>
+<span class="normal"><a href="#__codelineno-0-670">670</a></span>
+<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+<span class="normal"><a href="#__codelineno-0-672">672</a></span>
+<span class="normal"><a href="#__codelineno-0-673">673</a></span>
+<span class="normal"><a href="#__codelineno-0-674">674</a></span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span>
+<span class="normal"><a href="#__codelineno-0-677">677</a></span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_counts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="w">    </span><span class="sd">"""Return ``{reason_code: count}`` of drops for this model.</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">    Content-free by construction -- this is the auditable half of the</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">    guarantee.</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        dict: Reason code to integer count. Empty if nothing dropped.</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">    """</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a>    <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>            <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>        <span class="n">counts</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>    <span class="k">return</span> <span class="n">counts</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.privacy.never_record.NeverRecordMixin.never_record_log" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">never_record_log</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#popoto.privacy.never_record.NeverRecordMixin.never_record_log" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the most recent drop tombstones, newest first.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>limit</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum entries to return.</p>
+              </div>
+            </td>
+            <td>
+                  <code>100</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>redis_client</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional client override, for tests.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>list</code></td>            <td>
+                  <code><span title="list">list</span>[<span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Dicts with <code>id</code>, <code>reason</code>, <code>detector</code>, <code>at</code>. No</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><span title="list">list</span>[<span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>entry contains any fragment of the dropped content.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-694">694</a></span>
+<span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span>
+<span class="normal"><a href="#__codelineno-0-711">711</a></span>
+<span class="normal"><a href="#__codelineno-0-712">712</a></span>
+<span class="normal"><a href="#__codelineno-0-713">713</a></span>
+<span class="normal"><a href="#__codelineno-0-714">714</a></span>
+<span class="normal"><a href="#__codelineno-0-715">715</a></span>
+<span class="normal"><a href="#__codelineno-0-716">716</a></span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span>
+<span class="normal"><a href="#__codelineno-0-720">720</a></span>
+<span class="normal"><a href="#__codelineno-0-721">721</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_log</span><span class="p">(</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a>    <span class="bp">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="w">    </span><span class="sd">"""Return the most recent drop tombstones, newest first.</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">        limit: Maximum entries to return.</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">        entry contains any fragment of the dropped content.</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">    """</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">lrange</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>    <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw</span> <span class="ow">or</span> <span class="p">[]:</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>            <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>            <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>  <span class="c1"># pragma: no cover - corrupt entry</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>    <span class="k">return</span> <span class="n">entries</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.privacy.never_record.scan_never_record" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">scan_never_record</span><span class="p">(</span><span class="n">text</span><span class="p">)</span></code>
+
+<a href="#popoto.privacy.never_record.scan_never_record" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Scan <code>text</code> for content that must never be recorded.</p>
+<p>Pure and deterministic: no Redis, no model, no network, no clock. Safe to
+call from an extraction pipeline before an LLM sees the candidate.</p>
+<p>Every regex detector marked whitespace-insensitive runs against two
+renderings — the raw text and a de-whitespaced rendering — so a
+credential split across whitespace or newlines is still caught. That is
+the adversarial case named in issue #561's acceptance criteria.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>text</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The candidate content. Non-str input returns a clean verdict;
+callers pass field values of arbitrary type.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="NeverRecordVerdict
+
+
+  
+      dataclass
+   (popoto.privacy.never_record.NeverRecordVerdict)" href="#popoto.privacy.never_record.NeverRecordVerdict">NeverRecordVerdict</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>NeverRecordVerdict. Falsy when the content may be stored. Carries a</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="NeverRecordVerdict
+
+
+  
+      dataclass
+   (popoto.privacy.never_record.NeverRecordVerdict)" href="#popoto.privacy.never_record.NeverRecordVerdict">NeverRecordVerdict</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>reason code and detector name but never any fragment of the input.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-417">417</a></span>
+<span class="normal"><a href="#__codelineno-0-418">418</a></span>
+<span class="normal"><a href="#__codelineno-0-419">419</a></span>
+<span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span>
+<span class="normal"><a href="#__codelineno-0-424">424</a></span>
+<span class="normal"><a href="#__codelineno-0-425">425</a></span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span>
+<span class="normal"><a href="#__codelineno-0-430">430</a></span>
+<span class="normal"><a href="#__codelineno-0-431">431</a></span>
+<span class="normal"><a href="#__codelineno-0-432">432</a></span>
+<span class="normal"><a href="#__codelineno-0-433">433</a></span>
+<span class="normal"><a href="#__codelineno-0-434">434</a></span>
+<span class="normal"><a href="#__codelineno-0-435">435</a></span>
+<span class="normal"><a href="#__codelineno-0-436">436</a></span>
+<span class="normal"><a href="#__codelineno-0-437">437</a></span>
+<span class="normal"><a href="#__codelineno-0-438">438</a></span>
+<span class="normal"><a href="#__codelineno-0-439">439</a></span>
+<span class="normal"><a href="#__codelineno-0-440">440</a></span>
+<span class="normal"><a href="#__codelineno-0-441">441</a></span>
+<span class="normal"><a href="#__codelineno-0-442">442</a></span>
+<span class="normal"><a href="#__codelineno-0-443">443</a></span>
+<span class="normal"><a href="#__codelineno-0-444">444</a></span>
+<span class="normal"><a href="#__codelineno-0-445">445</a></span>
+<span class="normal"><a href="#__codelineno-0-446">446</a></span>
+<span class="normal"><a href="#__codelineno-0-447">447</a></span>
+<span class="normal"><a href="#__codelineno-0-448">448</a></span>
+<span class="normal"><a href="#__codelineno-0-449">449</a></span>
+<span class="normal"><a href="#__codelineno-0-450">450</a></span>
+<span class="normal"><a href="#__codelineno-0-451">451</a></span>
+<span class="normal"><a href="#__codelineno-0-452">452</a></span>
+<span class="normal"><a href="#__codelineno-0-453">453</a></span>
+<span class="normal"><a href="#__codelineno-0-454">454</a></span>
+<span class="normal"><a href="#__codelineno-0-455">455</a></span>
+<span class="normal"><a href="#__codelineno-0-456">456</a></span>
+<span class="normal"><a href="#__codelineno-0-457">457</a></span>
+<span class="normal"><a href="#__codelineno-0-458">458</a></span>
+<span class="normal"><a href="#__codelineno-0-459">459</a></span>
+<span class="normal"><a href="#__codelineno-0-460">460</a></span>
+<span class="normal"><a href="#__codelineno-0-461">461</a></span>
+<span class="normal"><a href="#__codelineno-0-462">462</a></span>
+<span class="normal"><a href="#__codelineno-0-463">463</a></span>
+<span class="normal"><a href="#__codelineno-0-464">464</a></span>
+<span class="normal"><a href="#__codelineno-0-465">465</a></span>
+<span class="normal"><a href="#__codelineno-0-466">466</a></span>
+<span class="normal"><a href="#__codelineno-0-467">467</a></span>
+<span class="normal"><a href="#__codelineno-0-468">468</a></span>
+<span class="normal"><a href="#__codelineno-0-469">469</a></span>
+<span class="normal"><a href="#__codelineno-0-470">470</a></span>
+<span class="normal"><a href="#__codelineno-0-471">471</a></span>
+<span class="normal"><a href="#__codelineno-0-472">472</a></span>
+<span class="normal"><a href="#__codelineno-0-473">473</a></span>
+<span class="normal"><a href="#__codelineno-0-474">474</a></span>
+<span class="normal"><a href="#__codelineno-0-475">475</a></span>
+<span class="normal"><a href="#__codelineno-0-476">476</a></span>
+<span class="normal"><a href="#__codelineno-0-477">477</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="k">def</span><span class="w"> </span><span class="nf">scan_never_record</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeverRecordVerdict</span><span class="p">:</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="w">    </span><span class="sd">"""Scan ``text`` for content that must never be recorded.</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">    Pure and deterministic: no Redis, no model, no network, no clock. Safe to</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">    call from an extraction pipeline before an LLM sees the candidate.</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">    Every regex detector marked whitespace-insensitive runs against two</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">    renderings — the raw text and a de-whitespaced rendering — so a</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    credential split across whitespace or newlines is still caught. That is</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    the adversarial case named in issue #561's acceptance criteria.</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">        text: The candidate content. Non-str input returns a clean verdict;</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">            callers pass field values of arbitrary type.</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">        NeverRecordVerdict. Falsy when the content may be stored. Carries a</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        reason code and detector name but never any fragment of the input.</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">    """</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a>        <span class="k">return</span> <span class="n">_CLEAN</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>    <span class="n">stripped</span> <span class="o">=</span> <span class="n">_strip_whitespace</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="k">for</span> <span class="n">reason</span><span class="p">,</span> <span class="n">detector</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">whitespace_insensitive</span> <span class="ow">in</span> <span class="n">_REGEX_DETECTORS</span><span class="p">:</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="k">if</span> <span class="n">pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>            <span class="k">return</span> <span class="n">NeverRecordVerdict</span><span class="p">(</span><span class="n">blocked</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="n">reason</span><span class="p">,</span> <span class="n">detector</span><span class="o">=</span><span class="n">detector</span><span class="p">)</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>        <span class="k">if</span> <span class="n">whitespace_insensitive</span> <span class="ow">and</span> <span class="n">pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">stripped</span><span class="p">):</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>            <span class="k">return</span> <span class="n">NeverRecordVerdict</span><span class="p">(</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>                <span class="n">blocked</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="n">reason</span><span class="p">,</span> <span class="n">detector</span><span class="o">=</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">detector</span><span class="si">}</span><span class="s2">_dewhitespaced"</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>            <span class="p">)</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>    <span class="k">for</span> <span class="n">scanner</span> <span class="ow">in</span> <span class="p">(</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="n">_scan_credential_assignment</span><span class="p">,</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="n">_scan_url_userinfo</span><span class="p">,</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="n">_scan_payment_card</span><span class="p">,</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>    <span class="p">):</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="n">verdict</span> <span class="o">=</span> <span class="n">scanner</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="k">if</span> <span class="n">verdict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>            <span class="k">return</span> <span class="n">verdict</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>    <span class="c1"># Payment cards are the one non-regex detector worth re-running on the</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="c1"># de-whitespaced rendering: a card split across lines is a real shape.</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="n">verdict</span> <span class="o">=</span> <span class="n">_scan_payment_card</span><span class="p">(</span><span class="n">stripped</span><span class="p">)</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>    <span class="k">if</span> <span class="n">verdict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>        <span class="k">return</span> <span class="n">verdict</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>    <span class="c1"># Entropy scoring runs on the RAW rendering only. Running it on the</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>    <span class="c1"># de-whitespaced rendering was tried and is wrong: any prose paragraph</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>    <span class="c1"># collapses into a single long token over the credential charset whose</span>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>    <span class="c1"># entropy comfortably exceeds the threshold, so the firewall blocked</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>    <span class="c1"># ordinary sentences like "Deploy uses blue-green with automatic</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>    <span class="c1"># rollback". Whole-document entropy carries no signal about whether a</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>    <span class="c1"># secret is present.</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>    <span class="c1">#</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>    <span class="c1"># The cost is a real, enumerated hole: an unknown-prefix secret split</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>    <span class="c1"># across whitespace escapes the backstop. Split *known* formats are still</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="c1"># caught -- every vendor-prefix, JWT, and PEM pattern runs against the</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="c1"># de-whitespaced rendering above, which is the adversarial case #561's</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>    <span class="c1"># acceptance criteria names.</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>    <span class="k">return</span> <span class="n">_scan_high_entropy</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_CLEAN</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.privacy.never_record.never_record_key" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="n">kind</span><span class="p">)</span></code>
+
+<a href="#popoto.privacy.never_record.never_record_key" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build a never-record Redis key.</p>
+<p>The <code>$NR:</code> namespace is disjoint from <code>$WF:</code> (write filter) and
+<code>$TOMB:</code> (lifecycle tombstones, which deliberately archive the payload).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>class_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Model class name.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>kind</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>"counts"</code> or <code>"drops"</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>str</code></td>            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Redis key like <code>$NR:DefaultMemory:counts</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-485">485</a></span>
+<span class="normal"><a href="#__codelineno-0-486">486</a></span>
+<span class="normal"><a href="#__codelineno-0-487">487</a></span>
+<span class="normal"><a href="#__codelineno-0-488">488</a></span>
+<span class="normal"><a href="#__codelineno-0-489">489</a></span>
+<span class="normal"><a href="#__codelineno-0-490">490</a></span>
+<span class="normal"><a href="#__codelineno-0-491">491</a></span>
+<span class="normal"><a href="#__codelineno-0-492">492</a></span>
+<span class="normal"><a href="#__codelineno-0-493">493</a></span>
+<span class="normal"><a href="#__codelineno-0-494">494</a></span>
+<span class="normal"><a href="#__codelineno-0-495">495</a></span>
+<span class="normal"><a href="#__codelineno-0-496">496</a></span>
+<span class="normal"><a href="#__codelineno-0-497">497</a></span>
+<span class="normal"><a href="#__codelineno-0-498">498</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="w">    </span><span class="sd">"""Build a never-record Redis key.</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a><span class="sd">    The ``$NR:`` namespace is disjoint from ``$WF:`` (write filter) and</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a><span class="sd">    ``$TOMB:`` (lifecycle tombstones, which deliberately archive the payload).</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="sd">        class_name: Model class name.</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="sd">        kind: ``"counts"`` or ``"drops"``.</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">        str: Redis key like ``$NR:DefaultMemory:counts``.</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a><span class="sd">    """</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">"$NR:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">"</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.privacy.never_record.write_tombstone" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">write_tombstone</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">redis_client</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#popoto.privacy.never_record.write_tombstone" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Record that a drop happened, without recording what was dropped.</p>
+<p>Writes two plain Redis/Valkey structures (no modules):</p>
+<ul>
+<li><code>$NR:{class}:counts</code> -- HASH, <code>HINCRBY &lt;reason&gt; 1</code></li>
+<li><code>$NR:{class}:drops</code>  -- LIST, capped at
+  :attr:<code>Defaults.NR_TOMBSTONE_LOG_MAX</code></li>
+</ul>
+<p>The entry id is :func:<code>uuid.uuid4</code>, deliberately <strong>not</strong> a hash or
+fingerprint of the content. A content-derived id would be a confirmation
+oracle: anyone holding a candidate secret could hash it and check the log
+for a match. This is the precise point where the never-record tombstone
+diverges from :class:<code>popoto.recipes.memory_lifecycle.Tombstone</code>, which
+stores an ExistenceFilter fingerprint on purpose so writes can be matched
+against it.</p>
+<p>No field of the entry contains, derives from, or is length-correlated
+with the dropped text.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>class_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Model class name, for the key namespace.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>verdict</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="NeverRecordVerdict
+
+
+  
+      dataclass
+   (popoto.privacy.never_record.NeverRecordVerdict)" href="#popoto.privacy.never_record.NeverRecordVerdict">NeverRecordVerdict</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The blocking verdict. Only its reason/detector are stored.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>redis_client</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional client override, for tests.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>str</code></td>            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The tombstone entry id.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-501">501</a></span>
+<span class="normal"><a href="#__codelineno-0-502">502</a></span>
+<span class="normal"><a href="#__codelineno-0-503">503</a></span>
+<span class="normal"><a href="#__codelineno-0-504">504</a></span>
+<span class="normal"><a href="#__codelineno-0-505">505</a></span>
+<span class="normal"><a href="#__codelineno-0-506">506</a></span>
+<span class="normal"><a href="#__codelineno-0-507">507</a></span>
+<span class="normal"><a href="#__codelineno-0-508">508</a></span>
+<span class="normal"><a href="#__codelineno-0-509">509</a></span>
+<span class="normal"><a href="#__codelineno-0-510">510</a></span>
+<span class="normal"><a href="#__codelineno-0-511">511</a></span>
+<span class="normal"><a href="#__codelineno-0-512">512</a></span>
+<span class="normal"><a href="#__codelineno-0-513">513</a></span>
+<span class="normal"><a href="#__codelineno-0-514">514</a></span>
+<span class="normal"><a href="#__codelineno-0-515">515</a></span>
+<span class="normal"><a href="#__codelineno-0-516">516</a></span>
+<span class="normal"><a href="#__codelineno-0-517">517</a></span>
+<span class="normal"><a href="#__codelineno-0-518">518</a></span>
+<span class="normal"><a href="#__codelineno-0-519">519</a></span>
+<span class="normal"><a href="#__codelineno-0-520">520</a></span>
+<span class="normal"><a href="#__codelineno-0-521">521</a></span>
+<span class="normal"><a href="#__codelineno-0-522">522</a></span>
+<span class="normal"><a href="#__codelineno-0-523">523</a></span>
+<span class="normal"><a href="#__codelineno-0-524">524</a></span>
+<span class="normal"><a href="#__codelineno-0-525">525</a></span>
+<span class="normal"><a href="#__codelineno-0-526">526</a></span>
+<span class="normal"><a href="#__codelineno-0-527">527</a></span>
+<span class="normal"><a href="#__codelineno-0-528">528</a></span>
+<span class="normal"><a href="#__codelineno-0-529">529</a></span>
+<span class="normal"><a href="#__codelineno-0-530">530</a></span>
+<span class="normal"><a href="#__codelineno-0-531">531</a></span>
+<span class="normal"><a href="#__codelineno-0-532">532</a></span>
+<span class="normal"><a href="#__codelineno-0-533">533</a></span>
+<span class="normal"><a href="#__codelineno-0-534">534</a></span>
+<span class="normal"><a href="#__codelineno-0-535">535</a></span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span>
+<span class="normal"><a href="#__codelineno-0-537">537</a></span>
+<span class="normal"><a href="#__codelineno-0-538">538</a></span>
+<span class="normal"><a href="#__codelineno-0-539">539</a></span>
+<span class="normal"><a href="#__codelineno-0-540">540</a></span>
+<span class="normal"><a href="#__codelineno-0-541">541</a></span>
+<span class="normal"><a href="#__codelineno-0-542">542</a></span>
+<span class="normal"><a href="#__codelineno-0-543">543</a></span>
+<span class="normal"><a href="#__codelineno-0-544">544</a></span>
+<span class="normal"><a href="#__codelineno-0-545">545</a></span>
+<span class="normal"><a href="#__codelineno-0-546">546</a></span>
+<span class="normal"><a href="#__codelineno-0-547">547</a></span>
+<span class="normal"><a href="#__codelineno-0-548">548</a></span>
+<span class="normal"><a href="#__codelineno-0-549">549</a></span>
+<span class="normal"><a href="#__codelineno-0-550">550</a></span>
+<span class="normal"><a href="#__codelineno-0-551">551</a></span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span>
+<span class="normal"><a href="#__codelineno-0-564">564</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="k">def</span><span class="w"> </span><span class="nf">write_tombstone</span><span class="p">(</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="n">class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="n">verdict</span><span class="p">:</span> <span class="n">NeverRecordVerdict</span><span class="p">,</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="w">    </span><span class="sd">"""Record that a drop happened, without recording what was dropped.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">    Writes two plain Redis/Valkey structures (no modules):</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    - ``$NR:{class}:counts`` -- HASH, ``HINCRBY &lt;reason&gt; 1``</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    - ``$NR:{class}:drops``  -- LIST, capped at</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">      :attr:`Defaults.NR_TOMBSTONE_LOG_MAX`</span>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a><span class="sd">    The entry id is :func:`uuid.uuid4`, deliberately **not** a hash or</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="sd">    fingerprint of the content. A content-derived id would be a confirmation</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a><span class="sd">    oracle: anyone holding a candidate secret could hash it and check the log</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">    for a match. This is the precise point where the never-record tombstone</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">    diverges from :class:`popoto.recipes.memory_lifecycle.Tombstone`, which</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a><span class="sd">    stores an ExistenceFilter fingerprint on purpose so writes can be matched</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="sd">    against it.</span>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    No field of the entry contains, derives from, or is length-correlated</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">    with the dropped text.</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">        class_name: Model class name, for the key namespace.</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">        verdict: The blocking verdict. Only its reason/detector are stored.</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">        str: The tombstone entry id.</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    """</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>    <span class="n">entry</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="p">{</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="s2">"id"</span><span class="p">:</span> <span class="n">entry_id</span><span class="p">,</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="s2">"reason"</span><span class="p">:</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a>            <span class="s2">"detector"</span><span class="p">:</span> <span class="n">verdict</span><span class="o">.</span><span class="n">detector</span><span class="p">,</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a>            <span class="s2">"at"</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="mi">3</span><span class="p">),</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="p">},</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>        <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a>    <span class="p">)</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="n">counts_key</span> <span class="o">=</span> <span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">)</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="n">drops_key</span> <span class="o">=</span> <span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">)</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="c1"># Best-effort: a firewall that raises when its audit log is unwritable</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="c1"># would fail *open* under Redis trouble, which is the one direction this</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="c1"># module must never fail in. The drop itself is enforced by the caller.</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>        <span class="n">pipe</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">hincrby</span><span class="p">(</span><span class="n">counts_key</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span> <span class="ow">or</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">lpush</span><span class="p">(</span><span class="n">drops_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">)</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">ltrim</span><span class="p">(</span><span class="n">drops_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">NR_TOMBSTONE_LOG_MAX</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover - exercised only on Redis failure</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a>    <span class="k">return</span> <span class="n">entry_id</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../../../js/open_in_new_tab.js"></script>
+      
+    
+  </body>
+</html>

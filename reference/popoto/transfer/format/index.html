@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2813,9 +2841,9 @@
         <p>JSON Lines export format for :mod:<code>popoto.transfer</code>.</p>
 <p>The on-disk format is a single manifest object on the first line followed by
 one JSON object per exported record::</p>
-<div class="highlight"><pre><span></span><code>{&quot;popoto_export&quot;: 1, &quot;model&quot;: &quot;Memory&quot;, &quot;exported_at&quot;: &quot;...&quot;, ...}
-{&quot;key&quot;: &quot;Memory:abc&quot;, &quot;values&quot;: {...}, &quot;state&quot;: {...}, &quot;model_state&quot;: {...}}
-{&quot;key&quot;: &quot;Memory:def&quot;, &quot;values&quot;: {...}, &quot;state&quot;: {}, &quot;model_state&quot;: {}}
+<div class="highlight"><pre><span></span><code>{"popoto_export": 1, "model": "Memory", "exported_at": "...", ...}
+{"key": "Memory:abc", "values": {...}, "state": {...}, "model_state": {...}}
+{"key": "Memory:def", "values": {...}, "state": {}, "model_state": {}}
 </code></pre></div>
 <p>Only the standard library is used. Values that JSON cannot represent natively
 are coerced through Popoto's existing per-type encoder registry
@@ -2877,7 +2905,7 @@ compatibility is explicitly not promised.</p>
 
 
 <h3 id="popoto.transfer.format.MANIFEST_KEY" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">MANIFEST_KEY</span> <span class="o">=</span> <span class="s1">&#39;popoto_export&#39;</span></code>
+            <code class="highlight language-python"><span class="n">MANIFEST_KEY</span> <span class="o">=</span> <span class="s1">'popoto_export'</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
@@ -2919,11 +2947,11 @@ compatibility is explicitly not promised.</p>
 <span class="normal"><a href="#__codelineno-0-56">56</a></span>
 <span class="normal"><a href="#__codelineno-0-57">57</a></span>
 <span class="normal"><a href="#__codelineno-0-58">58</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="k">def</span><span class="w"> </span><span class="nf">popoto_version</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the installed popoto version, or a sentinel when unknown.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">"""Return the installed popoto version, or a sentinel when unknown."""</span>
 <a id="__codelineno-0-55" name="__codelineno-0-55"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a>        <span class="k">return</span> <span class="n">_get_version</span><span class="p">(</span><span class="s2">&quot;popoto&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a>        <span class="k">return</span> <span class="n">_get_version</span><span class="p">(</span><span class="s2">"popoto"</span><span class="p">)</span>
 <a id="__codelineno-0-57" name="__codelineno-0-57"></a>    <span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>  <span class="c1"># pragma: no cover - source-tree import</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a>        <span class="k">return</span> <span class="s2">&quot;0.0.0+unknown&quot;</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58"></a>        <span class="k">return</span> <span class="s2">"0.0.0+unknown"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3093,10 +3121,10 @@ value with no diagnostic.</p>
 <span class="normal"><a href="#__codelineno-0-133">133</a></span>
 <span class="normal"><a href="#__codelineno-0-134">134</a></span>
 <span class="normal"><a href="#__codelineno-0-135">135</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="k">def</span><span class="w"> </span><span class="nf">to_jsonable</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Coerce ``value`` into something :func:`json.dumps` accepts.</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="w">    </span><span class="sd">"""Coerce ``value`` into something :func:`json.dumps` accepts.</span>
 <a id="__codelineno-0-82" name="__codelineno-0-82"></a>
 <a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        value: Any Python value taken from a model field or from a field&#39;s</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        value: Any Python value taken from a model field or from a field's</span>
 <a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">            ``export_state`` return.</span>
 <a id="__codelineno-0-86" name="__codelineno-0-86"></a>
 <a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    Returns:</span>
@@ -3108,24 +3136,24 @@ value with no diagnostic.</p>
 <a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">            container. Raising here is deliberate: silently stringifying an</span>
 <a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">            unknown type would produce an export that imports to the wrong</span>
 <a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">            value with no diagnostic.</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">    """</span>
 <a id="__codelineno-0-97" name="__codelineno-0-97"></a>    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">_JSON_PRIMITIVES</span><span class="p">):</span>
 <a id="__codelineno-0-98" name="__codelineno-0-98"></a>        <span class="k">return</span> <span class="n">value</span>
 <a id="__codelineno-0-99" name="__codelineno-0-99"></a>
 <a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">bytearray</span><span class="p">,</span> <span class="nb">memoryview</span><span class="p">)):</span>
 <a id="__codelineno-0-101" name="__codelineno-0-101"></a>        <span class="k">return</span> <span class="p">{</span>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a>            <span class="n">BYTES_TAG</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>            <span class="s2">&quot;as_encodable&quot;</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="n">value</span><span class="p">))</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a>            <span class="s2">"as_encodable"</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="n">value</span><span class="p">))</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"ascii"</span><span class="p">),</span>
 <a id="__codelineno-0-104" name="__codelineno-0-104"></a>        <span class="p">}</span>
 <a id="__codelineno-0-105" name="__codelineno-0-105"></a>
 <a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="n">encoder</span> <span class="o">=</span> <span class="n">_encoder_for</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 <a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="k">if</span> <span class="n">encoder</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-108" name="__codelineno-0-108"></a>        <span class="n">encoded</span> <span class="o">=</span> <span class="n">encoder</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>        <span class="c1"># The registry encoders emit {&quot;__tag__&quot;: True, &quot;as_encodable&quot;: ...}</span>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a>        <span class="c1"># where as_encodable may itself hold arbitrary values (a tuple&#39;s</span>
+<a id="__codelineno-0-109" name="__codelineno-0-109"></a>        <span class="c1"># The registry encoders emit {"__tag__": True, "as_encodable": ...}</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a>        <span class="c1"># where as_encodable may itself hold arbitrary values (a tuple's</span>
 <a id="__codelineno-0-111" name="__codelineno-0-111"></a>        <span class="c1"># contents, for example), so recurse into it.</span>
 <a id="__codelineno-0-112" name="__codelineno-0-112"></a>        <span class="k">return</span> <span class="p">{</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a>            <span class="n">key</span><span class="p">:</span> <span class="p">(</span><span class="n">to_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="k">else</span> <span class="n">item</span><span class="p">)</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a>            <span class="n">key</span><span class="p">:</span> <span class="p">(</span><span class="n">to_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">"as_encodable"</span> <span class="k">else</span> <span class="n">item</span><span class="p">)</span>
 <a id="__codelineno-0-114" name="__codelineno-0-114"></a>            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">encoded</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
 <a id="__codelineno-0-115" name="__codelineno-0-115"></a>        <span class="p">}</span>
 <a id="__codelineno-0-116" name="__codelineno-0-116"></a>
@@ -3134,7 +3162,7 @@ value with no diagnostic.</p>
 <a id="__codelineno-0-119" name="__codelineno-0-119"></a>            <span class="k">return</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">to_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
 <a id="__codelineno-0-120" name="__codelineno-0-120"></a>        <span class="k">return</span> <span class="p">{</span>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a>            <span class="n">DICT_PAIRS_TAG</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a>            <span class="s2">&quot;as_encodable&quot;</span><span class="p">:</span> <span class="p">[</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>            <span class="s2">"as_encodable"</span><span class="p">:</span> <span class="p">[</span>
 <a id="__codelineno-0-123" name="__codelineno-0-123"></a>                <span class="p">[</span><span class="n">to_jsonable</span><span class="p">(</span><span class="n">key</span><span class="p">),</span> <span class="n">to_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)]</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
 <a id="__codelineno-0-124" name="__codelineno-0-124"></a>            <span class="p">],</span>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a>        <span class="p">}</span>
@@ -3145,8 +3173,8 @@ value with no diagnostic.</p>
 <a id="__codelineno-0-130" name="__codelineno-0-130"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">to_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">]</span>
 <a id="__codelineno-0-131" name="__codelineno-0-131"></a>
 <a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="sa">f</span><span class="s2">&quot;cannot represent </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> in the popoto export format; &quot;</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a>        <span class="sa">f</span><span class="s2">&quot;register an encoder in TYPE_ENCODER_DECODERS or carry it as bytes&quot;</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="sa">f</span><span class="s2">"cannot represent </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> in the popoto export format; "</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a>        <span class="sa">f</span><span class="s2">"register an encoder in TYPE_ENCODER_DECODERS or carry it as bytes"</span>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -3255,33 +3283,33 @@ value with no diagnostic.</p>
 <span class="normal"><a href="#__codelineno-0-166">166</a></span>
 <span class="normal"><a href="#__codelineno-0-167">167</a></span>
 <span class="normal"><a href="#__codelineno-0-168">168</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-138" name="__codelineno-0-138"></a><span class="k">def</span><span class="w"> </span><span class="nf">from_jsonable</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reverse :func:`to_jsonable`.</span>
+<a id="__codelineno-0-139" name="__codelineno-0-139"></a><span class="w">    </span><span class="sd">"""Reverse :func:`to_jsonable`.</span>
 <a id="__codelineno-0-140" name="__codelineno-0-140"></a>
 <a id="__codelineno-0-141" name="__codelineno-0-141"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-142" name="__codelineno-0-142"></a><span class="sd">        value: A structure parsed from a JSON Lines record.</span>
 <a id="__codelineno-0-143" name="__codelineno-0-143"></a>
 <a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-145" name="__codelineno-0-145"></a><span class="sd">        The original Python value, with tagged dicts restored to their types.</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">    """</span>
 <a id="__codelineno-0-147" name="__codelineno-0-147"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
 <a id="__codelineno-0-148" name="__codelineno-0-148"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">from_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">]</span>
 <a id="__codelineno-0-149" name="__codelineno-0-149"></a>
 <a id="__codelineno-0-150" name="__codelineno-0-150"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
 <a id="__codelineno-0-151" name="__codelineno-0-151"></a>        <span class="k">return</span> <span class="n">value</span>
 <a id="__codelineno-0-152" name="__codelineno-0-152"></a>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>    <span class="k">if</span> <span class="n">BYTES_TAG</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>        <span class="k">return</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="s2">&quot;as_encodable&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a>    <span class="k">if</span> <span class="n">BYTES_TAG</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">and</span> <span class="s2">"as_encodable"</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a>        <span class="k">return</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="s2">"as_encodable"</span><span class="p">]</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"ascii"</span><span class="p">))</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="k">if</span> <span class="n">DICT_PAIRS_TAG</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="k">if</span> <span class="n">DICT_PAIRS_TAG</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">and</span> <span class="s2">"as_encodable"</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
 <a id="__codelineno-0-157" name="__codelineno-0-157"></a>        <span class="k">return</span> <span class="p">{</span>
 <a id="__codelineno-0-158" name="__codelineno-0-158"></a>            <span class="n">from_jsonable</span><span class="p">(</span><span class="n">pair</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span> <span class="n">from_jsonable</span><span class="p">(</span><span class="n">pair</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>            <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">value</span><span class="p">[</span><span class="s2">&quot;as_encodable&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a>            <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">value</span><span class="p">[</span><span class="s2">"as_encodable"</span><span class="p">]</span>
 <a id="__codelineno-0-160" name="__codelineno-0-160"></a>        <span class="p">}</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a>
 <a id="__codelineno-0-162" name="__codelineno-0-162"></a>    <span class="k">for</span> <span class="n">tag</span><span class="p">,</span> <span class="n">decoder</span> <span class="ow">in</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>        <span class="k">if</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a>        <span class="k">if</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">and</span> <span class="s2">"as_encodable"</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
 <a id="__codelineno-0-164" name="__codelineno-0-164"></a>            <span class="n">restored</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a>            <span class="n">restored</span><span class="p">[</span><span class="s2">&quot;as_encodable&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">from_jsonable</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="s2">&quot;as_encodable&quot;</span><span class="p">])</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a>            <span class="n">restored</span><span class="p">[</span><span class="s2">"as_encodable"</span><span class="p">]</span> <span class="o">=</span> <span class="n">from_jsonable</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="s2">"as_encodable"</span><span class="p">])</span>
 <a id="__codelineno-0-166" name="__codelineno-0-166"></a>            <span class="k">return</span> <span class="n">decoder</span><span class="p">(</span><span class="n">restored</span><span class="p">)</span>
 <a id="__codelineno-0-167" name="__codelineno-0-167"></a>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a>    <span class="k">return</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">from_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
@@ -3505,18 +3533,18 @@ resolution time (export is not a point-in-time snapshot).</p>
 <span class="normal"><a href="#__codelineno-0-211">211</a></span>
 <span class="normal"><a href="#__codelineno-0-212">212</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_manifest</span><span class="p">(</span>
 <a id="__codelineno-0-172" name="__codelineno-0-172"></a>    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="n">filter_repr</span><span class="p">:</span> <span class="s2">&quot;str | None&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="n">filter_repr</span><span class="p">:</span> <span class="s2">"str | None"</span><span class="p">,</span>
 <a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="n">filter_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
 <a id="__codelineno-0-175" name="__codelineno-0-175"></a>    <span class="n">matched_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
 <a id="__codelineno-0-176" name="__codelineno-0-176"></a>    <span class="n">fields</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
 <a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="n">mixins</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
 <a id="__codelineno-0-178" name="__codelineno-0-178"></a>    <span class="n">embedding_provenance</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Assemble the manifest object written as the export&#39;s first line.</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="w">    </span><span class="sd">"""Assemble the manifest object written as the export's first line.</span>
 <a id="__codelineno-0-181" name="__codelineno-0-181"></a>
 <a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    ``filter`` and ``matched_count`` are deliberately separate members: a</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    filter that matched nothing is ``{&quot;filter&quot;: &quot;Q(x=&#39;y&#39;)&quot;, &quot;matched_count&quot;:</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">    0}`` while an empty model is ``{&quot;filter&quot;: null, &quot;matched_count&quot;: 0}``.</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    filter that matched nothing is ``{"filter": "Q(x='y')", "matched_count":</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">    0}`` while an empty model is ``{"filter": null, "matched_count": 0}``.</span>
 <a id="__codelineno-0-185" name="__codelineno-0-185"></a>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        model_name: ``Model.__name__`` of the exported model.</span>
@@ -3525,25 +3553,25 @@ resolution time (export is not a point-in-time snapshot).</p>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        filter_kwargs: The plain keyword filters, JSON-coerced.</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">        matched_count: Number of keys the filter resolved to, recorded at</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">            resolution time (export is not a point-in-time snapshot).</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        fields: Per-field ``{&quot;class&quot;, &quot;policy&quot;, &quot;note&quot;}`` roll-up.</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        mixins: Per-model-level-mixin ``{&quot;policy&quot;, &quot;note&quot;}`` roll-up.</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        fields: Per-field ``{"class", "policy", "note"}`` roll-up.</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        mixins: Per-model-level-mixin ``{"policy", "note"}`` roll-up.</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">        embedding_provenance: Per-field ``{provider, model, dimensions}``.</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">        A JSON-serializable manifest dict.</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    """</span>
 <a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="k">return</span> <span class="p">{</span>
 <a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="n">MANIFEST_KEY</span><span class="p">:</span> <span class="n">FORMAT_VERSION</span><span class="p">,</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="s2">&quot;exported_at&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="s2">&quot;popoto_version&quot;</span><span class="p">:</span> <span class="n">popoto_version</span><span class="p">(),</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="s2">&quot;filter&quot;</span><span class="p">:</span> <span class="n">filter_repr</span><span class="p">,</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>        <span class="s2">&quot;filter_kwargs&quot;</span><span class="p">:</span> <span class="n">filter_kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="s2">&quot;matched_count&quot;</span><span class="p">:</span> <span class="n">matched_count</span><span class="p">,</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>        <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="n">fields</span><span class="p">,</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="s2">&quot;mixins&quot;</span><span class="p">:</span> <span class="n">mixins</span><span class="p">,</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="s2">&quot;embedding_provenance&quot;</span><span class="p">:</span> <span class="n">embedding_provenance</span><span class="p">,</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="s2">&quot;consistent_snapshot&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>        <span class="s2">"model"</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="s2">"exported_at"</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="s2">"popoto_version"</span><span class="p">:</span> <span class="n">popoto_version</span><span class="p">(),</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="s2">"filter"</span><span class="p">:</span> <span class="n">filter_repr</span><span class="p">,</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>        <span class="s2">"filter_kwargs"</span><span class="p">:</span> <span class="n">filter_kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="s2">"matched_count"</span><span class="p">:</span> <span class="n">matched_count</span><span class="p">,</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>        <span class="s2">"fields"</span><span class="p">:</span> <span class="n">fields</span><span class="p">,</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="s2">"mixins"</span><span class="p">:</span> <span class="n">mixins</span><span class="p">,</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="s2">"embedding_provenance"</span><span class="p">:</span> <span class="n">embedding_provenance</span><span class="p">,</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="s2">"consistent_snapshot"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="p">}</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -3570,8 +3598,8 @@ resolution time (export is not a point-in-time snapshot).</p>
               <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-215">215</a></span>
 <span class="normal"><a href="#__codelineno-0-216">216</a></span>
 <span class="normal"><a href="#__codelineno-0-217">217</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="k">def</span><span class="w"> </span><span class="nf">dump_line</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Serialize one manifest or record object as a newline-terminated line.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="w">    </span><span class="sd">"""Serialize one manifest or record object as a newline-terminated line."""</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3605,12 +3633,12 @@ matches what an operator sees in an editor.</p>
 <span class="normal"><a href="#__codelineno-0-226">226</a></span>
 <span class="normal"><a href="#__codelineno-0-227">227</a></span>
 <span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="k">def</span><span class="w"> </span><span class="nf">iter_lines</span><span class="p">(</span><span class="n">stream</span><span class="p">:</span> <span class="n">TextIO</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="s2">&quot;tuple[int, str]&quot;</span><span class="p">]:</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Yield ``(line_number, raw_line)`` for every non-blank line.</span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="k">def</span><span class="w"> </span><span class="nf">iter_lines</span><span class="p">(</span><span class="n">stream</span><span class="p">:</span> <span class="n">TextIO</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="s2">"tuple[int, str]"</span><span class="p">]:</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">"""Yield ``(line_number, raw_line)`` for every non-blank line.</span>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>
 <a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    Line numbers are 1-based and count blank lines, so a reported number</span>
 <a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    matches what an operator sees in an editor.</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    """</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">for</span> <span class="n">line_number</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">raw</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="k">continue</span>
@@ -3674,16 +3702,16 @@ number and continues, so a truncated file still imports the rest.</p>
 <span class="normal"><a href="#__codelineno-0-241">241</a></span>
 <span class="normal"><a href="#__codelineno-0-242">242</a></span>
 <span class="normal"><a href="#__codelineno-0-243">243</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="k">def</span><span class="w"> </span><span class="nf">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse one JSON Lines line into a dict.</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="w">    </span><span class="sd">"""Parse one JSON Lines line into a dict.</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a>
 <a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="sd">        ValueError: If the line is not valid JSON or is not a JSON object.</span>
 <a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="sd">            The caller counts this as an ``errored`` record with its line</span>
 <a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="sd">            number and continues, so a truncated file still imports the rest.</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="sd">    """</span>
 <a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 <a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;expected a JSON object, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"expected a JSON object, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-243" name="__codelineno-0-243"></a>    <span class="k">return</span> <span class="n">parsed</span>
 </code></pre></div></td></tr></table></div>
             </details>

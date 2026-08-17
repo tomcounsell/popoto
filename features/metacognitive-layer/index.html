@@ -18,7 +18,7 @@
         <link rel="prev" href="../hybrid-retrieval/">
       
       
-        <link rel="next" href="../../guides/policy-cache-recipe/">
+        <link rel="next" href="../never-record-firewall/">
       
       
         
@@ -1630,6 +1630,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3298,21 +3326,21 @@
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span> <span class="s2">&quot;recency&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span> <span class="s2">"recency"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">)</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assess</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;kubernetes deployment&quot;</span><span class="p">})</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assess</span><span class="p">({</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"kubernetes deployment"</span><span class="p">})</span>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">quality</span><span class="o">.</span><span class="n">fok_score</span><span class="p">)</span>       <span class="c1"># e.g. 0.72</span>
 <a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">quality</span><span class="o">.</span><span class="n">avg_confidence</span><span class="p">)</span>  <span class="c1"># e.g. 0.81</span>
 <a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">fok_score</span> <span class="o">&lt;</span> <span class="mf">0.3</span><span class="p">:</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="c1"># Memory store doesn&#39;t know this domain; skip the expensive retrieval</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="k">return</span> <span class="s2">&quot;I don&#39;t have relevant context on that topic.&quot;</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="c1"># Memory store doesn't know this domain; skip the expensive retrieval</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="k">return</span> <span class="s2">"I don't have relevant context on that topic."</span>
 <a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;kubernetes deployment&quot;</span><span class="p">})</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"kubernetes deployment"</span><span class="p">})</span>
 </code></pre></div>
 <p><code>assess()</code> signature:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ContextAssembler</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span>
@@ -3325,30 +3353,30 @@
 <h3 id="assembleassess_qualitytrue-post-retrieval-quality"><code>assemble(assess_quality=True)</code> — post-retrieval quality<a class="headerlink" href="#assembleassess_qualitytrue-post-retrieval-quality" title="Permanent link">&para;</a></h3>
 <p>To get quality scores on the actual retrieved records rather than a pre-retrieval probe, pass <code>assess_quality=True</code> to <code>assemble()</code>. The quality object is attached to <code>AssemblyResult.metadata["quality"]</code>. Default is <code>False</code>; the result shape is bit-for-bit identical to the pre-metacognitive behavior when the parameter is omitted.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;kubernetes deployment&quot;</span><span class="p">},</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"kubernetes deployment"</span><span class="p">},</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">assess_quality</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;quality&quot;</span><span class="p">]</span>  <span class="c1"># RetrievalQuality instance</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"quality"</span><span class="p">]</span>  <span class="c1"># RetrievalQuality instance</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="c1"># Use signals to decide how much to trust the context</span>
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">staleness_ratio</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">:</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">system_note</span> <span class="o">=</span> <span class="s2">&quot;Note: some retrieved memories may be outdated.&quot;</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">system_note</span> <span class="o">=</span> <span class="s2">"Note: some retrieved memories may be outdated."</span>
 <a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">system_note</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">system_note</span> <span class="o">=</span> <span class="s2">""</span>
 <a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>
 <a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">avg_confidence</span> <span class="o">&lt;</span> <span class="mf">0.4</span><span class="p">:</span>
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    <span class="n">caveat</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">Note: confidence in these memories is low.&quot;</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    <span class="n">caveat</span> <span class="o">=</span> <span class="s2">"</span><span class="se">\n\n</span><span class="s2">Note: confidence in these memories is low."</span>
 <a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="n">caveat</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="n">caveat</span> <span class="o">=</span> <span class="s2">""</span>
 <a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>
 <a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="n">messages</span> <span class="o">=</span> <span class="p">[</span>
 <a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>    <span class="p">{</span>
-<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>        <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Relevant context:</span><span class="si">{</span><span class="n">system_note</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">formatted</span><span class="si">}{</span><span class="n">caveat</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>        <span class="s2">"role"</span><span class="p">:</span> <span class="s2">"system"</span><span class="p">,</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>        <span class="s2">"content"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Relevant context:</span><span class="si">{</span><span class="n">system_note</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">formatted</span><span class="si">}{</span><span class="n">caveat</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="p">},</span>
-<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;What&#39;s our Kubernetes strategy?&quot;</span><span class="p">},</span>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">"What's our Kubernetes strategy?"</span><span class="p">},</span>
 <a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="p">]</span>
 </code></pre></div>
 <p><strong>Performance note:</strong> <code>assess_quality=True</code> adds bounded overhead — one <code>might_exist</code> call per query cue plus one <code>get_confidence</code> read per selected record (up to <code>max_items</code> reads). On a warm cache with 10 items, expect roughly 5% additional latency on <code>assemble()</code>. Confidence reads are pipelined in a single Redis round-trip batch.</p>
@@ -3359,8 +3387,8 @@
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">records</span> <span class="o">=</span> <span class="n">my_bm25_pipeline</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>  <span class="c1"># any list of Popoto Model instances</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">RetrievalQuality</span><span class="o">.</span><span class="n">from_records</span><span class="p">(</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">records</span><span class="p">,</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="n">query</span><span class="p">},</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="n">query</span><span class="p">},</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">)</span>
 </code></pre></div>
 <p>The factory introspects <code>records[0]._meta.fields</code> once to locate <code>ConfidenceField</code>, <code>ExistenceFilter</code>, and <code>DecayingSortedField</code> capabilities, then delegates to the same pure helpers <code>ContextAssembler.assess()</code> uses. Heterogeneous record lists (two or more concrete model classes) raise <code>TypeError</code> — score weights are per-model-class and would silently produce incorrect metrics otherwise. An empty list returns a zero-valued <code>RetrievalQuality</code> without raising.</p>
@@ -3371,48 +3399,48 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.prediction_ledger</span><span class="w"> </span><span class="kn">import</span> <span class="n">PredictionLedgerMixin</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Overall stats across all recorded predictions</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># Returns: {&quot;__all__&quot;: {&quot;count&quot;: 842, &quot;mean&quot;: 0.31, &quot;stddev&quot;: 0.18,</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">#                        &quot;p50&quot;: 0.28, &quot;p90&quot;: 0.61, &quot;p99&quot;: 0.88, &quot;max&quot;: 0.97}}</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># Returns: {"__all__": {"count": 842, "mean": 0.31, "stddev": 0.18,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">#                        "p50": 0.28, "p90": 0.61, "p99": 0.88, "max": 0.97}}</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1"># Group by hour of day to find time-of-day bias</span>
 <a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="n">by_hour</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">&quot;hour&quot;</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">"hour"</span>
 <a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="p">)</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="c1"># Returns: {0: {&quot;count&quot;: 32, &quot;mean&quot;: 0.29, ...},</span>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1">#           14: {&quot;count&quot;: 118, &quot;mean&quot;: 0.51, ...}, ...}</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="c1"># Returns: {0: {"count": 32, "mean": 0.29, ...},</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1">#           14: {"count": 118, "mean": 0.51, ...}, ...}</span>
 <a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="c1"># Hour 14 (2 PM) shows elevated mean error — investigate why</span>
 <a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
 <a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="c1"># Group by day of week</span>
 <a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="n">by_weekday</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">&quot;weekday&quot;</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">"weekday"</span>
 <a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="p">)</span>
 <a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="c1"># Returns: {0: {...}, 1: {...}, ..., 6: {...}}</span>
 <a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="c1"># Monday=0, Sunday=6</span>
 <a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>
 <a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="c1"># Group by calendar date</span>
 <a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="n">by_day</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">&quot;day&quot;</span>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="s2">"day"</span>
 <a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="p">)</span>
-<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="c1"># Returns: {&quot;2026-04-15&quot;: {...}, &quot;2026-04-16&quot;: {...}, ...}</span>
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="c1"># Returns: {"2026-04-15": {...}, "2026-04-16": {...}, ...}</span>
 <a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>
 <a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="c1"># Group by custom bucketer — callable(member_key, error) -&gt; label</span>
 <a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="k">def</span><span class="w"> </span><span class="nf">error_band</span><span class="p">(</span><span class="n">member_key</span><span class="p">,</span> <span class="n">error</span><span class="p">):</span>
 <a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>    <span class="k">if</span> <span class="n">error</span> <span class="o">&lt;</span> <span class="mf">0.3</span><span class="p">:</span>
-<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>        <span class="k">return</span> <span class="s2">&quot;low&quot;</span>
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>        <span class="k">return</span> <span class="s2">"low"</span>
 <a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>    <span class="k">elif</span> <span class="n">error</span> <span class="o">&lt;</span> <span class="mf">0.7</span><span class="p">:</span>
-<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a>        <span class="k">return</span> <span class="s2">&quot;medium&quot;</span>
-<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a>    <span class="k">return</span> <span class="s2">&quot;high&quot;</span>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a>        <span class="k">return</span> <span class="s2">"medium"</span>
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a>    <span class="k">return</span> <span class="s2">"high"</span>
 <a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
 <a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="n">by_band</span> <span class="o">=</span> <span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
-<a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="n">error_band</span>
+<a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span> <span class="n">group_by</span><span class="o">=</span><span class="n">error_band</span>
 <a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="p">)</span>
-<a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="c1"># Returns: {&quot;low&quot;: {...}, &quot;medium&quot;: {...}, &quot;high&quot;: {...}}</span>
+<a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="c1"># Returns: {"low": {...}, "medium": {...}, "high": {...}}</span>
 </code></pre></div>
 <p>Signature:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">PredictionLedgerMixin</span><span class="o">.</span><span class="n">error_summary</span><span class="p">(</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">partition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;default&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">partition</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"default"</span><span class="p">,</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">group_by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span>
@@ -3482,16 +3510,16 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.observation</span><span class="w"> </span><span class="kn">import</span> <span class="n">ObservationProtocol</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">outcome_map</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">memory1</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">&quot;acted&quot;</span><span class="p">,</span>       <span class="c1"># memory appeared in response</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">memory2</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">&quot;used&quot;</span><span class="p">,</span>        <span class="c1"># memory informed reasoning, not cited</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">memory3</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">&quot;dismissed&quot;</span><span class="p">,</span>   <span class="c1"># agent explicitly set aside</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="c1"># memory4 not in map → defaults to &quot;deferred&quot;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">memory1</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">"acted"</span><span class="p">,</span>       <span class="c1"># memory appeared in response</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">memory2</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">"used"</span><span class="p">,</span>        <span class="c1"># memory informed reasoning, not cited</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">memory3</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">"dismissed"</span><span class="p">,</span>   <span class="c1"># agent explicitly set aside</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="c1"># memory4 not in map → defaults to "deferred"</span>
 <a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">}</span>
 <a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_context_used</span><span class="p">(</span><span class="n">memories</span><span class="p">,</span> <span class="n">outcome_map</span><span class="p">)</span>
 </code></pre></div>
 <p>The constant for the auto-resolve error is configurable:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">PL_AUTO_RESOLVE_USED</span> <span class="o">=</span> <span class="mf">0.2</span>  <span class="c1"># lower error if &quot;used&quot; should be treated more like &quot;acted&quot;</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">PL_AUTO_RESOLVE_USED</span> <span class="o">=</span> <span class="mf">0.2</span>  <span class="c1"># lower error if "used" should be treated more like "acted"</span>
 </code></pre></div>
 <hr />
 <h2 id="tier-3-adaptiveassembler">Tier 3: <code>AdaptiveAssembler</code><a class="headerlink" href="#tier-3-adaptiveassembler" title="Permanent link">&para;</a></h2>
@@ -3503,7 +3531,7 @@
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">inner</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span> <span class="s2">&quot;recency&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span> <span class="s2">"recency"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
 <a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
 <a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">)</span>
@@ -3516,14 +3544,14 @@
 </code></pre></div>
 <h3 id="using-the-adaptive-assembler">Using the adaptive assembler<a class="headerlink" href="#using-the-adaptive-assembler" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">for</span> <span class="n">query</span> <span class="ow">in</span> <span class="n">incoming_queries</span><span class="p">:</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">adaptive</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="n">query</span><span class="o">.</span><span class="n">topic</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="n">query</span><span class="o">.</span><span class="n">agent_id</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">adaptive</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">"topic"</span><span class="p">:</span> <span class="n">query</span><span class="o">.</span><span class="n">topic</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="n">query</span><span class="o">.</span><span class="n">agent_id</span><span class="p">)</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="c1"># result is a standard AssemblyResult; use it exactly as you would from ContextAssembler</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">inject_into_llm</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">formatted</span><span class="p">)</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
 <a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># Inspect the current weights after the session</span>
 <a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">adaptive</span><span class="o">.</span><span class="n">current_weights</span><span class="p">)</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># e.g. {&quot;relevance&quot;: 0.55, &quot;confidence&quot;: 0.35, &quot;recency&quot;: 0.1}</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># — the loop shifted weight toward &quot;confidence&quot; because it improved quality</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># e.g. {"relevance": 0.55, "confidence": 0.35, "recency": 0.1}</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># — the loop shifted weight toward "confidence" because it improved quality</span>
 </code></pre></div>
 <h3 id="observing-adaptation-state">Observing adaptation state<a class="headerlink" href="#observing-adaptation-state" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">print</span><span class="p">(</span><span class="n">adaptive</span><span class="o">.</span><span class="n">baseline_quality</span><span class="p">)</span>    <span class="c1"># float | None — rolling mean quality under current baseline</span>

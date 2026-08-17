@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3003,7 +3031,7 @@ An empty or too-short sequence produces no output.</p>
 <span class="normal"><a href="#__codelineno-0-94">94</a></span>
 <span class="normal"><a href="#__codelineno-0-95">95</a></span>
 <span class="normal"><a href="#__codelineno-0-96">96</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="k">def</span><span class="w"> </span><span class="nf">window</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">    Generate a sliding window over an iterable sequence.</span>
 <a id="__codelineno-0-58" name="__codelineno-0-58"></a>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">    This function creates overlapping tuples of consecutive elements, enabling</span>
@@ -3036,7 +3064,7 @@ An empty or too-short sequence produces no output.</p>
 <a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">        The sequence must have at least n elements to yield any results.</span>
 <a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">        An empty or too-short sequence produces no output.</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">    """</span>
 <a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">seq</span><span class="p">)</span>
 <a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">result</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">islice</span><span class="p">(</span><span class="n">it</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
@@ -3202,7 +3230,7 @@ when working with sequences that may have large discontinuities.</p>
 <span class="normal"><a href="#__codelineno-0-140">140</a></span>
 <span class="normal"><a href="#__codelineno-0-141">141</a></span>
 <span class="normal"><a href="#__codelineno-0-142">142</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="k">def</span><span class="w"> </span><span class="nf">missing_elements</span><span class="p">(</span><span class="n">L</span><span class="p">):</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">    Find all missing integers in a sorted sequence.</span>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a>
 <a id="__codelineno-0-103" name="__codelineno-0-103"></a><span class="sd">    Given a sorted list of integers, this function identifies all values that</span>
@@ -3242,7 +3270,7 @@ when working with sequences that may have large discontinuities.</p>
 <a id="__codelineno-0-137" name="__codelineno-0-137"></a>
 <a id="__codelineno-0-138" name="__codelineno-0-138"></a><span class="sd">    See Also:</span>
 <a id="__codelineno-0-139" name="__codelineno-0-139"></a><span class="sd">        window: The underlying sliding window generator used for pair iteration.</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-140" name="__codelineno-0-140"></a><span class="sd">    """</span>
 <a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">missing</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">window</span><span class="p">(</span><span class="n">L</span><span class="p">)</span> <span class="k">if</span> <span class="p">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">x</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>

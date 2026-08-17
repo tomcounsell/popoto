@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2992,7 +3020,7 @@ installed. Install it with <code>pip install popoto[benchmark]</code>.</p>
 <span class="normal"><a href="#__codelineno-0-131">131</a></span>
 <span class="normal"><a href="#__codelineno-0-132">132</a></span>
 <span class="normal"><a href="#__codelineno-0-133">133</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="k">class</span><span class="w"> </span><span class="nc">SentenceTransformersProvider</span><span class="p">(</span><span class="n">AbstractEmbeddingProvider</span><span class="p">):</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Local Sentence-Transformers embedding provider.</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="w">    </span><span class="sd">"""Local Sentence-Transformers embedding provider.</span>
 <a id="__codelineno-0-56" name="__codelineno-0-56"></a>
 <a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">    Wraps a ``sentence-transformers`` model and produces dense vectors with</span>
 <a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    no API key. The default model, ``all-MiniLM-L6-v2``, emits 384-dim</span>
@@ -3013,11 +3041,11 @@ installed. Install it with <code>pip install popoto[benchmark]</code>.</p>
 <a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">        ImportError: At ``embed()`` time if ``sentence-transformers`` is not</span>
 <a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">            installed. Install it with ``pip install popoto[benchmark]``.</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    """</span>
 <a id="__codelineno-0-77" name="__codelineno-0-77"></a>
 <a id="__codelineno-0-78" name="__codelineno-0-78"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
 <a id="__codelineno-0-79" name="__codelineno-0-79"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>        <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;all-MiniLM-L6-v2&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a>        <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"all-MiniLM-L6-v2"</span><span class="p">,</span>
 <a id="__codelineno-0-81" name="__codelineno-0-81"></a>        <span class="n">dimensions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">_MINILM_DIMENSIONS</span><span class="p">,</span>
 <a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="p">):</span>
 <a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_model_name</span> <span class="o">=</span> <span class="n">model_name</span>
@@ -3026,7 +3054,7 @@ installed. Install it with <code>pip install popoto[benchmark]</code>.</p>
 <a id="__codelineno-0-86" name="__codelineno-0-86"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-87" name="__codelineno-0-87"></a>
 <a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_get_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Load and cache the sentence-transformers model on first use.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="w">        </span><span class="sd">"""Load and cache the sentence-transformers model on first use."""</span>
 <a id="__codelineno-0-90" name="__codelineno-0-90"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-91" name="__codelineno-0-91"></a>            <span class="n">SentenceTransformer</span> <span class="o">=</span> <span class="n">_load_sentence_transformer_cls</span><span class="p">()</span>
 <a id="__codelineno-0-92" name="__codelineno-0-92"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_model_name</span><span class="p">)</span>
@@ -3037,7 +3065,7 @@ installed. Install it with <code>pip install popoto[benchmark]</code>.</p>
 <a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="n">texts</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
 <a id="__codelineno-0-98" name="__codelineno-0-98"></a>        <span class="n">input_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-99" name="__codelineno-0-99"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate embeddings with a local sentence-transformers model.</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">        </span><span class="sd">"""Generate embeddings with a local sentence-transformers model.</span>
 <a id="__codelineno-0-101" name="__codelineno-0-101"></a>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-103" name="__codelineno-0-103"></a><span class="sd">            texts: List of text strings to embed.</span>
@@ -3050,7 +3078,7 @@ installed. Install it with <code>pip install popoto[benchmark]</code>.</p>
 <a id="__codelineno-0-110" name="__codelineno-0-110"></a>
 <a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-112" name="__codelineno-0-112"></a><span class="sd">            ImportError: If ``sentence-transformers`` is not installed.</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">        """</span>
 <a id="__codelineno-0-114" name="__codelineno-0-114"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">texts</span><span class="p">:</span>
 <a id="__codelineno-0-115" name="__codelineno-0-115"></a>            <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-116" name="__codelineno-0-116"></a>
@@ -3060,16 +3088,16 @@ installed. Install it with <code>pip install popoto[benchmark]</code>.</p>
 <a id="__codelineno-0-120" name="__codelineno-0-120"></a>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a>    <span class="nd">@property</span>
 <a id="__codelineno-0-122" name="__codelineno-0-122"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Embedding vector dimensionality (384 for ``all-MiniLM-L6-v2``).&quot;&quot;&quot;</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="w">        </span><span class="sd">"""Embedding vector dimensionality (384 for ``all-MiniLM-L6-v2``)."""</span>
 <a id="__codelineno-0-124" name="__codelineno-0-124"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dimensions</span>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a>    <span class="nd">@property</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">max_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Conservative batch limit for local CPU inference.</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="w">        </span><span class="sd">"""Conservative batch limit for local CPU inference.</span>
 <a id="__codelineno-0-129" name="__codelineno-0-129"></a>
 <a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">        Embedding many texts in a single forward pass can be memory-heavy on</span>
 <a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">        modest hardware. Users with more headroom can subclass and override.</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">        """</span>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="k">return</span> <span class="mi">64</span>
 </code></pre></div></td></tr></table></div>
               </details>
@@ -3282,7 +3310,7 @@ modest hardware. Users with more headroom can subclass and override.</p>
 <a id="__codelineno-0-97" name="__codelineno-0-97"></a>    <span class="n">texts</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
 <a id="__codelineno-0-98" name="__codelineno-0-98"></a>    <span class="n">input_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate embeddings with a local sentence-transformers model.</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">"""Generate embeddings with a local sentence-transformers model.</span>
 <a id="__codelineno-0-101" name="__codelineno-0-101"></a>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-103" name="__codelineno-0-103"></a><span class="sd">        texts: List of text strings to embed.</span>
@@ -3295,7 +3323,7 @@ modest hardware. Users with more headroom can subclass and override.</p>
 <a id="__codelineno-0-110" name="__codelineno-0-110"></a>
 <a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-112" name="__codelineno-0-112"></a><span class="sd">        ImportError: If ``sentence-transformers`` is not installed.</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">    """</span>
 <a id="__codelineno-0-114" name="__codelineno-0-114"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">texts</span><span class="p">:</span>
 <a id="__codelineno-0-115" name="__codelineno-0-115"></a>        <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-116" name="__codelineno-0-116"></a>

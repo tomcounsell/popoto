@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3271,7 +3299,7 @@ logic in two places makes debugging harder.</p>
 <span class="normal"><a href="#__codelineno-0-238">238</a></span>
 <span class="normal"><a href="#__codelineno-0-239">239</a></span>
 <span class="normal"><a href="#__codelineno-0-240">240</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="k">class</span><span class="w"> </span><span class="nc">PolicyEntry</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">PredictionLedgerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reference model for learned action selection policies.</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="w">    </span><span class="sd">"""Reference model for learned action selection policies.</span>
 <a id="__codelineno-0-182" name="__codelineno-0-182"></a>
 <a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    Composes all shipped Popoto memory primitives into a single model that</span>
 <a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">    stores state -&gt; action -&gt; expected_value triples. Agents query policies</span>
@@ -3283,13 +3311,13 @@ logic in two places makes debugging harder.</p>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        agent_id: Partition key scoping policies per agent.</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">        state_fingerprint: SHA-256 hash of state features for fast lookup.</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">        state_features: Original state feature dict (JSON-serializable).</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        action_type: Category of the action (e.g., &quot;run_playbook&quot;).</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        action_type: Category of the action (e.g., "run_playbook").</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        action_spec: Full action specification dict (JSON-serializable).</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">        q_value: Learned Q-value stored as a DecimalField in the model hash.</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">            Survives save(), touch(), and &quot;acted&quot; outcomes unchanged.</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">            Survives save(), touch(), and "acted" outcomes unchanged.</span>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">            Updated atomically by update_q_value() via TD(0) Lua script.</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">        expected_value: Pure recency clock implemented as a DecayingSortedField</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">            with base_score_field=&quot;q_value&quot;. The sorted-set score is the</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">            with base_score_field="q_value". The sorted-set score is the</span>
 <a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">            decay-weighted access timestamp; q_value supplies the base</span>
 <a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="sd">            magnitude. These two storage slots are independent — writing</span>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">            one does not overwrite the other.</span>
@@ -3306,7 +3334,7 @@ logic in two places makes debugging harder.</p>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">        WriteFilterMixin is intentionally excluded — the crystallization</span>
 <a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        handler IS the write gate (Wilson CI &gt; threshold). Having gating</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">        logic in two places makes debugging harder.</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">    """</span>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>
 <a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
@@ -3315,10 +3343,10 @@ logic in two places makes debugging harder.</p>
 <a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="n">action_type</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="n">action_spec</span> <span class="o">=</span> <span class="n">Field</span><span class="p">()</span>  <span class="c1"># JSON dict</span>
 <a id="__codelineno-0-224" name="__codelineno-0-224"></a>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="n">q_value</span> <span class="o">=</span> <span class="n">DecimalField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;0&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="n">q_value</span> <span class="o">=</span> <span class="n">DecimalField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">"0"</span><span class="p">))</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="n">expected_value</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;q_value&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">"agent_id"</span><span class="p">,</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">"q_value"</span><span class="p">,</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>    <span class="p">)</span>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 <a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="n">related_policies</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">(</span><span class="n">symmetric</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_edges</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
@@ -3328,9 +3356,9 @@ logic in two places makes debugging harder.</p>
 <a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="n">fingerprint_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">inst</span><span class="p">:</span> <span class="n">inst</span><span class="o">.</span><span class="n">state_fingerprint</span><span class="p">,</span>
 <a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="p">)</span>
 <a id="__codelineno-0-237" name="__codelineno-0-237"></a>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">&quot;policy_mutations&quot;</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">_stream_partition_field</span> <span class="o">=</span> <span class="s2">&quot;agent_id&quot;</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">_pl_partition</span> <span class="o">=</span> <span class="s2">&quot;default&quot;</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">"policy_mutations"</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">_stream_partition_field</span> <span class="o">=</span> <span class="s2">"agent_id"</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">_pl_partition</span> <span class="o">=</span> <span class="s2">"default"</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3465,15 +3493,15 @@ for time-unique fingerprints. The bucket is the current hour
 
 
 <p><span class="doc-section-title">Examples:</span></p>
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">&#39;a1b2c3d4e5f6a7b8&#39;</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">})</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">'a1b2c3d4e5f6a7b8'</span>
 </code></pre></div>
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">... </span>                    <span class="n">include_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;task&quot;</span><span class="p">])</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="go">&#39;f8e7d6c5b4a39281&#39;  # Different — only &#39;task&#39; included</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">},</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">... </span>                    <span class="n">include_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">"task"</span><span class="p">])</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="go">'f8e7d6c5b4a39281'  # Different — only 'task' included</span>
 </code></pre></div>
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span> <span class="n">include_timestamp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">&#39;1234567890abcdef&#39;  # Different per hour</span>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span> <span class="n">include_timestamp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">'1234567890abcdef'  # Different per hour</span>
 </code></pre></div>
 
 
@@ -3528,7 +3556,7 @@ for time-unique fingerprints. The bucket is the current hour
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="n">include_fields</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="n">include_timestamp</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate a stable fingerprint from state features.</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">    </span><span class="sd">"""Generate a stable fingerprint from state features.</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    Creates a SHA-256 hash (truncated to 16 hex chars) from a dict of</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    state features. The hash is deterministic for the same input, making</span>
@@ -3539,7 +3567,7 @@ for time-unique fingerprints. The bucket is the current hour
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">            JSON-serializable.</span>
 <a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        include_fields: Optional list of field names to include. If None,</span>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">            all fields are included. Useful for per-model customization</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">            of which features define &quot;same state.&quot;</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">            of which features define "same state."</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        include_timestamp: If True, includes current hour-bucket timestamp</span>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">            for time-unique fingerprints. The bucket is the current hour</span>
 <a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">            (Unix timestamp truncated to 3600s).</span>
@@ -3548,26 +3576,26 @@ for time-unique fingerprints. The bucket is the current hour
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        str: SHA-256 truncated to 16 hex chars.</span>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    Examples:</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;, &quot;env&quot;: &quot;staging&quot;})</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        &#39;a1b2c3d4e5f6a7b8&#39;</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({"task": "deploy", "env": "staging"})</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        'a1b2c3d4e5f6a7b8'</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;, &quot;env&quot;: &quot;staging&quot;},</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        ...                     include_fields=[&quot;task&quot;])</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        &#39;f8e7d6c5b4a39281&#39;  # Different — only &#39;task&#39; included</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({"task": "deploy", "env": "staging"},</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        ...                     include_fields=["task"])</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        'f8e7d6c5b4a39281'  # Different — only 'task' included</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;}, include_timestamp=True)</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        &#39;1234567890abcdef&#39;  # Different per hour</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({"task": "deploy"}, include_timestamp=True)</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        '1234567890abcdef'  # Different per hour</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    """</span>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="k">if</span> <span class="n">include_fields</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>        <span class="n">features</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">features</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">include_fields</span><span class="p">}</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="k">if</span> <span class="n">include_timestamp</span><span class="p">:</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="n">features</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">features</span><span class="p">[</span><span class="s2">&quot;__hour_bucket__&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span> <span class="o">//</span> <span class="mi">3600</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">features</span><span class="p">[</span><span class="s2">"__hour_bucket__"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span> <span class="o">//</span> <span class="mi">3600</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="c1"># Sort keys for deterministic ordering</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">16</span><span class="p">]</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">16</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3701,7 +3729,7 @@ success/total, this handles small sample sizes correctly.</p>
 <span class="normal"><a href="#__codelineno-0-314">314</a></span>
 <span class="normal"><a href="#__codelineno-0-315">315</a></span>
 <span class="normal"><a href="#__codelineno-0-316">316</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="k">def</span><span class="w"> </span><span class="nf">wilson_ci_lower</span><span class="p">(</span><span class="n">successes</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">total</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">z</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.96</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wilson score confidence interval lower bound.</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="w">    </span><span class="sd">"""Wilson score confidence interval lower bound.</span>
 <a id="__codelineno-0-297" name="__codelineno-0-297"></a>
 <a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    Computes the lower bound of the Wilson score interval, which gives</span>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    a conservative estimate of the true success rate. Unlike naive</span>
@@ -3714,7 +3742,7 @@ success/total, this handles small sample sizes correctly.</p>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        float: Lower bound of Wilson CI (0.0 to 1.0).</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    """</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="k">return</span> <span class="mf">0.0</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="n">p_hat</span> <span class="o">=</span> <span class="n">successes</span> <span class="o">/</span> <span class="n">total</span>
@@ -3838,7 +3866,7 @@ stronger deviation from uniform.</p>
 <span class="normal"><a href="#__codelineno-0-335">335</a></span>
 <span class="normal"><a href="#__codelineno-0-336">336</a></span>
 <span class="normal"><a href="#__codelineno-0-337">337</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="k">def</span><span class="w"> </span><span class="nf">chi_squared_uniform</span><span class="p">(</span><span class="n">observed</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">expected_per_bucket</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Chi-squared statistic against uniform distribution.</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="w">    </span><span class="sd">"""Chi-squared statistic against uniform distribution.</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">    Tests whether observed counts across buckets differ significantly</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">    from a uniform distribution. Compare the returned statistic against</span>
@@ -3852,7 +3880,7 @@ stronger deviation from uniform.</p>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">        float: Chi-squared test statistic. Higher values indicate</span>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">            stronger deviation from uniform.</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    """</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="k">if</span> <span class="n">expected_per_bucket</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>        <span class="k">return</span> <span class="mf">0.0</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="k">return</span> <span class="nb">sum</span><span class="p">((</span><span class="n">o</span> <span class="o">-</span> <span class="n">expected_per_bucket</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">expected_per_bucket</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">observed</span><span class="p">)</span>
@@ -3876,7 +3904,7 @@ stronger deviation from uniform.</p>
         <p>Update a PolicyEntry's Q-value via temporal difference learning.</p>
 <p>Atomically updates the q_value field in the model hash using the TD(0)
 update rule:</p>
-<div class="highlight"><pre><span></span><code>Q(s,a) ← Q(s,a) + α [r + γ max Q(s&#39;,a&#39;) - Q(s,a)]
+<div class="highlight"><pre><span></span><code>Q(s,a) ← Q(s,a) + α [r + γ max Q(s',a') - Q(s,a)]
 </code></pre></div>
 <p>The Q-value is stored as a DecimalField in the model hash (HGET/HSET on
 the <code>q_value</code> field). This is independent of the <code>expected_value</code>
@@ -4091,12 +4119,12 @@ negative = worse than expected).</p>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">TD_ALPHA</span><span class="p">,</span>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="n">gamma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">TD_GAMMA</span><span class="p">,</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Update a PolicyEntry&#39;s Q-value via temporal difference learning.</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="w">    </span><span class="sd">"""Update a PolicyEntry's Q-value via temporal difference learning.</span>
 <a id="__codelineno-0-348" name="__codelineno-0-348"></a>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">    Atomically updates the q_value field in the model hash using the TD(0)</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">    update rule:</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">        Q(s,a) ← Q(s,a) + α [r + γ max Q(s&#39;,a&#39;) - Q(s,a)]</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">        Q(s,a) ← Q(s,a) + α [r + γ max Q(s',a') - Q(s,a)]</span>
 <a id="__codelineno-0-353" name="__codelineno-0-353"></a>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">    The Q-value is stored as a DecimalField in the model hash (HGET/HSET on</span>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">    the ``q_value`` field). This is independent of the ``expected_value``</span>
@@ -4107,7 +4135,7 @@ negative = worse than expected).</p>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">        instance: A saved PolicyEntry instance.</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">        reward: Observed reward signal (float).</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">        max_future_q: Maximum Q-value for next state&#39;s best action.</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">        max_future_q: Maximum Q-value for next state's best action.</span>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="sd">            Default 0.0 (no future state, terminal).</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">        alpha: Learning rate. Default TD_ALPHA (0.1).</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">        gamma: Discount factor. Default TD_GAMMA (0.95).</span>
@@ -4118,7 +4146,7 @@ negative = worse than expected).</p>
 <a id="__codelineno-0-371" name="__codelineno-0-371"></a>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="sd">        ValueError: If the instance has no redis_key (unsaved).</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="sd">    """</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="n">redis_key</span> <span class="o">=</span> <span class="n">_get_redis_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="n">td_error</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
@@ -4254,7 +4282,7 @@ path.</p>
 <span class="normal"><a href="#__codelineno-0-410">410</a></span>
 <span class="normal"><a href="#__codelineno-0-411">411</a></span>
 <span class="normal"><a href="#__codelineno-0-412">412</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="k">def</span><span class="w"> </span><span class="nf">initialize_q_value</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">initial_q</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the initial Q-value for a PolicyEntry.</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">    </span><span class="sd">"""Set the initial Q-value for a PolicyEntry.</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">    Writes ``initial_q`` into the ``q_value`` DecimalField on the model hash</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">    and calls ``save()``. The ``expected_value`` sorted-set score (the recency</span>
@@ -4272,7 +4300,7 @@ path.</p>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">        ValueError: If the instance is unsaved.</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    """</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>    <span class="n">_get_redis_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>  <span class="c1"># raises if unsaved</span>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">q_value</span> <span class="o">=</span> <span class="n">Decimal</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">initial_q</span><span class="p">))</span>
 <a id="__codelineno-0-412" name="__codelineno-0-412"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -4451,7 +4479,7 @@ and failures, and creates a PolicyEntry when evidence threshold is met
 <span class="normal"><a href="#__codelineno-0-536">536</a></span>
 <span class="normal"><a href="#__codelineno-0-537">537</a></span>
 <span class="normal"><a href="#__codelineno-0-538">538</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">crystallization_handler</span><span class="p">(</span><span class="n">entries</span><span class="p">):</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;StreamConsumer handler that detects repeated patterns and crystallizes PolicyEntry records.</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="w">    </span><span class="sd">"""StreamConsumer handler that detects repeated patterns and crystallizes PolicyEntry records.</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    Groups events by (state_fingerprint, action_type), counts successes</span>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">    and failures, and creates a PolicyEntry when evidence threshold is met</span>
@@ -4460,28 +4488,28 @@ and failures, and creates a PolicyEntry when evidence threshold is met
 <a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">    Expected entry fields (all strings per Redis Streams spec):</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">        - state_fingerprint: Hash identifying the state.</span>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">        - action_type: Category of the action taken.</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">        - outcome: &quot;success&quot; or &quot;failure&quot;.</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">        - outcome: "success" or "failure".</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">        - state_features: JSON string of original state features (optional).</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        - action_spec: JSON string of action specification (optional).</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        - agent_id: Agent identifier (optional, defaults to &quot;default&quot;).</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        - agent_id: Agent identifier (optional, defaults to "default").</span>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    Entries missing state_fingerprint or action_type are skipped with a warning.</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">        entries: List of (entry_id, fields_dict) tuples from StreamConsumer.</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">    """</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">entries</span><span class="p">:</span>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="k">return</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a>    <span class="c1"># Group events by (state_fingerprint, action_type)</span>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="p">{}</span>
 <a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="k">for</span> <span class="n">entry_id</span><span class="p">,</span> <span class="n">fields</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">:</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="n">fp</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;state_fingerprint&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>        <span class="n">action</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action_type&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="n">fp</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"state_fingerprint"</span><span class="p">)</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>        <span class="n">action</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"action_type"</span><span class="p">)</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>
 <a id="__codelineno-0-460" name="__codelineno-0-460"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fp</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">action</span><span class="p">:</span>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a>                <span class="s2">&quot;Skipping entry </span><span class="si">%s</span><span class="s2">: missing state_fingerprint or action_type&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>                <span class="s2">"Skipping entry </span><span class="si">%s</span><span class="s2">: missing state_fingerprint or action_type"</span><span class="p">,</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>                <span class="n">entry_id</span><span class="p">,</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="p">)</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>            <span class="k">continue</span>
@@ -4489,19 +4517,19 @@ and failures, and creates a PolicyEntry when evidence threshold is met
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>        <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a>        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="s2">&quot;successes&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                <span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a>                <span class="s2">&quot;latest_fields&quot;</span><span class="p">:</span> <span class="n">fields</span><span class="p">,</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="s2">"successes"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                <span class="s2">"total"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>                <span class="s2">"latest_fields"</span><span class="p">:</span> <span class="n">fields</span><span class="p">,</span>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>            <span class="p">}</span>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="k">if</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;outcome&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;success&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;successes&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">"total"</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="k">if</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"outcome"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"success"</span><span class="p">:</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">"successes"</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="c1"># Check each group for crystallization threshold</span>
 <a id="__codelineno-0-480" name="__codelineno-0-480"></a>    <span class="k">for</span> <span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">action</span><span class="p">),</span> <span class="n">stats</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>        <span class="n">total</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="n">successes</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;successes&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>        <span class="n">total</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">"total"</span><span class="p">]</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="n">successes</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">"successes"</span><span class="p">]</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="k">if</span> <span class="n">total</span> <span class="o">&lt;</span> <span class="n">MIN_EVENTS_FOR_CRYSTALLIZATION</span><span class="p">:</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="k">continue</span>
@@ -4517,23 +4545,23 @@ and failures, and creates a PolicyEntry when evidence threshold is met
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="c1"># requiring zero missed crystallizations should add a secondary check.</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">PolicyEntry</span><span class="o">.</span><span class="n">bloom</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span><span class="n">PolicyEntry</span><span class="p">,</span> <span class="n">fp</span><span class="p">):</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a>                <span class="s2">&quot;Bloom filter says fingerprint </span><span class="si">%s</span><span class="s2"> may exist, skipping crystallization&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>                <span class="s2">"Bloom filter says fingerprint </span><span class="si">%s</span><span class="s2"> may exist, skipping crystallization"</span><span class="p">,</span>
 <a id="__codelineno-0-499" name="__codelineno-0-499"></a>                <span class="n">fp</span><span class="p">,</span>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>            <span class="p">)</span>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>        <span class="c1"># Crystallize: create PolicyEntry</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;latest_fields&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="n">agent_id</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span> <span class="s2">&quot;default&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">"latest_fields"</span><span class="p">]</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="n">agent_id</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"agent_id"</span><span class="p">,</span> <span class="s2">"default"</span><span class="p">)</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>        <span class="c1"># Parse JSON fields with fallbacks</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">state_features</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;state_features&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">state_features</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"state_features"</span><span class="p">,</span> <span class="s2">"</span><span class="si">{}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>            <span class="n">state_features</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">state_features</span><span class="p">)</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>            <span class="n">state_features</span> <span class="o">=</span> <span class="p">{}</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">action_spec</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action_spec&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">action_spec</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"action_spec"</span><span class="p">,</span> <span class="s2">"</span><span class="si">{}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="n">action_spec</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">action_spec</span><span class="p">)</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>        <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
@@ -4552,7 +4580,7 @@ and failures, and creates a PolicyEntry when evidence threshold is met
 <a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a>
 <a id="__codelineno-0-532" name="__codelineno-0-532"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>            <span class="s2">&quot;Crystallized PolicyEntry: fp=</span><span class="si">%s</span><span class="s2"> action=</span><span class="si">%s</span><span class="s2"> ci=</span><span class="si">%.3f</span><span class="s2"> (n=</span><span class="si">%d</span><span class="s2">)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>            <span class="s2">"Crystallized PolicyEntry: fp=</span><span class="si">%s</span><span class="s2"> action=</span><span class="si">%s</span><span class="s2"> ci=</span><span class="si">%.3f</span><span class="s2"> (n=</span><span class="si">%d</span><span class="s2">)"</span><span class="p">,</span>
 <a id="__codelineno-0-534" name="__codelineno-0-534"></a>            <span class="n">fp</span><span class="p">,</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="n">action</span><span class="p">,</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="n">ci_lower</span><span class="p">,</span>
@@ -4784,7 +4812,7 @@ list if no significant patterns found.</p>
 <span class="normal"><a href="#__codelineno-0-660">660</a></span>
 <span class="normal"><a href="#__codelineno-0-661">661</a></span>
 <span class="normal"><a href="#__codelineno-0-662">662</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">temporal_discovery_handler</span><span class="p">(</span><span class="n">entries</span><span class="p">):</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;StreamConsumer handler that discovers cyclical patterns from event timestamps.</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="w">    </span><span class="sd">"""StreamConsumer handler that discovers cyclical patterns from event timestamps.</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">    Buckets event timestamps by day-of-week (7 equal-width buckets) and</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">    performs a chi-squared test against the uniform distribution. Significant</span>
@@ -4818,14 +4846,14 @@ list if no significant patterns found.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="sd">        list: Discovered cycles as (period, amplitude, phase) tuples where</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">            ``phase`` is a seconds offset within the 604800s week. Empty</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">            list if no significant patterns found.</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    """</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">entries</span><span class="p">:</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>    <span class="c1"># Collect timestamps</span>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="n">timestamps</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="k">for</span> <span class="n">entry_id</span><span class="p">,</span> <span class="n">fields</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="n">ts_str</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ts&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="n">ts_str</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ts"</span><span class="p">)</span>
 <a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">ts_str</span><span class="p">:</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="k">try</span><span class="p">:</span>
@@ -4847,7 +4875,7 @@ list if no significant patterns found.</p>
 <a id="__codelineno-0-602" name="__codelineno-0-602"></a>    <span class="c1"># so the uniform test holds.</span>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>    <span class="n">bucket_configs</span> <span class="o">=</span> <span class="p">[</span>
 <a id="__codelineno-0-604" name="__codelineno-0-604"></a>        <span class="p">(</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="s2">&quot;day_of_week&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="s2">"day_of_week"</span><span class="p">,</span>
 <a id="__codelineno-0-606" name="__codelineno-0-606"></a>            <span class="mi">7</span><span class="p">,</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>            <span class="n">TemporalPeriod</span><span class="o">.</span><span class="n">WEEKLY</span><span class="p">,</span>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a>            <span class="k">lambda</span> <span class="n">ts</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span><span class="o">.</span><span class="n">tm_wday</span><span class="p">,</span>
@@ -4883,9 +4911,9 @@ list if no significant patterns found.</p>
 <a id="__codelineno-0-638" name="__codelineno-0-638"></a>            <span class="c1"># 3 below is never silently wrong.</span>
 <a id="__codelineno-0-639" name="__codelineno-0-639"></a>            <span class="k">assert</span> <span class="p">(</span>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>                <span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">tm_wday</span> <span class="o">==</span> <span class="mi">3</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="p">),</span> <span class="s2">&quot;epoch 1970-01-01 must be Thursday (tm_wday==3)&quot;</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="p">),</span> <span class="s2">"epoch 1970-01-01 must be Thursday (tm_wday==3)"</span>
 <a id="__codelineno-0-642" name="__codelineno-0-642"></a>            <span class="c1"># Map the peak weekday to a seconds offset from the Thursday</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="c1"># anchor, centered at the weekday&#39;s midpoint (43200 = 0.5 day).</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="c1"># anchor, centered at the weekday's midpoint (43200 = 0.5 day).</span>
 <a id="__codelineno-0-644" name="__codelineno-0-644"></a>            <span class="c1"># Worked examples: Thu(bkt=3)-&gt;43200s, Sun(bkt=6)-&gt;302400s,</span>
 <a id="__codelineno-0-645" name="__codelineno-0-645"></a>            <span class="c1"># Mon(bkt=0)-&gt;388800s.</span>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>            <span class="n">phase</span> <span class="o">=</span> <span class="p">(((</span><span class="n">peak_bucket</span> <span class="o">-</span> <span class="mi">3</span><span class="p">)</span> <span class="o">%</span> <span class="mi">7</span><span class="p">)</span> <span class="o">*</span> <span class="mi">86400</span> <span class="o">+</span> <span class="mi">43200</span><span class="p">)</span> <span class="o">%</span> <span class="mi">604800</span>
@@ -4894,8 +4922,8 @@ list if no significant patterns found.</p>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>            <span class="n">discovered_cycles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span>
 <a id="__codelineno-0-650" name="__codelineno-0-650"></a>
 <a id="__codelineno-0-651" name="__codelineno-0-651"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>                <span class="s2">&quot;Temporal pattern discovered: </span><span class="si">%s</span><span class="s2"> chi2=</span><span class="si">%.2f</span><span class="s2"> &gt; </span><span class="si">%.2f</span><span class="s2"> &quot;</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>                <span class="s2">&quot;(df=</span><span class="si">%d</span><span class="s2">), peak_bucket=</span><span class="si">%d</span><span class="s2">, cycle=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>                <span class="s2">"Temporal pattern discovered: </span><span class="si">%s</span><span class="s2"> chi2=</span><span class="si">%.2f</span><span class="s2"> &gt; </span><span class="si">%.2f</span><span class="s2"> "</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>                <span class="s2">"(df=</span><span class="si">%d</span><span class="s2">), peak_bucket=</span><span class="si">%d</span><span class="s2">, cycle=</span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-654" name="__codelineno-0-654"></a>                <span class="n">name</span><span class="p">,</span>
 <a id="__codelineno-0-655" name="__codelineno-0-655"></a>                <span class="n">chi2</span><span class="p">,</span>
 <a id="__codelineno-0-656" name="__codelineno-0-656"></a>                <span class="n">critical</span><span class="p">,</span>

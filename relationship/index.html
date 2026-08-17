@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3193,12 +3221,12 @@ a <code>Customer</code>, a <code>Restaurant</code>, and optionally a <code>Drive
 <a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">Restaurant</span><span class="p">)</span>
 <a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>    <span class="n">driver</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">Driver</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># nullable</span>
 <a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    <span class="n">total</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">)</span>
 <a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    <span class="n">created_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now_add</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="n">updated_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>
 <a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;-created_at&quot;</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"-created_at"</span>
 <a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">2592000</span>  <span class="c1"># 30 days</span>
 </code></pre></div>
 <p><code>MenuItem.restaurant</code> is a required relationship. <code>Order</code> has three: <code>customer</code>
@@ -3207,42 +3235,42 @@ assigned only after the order is accepted.</p>
 <h2 id="creating-related-instances">Creating Related Instances<a class="headerlink" href="#creating-related-instances" title="Permanent link">&para;</a></h2>
 <p>Create the referenced model first, then pass it to the relationship field.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">burger_palace</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;American&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"American"</span><span class="p">,</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">classic_burger</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Classic Burger&quot;</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">12.99</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Classic Burger"</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">12.99</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">,</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">)</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">classic_burger</span><span class="o">.</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># =&gt; &quot;Burger Palace&quot;</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># =&gt; "Burger Palace"</span>
 </code></pre></div>
 <p>For an <code>Order</code>, pass multiple related instances at once.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">alice</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">&quot;alice&quot;</span><span class="p">,</span> <span class="n">email</span><span class="o">=</span><span class="s2">&quot;alice@example.com&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>                        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice Chen&quot;</span><span class="p">,</span> <span class="n">address</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">alice</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">"alice"</span><span class="p">,</span> <span class="n">email</span><span class="o">=</span><span class="s2">"alice@example.com"</span><span class="p">,</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>                        <span class="n">name</span><span class="o">=</span><span class="s2">"Alice Chen"</span><span class="p">,</span> <span class="n">address</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">))</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                     <span class="n">total</span><span class="o">=</span><span class="mf">25.98</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                     <span class="n">total</span><span class="o">=</span><span class="mf">25.98</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">)</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">customer</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># =&gt; &quot;Alice Chen&quot;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># =&gt; "Alice Chen"</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># =&gt; &quot;Burger Palace&quot;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># =&gt; "Burger Palace"</span>
 </code></pre></div>
 <p>You can reassign a relationship and call <code>save()</code> to update it.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">sushi_house</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Sushi House&quot;</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Japanese&quot;</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">sushi_house</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Sushi House"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">,</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>                                <span class="n">rating</span><span class="o">=</span><span class="mf">4.8</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7580</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9855</span><span class="p">))</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">classic_burger</span><span class="o">.</span><span class="n">restaurant</span> <span class="o">=</span> <span class="n">sushi_house</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">classic_burger</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">classic_burger</span><span class="o">.</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># =&gt; &quot;Japanese&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># =&gt; "Japanese"</span>
 </code></pre></div>
 <h2 id="querying-by-relationship">Querying by Relationship<a class="headerlink" href="#querying-by-relationship" title="Permanent link">&para;</a></h2>
 <p>Pass a model instance to filter for all objects that reference it.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">items</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">)</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">item</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> - $</span><span class="si">{</span><span class="n">item</span><span class="o">.</span><span class="n">price</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># =&gt; &quot;Classic Burger - $12.99&quot;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">item</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> - $</span><span class="si">{</span><span class="n">item</span><span class="o">.</span><span class="n">price</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># =&gt; "Classic Burger - $12.99"</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">alice_orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">)</span>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">alice_orders</span><span class="p">))</span>
@@ -3256,14 +3284,14 @@ assigned only after the order is accepted.</p>
 </div>
 <h2 id="nested-field-access">Nested Field Access<a class="headerlink" href="#nested-field-access" title="Permanent link">&para;</a></h2>
 <p>Use double-underscore notation to query by fields on the related model.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">restaurant__name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">restaurant__name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">orders</span><span class="p">:</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Order </span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="si">}</span><span class="s2">: $</span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># =&gt; &quot;Order ...: $25.98&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Order </span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="si">}</span><span class="s2">: $</span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># =&gt; "Order ...: $25.98"</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Combine nested filters with other parameters</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">big_orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">restaurant__name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span> <span class="n">total__gte</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">restaurant__name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">,</span> <span class="n">total__gte</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
 <a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
 <a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">big_orders</span><span class="p">))</span>
 <a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1"># =&gt; 1</span>
@@ -3278,12 +3306,12 @@ a second relationship.</p>
 </div>
 <h2 id="traversing-relationships">Traversing Relationships<a class="headerlink" href="#traversing-relationships" title="Permanent link">&para;</a></h2>
 <p>Because Redis has no JOINs, you traverse relationships with Python loops.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">alice</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">&quot;alice&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">alice</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">"alice"</span><span class="p">)</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">alice_orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">)</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="p">[</span><span class="n">order</span><span class="o">.</span><span class="n">restaurant</span> <span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">alice_orders</span><span class="p">]</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">restaurants</span><span class="p">:</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># =&gt; &quot;Burger Palace&quot;</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># =&gt; "Burger Palace"</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">N+1 Query Problem</p>
@@ -3305,10 +3333,10 @@ serialized object. A <code>MenuItem</code> with <code>restaurant=burger_palace</
 <h3 id="lazy-loading">Lazy Loading<a class="headerlink" href="#lazy-loading" title="Permanent link">&para;</a></h3>
 <p>When you load a model, relationship fields initially hold the raw Redis key
 string. Popoto resolves it to a full instance only when you access the field.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">item</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Fries&quot;</span><span class="p">)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># item.restaurant is internally &quot;Restaurant:Burger Palace&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">item</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Fries"</span><span class="p">)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># item.restaurant is internally "Restaurant:Burger Palace"</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">restaurant</span>  <span class="c1"># triggers Redis HGETALL</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>     <span class="c1"># =&gt; &quot;American&quot;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>     <span class="c1"># =&gt; "American"</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Subsequent access uses the resolved instance -- no extra Redis call</span>
 </code></pre></div>
 <h3 id="relationship-index">Relationship Index<a class="headerlink" href="#relationship-index" title="Permanent link">&para;</a></h3>
@@ -3330,17 +3358,17 @@ instead of recursing infinitely.</p>
 <h2 id="null-relationships">Null Relationships<a class="headerlink" href="#null-relationships" title="Permanent link">&para;</a></h2>
 <p>An <code>Order</code> starts without a driver -- <code>None</code> until one is assigned.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">,</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>                     <span class="n">total</span><span class="o">=</span><span class="mf">15.50</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>                     <span class="n">total</span><span class="o">=</span><span class="mf">15.50</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">)</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">driver</span><span class="p">)</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># =&gt; None</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">dave</span> <span class="o">=</span> <span class="n">Driver</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Dave&quot;</span><span class="p">,</span> <span class="n">phone</span><span class="o">=</span><span class="s2">&quot;555-0199&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">dave</span> <span class="o">=</span> <span class="n">Driver</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Dave"</span><span class="p">,</span> <span class="n">phone</span><span class="o">=</span><span class="s2">"555-0199"</span><span class="p">,</span>
 <a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>                     <span class="n">rating</span><span class="o">=</span><span class="mf">4.9</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7300</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9950</span><span class="p">))</span>
 <a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">order</span><span class="o">.</span><span class="n">driver</span> <span class="o">=</span> <span class="n">dave</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;assigned&quot;</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">"assigned"</span>
 <a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">driver</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1"># =&gt; &quot;Dave&quot;</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1"># =&gt; "Dave"</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -3349,7 +3377,7 @@ relationship to avoid <code>AttributeError</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">if</span> <span class="n">order</span><span class="o">.</span><span class="n">driver</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">driver</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No driver assigned yet&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">"No driver assigned yet"</span><span class="p">)</span>
 </code></pre></div>
 </div>
 <h2 id="self-referential-relationships">Self-Referential Relationships<a class="headerlink" href="#self-referential-relationships" title="Permanent link">&para;</a></h2>
@@ -3360,14 +3388,14 @@ menu items.</p>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">price</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 <a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">Restaurant</span><span class="p">)</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">combo_includes</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s1">&#39;MenuItem&#39;</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">combo_includes</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s1">'MenuItem'</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="n">burger</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Classic Burger&quot;</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">12.99</span><span class="p">,</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="n">burger</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Classic Burger"</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">12.99</span><span class="p">,</span>
 <a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>                         <span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">,</span> <span class="n">combo_includes</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">combo</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Combo&quot;</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">14.99</span><span class="p">,</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">combo</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Combo"</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">14.99</span><span class="p">,</span>
 <a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>                        <span class="n">restaurant</span><span class="o">=</span><span class="n">burger_palace</span><span class="p">,</span> <span class="n">combo_includes</span><span class="o">=</span><span class="n">burger</span><span class="p">)</span>
 <a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">combo</span><span class="o">.</span><span class="n">combo_includes</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># =&gt; &quot;Classic Burger&quot;</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># =&gt; "Classic Burger"</span>
 </code></pre></div>
 <p>Use a string (<code>'MenuItem'</code>) when the class is not yet fully defined. Set
 <code>null=True</code> so non-combo items can leave the field empty.</p>

@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3367,12 +3395,12 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <span class="normal"><a href="#__codelineno-0-598">598</a></span>
 <span class="normal"><a href="#__codelineno-0-599">599</a></span>
 <span class="normal"><a href="#__codelineno-0-600">600</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExistenceFilter</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Bloom filter for O(1) probabilistic membership checks.</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="w">    </span><span class="sd">"""Bloom filter for O(1) probabilistic membership checks.</span>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    Implemented with Redis SETBIT/GETBIT and Lua scripts.</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    No Redis modules required -- works on both Redis and Valkey.</span>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    ExistenceFilter is a &quot;side-effect field&quot; that does not store a value on the</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    ExistenceFilter is a "side-effect field" that does not store a value on the</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    model instance. It maintains a Bloom filter index via on_save() hooks. On</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    query, might_exist() checks the filter; definitely_missing() is its inverse.</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>
@@ -3398,42 +3426,42 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">                fingerprint_fn=lambda inst: inst.topic,</span>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">            )</span>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        memory = Memory(topic=&quot;kubernetes&quot;)</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        memory = Memory(topic="kubernetes")</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">        memory.save()</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        Memory.bloom.might_exist(Memory, &quot;kubernetes&quot;)  # True</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        Memory.bloom.definitely_missing(Memory, &quot;new-topic&quot;)  # True</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        Memory.bloom.might_exist(Memory, "kubernetes")  # True</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        Memory.bloom.definitely_missing(Memory, "new-topic")  # True</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    """</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>    <span class="c1"># Override Field defaults -- ExistenceFilter does not store a value</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="nb">type</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="nb">str</span>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="n">null</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="n">default</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="c1"># Export/import: the Bloom filter&#39;s bit array is a function of save</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="c1"># *history* (every fingerprint ever added), not of any single record&#39;s</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="c1"># Export/import: the Bloom filter's bit array is a function of save</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="c1"># *history* (every fingerprint ever added), not of any single record's</span>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="c1"># current value, so it cannot be reconstructed by replaying on_save()</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="c1"># for the exported record set alone, nor practically carried as</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="c1"># per-record state. Not addressed in v1 -- see #556.</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;partial&quot;</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"partial"</span>
 <a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="n">roundtrip_note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="s2">&quot;Bloom filter bit array reflects save history, not carried or &quot;</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="s2">&quot;rebuilt by import; see #556&quot;</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="s2">"Bloom filter bit array reflects save history, not carried or "</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="s2">"rebuilt by import; see #556"</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>    <span class="p">)</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">error_rate</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;error_rate&quot;</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">)</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">capacity</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;capacity&quot;</span><span class="p">,</span> <span class="mi">100_000</span><span class="p">)</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fn</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;fingerprint_fn&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">error_rate</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"error_rate"</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">)</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">capacity</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"capacity"</span><span class="p">,</span> <span class="mi">100_000</span><span class="p">)</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fn</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"fingerprint_fn"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="c1"># Do not pass our custom kwargs to Field.__init__</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Derive Bloom filter parameters from error_rate and capacity.</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="w">        </span><span class="sd">"""Derive Bloom filter parameters from error_rate and capacity.</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">            Tuple of (m, k) where m is total bits and k is number of hash functions.</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">        """</span>
 <a id="__codelineno-0-371" name="__codelineno-0-371"></a>        <span class="c1"># m = -capacity * ln(error_rate) / (ln(2)^2)</span>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="n">m</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">capacity</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">error_rate</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="c1"># k = (m / capacity) * ln(2)</span>
@@ -3441,20 +3469,20 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="k">return</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_fingerprint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">):</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute fingerprint string from a model instance.</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">        </span><span class="sd">"""Compute fingerprint string from a model instance.</span>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="sd">        Delegates to the module-level _compute_fingerprint_impl helper.</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">        """</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>        <span class="k">return</span> <span class="n">_compute_fingerprint_impl</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_bloom_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">):</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Redis key for this Bloom filter.</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="w">        </span><span class="sd">"""Build the Redis key for this Bloom filter.</span>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">            str: Key like ``$EF:{ClassName}:{field_name}``.</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        """</span>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a>        <span class="n">class_name</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
@@ -3465,7 +3493,7 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a>    <span class="p">):</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Add the model instance&#39;s fingerprint tokens to the Bloom filter.</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="w">        </span><span class="sd">"""Add the model instance's fingerprint tokens to the Bloom filter.</span>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">        Called automatically by Model.save() for each field. Computes the</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        fingerprint, tokenizes it into individual words, and runs</span>
@@ -3481,7 +3509,7 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">            The pipeline if provided, otherwise the Lua script result.</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">        """</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_compute_fingerprint</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
 <a id="__codelineno-0-421" name="__codelineno-0-421"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_bloom_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
@@ -3507,7 +3535,7 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="p">):</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;No-op. Bloom filters do not support removal by design.</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="w">        </span><span class="sd">"""No-op. Bloom filters do not support removal by design.</span>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        Bloom filters guarantee zero false negatives. Removing items would</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">        violate this guarantee because multiple items may share bit positions.</span>
@@ -3515,11 +3543,11 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">            The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        """</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">might_exist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if a fingerprint might exist in the Bloom filter.</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="w">        </span><span class="sd">"""Check if a fingerprint might exist in the Bloom filter.</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">        The query is tokenized using the same rules as on_save(). If the query</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a><span class="sd">        produces tokens, returns True if ANY token is found in the filter.</span>
@@ -3536,8 +3564,8 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">            bool: True if possibly present, False if definitely absent.</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="sd">        """</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="n">m</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_params</span><span class="p">()</span>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
@@ -3555,7 +3583,7 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>        <span class="k">return</span> <span class="kc">False</span>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">definitely_missing</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if a fingerprint is definitely not in the Bloom filter.</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="w">        </span><span class="sd">"""Check if a fingerprint is definitely not in the Bloom filter.</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">        Convenience inverse of might_exist(). When this returns True, the caller</span>
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">        can skip expensive retrieval entirely.</span>
@@ -3566,11 +3594,11 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">            bool: True if definitely absent, False if possibly present.</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">        """</span>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="k">return</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">might_exist</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">fill_ratio</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">):</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Diagnostic: compute the proportion of set bits in the Bloom filter.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="w">        </span><span class="sd">"""Diagnostic: compute the proportion of set bits in the Bloom filter.</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a><span class="sd">        Useful for monitoring capacity usage. When fill_ratio approaches 0.5,</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">        the false positive rate starts degrading beyond the configured error_rate.</span>
@@ -3580,15 +3608,15 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a><span class="sd">            float: Ratio of set bits to total bits (0.0 to 1.0).</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">                Returns 0.0 if the Bloom filter key doesn&#39;t exist yet.</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">                Returns 0.0 if the Bloom filter key doesn't exist yet.</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">        """</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>        <span class="n">m</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_params</span><span class="p">()</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="n">set_bits</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">bitcount</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="k">return</span> <span class="n">set_bits</span> <span class="o">/</span> <span class="n">m</span> <span class="k">if</span> <span class="n">m</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">might_exist_batch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprints</span><span class="p">):</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Check multiple fingerprints against the Bloom filter in one round-trip.</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="w">        </span><span class="sd">"""Check multiple fingerprints against the Bloom filter in one round-trip.</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">        Each fingerprint is tokenized using the same rules as might_exist().</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">        A fingerprint is considered a hit if ANY of its tokens is found in the</span>
@@ -3602,11 +3630,11 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">            dict[str, bool]: Mapping of fingerprint -&gt; might_exist result.</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">                Returns empty dict for empty input list.</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">        """</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprints</span><span class="p">:</span>
 <a id="__codelineno-0-541" name="__codelineno-0-541"></a>            <span class="k">return</span> <span class="p">{}</span>
 <a id="__codelineno-0-542" name="__codelineno-0-542"></a>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>        <span class="n">m</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_params</span><span class="p">()</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>        <span class="c1"># Tokenize each fingerprint and build a flat token list with a mapping</span>
@@ -3650,7 +3678,7 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="k">return</span> <span class="n">result</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">might_exist_count</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprints</span><span class="p">):</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Count how many fingerprints might exist in a single round-trip.</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="w">        </span><span class="sd">"""Count how many fingerprints might exist in a single round-trip.</span>
 <a id="__codelineno-0-588" name="__codelineno-0-588"></a>
 <a id="__codelineno-0-589" name="__codelineno-0-589"></a><span class="sd">        Convenience wrapper around might_exist_batch(). Returns the number</span>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a><span class="sd">        of fingerprints for which might_exist would return True.</span>
@@ -3661,7 +3689,7 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-595" name="__codelineno-0-595"></a>
 <a id="__codelineno-0-596" name="__codelineno-0-596"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">            int: Number of fingerprints that might exist.</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">        """</span>
 <a id="__codelineno-0-599" name="__codelineno-0-599"></a>        <span class="n">batch_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">might_exist_batch</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprints</span><span class="p">)</span>
 <a id="__codelineno-0-600" name="__codelineno-0-600"></a>        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">batch_result</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -3865,7 +3893,7 @@ produces no tokens, falls back to adding the raw fingerprint.</p>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="p">):</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Add the model instance&#39;s fingerprint tokens to the Bloom filter.</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="w">    </span><span class="sd">"""Add the model instance's fingerprint tokens to the Bloom filter.</span>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">    Called automatically by Model.save() for each field. Computes the</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    fingerprint, tokenizes it into individual words, and runs</span>
@@ -3881,7 +3909,7 @@ produces no tokens, falls back to adding the raw fingerprint.</p>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">        The pipeline if provided, otherwise the Lua script result.</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">    """</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a>    <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_compute_fingerprint</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
 <a id="__codelineno-0-421" name="__codelineno-0-421"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_bloom_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
@@ -3975,7 +4003,7 @@ Stale positives are harmless for a pre-filter use case.</p>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="p">):</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;No-op. Bloom filters do not support removal by design.</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="w">    </span><span class="sd">"""No-op. Bloom filters do not support removal by design.</span>
 <a id="__codelineno-0-445" name="__codelineno-0-445"></a>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    Bloom filters guarantee zero false negatives. Removing items would</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">    violate this guarantee because multiple items may share bit positions.</span>
@@ -3983,7 +4011,7 @@ Stale positives are harmless for a pre-filter use case.</p>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">        The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">    """</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4116,7 +4144,7 @@ positive). Returns False if the fingerprint is definitely not in the set
 <span class="normal"><a href="#__codelineno-0-487">487</a></span>
 <span class="normal"><a href="#__codelineno-0-488">488</a></span>
 <span class="normal"><a href="#__codelineno-0-489">489</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="k">def</span><span class="w"> </span><span class="nf">might_exist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if a fingerprint might exist in the Bloom filter.</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="w">    </span><span class="sd">"""Check if a fingerprint might exist in the Bloom filter.</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">    The query is tokenized using the same rules as on_save(). If the query</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a><span class="sd">    produces tokens, returns True if ANY token is found in the filter.</span>
@@ -4133,8 +4161,8 @@ positive). Returns False if the fingerprint is definitely not in the set
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a><span class="sd">        bool: True if possibly present, False if definitely absent.</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="sd">    """</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="n">m</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_params</span><span class="p">()</span>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a>    <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
@@ -4255,7 +4283,7 @@ can skip expensive retrieval entirely.</p>
 <span class="normal"><a href="#__codelineno-0-502">502</a></span>
 <span class="normal"><a href="#__codelineno-0-503">503</a></span>
 <span class="normal"><a href="#__codelineno-0-504">504</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="k">def</span><span class="w"> </span><span class="nf">definitely_missing</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if a fingerprint is definitely not in the Bloom filter.</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="w">    </span><span class="sd">"""Check if a fingerprint is definitely not in the Bloom filter.</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">    Convenience inverse of might_exist(). When this returns True, the caller</span>
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">    can skip expensive retrieval entirely.</span>
@@ -4266,7 +4294,7 @@ can skip expensive retrieval entirely.</p>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">        bool: True if definitely absent, False if possibly present.</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">    """</span>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="k">return</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">might_exist</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4362,7 +4390,7 @@ Returns 0.0 if the Bloom filter key doesn't exist yet.</p>
 <span class="normal"><a href="#__codelineno-0-520">520</a></span>
 <span class="normal"><a href="#__codelineno-0-521">521</a></span>
 <span class="normal"><a href="#__codelineno-0-522">522</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="k">def</span><span class="w"> </span><span class="nf">fill_ratio</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">):</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Diagnostic: compute the proportion of set bits in the Bloom filter.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="w">    </span><span class="sd">"""Diagnostic: compute the proportion of set bits in the Bloom filter.</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a><span class="sd">    Useful for monitoring capacity usage. When fill_ratio approaches 0.5,</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    the false positive rate starts degrading beyond the configured error_rate.</span>
@@ -4372,9 +4400,9 @@ Returns 0.0 if the Bloom filter key doesn't exist yet.</p>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a><span class="sd">        float: Ratio of set bits to total bits (0.0 to 1.0).</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">            Returns 0.0 if the Bloom filter key doesn&#39;t exist yet.</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">            Returns 0.0 if the Bloom filter key doesn't exist yet.</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">    """</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>    <span class="n">m</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_params</span><span class="p">()</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="n">set_bits</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">bitcount</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>    <span class="k">return</span> <span class="n">set_bits</span> <span class="o">/</span> <span class="n">m</span> <span class="k">if</span> <span class="n">m</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
@@ -4533,7 +4561,7 @@ Returns empty dict for empty input list.</p>
 <span class="normal"><a href="#__codelineno-0-582">582</a></span>
 <span class="normal"><a href="#__codelineno-0-583">583</a></span>
 <span class="normal"><a href="#__codelineno-0-584">584</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="k">def</span><span class="w"> </span><span class="nf">might_exist_batch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprints</span><span class="p">):</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Check multiple fingerprints against the Bloom filter in one round-trip.</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="w">    </span><span class="sd">"""Check multiple fingerprints against the Bloom filter in one round-trip.</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">    Each fingerprint is tokenized using the same rules as might_exist().</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">    A fingerprint is considered a hit if ANY of its tokens is found in the</span>
@@ -4547,11 +4575,11 @@ Returns empty dict for empty input list.</p>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">        dict[str, bool]: Mapping of fingerprint -&gt; might_exist result.</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">            Returns empty dict for empty input list.</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">    """</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprints</span><span class="p">:</span>
 <a id="__codelineno-0-541" name="__codelineno-0-541"></a>        <span class="k">return</span> <span class="p">{}</span>
 <a id="__codelineno-0-542" name="__codelineno-0-542"></a>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$EF:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="n">m</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_params</span><span class="p">()</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="c1"># Tokenize each fingerprint and build a flat token list with a mapping</span>
@@ -4699,7 +4727,7 @@ of fingerprints for which might_exist would return True.</p>
 <span class="normal"><a href="#__codelineno-0-598">598</a></span>
 <span class="normal"><a href="#__codelineno-0-599">599</a></span>
 <span class="normal"><a href="#__codelineno-0-600">600</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="k">def</span><span class="w"> </span><span class="nf">might_exist_count</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprints</span><span class="p">):</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Count how many fingerprints might exist in a single round-trip.</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="w">    </span><span class="sd">"""Count how many fingerprints might exist in a single round-trip.</span>
 <a id="__codelineno-0-588" name="__codelineno-0-588"></a>
 <a id="__codelineno-0-589" name="__codelineno-0-589"></a><span class="sd">    Convenience wrapper around might_exist_batch(). Returns the number</span>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a><span class="sd">    of fingerprints for which might_exist would return True.</span>
@@ -4710,7 +4738,7 @@ of fingerprints for which might_exist would return True.</p>
 <a id="__codelineno-0-595" name="__codelineno-0-595"></a>
 <a id="__codelineno-0-596" name="__codelineno-0-596"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">        int: Number of fingerprints that might exist.</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">    """</span>
 <a id="__codelineno-0-599" name="__codelineno-0-599"></a>    <span class="n">batch_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">might_exist_batch</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprints</span><span class="p">)</span>
 <a id="__codelineno-0-600" name="__codelineno-0-600"></a>    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">batch_result</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -5021,12 +5049,12 @@ memory.save()  # increment again</p>
 <span class="normal"><a href="#__codelineno-0-779">779</a></span>
 <span class="normal"><a href="#__codelineno-0-780">780</a></span>
 <span class="normal"><a href="#__codelineno-0-781">781</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-603" name="__codelineno-0-603"></a><span class="k">class</span><span class="w"> </span><span class="nc">FrequencySketch</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Count-Min Sketch for approximate frequency queries.</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a><span class="w">    </span><span class="sd">"""Count-Min Sketch for approximate frequency queries.</span>
 <a id="__codelineno-0-605" name="__codelineno-0-605"></a>
 <a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="sd">    Implemented with Redis hashes and Lua scripts.</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a><span class="sd">    No Redis modules required -- works on both Redis and Valkey.</span>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="sd">    FrequencySketch is a &quot;side-effect field&quot; that maintains a Count-Min Sketch</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="sd">    FrequencySketch is a "side-effect field" that maintains a Count-Min Sketch</span>
 <a id="__codelineno-0-610" name="__codelineno-0-610"></a><span class="sd">    alongside the model. Each save increments counters for the fingerprint.</span>
 <a id="__codelineno-0-611" name="__codelineno-0-611"></a><span class="sd">    get_frequency() returns the approximate count.</span>
 <a id="__codelineno-0-612" name="__codelineno-0-612"></a>
@@ -5050,12 +5078,12 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-630" name="__codelineno-0-630"></a><span class="sd">                fingerprint_fn=lambda inst: inst.topic,</span>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">            )</span>
 <a id="__codelineno-0-632" name="__codelineno-0-632"></a>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">        memory = Memory(topic=&quot;kubernetes&quot;)</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">        memory = Memory(topic="kubernetes")</span>
 <a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="sd">        memory.save()</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="sd">        memory.save()  # increment again</span>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        Memory.freq.get_frequency(Memory, &quot;kubernetes&quot;)  # ~2</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        Memory.freq.get_frequency(Memory, "kubernetes")  # ~2</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">    """</span>
 <a id="__codelineno-0-639" name="__codelineno-0-639"></a>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>    <span class="c1"># Override Field defaults -- FrequencySketch does not store a value</span>
 <a id="__codelineno-0-641" name="__codelineno-0-641"></a>    <span class="n">MAX_DEPTH</span> <span class="o">=</span> <span class="mi">7</span>
@@ -5065,41 +5093,41 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-645" name="__codelineno-0-645"></a>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>    <span class="c1"># Export/import: the Count-Min Sketch counters accumulate across every</span>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a>    <span class="c1"># save of every record (a function of save history), not of any single</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="c1"># record&#39;s current value, so they cannot be reconstructed by import</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="c1"># record's current value, so they cannot be reconstructed by import</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>    <span class="c1"># replay nor practically carried as per-record state. Not addressed in</span>
 <a id="__codelineno-0-650" name="__codelineno-0-650"></a>    <span class="c1"># v1 -- see #556.</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;partial&quot;</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"partial"</span>
 <a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="n">roundtrip_note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>        <span class="s2">&quot;Count-Min Sketch counters reflect save history, not carried or &quot;</span>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="s2">&quot;rebuilt by import; see #556&quot;</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>        <span class="s2">"Count-Min Sketch counters reflect save history, not carried or "</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="s2">"rebuilt by import; see #556"</span>
 <a id="__codelineno-0-655" name="__codelineno-0-655"></a>    <span class="p">)</span>
 <a id="__codelineno-0-656" name="__codelineno-0-656"></a>
 <a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;width&quot;</span><span class="p">,</span> <span class="mi">2003</span><span class="p">)</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">depth</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;depth&quot;</span><span class="p">,</span> <span class="mi">7</span><span class="p">)</span>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fn</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;fingerprint_fn&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"width"</span><span class="p">,</span> <span class="mi">2003</span><span class="p">)</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">depth</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"depth"</span><span class="p">,</span> <span class="mi">7</span><span class="p">)</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fn</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"fingerprint_fn"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MAX_DEPTH</span><span class="p">):</span>
 <a id="__codelineno-0-663" name="__codelineno-0-663"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a>                <span class="sa">f</span><span class="s2">&quot;FrequencySketch depth must be between 1 and </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">MAX_DEPTH</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">depth</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a>                <span class="sa">f</span><span class="s2">&quot;The P/M hash tables have </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">MAX_DEPTH</span><span class="si">}</span><span class="s2"> entries.&quot;</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>                <span class="sa">f</span><span class="s2">"FrequencySketch depth must be between 1 and </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">MAX_DEPTH</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">depth</span><span class="si">}</span><span class="s2">. "</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>                <span class="sa">f</span><span class="s2">"The P/M hash tables have </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">MAX_DEPTH</span><span class="si">}</span><span class="s2"> entries."</span>
 <a id="__codelineno-0-666" name="__codelineno-0-666"></a>            <span class="p">)</span>
 <a id="__codelineno-0-667" name="__codelineno-0-667"></a>
 <a id="__codelineno-0-668" name="__codelineno-0-668"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_fingerprint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">):</span>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute fingerprint string from a model instance.</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="w">        </span><span class="sd">"""Compute fingerprint string from a model instance.</span>
 <a id="__codelineno-0-670" name="__codelineno-0-670"></a>
 <a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">        Delegates to the module-level _compute_fingerprint_impl helper.</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">        """</span>
 <a id="__codelineno-0-673" name="__codelineno-0-673"></a>        <span class="k">return</span> <span class="n">_compute_fingerprint_impl</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
 <a id="__codelineno-0-674" name="__codelineno-0-674"></a>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_cms_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">):</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Redis key for this Count-Min Sketch.</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="w">        </span><span class="sd">"""Build the Redis key for this Count-Min Sketch.</span>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>
 <a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">            str: Key like ``$FS:{ClassName}:{field_name}``.</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        """</span>
 <a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="n">class_name</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;$FS:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-683" name="__codelineno-0-683"></a>
 <a id="__codelineno-0-684" name="__codelineno-0-684"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-685" name="__codelineno-0-685"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
@@ -5110,7 +5138,7 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-690" name="__codelineno-0-690"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-691" name="__codelineno-0-691"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>    <span class="p">):</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Increment the Count-Min Sketch counters for this instance&#39;s fingerprint tokens.</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="w">        </span><span class="sd">"""Increment the Count-Min Sketch counters for this instance's fingerprint tokens.</span>
 <a id="__codelineno-0-694" name="__codelineno-0-694"></a>
 <a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">        Called automatically by Model.save() for each field. Tokenizes the</span>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">        fingerprint and increments counters for each token individually.</span>
@@ -5125,7 +5153,7 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">            The pipeline if provided, otherwise the Lua script result.</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">        """</span>
 <a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_compute_fingerprint</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
 <a id="__codelineno-0-711" name="__codelineno-0-711"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_cms_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
@@ -5151,18 +5179,18 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-733" name="__codelineno-0-733"></a>    <span class="p">):</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;No-op. Count-Min Sketch does not support decrement.</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="w">        </span><span class="sd">"""No-op. Count-Min Sketch does not support decrement.</span>
 <a id="__codelineno-0-735" name="__codelineno-0-735"></a>
 <a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">        CMS counters are monotonically increasing. Decrementing would</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">        violate the &quot;never undercount&quot; guarantee.</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">        violate the "never undercount" guarantee.</span>
 <a id="__codelineno-0-738" name="__codelineno-0-738"></a>
 <a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">            The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">        """</span>
 <a id="__codelineno-0-742" name="__codelineno-0-742"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-743" name="__codelineno-0-743"></a>
 <a id="__codelineno-0-744" name="__codelineno-0-744"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_frequency</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Query the approximate frequency of a fingerprint.</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="w">        </span><span class="sd">"""Query the approximate frequency of a fingerprint.</span>
 <a id="__codelineno-0-746" name="__codelineno-0-746"></a>
 <a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        The query is tokenized using the same rules as on_save(). If the query</span>
 <a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">        produces tokens, returns the minimum frequency across those tokens</span>
@@ -5178,9 +5206,9 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-758" name="__codelineno-0-758"></a>
 <a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">            int: Approximate frequency count. Returns 0 if the fingerprint</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">                has never been seen or the CMS key doesn&#39;t exist yet.</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">                has never been seen or the CMS key doesn't exist yet.</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        """</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
 <a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
@@ -5398,7 +5426,7 @@ If tokenization produces no tokens, falls back to the raw fingerprint.</p>
 <a id="__codelineno-0-690" name="__codelineno-0-690"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-691" name="__codelineno-0-691"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="p">):</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Increment the Count-Min Sketch counters for this instance&#39;s fingerprint tokens.</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="w">    </span><span class="sd">"""Increment the Count-Min Sketch counters for this instance's fingerprint tokens.</span>
 <a id="__codelineno-0-694" name="__codelineno-0-694"></a>
 <a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">    Called automatically by Model.save() for each field. Tokenizes the</span>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">    fingerprint and increments counters for each token individually.</span>
@@ -5413,7 +5441,7 @@ If tokenization produces no tokens, falls back to the raw fingerprint.</p>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">        The pipeline if provided, otherwise the Lua script result.</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">    """</span>
 <a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
 <a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_compute_fingerprint</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
 <a id="__codelineno-0-711" name="__codelineno-0-711"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_cms_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
@@ -5505,14 +5533,14 @@ violate the "never undercount" guarantee.</p>
 <a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-732" name="__codelineno-0-732"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="p">):</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;No-op. Count-Min Sketch does not support decrement.</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="w">    </span><span class="sd">"""No-op. Count-Min Sketch does not support decrement.</span>
 <a id="__codelineno-0-735" name="__codelineno-0-735"></a>
 <a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">    CMS counters are monotonically increasing. Decrementing would</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">    violate the &quot;never undercount&quot; guarantee.</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">    violate the "never undercount" guarantee.</span>
 <a id="__codelineno-0-738" name="__codelineno-0-738"></a>
 <a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">        The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">    """</span>
 <a id="__codelineno-0-742" name="__codelineno-0-742"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -5648,7 +5676,7 @@ has never been seen or the CMS key doesn't exist yet.</p>
 <span class="normal"><a href="#__codelineno-0-779">779</a></span>
 <span class="normal"><a href="#__codelineno-0-780">780</a></span>
 <span class="normal"><a href="#__codelineno-0-781">781</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_frequency</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Query the approximate frequency of a fingerprint.</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="w">    </span><span class="sd">"""Query the approximate frequency of a fingerprint.</span>
 <a id="__codelineno-0-746" name="__codelineno-0-746"></a>
 <a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">    The query is tokenized using the same rules as on_save(). If the query</span>
 <a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">    produces tokens, returns the minimum frequency across those tokens</span>
@@ -5664,9 +5692,9 @@ has never been seen or the CMS key doesn't exist yet.</p>
 <a id="__codelineno-0-758" name="__codelineno-0-758"></a>
 <a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">        int: Approximate frequency count. Returns 0 if the fingerprint</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">            has never been seen or the CMS key doesn&#39;t exist yet.</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">            has never been seen or the CMS key doesn't exist yet.</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">    """</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-765" name="__codelineno-0-765"></a>    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
 <a id="__codelineno-0-766" name="__codelineno-0-766"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>

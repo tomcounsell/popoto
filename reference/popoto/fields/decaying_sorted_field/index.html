@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3022,7 +3050,7 @@ Inherited from SortedFieldMixin.</p>
 <span class="normal"><a href="#__codelineno-0-297">297</a></span>
 <span class="normal"><a href="#__codelineno-0-298">298</a></span>
 <span class="normal"><a href="#__codelineno-0-299">299</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="k">class</span><span class="w"> </span><span class="nc">DecayingSortedField</span><span class="p">(</span><span class="n">SortedFieldMixin</span><span class="p">,</span> <span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A SortedField subclass where records lose relevance over time.</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="w">    </span><span class="sd">"""A SortedField subclass where records lose relevance over time.</span>
 <a id="__codelineno-0-240" name="__codelineno-0-240"></a>
 <a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">    Stores timestamps as sorted set scores. A Lua script computes</span>
 <a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">    decay-ranked results at query time using power-law decay:</span>
@@ -3049,14 +3077,14 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">            switch). Every disabled path is a byte-identical no-op.</span>
 <a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">        partition_by: Partition the sorted set by key field values.</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">            Inherited from SortedFieldMixin.</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    """</span>
 <a id="__codelineno-0-267" name="__codelineno-0-267"></a>
 <a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="n">decay_rate</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;decay_rate&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="n">decay_rate</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"decay_rate"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">decay_rate</span> <span class="o">=</span> <span class="n">decay_rate</span> <span class="k">if</span> <span class="n">decay_rate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">base_score_field</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;base_score_field&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">base_score_field</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"base_score_field"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">confidence_modulation_field</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>            <span class="s2">&quot;confidence_modulation_field&quot;</span><span class="p">,</span> <span class="kc">None</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>            <span class="s2">"confidence_modulation_field"</span><span class="p">,</span> <span class="kc">None</span>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a>        <span class="p">)</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">confidence_modulation_field</span> <span class="ow">is</span> <span class="kc">None</span>
@@ -3064,9 +3092,9 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a>            <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_modulation_field</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>        <span class="p">):</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a>                <span class="s2">&quot;confidence_modulation_field must be None (auto-detect), False &quot;</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="s2">&quot;(disabled), or the str name of a ConfidenceField (got &quot;</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_modulation_field</span><span class="si">!r}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>                <span class="s2">"confidence_modulation_field must be None (auto-detect), False "</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="s2">"(disabled), or the str name of a ConfidenceField (got "</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">confidence_modulation_field</span><span class="si">!r}</span><span class="s2">)"</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>            <span class="p">)</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="c1"># Per-model-class resolution cache. Keyed by model class, NOT by the</span>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="c1"># kill switch -- the switch is re-read on every call so toggling it at</span>
@@ -3075,13 +3103,13 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">decay_rate</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="s2">&quot;decay_rate must be &gt; 0 (got </span><span class="si">{}</span><span class="s2">)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">decay_rate</span><span class="p">)</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="s2">"decay_rate must be &gt; 0 (got </span><span class="si">{}</span><span class="s2">)"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">decay_rate</span><span class="p">)</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>            <span class="p">)</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="c1"># Force type=float and auto_now=True behavior</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;auto_now&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;sorted&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">"auto_now"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">"sorted"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
@@ -3251,7 +3279,7 @@ Inherited from SortedFieldMixin.</p>
 <span class="normal"><a href="#__codelineno-0-392">392</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_confidence_modulation_field</span><span class="p">(</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">field</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve which ``ConfidenceField`` modulates ``field``&#39;s decay.</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="w">    </span><span class="sd">"""Resolve which ``ConfidenceField`` modulates ``field``'s decay.</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    Resolution order (first match wins):</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a>
@@ -3259,7 +3287,7 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">       This is the deploy-level kill switch: it disables modulation without</span>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">       any model-code edit, for adopters who cannot edit model definitions.</span>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    2. ``confidence_modulation_field=False`` -&gt; off (per-field opt-out).</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    3. ``confidence_modulation_field=&quot;name&quot;`` -&gt; that field, or ``ModelException``</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    3. ``confidence_modulation_field="name"`` -&gt; that field, or ``ModelException``</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">       if it is missing or is not a ``ConfidenceField``.</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    4. ``confidence_modulation_field=None`` (default) -&gt; auto-detect over</span>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">       ``model_class._meta.fields``. Exactly one ``ConfidenceField`` is used;</span>
@@ -3270,37 +3298,37 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        tuple: ``(confidence_field_name, confidence_field)``, or</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">        ``(None, None)`` when modulation is off.</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    """</span>
 <a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_ENABLED</span><span class="p">:</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;confidence_modulation_field&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">"confidence_modulation_field"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="k">if</span> <span class="n">spec</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
 <a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="n">cache</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;_confidence_modulation_cache&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="n">cache</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">"_confidence_modulation_cache"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="k">if</span> <span class="n">cache</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">model_class</span> <span class="ow">in</span> <span class="n">cache</span><span class="p">:</span>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="k">return</span> <span class="n">cache</span><span class="p">[</span><span class="n">model_class</span><span class="p">]</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;_meta&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">&quot;fields&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"_meta"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"fields"</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a>
 <a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="n">target</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>                <span class="sa">f</span><span class="s2">&quot;confidence_modulation_field=&#39;</span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">&#39; on &quot;</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> names a field that does &quot;</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>                <span class="sa">f</span><span class="s2">&quot;not exist on </span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. Available fields: &quot;</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">fields</span><span class="p">))</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">&#39;(none)&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>                <span class="sa">f</span><span class="s2">"confidence_modulation_field='</span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">' on "</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> names a field that does "</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>                <span class="sa">f</span><span class="s2">"not exist on </span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. Available fields: "</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">fields</span><span class="p">))</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">'(none)'</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>            <span class="p">)</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">ConfidenceField</span><span class="p">):</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>                <span class="sa">f</span><span class="s2">&quot;confidence_modulation_field=&#39;</span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">&#39; on &quot;</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> must name a &quot;</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>                <span class="sa">f</span><span class="s2">&quot;ConfidenceField, but &#39;</span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">&#39; is a &quot;</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>                <span class="sa">f</span><span class="s2">"confidence_modulation_field='</span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">' on "</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> must name a "</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>                <span class="sa">f</span><span class="s2">"ConfidenceField, but '</span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">' is a "</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="p">)</span>
 <a id="__codelineno-0-369" name="__codelineno-0-369"></a>        <span class="n">resolved</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="k">else</span><span class="p">:</span>
@@ -3313,13 +3341,13 @@ Inherited from SortedFieldMixin.</p>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>            <span class="n">resolved</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a>                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">: confidence-modulated decay disabled -- </span><span class="si">%d</span><span class="s2"> ConfidenceFields &quot;</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>                <span class="s2">&quot;found (</span><span class="si">%s</span><span class="s2">). Pass confidence_modulation_field=&#39;&lt;name&gt;&#39; to choose &quot;</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="s2">&quot;one, or False to silence this.&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>                <span class="s2">"</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">: confidence-modulated decay disabled -- </span><span class="si">%d</span><span class="s2"> ConfidenceFields "</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>                <span class="s2">"found (</span><span class="si">%s</span><span class="s2">). Pass confidence_modulation_field='&lt;name&gt;' to choose "</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="s2">"one, or False to silence this."</span><span class="p">,</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a>                <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>                <span class="n">field_name</span><span class="p">,</span>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">),</span>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">candidates</span><span class="p">),</span>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a>                <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">candidates</span><span class="p">),</span>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a>            <span class="p">)</span>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a>            <span class="n">resolved</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-389" name="__codelineno-0-389"></a>
@@ -3574,9 +3602,9 @@ quietly wrong instead of loudly unsupported.</p>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>    <span class="n">filters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build ``(confidence_hash_key, s, c0)`` for a decay ``EVAL``.</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="w">    </span><span class="sd">"""Build ``(confidence_hash_key, s, c0)`` for a decay ``EVAL``.</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    ``c0`` is the resolved field&#39;s own ``initial_confidence`` -- never a</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    ``c0`` is the resolved field's own ``initial_confidence`` -- never a</span>
 <a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    hard-coded ``0.5``. It is both the absent-value default and the centering</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">    constant, so an adopter running ``initial_confidence=0.3`` still gets a</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    bit-exactly neutral score for a record with no evidence.</span>
@@ -3585,7 +3613,7 @@ quietly wrong instead of loudly unsupported.</p>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">        model_class: The Model class being queried.</span>
 <a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">        field: The DecayingSortedField / CyclicDecayField instance.</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">        field_name: Name of that field.</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">        filters: Query filter mapping, used to satisfy the ConfidenceField&#39;s</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">        filters: Query filter mapping, used to satisfy the ConfidenceField's</span>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">            ``partition_by``. Missing partition filters raise QueryException.</span>
 <a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">        model_instance: A saved instance to read partition values off of, for</span>
 <a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">            callers (the metacognitive proxy) that have records but no filters.</span>
@@ -3598,9 +3626,9 @@ quietly wrong instead of loudly unsupported.</p>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">            does not filter on, so no single ``:data`` hash covers the result</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">            set. Silently disabling modulation here would make the ranking</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">            quietly wrong instead of loudly unsupported.</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    """</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>    <span class="c1"># models.query.QueryException, NOT exceptions.QueryException: the two are</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="c1"># distinct classes, and this must match what ConfidenceField&#39;s own partition</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="c1"># distinct classes, and this must match what ConfidenceField's own partition</span>
 <a id="__codelineno-0-430" name="__codelineno-0-430"></a>    <span class="c1"># guard (confidence_field.py:259) and top_by_decay already raise.</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>
@@ -3621,13 +3649,13 @@ quietly wrong instead of loudly unsupported.</p>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">pf</span> <span class="k">for</span> <span class="n">pf</span> <span class="ow">in</span> <span class="n">conf_field</span><span class="o">.</span><span class="n">partition_by</span> <span class="k">if</span> <span class="n">pf</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">filters</span><span class="p">]</span>
 <a id="__codelineno-0-448" name="__codelineno-0-448"></a>        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>            <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>                <span class="sa">f</span><span class="s2">&quot;Confidence-modulated decay on &quot;</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> reads ConfidenceField &quot;</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">conf_name</span><span class="si">}</span><span class="s2">&#39;, which is partitioned by &quot;</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">conf_field</span><span class="o">.</span><span class="n">partition_by</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>                <span class="sa">f</span><span class="s2">&quot;Query must include filter(s) for: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>                <span class="sa">f</span><span class="s2">&quot;Alternatively set confidence_modulation_field=False on &quot;</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&#39; to disable modulation.&quot;</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>                <span class="sa">f</span><span class="s2">"Confidence-modulated decay on "</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> reads ConfidenceField "</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">conf_name</span><span class="si">}</span><span class="s2">', which is partitioned by "</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">conf_field</span><span class="o">.</span><span class="n">partition_by</span><span class="p">)</span><span class="si">}</span><span class="s2">. "</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>                <span class="sa">f</span><span class="s2">"Query must include filter(s) for: </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. "</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>                <span class="sa">f</span><span class="s2">"Alternatively set confidence_modulation_field=False on "</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">' to disable modulation."</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>            <span class="p">)</span>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a>        <span class="n">partition_values</span> <span class="o">=</span> <span class="p">{</span><span class="n">pf</span><span class="p">:</span> <span class="n">filters</span><span class="p">[</span><span class="n">pf</span><span class="p">]</span> <span class="k">for</span> <span class="n">pf</span> <span class="ow">in</span> <span class="n">conf_field</span><span class="o">.</span><span class="n">partition_by</span><span class="p">}</span>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>        <span class="n">data_hash_key</span> <span class="o">=</span> <span class="n">conf_field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span>
@@ -3676,16 +3704,16 @@ in — the overwhelmingly common case, and the one that must stay free.</p>
 <span class="normal"><a href="#__codelineno-0-485">485</a></span>
 <span class="normal"><a href="#__codelineno-0-486">486</a></span>
 <span class="normal"><a href="#__codelineno-0-487">487</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-473" name="__codelineno-0-473"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_validity_field_name</span><span class="p">(</span><span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the name of the model&#39;s ``ValidityField``, or ``None``.</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="w">    </span><span class="sd">"""Return the name of the model's ``ValidityField``, or ``None``.</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a><span class="sd">    First declared field wins, matching the auto-detection style used for the</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">    ConfidenceField / BM25Field / TagField seams elsewhere. Returns ``None``</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">    for models with no validity axis, which is every model that has not opted</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a><span class="sd">    in — the overwhelmingly common case, and the one that must stay free.</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="sd">    """</span>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">.validity_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidityField</span>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;_meta&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">&quot;fields&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"_meta"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"fields"</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">ValidityField</span><span class="p">):</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="k">return</span> <span class="n">name</span>
@@ -3843,10 +3871,10 @@ optional.</p>
 <span class="normal"><a href="#__codelineno-0-529">529</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-490" name="__codelineno-0-490"></a><span class="k">def</span><span class="w"> </span><span class="nf">validity_gate_args</span><span class="p">(</span>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">as_of</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build ``(invalid_at_key, valid_from_key, as_of)`` for a decay ``EVAL``.</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="w">    </span><span class="sd">"""Build ``(invalid_at_key, valid_from_key, as_of)`` for a decay ``EVAL``.</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">    The single resolver behind all three production ``DECAY_SCORE_LUA`` call</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">    sites, so there is exactly one place that knows the gate&#39;s KEYS/ARGV order</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">    sites, so there is exactly one place that knows the gate's KEYS/ARGV order</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a><span class="sd">    (``KEYS[3]`` = ``invalid_at``, ``KEYS[4]`` = ``valid_from``, ``ARGV[7]`` =</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">    as-of).</span>
 <a id="__codelineno-0-499" name="__codelineno-0-499"></a>
@@ -3858,12 +3886,12 @@ optional.</p>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">        model_class: The Model class being queried. ``None`` is tolerated and</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">            resolves to the disabled triple, for callers whose model context is</span>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">            optional.</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">        as_of: Epoch seconds to evaluate membership at. ``None`` means &quot;now&quot;.</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">        as_of: Epoch seconds to evaluate membership at. ``None`` means "now".</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">        tuple[str, str, str]: ``VALIDITY_GATE_DISABLED`` when gating is off or</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">        the model declares no ``ValidityField``.</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    """</span>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="ow">or</span> <span class="n">model_class</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>

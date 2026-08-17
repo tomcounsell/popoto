@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3082,30 +3110,30 @@ showing the most recent orders first.</p>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Order</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">order_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">customer</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">&quot;Customer&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">&quot;Restaurant&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">driver</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">&quot;Driver&quot;</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">customer</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">"Customer"</span><span class="p">)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">"Restaurant"</span><span class="p">)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">driver</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">"Driver"</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">total</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">)</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">created_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now_add</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">updated_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;-created_at&quot;</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"-created_at"</span>
 </code></pre></div>
 <p>The minus sign prefix (<code>-</code>) means descending order. Without it, results are
 ascending. In this case, the newest orders always appear first.</p>
 <p>Queries automatically respect the default ordering:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">orders</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># =&gt; &quot;pending&quot;  (the most recently created order)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># =&gt; "pending"  (the most recently created order)</span>
 </code></pre></div>
 <h3 id="override-per-query">Override per Query<a class="headerlink" href="#override-per-query" title="Permanent link">&para;</a></h3>
 <p>You can override the default at query time:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;total&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"total"</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># =&gt; Returns orders sorted by total ascending, ignoring Meta default</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">expensive_first</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-total&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">expensive_first</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">"-total"</span><span class="p">)</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># =&gt; Returns orders sorted by total descending</span>
 </code></pre></div>
 <div class="admonition note">
@@ -3128,7 +3156,7 @@ seconds, Redis removes it automatically -- ideal for completed orders,
 delivery tracking records, or temporary promotions.</p>
 <p>Adding <code>ttl</code> to the Order model from the previous section:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;-created_at&quot;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"-created_at"</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">2592000</span>  <span class="c1"># 30 days (30 * 24 * 60 * 60)</span>
 </code></pre></div>
 <p>Every order instance now expires 30 days after its most recent save:</p>
@@ -3137,7 +3165,7 @@ delivery tracking records, or temporary promotions.</p>
 </code></pre></div>
 <p>The TTL resets every time you call <code>save()</code>. Updating an order 15 days in
 restarts the 30-day clock:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;delivered&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">"delivered"</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># =&gt; TTL resets to 30 days from now</span>
 </code></pre></div>
@@ -3153,14 +3181,14 @@ processes that update records will extend the expiration window.</p>
 <p>You can override the Meta TTL for specific instances using the <code>_ttl</code>
 attribute. For example, a rush order might need a shorter retention period:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">rush_order</span> <span class="o">=</span> <span class="n">Order</span><span class="p">(</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">49.99</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;rush&quot;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">49.99</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"rush"</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">)</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">rush_order</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="mi">604800</span>  <span class="c1"># 7 days instead of the default 30</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">rush_order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <p>To make a specific instance permanent (no expiration), set <code>_ttl</code> to <code>None</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">vip_order</span> <span class="o">=</span> <span class="n">Order</span><span class="p">(</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">199.99</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;vip&quot;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">199.99</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"vip"</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="p">)</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">vip_order</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Never expires, even though Meta.ttl is set</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">vip_order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -3177,7 +3205,7 @@ at that exact moment.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="p">(</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">35.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;scheduled&quot;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">35.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"scheduled"</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">)</span>
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">order</span><span class="o">.</span><span class="n">_expire_at</span> <span class="o">=</span> <span class="n">datetime</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># Expires March 1st</span>
 <a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -3200,26 +3228,26 @@ is_unique)</code> where <code>field_names</code> is a tuple of strings and <code
 a boolean:</p>
 <p>Adding <code>indexes</code> to the Order model alongside the other Meta options:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;-created_at&quot;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"-created_at"</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">2592000</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>        <span class="n">indexes</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>            <span class="p">((</span><span class="s2">&quot;restaurant&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">),</span> <span class="kc">True</span><span class="p">),</span>  <span class="c1"># Unique composite index</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>            <span class="p">((</span><span class="s2">"restaurant"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">),</span> <span class="kc">True</span><span class="p">),</span>  <span class="c1"># Unique composite index</span>
 <a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="p">)</span>
 </code></pre></div>
 <p>With this index, each restaurant can only have one order per status value:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">order1</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">25.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">25.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="p">)</span>
 <a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># =&gt; Saved successfully</span>
 <a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
 <a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">order2</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">18.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">18.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span>
 <a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="p">)</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># =&gt; ModelException: Unique index violation on (&#39;restaurant&#39;, &#39;status&#39;)</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># =&gt; ModelException: Unique index violation on ('restaurant', 'status')</span>
 </code></pre></div>
 <p>A different status for the same restaurant works fine:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">order3</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">18.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;preparing&quot;</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">18.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"preparing"</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="p">)</span>
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># =&gt; Saved successfully</span>
 </code></pre></div>
@@ -3228,7 +3256,7 @@ a boolean:</p>
 a uniqueness constraint:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="n">indexes</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>        <span class="p">((</span><span class="s2">&quot;restaurant&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">),</span> <span class="kc">False</span><span class="p">),</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>        <span class="p">((</span><span class="s2">"restaurant"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">),</span> <span class="kc">False</span><span class="p">),</span>
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="p">)</span>
 </code></pre></div>
 <h3 id="null-handling">NULL Handling<a class="headerlink" href="#null-handling" title="Permanent link">&para;</a></h3>
@@ -3239,22 +3267,22 @@ and both will save successfully.</p>
 <p>Popoto maintains composite indexes automatically. Updates that would violate
 a unique index are rejected before the save occurs:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">order1</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">25.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">25.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="p">)</span>
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">order2</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">18.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;preparing&quot;</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">18.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"preparing"</span>
 <a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="p">)</span>
 <a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="n">order2</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;pending&quot;</span>  <span class="c1"># Would collide with order1</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="n">order2</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">"pending"</span>  <span class="c1"># Would collide with order1</span>
 <a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="n">order2</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1"># =&gt; ModelException: Unique index violation on (&#39;restaurant&#39;, &#39;status&#39;)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1"># =&gt; ModelException: Unique index violation on ('restaurant', 'status')</span>
 </code></pre></div>
 <p>When you delete an instance, its index entries are cleaned up, freeing the
 slot for future records:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">order1</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">order3</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">charlie</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">22.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">customer</span><span class="o">=</span><span class="n">charlie</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">22.00</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"pending"</span>
 <a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="p">)</span>
 <a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="c1"># =&gt; Saved successfully -- the slot was freed by deleting order1</span>
 </code></pre></div>
@@ -3265,19 +3293,19 @@ slot for future records:</p>
 <a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
 <a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Order</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>    <span class="n">order_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>    <span class="n">customer</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">&quot;Customer&quot;</span><span class="p">)</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">&quot;Restaurant&quot;</span><span class="p">)</span>
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="n">driver</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">&quot;Driver&quot;</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>    <span class="n">customer</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">"Customer"</span><span class="p">)</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">"Restaurant"</span><span class="p">)</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="n">driver</span> <span class="o">=</span> <span class="n">Relationship</span><span class="p">(</span><span class="s2">"Driver"</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="n">total</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;pending&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">)</span>
 <a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>    <span class="n">created_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now_add</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="n">updated_at</span> <span class="o">=</span> <span class="n">DatetimeField</span><span class="p">(</span><span class="n">auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>
 <a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;-created_at&quot;</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"-created_at"</span>
 <a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">2592000</span>
 <a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>        <span class="n">indexes</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>            <span class="p">((</span><span class="s2">&quot;restaurant&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">),</span> <span class="kc">True</span><span class="p">),</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>            <span class="p">((</span><span class="s2">"restaurant"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">),</span> <span class="kc">True</span><span class="p">),</span>
 <a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a>        <span class="p">)</span>
 </code></pre></div>
 <p>This model returns orders newest-first by default, expires them after 30
@@ -3285,20 +3313,20 @@ days, and prevents duplicate restaurant/status combinations.</p>
 <h2 id="accessing-meta-at-runtime">Accessing Meta at Runtime<a class="headerlink" href="#accessing-meta-at-runtime" title="Permanent link">&para;</a></h2>
 <p>After your model is defined, access Meta options via the <code>_meta</code> attribute:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">print</span><span class="p">(</span><span class="n">Order</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">order_by</span><span class="p">)</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="c1"># =&gt; &quot;-created_at&quot;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="c1"># =&gt; "-created_at"</span>
 <a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
 <a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">Order</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
 <a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1"># =&gt; 2592000</span>
 <a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
 <a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">Order</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">indexes</span><span class="p">)</span>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1"># =&gt; (((&quot;restaurant&quot;, &quot;status&quot;), True),)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1"># =&gt; ((("restaurant", "status"), True),)</span>
 </code></pre></div>
 <p>You can also inspect field metadata through <code>_meta</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">print</span><span class="p">(</span><span class="n">Order</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">sorted_field_names</span><span class="p">)</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="c1"># =&gt; {&quot;total&quot;}</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="c1"># =&gt; {"total"}</span>
 <a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
 <a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">Order</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">relationship_field_names</span><span class="p">)</span>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1"># =&gt; {&quot;customer&quot;, &quot;restaurant&quot;, &quot;driver&quot;}</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1"># =&gt; {"customer", "restaurant", "driver"}</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -3314,8 +3342,8 @@ your model class.</p>
 <a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">total</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
 <a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">&quot;nonexistent_field&quot;</span>
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># =&gt; ModelException: Meta.order_by references &#39;nonexistent_field&#39;</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>        <span class="n">order_by</span> <span class="o">=</span> <span class="s2">"nonexistent_field"</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># =&gt; ModelException: Meta.order_by references 'nonexistent_field'</span>
 <a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1">#    but this field does not exist on BadOrder</span>
 </code></pre></div>
 <p>TTL and index definitions are also validated:</p>
@@ -3332,9 +3360,9 @@ your model class.</p>
 <a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>
 <a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
 <a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>        <span class="n">indexes</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>            <span class="p">((</span><span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="s2">&quot;missing_field&quot;</span><span class="p">),</span> <span class="kc">True</span><span class="p">),</span>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>            <span class="p">((</span><span class="s2">"status"</span><span class="p">,</span> <span class="s2">"missing_field"</span><span class="p">),</span> <span class="kc">True</span><span class="p">),</span>
 <a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a>        <span class="p">)</span>
-<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a><span class="c1"># =&gt; ModelException: Unknown field &#39;missing_field&#39; in Meta.indexes</span>
+<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a><span class="c1"># =&gt; ModelException: Unknown field 'missing_field' in Meta.indexes</span>
 <a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a><span class="c1">#    for BadIndex</span>
 </code></pre></div>
 <div class="admonition tip">

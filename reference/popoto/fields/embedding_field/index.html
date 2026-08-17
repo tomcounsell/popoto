@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3817,7 +3845,7 @@ identical across all three modes for a single process.</p>
 <span class="normal"><a href="#__codelineno-0-1071">1071</a></span>
 <span class="normal"><a href="#__codelineno-0-1072">1072</a></span>
 <span class="normal"><a href="#__codelineno-0-1073">1073</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="k">class</span><span class="w"> </span><span class="nc">EmbeddingField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Field type for automatic embedding generation and storage.</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="w">    </span><span class="sd">"""Field type for automatic embedding generation and storage.</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">    Generates a vector embedding from a source field value on save,</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    stores it as a .npy file, and maintains a cached numpy matrix</span>
@@ -3838,7 +3866,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">    Multi-worker cache invalidation:</span>
 <a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">        The embedding matrix is cached in a process-local dict. In a</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">        multi-worker deployment (gunicorn, multiple containers/pods) a write</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">        on one worker must invalidate peers&#39; caches, or they serve stale</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">        on one worker must invalidate peers' caches, or they serve stale</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">        semantic-search results. The ``POPOTO_EMBEDDING_INVALIDATION`` env var</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">        selects the mechanism:</span>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>
@@ -3871,8 +3899,8 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">        class Doc(popoto.Model):</span>
 <a id="__codelineno-0-386" name="__codelineno-0-386"></a><span class="sd">            name = popoto.KeyField()</span>
 <a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">            content = ContentField()</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">            embedding = EmbeddingField(source=&quot;content&quot;)</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">            embedding = EmbeddingField(source="content")</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">    """</span>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a>
 <a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="c1"># Export/import: Redis holds only the dimension count -- the vector itself</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>    <span class="c1"># lives in a .npy file on the filesystem, which a plain re-save on the</span>
@@ -3880,22 +3908,22 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="c1"># and with auto_embed=False nothing is generated at all). The vector is</span>
 <a id="__codelineno-0-395" name="__codelineno-0-395"></a>    <span class="c1"># therefore carried verbatim, fingerprinted with provider provenance so a</span>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>    <span class="c1"># cross-vector-space import is a loud error rather than silent corruption.</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;carry&quot;</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"carry"</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a>
 <a id="__codelineno-0-399" name="__codelineno-0-399"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_provider_provenance</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field_instance</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Describe the provider that produced this field&#39;s vectors.</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="w">        </span><span class="sd">"""Describe the provider that produced this field's vectors.</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        No provider/model identity marker exists in Redis today -- this is</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">        export-file metadata only and changes nothing about what</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        ``EmbeddingField`` stores. When no provider is configured (e.g.</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">        ``auto_embed=False`` deployments) every value is ``&quot;unknown&quot;`` so the</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">        ``auto_embed=False`` deployments) every value is ``"unknown"`` so the</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">        importer can refuse rather than guess.</span>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">            ``{&quot;provider&quot;: str, &quot;model&quot;: str, &quot;dimensions&quot;: int | None}``</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="n">unknown</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;unknown&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;unknown&quot;</span><span class="p">,</span> <span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">            ``{"provider": str, "model": str, "dimensions": int | None}``</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">        """</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="n">unknown</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"provider"</span><span class="p">:</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">:</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="s2">"dimensions"</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
 <a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="n">provider</span> <span class="o">=</span> <span class="n">field_instance</span><span class="o">.</span><span class="n">provider</span>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
@@ -3904,9 +3932,9 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a>            <span class="k">return</span> <span class="n">unknown</span>
 <a id="__codelineno-0-419" name="__codelineno-0-419"></a>
 <a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="n">model</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>            <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">&quot;_model_name&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>            <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">&quot;_model&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a>            <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a>            <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">"_model_name"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>            <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">"_model"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a>            <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="p">)</span>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a>            <span class="n">dimensions</span> <span class="o">=</span> <span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span>
@@ -3914,24 +3942,24 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>            <span class="n">dimensions</span> <span class="o">=</span> <span class="kc">None</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>
 <a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="k">return</span> <span class="p">{</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>            <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">provider</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="k">if</span> <span class="n">model</span> <span class="k">else</span> <span class="s2">&quot;unknown&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a>            <span class="s2">&quot;dimensions&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)</span> <span class="k">if</span> <span class="n">dimensions</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>            <span class="s2">"provider"</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">provider</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="s2">"model"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="k">if</span> <span class="n">model</span> <span class="k">else</span> <span class="s2">"unknown"</span><span class="p">,</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a>            <span class="s2">"dimensions"</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)</span> <span class="k">if</span> <span class="n">dimensions</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a>        <span class="p">}</span>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a>
 <a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Export the on-disk embedding vector plus provider provenance.</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="w">        </span><span class="sd">"""Export the on-disk embedding vector plus provider provenance.</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">        The ``.npy`` file bytes are carried verbatim (base64-encoded so they</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">        survive a JSON transport) rather than re-derived, because the source</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">        text may be gone or changed on the destination.</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">            ``{&quot;vector_npy_b64&quot;: str, &quot;provenance&quot;: {...}}``, or ``None`` when</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">            ``{"vector_npy_b64": str, "provenance": {...}}``, or ``None`` when</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">            no vector exists on disk for this instance (e.g. ``auto_embed``</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">            is False, or the record was never embedded).</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        """</span>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>        <span class="n">field_instance</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">,</span> <span class="n">EmbeddingField</span><span class="p">):</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a>            <span class="k">return</span> <span class="kc">None</span>
@@ -3947,33 +3975,33 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>                <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">npy_path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">npy_path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>                <span class="n">raw</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>                <span class="sa">f</span><span class="s2">&quot;Could not read embedding file </span><span class="si">{</span><span class="n">npy_path</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>                <span class="sa">f</span><span class="s2">&quot;skipping export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>                <span class="sa">f</span><span class="s2">"Could not read embedding file </span><span class="si">{</span><span class="n">npy_path</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>                <span class="sa">f</span><span class="s2">"skipping export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a>            <span class="p">)</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>        <span class="k">return</span> <span class="p">{</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="s2">&quot;vector_npy_b64&quot;</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a>            <span class="s2">&quot;provenance&quot;</span><span class="p">:</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_provider_provenance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">),</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="s2">"vector_npy_b64"</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"ascii"</span><span class="p">),</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>            <span class="s2">"provenance"</span><span class="p">:</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_provider_provenance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">),</span>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="p">}</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Restore the on-disk embedding vector after import.</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="w">        </span><span class="sd">"""Restore the on-disk embedding vector after import.</span>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="sd">        Writes the carried ``.npy`` bytes back atomically (temp file +</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="sd">        rename), registers the hash-to-key mapping in the ``_index.json``</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a><span class="sd">        sidecar so reverse lookup and ``load_embeddings`` find it, and</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="sd">        invalidates the in-memory matrix cache.</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">        """</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">state</span><span class="p">:</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="n">encoded</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;vector_npy_b64&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="n">encoded</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"vector_npy_b64"</span><span class="p">)</span>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">encoded</span><span class="p">:</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
@@ -3987,9 +4015,9 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">encoded</span><span class="p">)</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>        <span class="c1"># Atomic write: temp file + rename (mirrors on_save).</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.npy&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".npy"</span><span class="p">)</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>            <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>            <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">"wb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>            <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">npy_path</span><span class="p">)</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
@@ -4015,12 +4043,12 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-529" name="__codelineno-0-529"></a>    <span class="p">):</span>
 <a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">_numpy_available</span><span class="p">:</span>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a>            <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                <span class="s2">&quot;numpy is required to use EmbeddingField. &quot;</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                <span class="s2">&quot;Install it with: pip install popoto[embeddings]&quot;</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                <span class="s2">"numpy is required to use EmbeddingField. "</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                <span class="s2">"Install it with: pip install popoto[embeddings]"</span>
 <a id="__codelineno-0-534" name="__codelineno-0-534"></a>            <span class="p">)</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>  <span class="c1"># Stores dimension count in Redis</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;null&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"type"</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>  <span class="c1"># Stores dimension count in Redis</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"null"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"default"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-539" name="__codelineno-0-539"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="nb">int</span>  <span class="c1"># Redis stores the dimension count</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">source</span> <span class="o">=</span> <span class="n">source</span>
@@ -4030,33 +4058,33 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="nd">@property</span>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">provider</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the embedding provider instance.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="w">        </span><span class="sd">"""Get the embedding provider instance."""</span>
 <a id="__codelineno-0-548" name="__codelineno-0-548"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_provider</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-549" name="__codelineno-0-549"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_provider</span>
 <a id="__codelineno-0-550" name="__codelineno-0-550"></a>        <span class="k">return</span> <span class="n">get_default_provider</span><span class="p">()</span>
 <a id="__codelineno-0-551" name="__codelineno-0-551"></a>
 <a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_embedding_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the .npy file path for a model instance&#39;s embedding.</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="w">        </span><span class="sd">"""Return the .npy file path for a model instance's embedding.</span>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">        Uses SHA-256 hash of the Redis key to produce a fixed-length</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        filename (64 hex chars + &#39;.npy&#39; = 68 bytes), avoiding the</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        filename (64 hex chars + '.npy' = 68 bytes), avoiding the</span>
 <a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">        255-byte filesystem limit that hex encoding could exceed with</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">        long Redis keys.</span>
 <a id="__codelineno-0-560" name="__codelineno-0-560"></a>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">        Since SHA-256 is one-way, a sidecar ``_index.json`` file maps</span>
 <a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">        hash filenames back to Redis keys for reverse lookup.</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">        """</span>
 <a id="__codelineno-0-564" name="__codelineno-0-564"></a>        <span class="n">base</span> <span class="o">=</span> <span class="n">_get_embeddings_dir</span><span class="p">()</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="n">hash_key</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">redis_key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">hash_key</span><span class="si">}</span><span class="s2">.npy&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="n">hash_key</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">redis_key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">hash_key</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">)</span>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a>
 <a id="__codelineno-0-568" name="__codelineno-0-568"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-569" name="__codelineno-0-569"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_legacy_embedding_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the legacy hex-encoded .npy file path for migration.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a><span class="w">        </span><span class="sd">"""Return the legacy hex-encoded .npy file path for migration."""</span>
 <a id="__codelineno-0-571" name="__codelineno-0-571"></a>        <span class="n">base</span> <span class="o">=</span> <span class="n">_get_embeddings_dir</span><span class="p">()</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="n">hex_key</span> <span class="o">=</span> <span class="n">redis_key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">hex_key</span><span class="si">}</span><span class="s2">.npy&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="n">hex_key</span> <span class="o">=</span> <span class="n">redis_key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">hex_key</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">)</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-576" name="__codelineno-0-576"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
@@ -4067,7 +4095,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-583" name="__codelineno-0-583"></a>    <span class="p">):</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate and store embedding on save.</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="w">        </span><span class="sd">"""Generate and store embedding on save.</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">        Reads the source field value, calls the provider to generate an</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">        embedding vector, saves it as a .npy file, and stores the</span>
@@ -4082,7 +4110,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-596" name="__codelineno-0-596"></a>
 <a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">            The pipeline.</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="sd">        """</span>
 <a id="__codelineno-0-600" name="__codelineno-0-600"></a>        <span class="n">field_instance</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-601" name="__codelineno-0-601"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">,</span> <span class="n">EmbeddingField</span><span class="p">):</span>
 <a id="__codelineno-0-602" name="__codelineno-0-602"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
@@ -4100,41 +4128,41 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-614" name="__codelineno-0-614"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-615" name="__codelineno-0-615"></a>
 <a id="__codelineno-0-616" name="__codelineno-0-616"></a>        <span class="n">source_value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">source_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="k">if</span> <span class="n">source_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">source_value</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="k">if</span> <span class="n">source_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">source_value</span> <span class="o">==</span> <span class="s2">""</span><span class="p">:</span>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="c1"># If source value is a $CF reference, we need the actual content</span>
 <a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="c1"># The ContentField descriptor should have already resolved it,</span>
 <a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="c1"># but if accessed via __dict__ it might still be a reference.</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">source_value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;$CF:&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="c1"># Try to load via the content field&#39;s store</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">source_value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"$CF:"</span><span class="p">):</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="c1"># Try to load via the content field's store</span>
 <a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="n">source_field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">source_name</span><span class="p">)</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source_field</span><span class="p">,</span> <span class="s2">&quot;store&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source_field</span><span class="p">,</span> <span class="s2">"store"</span><span class="p">):</span>
 <a id="__codelineno-0-627" name="__codelineno-0-627"></a>                <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-628" name="__codelineno-0-628"></a>                    <span class="n">content_bytes</span> <span class="o">=</span> <span class="n">source_field</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">source_value</span><span class="p">)</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                    <span class="n">source_value</span> <span class="o">=</span> <span class="n">content_bytes</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                    <span class="n">source_value</span> <span class="o">=</span> <span class="n">content_bytes</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-630" name="__codelineno-0-630"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>                        <span class="sa">f</span><span class="s2">&quot;Could not load content for embedding from </span><span class="si">{</span><span class="n">source_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>                        <span class="sa">f</span><span class="s2">"Could not load content for embedding from </span><span class="si">{</span><span class="n">source_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-633" name="__codelineno-0-633"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-634" name="__codelineno-0-634"></a>                    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>        <span class="c1"># Generate embedding</span>
 <a id="__codelineno-0-637" name="__codelineno-0-637"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a>            <span class="n">vectors</span> <span class="o">=</span> <span class="n">provider</span><span class="o">.</span><span class="n">embed</span><span class="p">([</span><span class="n">source_value</span><span class="p">],</span> <span class="n">input_type</span><span class="o">=</span><span class="s2">&quot;document&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>            <span class="n">vectors</span> <span class="o">=</span> <span class="n">provider</span><span class="o">.</span><span class="n">embed</span><span class="p">([</span><span class="n">source_value</span><span class="p">],</span> <span class="n">input_type</span><span class="o">=</span><span class="s2">"document"</span><span class="p">)</span>
 <a id="__codelineno-0-639" name="__codelineno-0-639"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">vectors</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>                <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="n">embedding</span> <span class="o">=</span> <span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 <a id="__codelineno-0-642" name="__codelineno-0-642"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>                <span class="sa">f</span><span class="s2">&quot;Embedding provider failed for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>                <span class="sa">f</span><span class="s2">"Embedding provider failed for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-645" name="__codelineno-0-645"></a>            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a>        <span class="c1"># Validate dimensions</span>
 <a id="__codelineno-0-648" name="__codelineno-0-648"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span> <span class="o">!=</span> <span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>                <span class="sa">f</span><span class="s2">&quot;Provider returned </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span><span class="si">}</span><span class="s2"> dimensions, &quot;</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>                <span class="sa">f</span><span class="s2">&quot;expected </span><span class="si">{</span><span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>                <span class="sa">f</span><span class="s2">"Provider returned </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span><span class="si">}</span><span class="s2"> dimensions, "</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>                <span class="sa">f</span><span class="s2">"expected </span><span class="si">{</span><span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-652" name="__codelineno-0-652"></a>            <span class="p">)</span>
 <a id="__codelineno-0-653" name="__codelineno-0-653"></a>
 <a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="c1"># Save as .npy file</span>
@@ -4146,7 +4174,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-661" name="__codelineno-0-661"></a>
 <a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="c1"># Atomic write: temp file + rename</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a>        <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.npy&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>        <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".npy"</span><span class="p">)</span>
 <a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-665" name="__codelineno-0-665"></a>            <span class="n">os</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fd</span><span class="p">)</span>
 <a id="__codelineno-0-666" name="__codelineno-0-666"></a>            <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">vector</span><span class="p">)</span>
@@ -4174,7 +4202,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-688" name="__codelineno-0-688"></a>                    <span class="k">del</span> <span class="n">index</span><span class="p">[</span><span class="n">legacy_filename</span><span class="p">]</span>
 <a id="__codelineno-0-689" name="__codelineno-0-689"></a>                    <span class="n">_write_index</span><span class="p">(</span><span class="n">model_class_name</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
 <a id="__codelineno-0-690" name="__codelineno-0-690"></a>            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to remove legacy embedding file </span><span class="si">{</span><span class="n">legacy_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to remove legacy embedding file </span><span class="si">{</span><span class="n">legacy_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>
 <a id="__codelineno-0-693" name="__codelineno-0-693"></a>        <span class="c1"># Store dimension count in Redis field</span>
 <a id="__codelineno-0-694" name="__codelineno-0-694"></a>        <span class="n">dim_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span>
@@ -4208,10 +4236,10 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a>    <span class="p">):</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove the embedding .npy file on delete.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="w">        </span><span class="sd">"""Remove the embedding .npy file on delete."""</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="n">model_class_name</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
 <a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="n">redis_key</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>            <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>            <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">)</span>
 <a id="__codelineno-0-729" name="__codelineno-0-729"></a>            <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_redis_key</span>
 <a id="__codelineno-0-730" name="__codelineno-0-730"></a>            <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="p">)</span>
@@ -4234,7 +4262,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-748" name="__codelineno-0-748"></a>
 <a id="__codelineno-0-749" name="__codelineno-0-749"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">load_embeddings</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Load all embeddings for a model class into a numpy matrix.</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="w">        </span><span class="sd">"""Load all embeddings for a model class into a numpy matrix.</span>
 <a id="__codelineno-0-752" name="__codelineno-0-752"></a>
 <a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">        Returns a pre-normalized matrix and corresponding Redis key list,</span>
 <a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">        using the in-memory cache when available.</span>
@@ -4246,7 +4274,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">            Tuple of (matrix, keys) where matrix is a 2D numpy array</span>
 <a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">            of shape (N, dimensions) and keys is a list of Redis key</span>
 <a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">            strings. Returns (None, []) if no embeddings found.</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">        """</span>
 <a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">_numpy_available</span><span class="p">:</span>
 <a id="__codelineno-0-765" name="__codelineno-0-765"></a>            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="p">[]</span>
 <a id="__codelineno-0-766" name="__codelineno-0-766"></a>
@@ -4259,15 +4287,15 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="c1"># Cross-process staleness backstop: in mtime mode, or in pubsub mode</span>
 <a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="c1"># when no live listener exists (Valkey down / ACL / pool exhaustion),</span>
 <a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="c1"># confirm the cached entry against the on-disk _version counter. mtime</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="c1"># is a cheap &quot;did anything change at all&quot; pre-check; the integer</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="c1"># is a cheap "did anything change at all" pre-check; the integer</span>
 <a id="__codelineno-0-777" name="__codelineno-0-777"></a>        <span class="c1"># _version is authoritative (granularity-proof against same-tick writes).</span>
 <a id="__codelineno-0-778" name="__codelineno-0-778"></a>        <span class="k">if</span> <span class="n">model_name</span> <span class="ow">in</span> <span class="n">_embedding_cache</span> <span class="ow">and</span> <span class="n">_should_version_check</span><span class="p">(</span><span class="n">model_name</span><span class="p">):</span>
 <a id="__codelineno-0-779" name="__codelineno-0-779"></a>            <span class="n">entry</span> <span class="o">=</span> <span class="n">_embedding_cache</span><span class="p">[</span><span class="n">model_name</span><span class="p">]</span>
 <a id="__codelineno-0-780" name="__codelineno-0-780"></a>            <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-781" name="__codelineno-0-781"></a>                <span class="n">current_mtime</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">_index_path</span><span class="p">(</span><span class="n">model_name</span><span class="p">))</span><span class="o">.</span><span class="n">st_mtime</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>                <span class="k">if</span> <span class="n">current_mtime</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index_mtime&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a>                    <span class="n">disk_version</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_version&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>                    <span class="k">if</span> <span class="n">disk_version</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index_version&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>                <span class="k">if</span> <span class="n">current_mtime</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"index_mtime"</span><span class="p">):</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>                    <span class="n">disk_version</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"_version"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>                    <span class="k">if</span> <span class="n">disk_version</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"index_version"</span><span class="p">):</span>
 <a id="__codelineno-0-785" name="__codelineno-0-785"></a>                        <span class="n">_embedding_cache</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># force reload</span>
 <a id="__codelineno-0-786" name="__codelineno-0-786"></a>            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
 <a id="__codelineno-0-787" name="__codelineno-0-787"></a>                <span class="n">_embedding_cache</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># index gone, reload</span>
@@ -4275,7 +4303,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-789" name="__codelineno-0-789"></a>        <span class="c1"># Check cache first</span>
 <a id="__codelineno-0-790" name="__codelineno-0-790"></a>        <span class="k">if</span> <span class="n">model_name</span> <span class="ow">in</span> <span class="n">_embedding_cache</span><span class="p">:</span>
 <a id="__codelineno-0-791" name="__codelineno-0-791"></a>            <span class="n">cached</span> <span class="o">=</span> <span class="n">_embedding_cache</span><span class="p">[</span><span class="n">model_name</span><span class="p">]</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a>            <span class="k">return</span> <span class="n">cached</span><span class="p">[</span><span class="s2">&quot;matrix&quot;</span><span class="p">],</span> <span class="n">cached</span><span class="p">[</span><span class="s2">&quot;keys&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>            <span class="k">return</span> <span class="n">cached</span><span class="p">[</span><span class="s2">"matrix"</span><span class="p">],</span> <span class="n">cached</span><span class="p">[</span><span class="s2">"keys"</span><span class="p">]</span>
 <a id="__codelineno-0-793" name="__codelineno-0-793"></a>
 <a id="__codelineno-0-794" name="__codelineno-0-794"></a>        <span class="c1"># Load from disk</span>
 <a id="__codelineno-0-795" name="__codelineno-0-795"></a>        <span class="n">emb_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_get_embeddings_dir</span><span class="p">(),</span> <span class="n">model_name</span><span class="p">)</span>
@@ -4290,7 +4318,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-804" name="__codelineno-0-804"></a>        <span class="n">index_updated</span> <span class="o">=</span> <span class="kc">False</span>
 <a id="__codelineno-0-805" name="__codelineno-0-805"></a>
 <a id="__codelineno-0-806" name="__codelineno-0-806"></a>        <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">):</span>
-<a id="__codelineno-0-807" name="__codelineno-0-807"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.npy&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">".npy"</span><span class="p">):</span>
 <a id="__codelineno-0-808" name="__codelineno-0-808"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-809" name="__codelineno-0-809"></a>            <span class="n">filepath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
 <a id="__codelineno-0-810" name="__codelineno-0-810"></a>            <span class="k">try</span><span class="p">:</span>
@@ -4303,7 +4331,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-817" name="__codelineno-0-817"></a>                    <span class="c1"># Fallback: try legacy hex-decode for backward compatibility</span>
 <a id="__codelineno-0-818" name="__codelineno-0-818"></a>                    <span class="n">hex_key</span> <span class="o">=</span> <span class="n">filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span>  <span class="c1"># strip .npy</span>
 <a id="__codelineno-0-819" name="__codelineno-0-819"></a>                    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a>                        <span class="n">redis_key</span> <span class="o">=</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">fromhex</span><span class="p">(</span><span class="n">hex_key</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>                        <span class="n">redis_key</span> <span class="o">=</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">fromhex</span><span class="p">(</span><span class="n">hex_key</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-821" name="__codelineno-0-821"></a>                        <span class="c1"># Add to index for future lookups</span>
 <a id="__codelineno-0-822" name="__codelineno-0-822"></a>                        <span class="n">index</span><span class="p">[</span><span class="n">filename</span><span class="p">]</span> <span class="o">=</span> <span class="n">redis_key</span>
 <a id="__codelineno-0-823" name="__codelineno-0-823"></a>                        <span class="n">index_updated</span> <span class="o">=</span> <span class="kc">True</span>
@@ -4314,15 +4342,15 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-828" name="__codelineno-0-828"></a>                        <span class="c1"># cleanup. After reconciliation this should never fire</span>
 <a id="__codelineno-0-829" name="__codelineno-0-829"></a>                        <span class="c1"># on a clean corpus.</span>
 <a id="__codelineno-0-830" name="__codelineno-0-830"></a>                        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>                            <span class="sa">f</span><span class="s2">&quot;Skipping unrecognized embedding file </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: &quot;</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>                            <span class="s2">&quot;not in index and not a valid hex-encoded key&quot;</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>                            <span class="sa">f</span><span class="s2">"Skipping unrecognized embedding file </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>                            <span class="s2">"not in index and not a valid hex-encoded key"</span>
 <a id="__codelineno-0-833" name="__codelineno-0-833"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-834" name="__codelineno-0-834"></a>                        <span class="k">continue</span>
 <a id="__codelineno-0-835" name="__codelineno-0-835"></a>
 <a id="__codelineno-0-836" name="__codelineno-0-836"></a>                <span class="n">vectors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vec</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
 <a id="__codelineno-0-837" name="__codelineno-0-837"></a>                <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-838" name="__codelineno-0-838"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-839" name="__codelineno-0-839"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to load embedding </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to load embedding </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-840" name="__codelineno-0-840"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-841" name="__codelineno-0-841"></a>
 <a id="__codelineno-0-842" name="__codelineno-0-842"></a>        <span class="c1"># Persist any index updates from legacy fallback. This is a READ path —</span>
@@ -4332,7 +4360,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-846" name="__codelineno-0-846"></a>            <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-847" name="__codelineno-0-847"></a>                <span class="n">_write_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">bump_version</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-848" name="__codelineno-0-848"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to update index for </span><span class="si">{</span><span class="n">model_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to update index for </span><span class="si">{</span><span class="n">model_name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-850" name="__codelineno-0-850"></a>
 <a id="__codelineno-0-851" name="__codelineno-0-851"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">vectors</span><span class="p">:</span>
 <a id="__codelineno-0-852" name="__codelineno-0-852"></a>            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="p">[]</span>
@@ -4345,21 +4373,21 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-859" name="__codelineno-0-859"></a>        <span class="n">matrix</span> <span class="o">=</span> <span class="n">matrix</span> <span class="o">/</span> <span class="n">norms</span>
 <a id="__codelineno-0-860" name="__codelineno-0-860"></a>
 <a id="__codelineno-0-861" name="__codelineno-0-861"></a>        <span class="c1"># Cache the result. Populate the staleness-check fields in all modes</span>
-<a id="__codelineno-0-862" name="__codelineno-0-862"></a>        <span class="c1"># except &quot;none&quot; so the pubsub backstop / mtime path can use them.</span>
-<a id="__codelineno-0-863" name="__codelineno-0-863"></a>        <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;matrix&quot;</span><span class="p">:</span> <span class="n">matrix</span><span class="p">,</span> <span class="s2">&quot;keys&quot;</span><span class="p">:</span> <span class="n">keys</span><span class="p">}</span>
-<a id="__codelineno-0-864" name="__codelineno-0-864"></a>        <span class="k">if</span> <span class="n">_INVALIDATION_MODE</span> <span class="o">!=</span> <span class="s2">&quot;none&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>        <span class="c1"># except "none" so the pubsub backstop / mtime path can use them.</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>        <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"matrix"</span><span class="p">:</span> <span class="n">matrix</span><span class="p">,</span> <span class="s2">"keys"</span><span class="p">:</span> <span class="n">keys</span><span class="p">}</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>        <span class="k">if</span> <span class="n">_INVALIDATION_MODE</span> <span class="o">!=</span> <span class="s2">"none"</span><span class="p">:</span>
 <a id="__codelineno-0-865" name="__codelineno-0-865"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-866" name="__codelineno-0-866"></a>                <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;index_mtime&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">_index_path</span><span class="p">(</span><span class="n">model_name</span><span class="p">))</span><span class="o">.</span><span class="n">st_mtime</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>                <span class="n">entry</span><span class="p">[</span><span class="s2">"index_mtime"</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">_index_path</span><span class="p">(</span><span class="n">model_name</span><span class="p">))</span><span class="o">.</span><span class="n">st_mtime</span>
 <a id="__codelineno-0-867" name="__codelineno-0-867"></a>            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
-<a id="__codelineno-0-868" name="__codelineno-0-868"></a>                <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;index_mtime&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-869" name="__codelineno-0-869"></a>            <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;index_version&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_version&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>                <span class="n">entry</span><span class="p">[</span><span class="s2">"index_mtime"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>            <span class="n">entry</span><span class="p">[</span><span class="s2">"index_version"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"_version"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-0-870" name="__codelineno-0-870"></a>        <span class="n">_embedding_cache</span><span class="p">[</span><span class="n">model_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry</span>
 <a id="__codelineno-0-871" name="__codelineno-0-871"></a>
 <a id="__codelineno-0-872" name="__codelineno-0-872"></a>        <span class="k">return</span> <span class="n">matrix</span><span class="p">,</span> <span class="n">keys</span>
 <a id="__codelineno-0-873" name="__codelineno-0-873"></a>
 <a id="__codelineno-0-874" name="__codelineno-0-874"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-875" name="__codelineno-0-875"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">garbage_collect</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">min_age_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">300</span><span class="p">):</span>
-<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove orphaned .npy files not referenced by live model instances.</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="w">        </span><span class="sd">"""Remove orphaned .npy files not referenced by live model instances.</span>
 <a id="__codelineno-0-877" name="__codelineno-0-877"></a>
 <a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">        Walks the on-disk embedding directory for ``model_class``, computes</span>
 <a id="__codelineno-0-879" name="__codelineno-0-879"></a><span class="sd">        the set of expected-to-survive filenames via the shared</span>
@@ -4402,12 +4430,12 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-916" name="__codelineno-0-916"></a><span class="sd">            int: Number of orphaned files removed. Returns 0 if the</span>
 <a id="__codelineno-0-917" name="__codelineno-0-917"></a><span class="sd">            opt-in marker is missing, the embedding directory does not</span>
 <a id="__codelineno-0-918" name="__codelineno-0-918"></a><span class="sd">            exist, or no orphans are found.</span>
-<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">        """</span>
 <a id="__codelineno-0-920" name="__codelineno-0-920"></a>        <span class="c1"># Opt-in marker: prevent accidental cross-model destruction</span>
-<a id="__codelineno-0-921" name="__codelineno-0-921"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;__embedding_garbage_collect__&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"__embedding_garbage_collect__"</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
 <a id="__codelineno-0-922" name="__codelineno-0-922"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-923" name="__codelineno-0-923"></a>                <span class="s2">&quot;garbage_collect called for </span><span class="si">%s</span><span class="s2">; opt-in marker &quot;</span>
-<a id="__codelineno-0-924" name="__codelineno-0-924"></a>                <span class="s2">&quot;__embedding_garbage_collect__ not set — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a>                <span class="s2">"garbage_collect called for </span><span class="si">%s</span><span class="s2">; opt-in marker "</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a>                <span class="s2">"__embedding_garbage_collect__ not set — skipping"</span><span class="p">,</span>
 <a id="__codelineno-0-925" name="__codelineno-0-925"></a>                <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
 <a id="__codelineno-0-926" name="__codelineno-0-926"></a>            <span class="p">)</span>
 <a id="__codelineno-0-927" name="__codelineno-0-927"></a>            <span class="k">return</span> <span class="mi">0</span>
@@ -4422,7 +4450,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-936" name="__codelineno-0-936"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-937" name="__codelineno-0-937"></a>            <span class="n">disk_files</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">)</span>
 <a id="__codelineno-0-938" name="__codelineno-0-938"></a>        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-939" name="__codelineno-0-939"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;garbage_collect: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-939" name="__codelineno-0-939"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"garbage_collect: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-940" name="__codelineno-0-940"></a>            <span class="k">return</span> <span class="mi">0</span>
 <a id="__codelineno-0-941" name="__codelineno-0-941"></a>
 <a id="__codelineno-0-942" name="__codelineno-0-942"></a>        <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
@@ -4431,7 +4459,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-945" name="__codelineno-0-945"></a>        <span class="n">index_dirty</span> <span class="o">=</span> <span class="kc">False</span>
 <a id="__codelineno-0-946" name="__codelineno-0-946"></a>
 <a id="__codelineno-0-947" name="__codelineno-0-947"></a>        <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">disk_files</span><span class="p">:</span>
-<a id="__codelineno-0-948" name="__codelineno-0-948"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.npy&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-948" name="__codelineno-0-948"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">".npy"</span><span class="p">):</span>
 <a id="__codelineno-0-949" name="__codelineno-0-949"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-950" name="__codelineno-0-950"></a>            <span class="k">if</span> <span class="n">_TMP_NPY_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
 <a id="__codelineno-0-951" name="__codelineno-0-951"></a>                <span class="c1"># tempfiles handled separately by sweep_stale_tempfiles</span>
@@ -4458,7 +4486,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-972" name="__codelineno-0-972"></a>                <span class="k">pass</span>
 <a id="__codelineno-0-973" name="__codelineno-0-973"></a>            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-974" name="__codelineno-0-974"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-975" name="__codelineno-0-975"></a>                    <span class="s2">&quot;garbage_collect: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-975" name="__codelineno-0-975"></a>                    <span class="s2">"garbage_collect: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping"</span><span class="p">,</span>
 <a id="__codelineno-0-976" name="__codelineno-0-976"></a>                    <span class="n">filepath</span><span class="p">,</span>
 <a id="__codelineno-0-977" name="__codelineno-0-977"></a>                    <span class="n">e</span><span class="p">,</span>
 <a id="__codelineno-0-978" name="__codelineno-0-978"></a>                <span class="p">)</span>
@@ -4472,7 +4500,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-986" name="__codelineno-0-986"></a>        <span class="c1"># Also drop index entries whose filename is no longer on disk and</span>
 <a id="__codelineno-0-987" name="__codelineno-0-987"></a>        <span class="c1"># whose redis_key is not a live record. We do this conservatively</span>
 <a id="__codelineno-0-988" name="__codelineno-0-988"></a>        <span class="c1"># by intersecting with expected_keep — never trusting _index.json</span>
-<a id="__codelineno-0-989" name="__codelineno-0-989"></a>        <span class="c1"># as a source of truth for &quot;live&quot;.</span>
+<a id="__codelineno-0-989" name="__codelineno-0-989"></a>        <span class="c1"># as a source of truth for "live".</span>
 <a id="__codelineno-0-990" name="__codelineno-0-990"></a>        <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
 <a id="__codelineno-0-991" name="__codelineno-0-991"></a>            <span class="k">if</span> <span class="n">filename</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">expected_keep</span><span class="p">:</span>
 <a id="__codelineno-0-992" name="__codelineno-0-992"></a>                <span class="c1"># filename may already be removed above; only drop here if</span>
@@ -4485,11 +4513,11 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-999" name="__codelineno-0-999"></a>            <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-1000" name="__codelineno-0-1000"></a>                <span class="n">_write_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
 <a id="__codelineno-0-1001" name="__codelineno-0-1001"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;garbage_collect: failed to update _index.json: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"garbage_collect: failed to update _index.json: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-1003" name="__codelineno-0-1003"></a>
 <a id="__codelineno-0-1004" name="__codelineno-0-1004"></a>        <span class="k">if</span> <span class="n">removed_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-1005" name="__codelineno-0-1005"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>                <span class="s2">&quot;garbage_collect(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> orphan .npy files&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>                <span class="s2">"garbage_collect(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> orphan .npy files"</span><span class="p">,</span>
 <a id="__codelineno-0-1007" name="__codelineno-0-1007"></a>                <span class="n">model_name</span><span class="p">,</span>
 <a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>                <span class="n">removed_count</span><span class="p">,</span>
 <a id="__codelineno-0-1009" name="__codelineno-0-1009"></a>            <span class="p">)</span>
@@ -4497,7 +4525,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-1011" name="__codelineno-0-1011"></a>
 <a id="__codelineno-0-1012" name="__codelineno-0-1012"></a>    <span class="nd">@classmethod</span>
 <a id="__codelineno-0-1013" name="__codelineno-0-1013"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">sweep_stale_tempfiles</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">max_age_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3600</span><span class="p">):</span>
-<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove ``tmp*.npy`` atomic-write tempfiles older than the cutoff.</span>
+<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="w">        </span><span class="sd">"""Remove ``tmp*.npy`` atomic-write tempfiles older than the cutoff.</span>
 <a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>
 <a id="__codelineno-0-1016" name="__codelineno-0-1016"></a><span class="sd">        ``EmbeddingField.on_save`` uses ``tempfile.mkstemp`` + ``os.rename``</span>
 <a id="__codelineno-0-1017" name="__codelineno-0-1017"></a><span class="sd">        for atomic writes. If a process crashes between ``mkstemp`` and</span>
@@ -4513,7 +4541,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>
 <a id="__codelineno-0-1028" name="__codelineno-0-1028"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-1029" name="__codelineno-0-1029"></a><span class="sd">            int: Number of tempfiles removed.</span>
-<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a><span class="sd">        """</span>
 <a id="__codelineno-0-1031" name="__codelineno-0-1031"></a>        <span class="n">model_name</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
 <a id="__codelineno-0-1032" name="__codelineno-0-1032"></a>        <span class="n">emb_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_get_embeddings_dir</span><span class="p">(),</span> <span class="n">model_name</span><span class="p">)</span>
 <a id="__codelineno-0-1033" name="__codelineno-0-1033"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">):</span>
@@ -4522,7 +4550,7 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-1036" name="__codelineno-0-1036"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-1037" name="__codelineno-0-1037"></a>            <span class="n">disk_files</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">)</span>
 <a id="__codelineno-0-1038" name="__codelineno-0-1038"></a>        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;sweep_stale_tempfiles: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"sweep_stale_tempfiles: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-1040" name="__codelineno-0-1040"></a>            <span class="k">return</span> <span class="mi">0</span>
 <a id="__codelineno-0-1041" name="__codelineno-0-1041"></a>
 <a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>        <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
@@ -4545,14 +4573,14 @@ identical across all three modes for a single process.</p>
 <a id="__codelineno-0-1059" name="__codelineno-0-1059"></a>                <span class="k">pass</span>
 <a id="__codelineno-0-1060" name="__codelineno-0-1060"></a>            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-1061" name="__codelineno-0-1061"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>                    <span class="s2">&quot;sweep_stale_tempfiles: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>                    <span class="s2">"sweep_stale_tempfiles: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping"</span><span class="p">,</span>
 <a id="__codelineno-0-1063" name="__codelineno-0-1063"></a>                    <span class="n">filepath</span><span class="p">,</span>
 <a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>                    <span class="n">e</span><span class="p">,</span>
 <a id="__codelineno-0-1065" name="__codelineno-0-1065"></a>                <span class="p">)</span>
 <a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>
 <a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>        <span class="k">if</span> <span class="n">removed_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>                <span class="s2">&quot;sweep_stale_tempfiles(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> stale tempfiles&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>                <span class="s2">"sweep_stale_tempfiles(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> stale tempfiles"</span><span class="p">,</span>
 <a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>                <span class="n">model_name</span><span class="p">,</span>
 <a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>                <span class="n">removed_count</span><span class="p">,</span>
 <a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>            <span class="p">)</span>
@@ -4700,17 +4728,17 @@ text may be gone or changed on the destination.</p>
 <span class="normal"><a href="#__codelineno-0-475">475</a></span>
 <span class="normal"><a href="#__codelineno-0-476">476</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-436" name="__codelineno-0-436"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Export the on-disk embedding vector plus provider provenance.</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="w">    </span><span class="sd">"""Export the on-disk embedding vector plus provider provenance.</span>
 <a id="__codelineno-0-439" name="__codelineno-0-439"></a>
 <a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">    The ``.npy`` file bytes are carried verbatim (base64-encoded so they</span>
 <a id="__codelineno-0-441" name="__codelineno-0-441"></a><span class="sd">    survive a JSON transport) rather than re-derived, because the source</span>
 <a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    text may be gone or changed on the destination.</span>
 <a id="__codelineno-0-443" name="__codelineno-0-443"></a>
 <a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        ``{&quot;vector_npy_b64&quot;: str, &quot;provenance&quot;: {...}}``, or ``None`` when</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        ``{"vector_npy_b64": str, "provenance": {...}}``, or ``None`` when</span>
 <a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        no vector exists on disk for this instance (e.g. ``auto_embed``</span>
 <a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">        is False, or the record was never embedded).</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">    """</span>
 <a id="__codelineno-0-449" name="__codelineno-0-449"></a>    <span class="n">field_instance</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-450" name="__codelineno-0-450"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">,</span> <span class="n">EmbeddingField</span><span class="p">):</span>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="k">return</span> <span class="kc">None</span>
@@ -4726,18 +4754,18 @@ text may be gone or changed on the destination.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">npy_path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">npy_path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>            <span class="n">raw</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>    <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="sa">f</span><span class="s2">&quot;Could not read embedding file </span><span class="si">{</span><span class="n">npy_path</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>            <span class="sa">f</span><span class="s2">&quot;skipping export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="sa">f</span><span class="s2">"Could not read embedding file </span><span class="si">{</span><span class="n">npy_path</span><span class="si">}</span><span class="s2">; "</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>            <span class="sa">f</span><span class="s2">"skipping export of </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-470" name="__codelineno-0-470"></a>        <span class="p">)</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>    <span class="k">return</span> <span class="p">{</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="s2">&quot;vector_npy_b64&quot;</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="s2">&quot;provenance&quot;</span><span class="p">:</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_provider_provenance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">),</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="s2">"vector_npy_b64"</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"ascii"</span><span class="p">),</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="s2">"provenance"</span><span class="p">:</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_provider_provenance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">),</span>
 <a id="__codelineno-0-476" name="__codelineno-0-476"></a>    <span class="p">}</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4813,17 +4841,17 @@ invalidates the in-memory matrix cache.</p>
 <span class="normal"><a href="#__codelineno-0-519">519</a></span>
 <span class="normal"><a href="#__codelineno-0-520">520</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a><span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Restore the on-disk embedding vector after import.</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="w">    </span><span class="sd">"""Restore the on-disk embedding vector after import.</span>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="sd">    Writes the carried ``.npy`` bytes back atomically (temp file +</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="sd">    rename), registers the hash-to-key mapping in the ``_index.json``</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a><span class="sd">    sidecar so reverse lookup and ``load_embeddings`` find it, and</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="sd">    invalidates the in-memory matrix cache.</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">    """</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">state</span><span class="p">:</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">encoded</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;vector_npy_b64&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">encoded</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"vector_npy_b64"</span><span class="p">)</span>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">encoded</span><span class="p">:</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>
@@ -4837,9 +4865,9 @@ invalidates the in-memory matrix cache.</p>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">encoded</span><span class="p">)</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="c1"># Atomic write: temp file + rename (mirrors on_save).</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.npy&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".npy"</span><span class="p">)</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">"wb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">npy_path</span><span class="p">)</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
@@ -5144,7 +5172,7 @@ dimension count in Redis.</p>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="p">):</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate and store embedding on save.</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="w">    </span><span class="sd">"""Generate and store embedding on save.</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">    Reads the source field value, calls the provider to generate an</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">    embedding vector, saves it as a .npy file, and stores the</span>
@@ -5159,7 +5187,7 @@ dimension count in Redis.</p>
 <a id="__codelineno-0-596" name="__codelineno-0-596"></a>
 <a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">        The pipeline.</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="sd">    """</span>
 <a id="__codelineno-0-600" name="__codelineno-0-600"></a>    <span class="n">field_instance</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-601" name="__codelineno-0-601"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_instance</span><span class="p">,</span> <span class="n">EmbeddingField</span><span class="p">):</span>
 <a id="__codelineno-0-602" name="__codelineno-0-602"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
@@ -5177,41 +5205,41 @@ dimension count in Redis.</p>
 <a id="__codelineno-0-614" name="__codelineno-0-614"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-615" name="__codelineno-0-615"></a>
 <a id="__codelineno-0-616" name="__codelineno-0-616"></a>    <span class="n">source_value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">source_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>    <span class="k">if</span> <span class="n">source_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">source_value</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>    <span class="k">if</span> <span class="n">source_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">source_value</span> <span class="o">==</span> <span class="s2">""</span><span class="p">:</span>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a>    <span class="c1"># If source value is a $CF reference, we need the actual content</span>
 <a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="c1"># The ContentField descriptor should have already resolved it,</span>
 <a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="c1"># but if accessed via __dict__ it might still be a reference.</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">source_value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;$CF:&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="c1"># Try to load via the content field&#39;s store</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">source_value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"$CF:"</span><span class="p">):</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="c1"># Try to load via the content field's store</span>
 <a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="n">source_field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">source_name</span><span class="p">)</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source_field</span><span class="p">,</span> <span class="s2">&quot;store&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source_field</span><span class="p">,</span> <span class="s2">"store"</span><span class="p">):</span>
 <a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-628" name="__codelineno-0-628"></a>                <span class="n">content_bytes</span> <span class="o">=</span> <span class="n">source_field</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">source_value</span><span class="p">)</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                <span class="n">source_value</span> <span class="o">=</span> <span class="n">content_bytes</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                <span class="n">source_value</span> <span class="o">=</span> <span class="n">content_bytes</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-630" name="__codelineno-0-630"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>                    <span class="sa">f</span><span class="s2">&quot;Could not load content for embedding from </span><span class="si">{</span><span class="n">source_name</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>                    <span class="sa">f</span><span class="s2">"Could not load content for embedding from </span><span class="si">{</span><span class="n">source_name</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-633" name="__codelineno-0-633"></a>                <span class="p">)</span>
 <a id="__codelineno-0-634" name="__codelineno-0-634"></a>                <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="c1"># Generate embedding</span>
 <a id="__codelineno-0-637" name="__codelineno-0-637"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="n">vectors</span> <span class="o">=</span> <span class="n">provider</span><span class="o">.</span><span class="n">embed</span><span class="p">([</span><span class="n">source_value</span><span class="p">],</span> <span class="n">input_type</span><span class="o">=</span><span class="s2">&quot;document&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="n">vectors</span> <span class="o">=</span> <span class="n">provider</span><span class="o">.</span><span class="n">embed</span><span class="p">([</span><span class="n">source_value</span><span class="p">],</span> <span class="n">input_type</span><span class="o">=</span><span class="s2">"document"</span><span class="p">)</span>
 <a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">vectors</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>            <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-641" name="__codelineno-0-641"></a>        <span class="n">embedding</span> <span class="o">=</span> <span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 <a id="__codelineno-0-642" name="__codelineno-0-642"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-643" name="__codelineno-0-643"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>            <span class="sa">f</span><span class="s2">&quot;Embedding provider failed for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>            <span class="sa">f</span><span class="s2">"Embedding provider failed for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a>    <span class="c1"># Validate dimensions</span>
 <a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span> <span class="o">!=</span> <span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>            <span class="sa">f</span><span class="s2">&quot;Provider returned </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span><span class="si">}</span><span class="s2"> dimensions, &quot;</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>            <span class="sa">f</span><span class="s2">&quot;expected </span><span class="si">{</span><span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>            <span class="sa">f</span><span class="s2">"Provider returned </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span><span class="si">}</span><span class="s2"> dimensions, "</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>            <span class="sa">f</span><span class="s2">"expected </span><span class="si">{</span><span class="n">provider</span><span class="o">.</span><span class="n">dimensions</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-652" name="__codelineno-0-652"></a>        <span class="p">)</span>
 <a id="__codelineno-0-653" name="__codelineno-0-653"></a>
 <a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="c1"># Save as .npy file</span>
@@ -5223,7 +5251,7 @@ dimension count in Redis.</p>
 <a id="__codelineno-0-660" name="__codelineno-0-660"></a>    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-661" name="__codelineno-0-661"></a>
 <a id="__codelineno-0-662" name="__codelineno-0-662"></a>    <span class="c1"># Atomic write: temp file + rename</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a>    <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.npy&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>    <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".npy"</span><span class="p">)</span>
 <a id="__codelineno-0-664" name="__codelineno-0-664"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-665" name="__codelineno-0-665"></a>        <span class="n">os</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fd</span><span class="p">)</span>
 <a id="__codelineno-0-666" name="__codelineno-0-666"></a>        <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">vector</span><span class="p">)</span>
@@ -5251,7 +5279,7 @@ dimension count in Redis.</p>
 <a id="__codelineno-0-688" name="__codelineno-0-688"></a>                <span class="k">del</span> <span class="n">index</span><span class="p">[</span><span class="n">legacy_filename</span><span class="p">]</span>
 <a id="__codelineno-0-689" name="__codelineno-0-689"></a>                <span class="n">_write_index</span><span class="p">(</span><span class="n">model_class_name</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
 <a id="__codelineno-0-690" name="__codelineno-0-690"></a>        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to remove legacy embedding file </span><span class="si">{</span><span class="n">legacy_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to remove legacy embedding file </span><span class="si">{</span><span class="n">legacy_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>
 <a id="__codelineno-0-693" name="__codelineno-0-693"></a>    <span class="c1"># Store dimension count in Redis field</span>
 <a id="__codelineno-0-694" name="__codelineno-0-694"></a>    <span class="n">dim_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">embedding</span><span class="p">)</span>
@@ -5341,10 +5369,10 @@ dimension count in Redis.</p>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-723" name="__codelineno-0-723"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="p">):</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove the embedding .npy file on delete.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="w">    </span><span class="sd">"""Remove the embedding .npy file on delete."""</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a>    <span class="n">model_class_name</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
 <a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="n">redis_key</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">)</span>
 <a id="__codelineno-0-729" name="__codelineno-0-729"></a>        <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_redis_key</span>
 <a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="p">)</span>
@@ -5590,7 +5618,7 @@ using the in-memory cache when available.</p>
 <span class="normal"><a href="#__codelineno-0-871">871</a></span>
 <span class="normal"><a href="#__codelineno-0-872">872</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="k">def</span><span class="w"> </span><span class="nf">load_embeddings</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Load all embeddings for a model class into a numpy matrix.</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="w">    </span><span class="sd">"""Load all embeddings for a model class into a numpy matrix.</span>
 <a id="__codelineno-0-752" name="__codelineno-0-752"></a>
 <a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    Returns a pre-normalized matrix and corresponding Redis key list,</span>
 <a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">    using the in-memory cache when available.</span>
@@ -5602,7 +5630,7 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">        Tuple of (matrix, keys) where matrix is a 2D numpy array</span>
 <a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">        of shape (N, dimensions) and keys is a list of Redis key</span>
 <a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        strings. Returns (None, []) if no embeddings found.</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    """</span>
 <a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">_numpy_available</span><span class="p">:</span>
 <a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="p">[]</span>
 <a id="__codelineno-0-766" name="__codelineno-0-766"></a>
@@ -5615,15 +5643,15 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-773" name="__codelineno-0-773"></a>    <span class="c1"># Cross-process staleness backstop: in mtime mode, or in pubsub mode</span>
 <a id="__codelineno-0-774" name="__codelineno-0-774"></a>    <span class="c1"># when no live listener exists (Valkey down / ACL / pool exhaustion),</span>
 <a id="__codelineno-0-775" name="__codelineno-0-775"></a>    <span class="c1"># confirm the cached entry against the on-disk _version counter. mtime</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>    <span class="c1"># is a cheap &quot;did anything change at all&quot; pre-check; the integer</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>    <span class="c1"># is a cheap "did anything change at all" pre-check; the integer</span>
 <a id="__codelineno-0-777" name="__codelineno-0-777"></a>    <span class="c1"># _version is authoritative (granularity-proof against same-tick writes).</span>
 <a id="__codelineno-0-778" name="__codelineno-0-778"></a>    <span class="k">if</span> <span class="n">model_name</span> <span class="ow">in</span> <span class="n">_embedding_cache</span> <span class="ow">and</span> <span class="n">_should_version_check</span><span class="p">(</span><span class="n">model_name</span><span class="p">):</span>
 <a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="n">entry</span> <span class="o">=</span> <span class="n">_embedding_cache</span><span class="p">[</span><span class="n">model_name</span><span class="p">]</span>
 <a id="__codelineno-0-780" name="__codelineno-0-780"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-781" name="__codelineno-0-781"></a>            <span class="n">current_mtime</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">_index_path</span><span class="p">(</span><span class="n">model_name</span><span class="p">))</span><span class="o">.</span><span class="n">st_mtime</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="k">if</span> <span class="n">current_mtime</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index_mtime&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a>                <span class="n">disk_version</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_version&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>                <span class="k">if</span> <span class="n">disk_version</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index_version&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="k">if</span> <span class="n">current_mtime</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"index_mtime"</span><span class="p">):</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>                <span class="n">disk_version</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"_version"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>                <span class="k">if</span> <span class="n">disk_version</span> <span class="o">!=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"index_version"</span><span class="p">):</span>
 <a id="__codelineno-0-785" name="__codelineno-0-785"></a>                    <span class="n">_embedding_cache</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># force reload</span>
 <a id="__codelineno-0-786" name="__codelineno-0-786"></a>        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
 <a id="__codelineno-0-787" name="__codelineno-0-787"></a>            <span class="n">_embedding_cache</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># index gone, reload</span>
@@ -5631,7 +5659,7 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-789" name="__codelineno-0-789"></a>    <span class="c1"># Check cache first</span>
 <a id="__codelineno-0-790" name="__codelineno-0-790"></a>    <span class="k">if</span> <span class="n">model_name</span> <span class="ow">in</span> <span class="n">_embedding_cache</span><span class="p">:</span>
 <a id="__codelineno-0-791" name="__codelineno-0-791"></a>        <span class="n">cached</span> <span class="o">=</span> <span class="n">_embedding_cache</span><span class="p">[</span><span class="n">model_name</span><span class="p">]</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="k">return</span> <span class="n">cached</span><span class="p">[</span><span class="s2">&quot;matrix&quot;</span><span class="p">],</span> <span class="n">cached</span><span class="p">[</span><span class="s2">&quot;keys&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="k">return</span> <span class="n">cached</span><span class="p">[</span><span class="s2">"matrix"</span><span class="p">],</span> <span class="n">cached</span><span class="p">[</span><span class="s2">"keys"</span><span class="p">]</span>
 <a id="__codelineno-0-793" name="__codelineno-0-793"></a>
 <a id="__codelineno-0-794" name="__codelineno-0-794"></a>    <span class="c1"># Load from disk</span>
 <a id="__codelineno-0-795" name="__codelineno-0-795"></a>    <span class="n">emb_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_get_embeddings_dir</span><span class="p">(),</span> <span class="n">model_name</span><span class="p">)</span>
@@ -5646,7 +5674,7 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-804" name="__codelineno-0-804"></a>    <span class="n">index_updated</span> <span class="o">=</span> <span class="kc">False</span>
 <a id="__codelineno-0-805" name="__codelineno-0-805"></a>
 <a id="__codelineno-0-806" name="__codelineno-0-806"></a>    <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">):</span>
-<a id="__codelineno-0-807" name="__codelineno-0-807"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.npy&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">".npy"</span><span class="p">):</span>
 <a id="__codelineno-0-808" name="__codelineno-0-808"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-809" name="__codelineno-0-809"></a>        <span class="n">filepath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
 <a id="__codelineno-0-810" name="__codelineno-0-810"></a>        <span class="k">try</span><span class="p">:</span>
@@ -5659,7 +5687,7 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-817" name="__codelineno-0-817"></a>                <span class="c1"># Fallback: try legacy hex-decode for backward compatibility</span>
 <a id="__codelineno-0-818" name="__codelineno-0-818"></a>                <span class="n">hex_key</span> <span class="o">=</span> <span class="n">filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span>  <span class="c1"># strip .npy</span>
 <a id="__codelineno-0-819" name="__codelineno-0-819"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a>                    <span class="n">redis_key</span> <span class="o">=</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">fromhex</span><span class="p">(</span><span class="n">hex_key</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>                    <span class="n">redis_key</span> <span class="o">=</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">fromhex</span><span class="p">(</span><span class="n">hex_key</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-821" name="__codelineno-0-821"></a>                    <span class="c1"># Add to index for future lookups</span>
 <a id="__codelineno-0-822" name="__codelineno-0-822"></a>                    <span class="n">index</span><span class="p">[</span><span class="n">filename</span><span class="p">]</span> <span class="o">=</span> <span class="n">redis_key</span>
 <a id="__codelineno-0-823" name="__codelineno-0-823"></a>                    <span class="n">index_updated</span> <span class="o">=</span> <span class="kc">True</span>
@@ -5670,15 +5698,15 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-828" name="__codelineno-0-828"></a>                    <span class="c1"># cleanup. After reconciliation this should never fire</span>
 <a id="__codelineno-0-829" name="__codelineno-0-829"></a>                    <span class="c1"># on a clean corpus.</span>
 <a id="__codelineno-0-830" name="__codelineno-0-830"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>                        <span class="sa">f</span><span class="s2">&quot;Skipping unrecognized embedding file </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: &quot;</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>                        <span class="s2">&quot;not in index and not a valid hex-encoded key&quot;</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>                        <span class="sa">f</span><span class="s2">"Skipping unrecognized embedding file </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>                        <span class="s2">"not in index and not a valid hex-encoded key"</span>
 <a id="__codelineno-0-833" name="__codelineno-0-833"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-834" name="__codelineno-0-834"></a>                    <span class="k">continue</span>
 <a id="__codelineno-0-835" name="__codelineno-0-835"></a>
 <a id="__codelineno-0-836" name="__codelineno-0-836"></a>            <span class="n">vectors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vec</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
 <a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">redis_key</span><span class="p">)</span>
 <a id="__codelineno-0-838" name="__codelineno-0-838"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-839" name="__codelineno-0-839"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to load embedding </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to load embedding </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-840" name="__codelineno-0-840"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-841" name="__codelineno-0-841"></a>
 <a id="__codelineno-0-842" name="__codelineno-0-842"></a>    <span class="c1"># Persist any index updates from legacy fallback. This is a READ path —</span>
@@ -5688,7 +5716,7 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-846" name="__codelineno-0-846"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-847" name="__codelineno-0-847"></a>            <span class="n">_write_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">bump_version</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <a id="__codelineno-0-848" name="__codelineno-0-848"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to update index for </span><span class="si">{</span><span class="n">model_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to update index for </span><span class="si">{</span><span class="n">model_name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-850" name="__codelineno-0-850"></a>
 <a id="__codelineno-0-851" name="__codelineno-0-851"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">vectors</span><span class="p">:</span>
 <a id="__codelineno-0-852" name="__codelineno-0-852"></a>        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="p">[]</span>
@@ -5701,14 +5729,14 @@ using the in-memory cache when available.</p>
 <a id="__codelineno-0-859" name="__codelineno-0-859"></a>    <span class="n">matrix</span> <span class="o">=</span> <span class="n">matrix</span> <span class="o">/</span> <span class="n">norms</span>
 <a id="__codelineno-0-860" name="__codelineno-0-860"></a>
 <a id="__codelineno-0-861" name="__codelineno-0-861"></a>    <span class="c1"># Cache the result. Populate the staleness-check fields in all modes</span>
-<a id="__codelineno-0-862" name="__codelineno-0-862"></a>    <span class="c1"># except &quot;none&quot; so the pubsub backstop / mtime path can use them.</span>
-<a id="__codelineno-0-863" name="__codelineno-0-863"></a>    <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;matrix&quot;</span><span class="p">:</span> <span class="n">matrix</span><span class="p">,</span> <span class="s2">&quot;keys&quot;</span><span class="p">:</span> <span class="n">keys</span><span class="p">}</span>
-<a id="__codelineno-0-864" name="__codelineno-0-864"></a>    <span class="k">if</span> <span class="n">_INVALIDATION_MODE</span> <span class="o">!=</span> <span class="s2">&quot;none&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>    <span class="c1"># except "none" so the pubsub backstop / mtime path can use them.</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>    <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"matrix"</span><span class="p">:</span> <span class="n">matrix</span><span class="p">,</span> <span class="s2">"keys"</span><span class="p">:</span> <span class="n">keys</span><span class="p">}</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>    <span class="k">if</span> <span class="n">_INVALIDATION_MODE</span> <span class="o">!=</span> <span class="s2">"none"</span><span class="p">:</span>
 <a id="__codelineno-0-865" name="__codelineno-0-865"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-866" name="__codelineno-0-866"></a>            <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;index_mtime&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">_index_path</span><span class="p">(</span><span class="n">model_name</span><span class="p">))</span><span class="o">.</span><span class="n">st_mtime</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>            <span class="n">entry</span><span class="p">[</span><span class="s2">"index_mtime"</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">_index_path</span><span class="p">(</span><span class="n">model_name</span><span class="p">))</span><span class="o">.</span><span class="n">st_mtime</span>
 <a id="__codelineno-0-867" name="__codelineno-0-867"></a>        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
-<a id="__codelineno-0-868" name="__codelineno-0-868"></a>            <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;index_mtime&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-869" name="__codelineno-0-869"></a>        <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;index_version&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_version&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>            <span class="n">entry</span><span class="p">[</span><span class="s2">"index_mtime"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>        <span class="n">entry</span><span class="p">[</span><span class="s2">"index_version"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_read_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"_version"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-0-870" name="__codelineno-0-870"></a>    <span class="n">_embedding_cache</span><span class="p">[</span><span class="n">model_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry</span>
 <a id="__codelineno-0-871" name="__codelineno-0-871"></a>
 <a id="__codelineno-0-872" name="__codelineno-0-872"></a>    <span class="k">return</span> <span class="n">matrix</span><span class="p">,</span> <span class="n">keys</span>
@@ -5993,7 +6021,7 @@ pathologies.</p>
 <span class="normal"><a href="#__codelineno-0-1009">1009</a></span>
 <span class="normal"><a href="#__codelineno-0-1010">1010</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-875" name="__codelineno-0-875"></a><span class="k">def</span><span class="w"> </span><span class="nf">garbage_collect</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">min_age_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">300</span><span class="p">):</span>
-<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove orphaned .npy files not referenced by live model instances.</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="w">    </span><span class="sd">"""Remove orphaned .npy files not referenced by live model instances.</span>
 <a id="__codelineno-0-877" name="__codelineno-0-877"></a>
 <a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">    Walks the on-disk embedding directory for ``model_class``, computes</span>
 <a id="__codelineno-0-879" name="__codelineno-0-879"></a><span class="sd">    the set of expected-to-survive filenames via the shared</span>
@@ -6036,12 +6064,12 @@ pathologies.</p>
 <a id="__codelineno-0-916" name="__codelineno-0-916"></a><span class="sd">        int: Number of orphaned files removed. Returns 0 if the</span>
 <a id="__codelineno-0-917" name="__codelineno-0-917"></a><span class="sd">        opt-in marker is missing, the embedding directory does not</span>
 <a id="__codelineno-0-918" name="__codelineno-0-918"></a><span class="sd">        exist, or no orphans are found.</span>
-<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">    """</span>
 <a id="__codelineno-0-920" name="__codelineno-0-920"></a>    <span class="c1"># Opt-in marker: prevent accidental cross-model destruction</span>
-<a id="__codelineno-0-921" name="__codelineno-0-921"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;__embedding_garbage_collect__&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"__embedding_garbage_collect__"</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
 <a id="__codelineno-0-922" name="__codelineno-0-922"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-923" name="__codelineno-0-923"></a>            <span class="s2">&quot;garbage_collect called for </span><span class="si">%s</span><span class="s2">; opt-in marker &quot;</span>
-<a id="__codelineno-0-924" name="__codelineno-0-924"></a>            <span class="s2">&quot;__embedding_garbage_collect__ not set — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a>            <span class="s2">"garbage_collect called for </span><span class="si">%s</span><span class="s2">; opt-in marker "</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a>            <span class="s2">"__embedding_garbage_collect__ not set — skipping"</span><span class="p">,</span>
 <a id="__codelineno-0-925" name="__codelineno-0-925"></a>            <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
 <a id="__codelineno-0-926" name="__codelineno-0-926"></a>        <span class="p">)</span>
 <a id="__codelineno-0-927" name="__codelineno-0-927"></a>        <span class="k">return</span> <span class="mi">0</span>
@@ -6056,7 +6084,7 @@ pathologies.</p>
 <a id="__codelineno-0-936" name="__codelineno-0-936"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-937" name="__codelineno-0-937"></a>        <span class="n">disk_files</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">)</span>
 <a id="__codelineno-0-938" name="__codelineno-0-938"></a>    <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-939" name="__codelineno-0-939"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;garbage_collect: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-939" name="__codelineno-0-939"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"garbage_collect: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-940" name="__codelineno-0-940"></a>        <span class="k">return</span> <span class="mi">0</span>
 <a id="__codelineno-0-941" name="__codelineno-0-941"></a>
 <a id="__codelineno-0-942" name="__codelineno-0-942"></a>    <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
@@ -6065,7 +6093,7 @@ pathologies.</p>
 <a id="__codelineno-0-945" name="__codelineno-0-945"></a>    <span class="n">index_dirty</span> <span class="o">=</span> <span class="kc">False</span>
 <a id="__codelineno-0-946" name="__codelineno-0-946"></a>
 <a id="__codelineno-0-947" name="__codelineno-0-947"></a>    <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">disk_files</span><span class="p">:</span>
-<a id="__codelineno-0-948" name="__codelineno-0-948"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.npy&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-948" name="__codelineno-0-948"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">".npy"</span><span class="p">):</span>
 <a id="__codelineno-0-949" name="__codelineno-0-949"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-950" name="__codelineno-0-950"></a>        <span class="k">if</span> <span class="n">_TMP_NPY_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
 <a id="__codelineno-0-951" name="__codelineno-0-951"></a>            <span class="c1"># tempfiles handled separately by sweep_stale_tempfiles</span>
@@ -6092,7 +6120,7 @@ pathologies.</p>
 <a id="__codelineno-0-972" name="__codelineno-0-972"></a>            <span class="k">pass</span>
 <a id="__codelineno-0-973" name="__codelineno-0-973"></a>        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-974" name="__codelineno-0-974"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-975" name="__codelineno-0-975"></a>                <span class="s2">&quot;garbage_collect: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-975" name="__codelineno-0-975"></a>                <span class="s2">"garbage_collect: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping"</span><span class="p">,</span>
 <a id="__codelineno-0-976" name="__codelineno-0-976"></a>                <span class="n">filepath</span><span class="p">,</span>
 <a id="__codelineno-0-977" name="__codelineno-0-977"></a>                <span class="n">e</span><span class="p">,</span>
 <a id="__codelineno-0-978" name="__codelineno-0-978"></a>            <span class="p">)</span>
@@ -6106,7 +6134,7 @@ pathologies.</p>
 <a id="__codelineno-0-986" name="__codelineno-0-986"></a>    <span class="c1"># Also drop index entries whose filename is no longer on disk and</span>
 <a id="__codelineno-0-987" name="__codelineno-0-987"></a>    <span class="c1"># whose redis_key is not a live record. We do this conservatively</span>
 <a id="__codelineno-0-988" name="__codelineno-0-988"></a>    <span class="c1"># by intersecting with expected_keep — never trusting _index.json</span>
-<a id="__codelineno-0-989" name="__codelineno-0-989"></a>    <span class="c1"># as a source of truth for &quot;live&quot;.</span>
+<a id="__codelineno-0-989" name="__codelineno-0-989"></a>    <span class="c1"># as a source of truth for "live".</span>
 <a id="__codelineno-0-990" name="__codelineno-0-990"></a>    <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
 <a id="__codelineno-0-991" name="__codelineno-0-991"></a>        <span class="k">if</span> <span class="n">filename</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">expected_keep</span><span class="p">:</span>
 <a id="__codelineno-0-992" name="__codelineno-0-992"></a>            <span class="c1"># filename may already be removed above; only drop here if</span>
@@ -6119,11 +6147,11 @@ pathologies.</p>
 <a id="__codelineno-0-999" name="__codelineno-0-999"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-1000" name="__codelineno-0-1000"></a>            <span class="n">_write_index</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
 <a id="__codelineno-0-1001" name="__codelineno-0-1001"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;garbage_collect: failed to update _index.json: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"garbage_collect: failed to update _index.json: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-1003" name="__codelineno-0-1003"></a>
 <a id="__codelineno-0-1004" name="__codelineno-0-1004"></a>    <span class="k">if</span> <span class="n">removed_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-1005" name="__codelineno-0-1005"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>            <span class="s2">&quot;garbage_collect(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> orphan .npy files&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>            <span class="s2">"garbage_collect(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> orphan .npy files"</span><span class="p">,</span>
 <a id="__codelineno-0-1007" name="__codelineno-0-1007"></a>            <span class="n">model_name</span><span class="p">,</span>
 <a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>            <span class="n">removed_count</span><span class="p">,</span>
 <a id="__codelineno-0-1009" name="__codelineno-0-1009"></a>        <span class="p">)</span>
@@ -6292,7 +6320,7 @@ seconds are removed. Default 3600 (1 hour).</p>
 <span class="normal"><a href="#__codelineno-0-1072">1072</a></span>
 <span class="normal"><a href="#__codelineno-0-1073">1073</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1012" name="__codelineno-0-1012"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-1013" name="__codelineno-0-1013"></a><span class="k">def</span><span class="w"> </span><span class="nf">sweep_stale_tempfiles</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">max_age_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3600</span><span class="p">):</span>
-<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove ``tmp*.npy`` atomic-write tempfiles older than the cutoff.</span>
+<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="w">    </span><span class="sd">"""Remove ``tmp*.npy`` atomic-write tempfiles older than the cutoff.</span>
 <a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>
 <a id="__codelineno-0-1016" name="__codelineno-0-1016"></a><span class="sd">    ``EmbeddingField.on_save`` uses ``tempfile.mkstemp`` + ``os.rename``</span>
 <a id="__codelineno-0-1017" name="__codelineno-0-1017"></a><span class="sd">    for atomic writes. If a process crashes between ``mkstemp`` and</span>
@@ -6308,7 +6336,7 @@ seconds are removed. Default 3600 (1 hour).</p>
 <a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>
 <a id="__codelineno-0-1028" name="__codelineno-0-1028"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-1029" name="__codelineno-0-1029"></a><span class="sd">        int: Number of tempfiles removed.</span>
-<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a><span class="sd">    """</span>
 <a id="__codelineno-0-1031" name="__codelineno-0-1031"></a>    <span class="n">model_name</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
 <a id="__codelineno-0-1032" name="__codelineno-0-1032"></a>    <span class="n">emb_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_get_embeddings_dir</span><span class="p">(),</span> <span class="n">model_name</span><span class="p">)</span>
 <a id="__codelineno-0-1033" name="__codelineno-0-1033"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">):</span>
@@ -6317,7 +6345,7 @@ seconds are removed. Default 3600 (1 hour).</p>
 <a id="__codelineno-0-1036" name="__codelineno-0-1036"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-1037" name="__codelineno-0-1037"></a>        <span class="n">disk_files</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">emb_dir</span><span class="p">)</span>
 <a id="__codelineno-0-1038" name="__codelineno-0-1038"></a>    <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;sweep_stale_tempfiles: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"sweep_stale_tempfiles: listdir(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">emb_dir</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-1040" name="__codelineno-0-1040"></a>        <span class="k">return</span> <span class="mi">0</span>
 <a id="__codelineno-0-1041" name="__codelineno-0-1041"></a>
 <a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>    <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
@@ -6340,14 +6368,14 @@ seconds are removed. Default 3600 (1 hour).</p>
 <a id="__codelineno-0-1059" name="__codelineno-0-1059"></a>            <span class="k">pass</span>
 <a id="__codelineno-0-1060" name="__codelineno-0-1060"></a>        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-0-1061" name="__codelineno-0-1061"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>                <span class="s2">&quot;sweep_stale_tempfiles: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>                <span class="s2">"sweep_stale_tempfiles: unlink(</span><span class="si">%s</span><span class="s2">) failed: </span><span class="si">%s</span><span class="s2"> — skipping"</span><span class="p">,</span>
 <a id="__codelineno-0-1063" name="__codelineno-0-1063"></a>                <span class="n">filepath</span><span class="p">,</span>
 <a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>                <span class="n">e</span><span class="p">,</span>
 <a id="__codelineno-0-1065" name="__codelineno-0-1065"></a>            <span class="p">)</span>
 <a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>
 <a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>    <span class="k">if</span> <span class="n">removed_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>            <span class="s2">&quot;sweep_stale_tempfiles(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> stale tempfiles&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>            <span class="s2">"sweep_stale_tempfiles(</span><span class="si">%s</span><span class="s2">): removed </span><span class="si">%d</span><span class="s2"> stale tempfiles"</span><span class="p">,</span>
 <a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>            <span class="n">model_name</span><span class="p">,</span>
 <a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>            <span class="n">removed_count</span><span class="p">,</span>
 <a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>        <span class="p">)</span>
@@ -6396,12 +6424,12 @@ returned to the connection pool rather than leaked.</p>
 <span class="normal"><a href="#__codelineno-0-193">193</a></span>
 <span class="normal"><a href="#__codelineno-0-194">194</a></span>
 <span class="normal"><a href="#__codelineno-0-195">195</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="k">def</span><span class="w"> </span><span class="nf">stop_invalidation_listeners</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Stop every registered PubSubWorkerThread and clear the registry.</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="w">    </span><span class="sd">"""Stop every registered PubSubWorkerThread and clear the registry.</span>
 <a id="__codelineno-0-188" name="__codelineno-0-188"></a>
 <a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">    Used for test teardown and graceful shutdown. Safe to call when no</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">    listeners are running. Each thread&#39;s pubsub connection is closed so it is</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">    listeners are running. Each thread's pubsub connection is closed so it is</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    returned to the connection pool rather than leaked.</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    """</span>
 <a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="k">for</span> <span class="n">thread</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">_listener_threads</span><span class="o">.</span><span class="n">values</span><span class="p">()):</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>        <span class="n">_stop_listener_thread</span><span class="p">(</span><span class="n">thread</span><span class="p">)</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="n">_listener_threads</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
@@ -6430,7 +6458,7 @@ returned to the connection pool rather than leaked.</p>
               <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-213">213</a></span>
 <span class="normal"><a href="#__codelineno-0-214">214</a></span>
 <span class="normal"><a href="#__codelineno-0-215">215</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_default_provider</span><span class="p">():</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the configured default embedding provider.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="w">    </span><span class="sd">"""Get the configured default embedding provider."""</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="k">return</span> <span class="n">_default_embedding_provider</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -6458,7 +6486,7 @@ returned to the connection pool rather than leaked.</p>
 <span class="normal"><a href="#__codelineno-0-219">219</a></span>
 <span class="normal"><a href="#__codelineno-0-220">220</a></span>
 <span class="normal"><a href="#__codelineno-0-221">221</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_default_provider</span><span class="p">(</span><span class="n">provider</span><span class="p">):</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the default embedding provider. Called by popoto.configure().&quot;&quot;&quot;</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="w">    </span><span class="sd">"""Set the default embedding provider. Called by popoto.configure()."""</span>
 <a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="k">global</span> <span class="n">_default_embedding_provider</span>
 <a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="n">_default_embedding_provider</span> <span class="o">=</span> <span class="n">provider</span>
 </code></pre></div></td></tr></table></div>
@@ -6489,7 +6517,7 @@ returned to the connection pool rather than leaked.</p>
 <span class="normal"><a href="#__codelineno-0-290">290</a></span>
 <span class="normal"><a href="#__codelineno-0-291">291</a></span>
 <span class="normal"><a href="#__codelineno-0-292">292</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="k">def</span><span class="w"> </span><span class="nf">invalidate_cache</span><span class="p">(</span><span class="n">model_class_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Invalidate the embedding cache for a model class (or all).&quot;&quot;&quot;</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="w">    </span><span class="sd">"""Invalidate the embedding cache for a model class (or all)."""</span>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="k">if</span> <span class="n">model_class_name</span><span class="p">:</span>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="n">_embedding_cache</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">model_class_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="k">else</span><span class="p">:</span>

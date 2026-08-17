@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2770,8 +2798,8 @@
 ("Record the Verdict") says that with no substrate declared, the posted GitHub
 review IS the verdict and the step is skipped. That is <strong>not</strong> the case here.
 Skipping <code>finalize</code> in this repo halts <code>/do-sdlc</code> at its step 3d.4 gate with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;verdict_present&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;trailer_matches_head&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w"> </span><span class="nt">&quot;marker_completed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;REVIEW_VERDICT_MISSING&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">"ok"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"verdict_present"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"trailer_matches_head"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w"> </span><span class="nt">"marker_completed"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"REVIEW_VERDICT_MISSING"</span><span class="p">}</span>
 </code></pre></div>
 <p>which then needs a human to hand-run <code>finalize</code>. That happened to five
 concurrent popoto pipelines (#554, #530, #540, #515, #559) in one morning
@@ -2779,18 +2807,18 @@ before this file existed — the review was posted correctly every time; only
 the recording was missing.</p>
 <p>Run the finalize call <strong>before</strong> emitting the OUTCOME block, on <strong>every</strong> exit
 path (APPROVED, CHANGES REQUESTED, <code>BLOCKED_ON_CONFLICT</code>, <code>PR_CLOSED</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sdlc-tool<span class="w"> </span>verdict<span class="w"> </span>finalize<span class="w"> </span>--pr<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PR_NUMBER</span><span class="s2">&quot;</span><span class="w"> </span>--issue-number<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ISSUE_NUMBER</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--run-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RUN_ID</span><span class="s2">&quot;</span><span class="w"> </span>--verdict<span class="w"> </span><span class="s2">&quot;APPROVED&quot;</span><span class="w"> </span>--blockers<span class="w"> </span><span class="m">0</span><span class="w"> </span>--tech-debt<span class="w"> </span><span class="m">0</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sdlc-tool<span class="w"> </span>verdict<span class="w"> </span>finalize<span class="w"> </span>--pr<span class="w"> </span><span class="s2">"</span><span class="nv">$PR_NUMBER</span><span class="s2">"</span><span class="w"> </span>--issue-number<span class="w"> </span><span class="s2">"</span><span class="nv">$ISSUE_NUMBER</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--run-id<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ID</span><span class="s2">"</span><span class="w"> </span>--verdict<span class="w"> </span><span class="s2">"APPROVED"</span><span class="w"> </span>--blockers<span class="w"> </span><span class="m">0</span><span class="w"> </span>--tech-debt<span class="w"> </span><span class="m">0</span>
 </code></pre></div>
 <h3 id="-blockers-tech-debt-take-integer-counts-not-prose"><code>--blockers</code> / <code>--tech-debt</code> take INTEGER COUNTS, not prose<a class="headerlink" href="#-blockers-tech-debt-take-integer-counts-not-prose" title="Permanent link">&para;</a></h3>
 <p>This is the mistake that costs a retry (filed upstream as
 <code>tomcounsell/ai#2767</code>). The flags are <code>int</code>-typed; passing a description fails
 immediately:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>argument --blockers: invalid int value: &quot;unverified benchmark claim, ...&quot;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>argument --blockers: invalid int value: "unverified benchmark claim, ..."
 </code></pre></div>
 <p>A real, successful invocation from this repo:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sdlc-tool<span class="w"> </span>verdict<span class="w"> </span>finalize<span class="w"> </span>--pr<span class="w"> </span><span class="m">558</span><span class="w"> </span>--issue-number<span class="w"> </span><span class="m">554</span><span class="w"> </span>--run-id<span class="w"> </span>&lt;hex&gt;<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--verdict<span class="w"> </span><span class="s2">&quot;CHANGES REQUESTED&quot;</span><span class="w"> </span>--blockers<span class="w"> </span><span class="m">3</span><span class="w"> </span>--tech-debt<span class="w"> </span><span class="m">5</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--verdict<span class="w"> </span><span class="s2">"CHANGES REQUESTED"</span><span class="w"> </span>--blockers<span class="w"> </span><span class="m">3</span><span class="w"> </span>--tech-debt<span class="w"> </span><span class="m">5</span>
 </code></pre></div>
 <p>The finding <em>text</em> lives in the posted GitHub review body. <code>finalize</code> records
 only counts. <code>--run-id</code> is required for this state-mutating subcommand
@@ -2805,7 +2833,7 @@ separate <code>verdict get</code> readback is needed. On non-APPROVED verdicts t
 stays <code>in_progress</code> so the router re-runs review after <code>/do-patch</code>.</p>
 <p>Stage marker at the start of the review, after § 1 resolves the issue number:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>sdlc-tool<span class="w"> </span>stage-marker<span class="w"> </span>--stage<span class="w"> </span>REVIEW<span class="w"> </span>--status<span class="w"> </span>in_progress<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--issue-number<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ISSUE_NUMBER</span><span class="s2">&quot;</span><span class="w"> </span>--run-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RUN_ID</span><span class="s2">&quot;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--issue-number<span class="w"> </span><span class="s2">"</span><span class="nv">$ISSUE_NUMBER</span><span class="s2">"</span><span class="w"> </span>--run-id<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ID</span><span class="s2">"</span>
 </code></pre></div>
 <p>Not declared here (use the generic defaults): bot review identity, multi-judge
 consensus, cross-vendor judge, verification-table runner, plan-checkbox
@@ -2813,7 +2841,7 @@ updater, cross-repo <code>gh</code> targeting. Post under the operator's <code>g
 one reviewer, one verdict.</p>
 <h2 id="verification-commands-that-exist-in-this-repo">Verification commands that exist in this repo<a class="headerlink" href="#verification-commands-that-exist-in-this-repo" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; needs Redis/Valkey on localhost:6379</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;test_name&quot;</span><span class="w">     </span><span class="c1"># single test</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>mypy<span class="w"> </span>src/<span class="w">                 </span><span class="c1"># type check</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate (mirrors deploy-docs.yml)</span>

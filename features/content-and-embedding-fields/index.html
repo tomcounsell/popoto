@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3326,9 +3354,9 @@ and the storage indirection happens automatically on save/load.</p>
 <a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="o">...</span>
 </code></pre></div>
 <p>Register it globally or per-field:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">&quot;my-bucket&quot;</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">"my-bucket"</span><span class="p">))</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># or</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">body</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">&quot;my-bucket&quot;</span><span class="p">))</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">body</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">"my-bucket"</span><span class="p">))</span>
 </code></pre></div>
 <h2 id="embeddingfield">EmbeddingField<a class="headerlink" href="#embeddingfield" title="Permanent link">&para;</a></h2>
 <h3 id="how-it-works_1">How It Works<a class="headerlink" href="#how-it-works_1" title="Permanent link">&para;</a></h3>
@@ -3353,8 +3381,8 @@ embedding.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">VoyageProvider</span><span class="p">(</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-key&quot;</span><span class="p">,</span>           <span class="c1"># or VOYAGE_API_KEY env var</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;voyage-3-lite&quot;</span><span class="p">,</span>        <span class="c1"># default</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">,</span>           <span class="c1"># or VOYAGE_API_KEY env var</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"voyage-3-lite"</span><span class="p">,</span>        <span class="c1"># default</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span>               <span class="c1"># default</span>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">max_batch_size</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>           <span class="c1"># default</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">)</span>
@@ -3365,8 +3393,8 @@ embedding.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OpenAIProvider</span><span class="p">(</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-key&quot;</span><span class="p">,</span>                  <span class="c1"># or OPENAI_API_KEY env var</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;text-embedding-3-small&quot;</span><span class="p">,</span>      <span class="c1"># default</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">,</span>                  <span class="c1"># or OPENAI_API_KEY env var</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"text-embedding-3-small"</span><span class="p">,</span>      <span class="c1"># default</span>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="mi">1536</span><span class="p">,</span>                      <span class="c1"># default</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">max_batch_size</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>                  <span class="c1"># default</span>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
@@ -3378,8 +3406,8 @@ key, no per-token cost, no network dependency on a paid provider.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaProvider</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OllamaProvider</span><span class="p">(</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;http://localhost:11434&quot;</span><span class="p">,</span>   <span class="c1"># default</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;nomic-embed-text&quot;</span><span class="p">,</span>            <span class="c1"># default (768-dim)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>   <span class="c1"># default</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">,</span>            <span class="c1"># default (768-dim)</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                            <span class="c1"># auto-detect from first response</span>
 <a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">)</span>
 </code></pre></div>
@@ -3421,7 +3449,7 @@ key, no per-token cost, no network dependency on a paid provider.</p>
 <p>The query method <code>semantic_search()</code> ties ContentField and EmbeddingField together
 into a retrieval pipeline.</p>
 <h3 id="similarity-only-search">Similarity-Only Search<a class="headerlink" href="#similarity-only-search" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">"revenue trends"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
 </code></pre></div>
 <p>Under the hood:
 1. Query text is embedded via the provider (with <code>input_type="query"</code>)
@@ -3431,8 +3459,8 @@ into a retrieval pipeline.</p>
 <p>When <code>indexes</code> is provided, similarity scores are injected into <code>composite_score()</code>
 as an additional weighted signal:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="s2">"revenue trends"</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">)</span>
 </code></pre></div>
@@ -3448,8 +3476,8 @@ confidence, and other sorted field signals.</p>
 <a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
 <a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="c1"># Configure once at startup</span>
 <a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-key&quot;</span><span class="p">),</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">&quot;/data/agent-memory&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/agent-memory"</span><span class="p">,</span>
 <a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="p">)</span>
 <a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
 <a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
@@ -3457,22 +3485,22 @@ confidence, and other sorted field signals.</p>
 <a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
 <a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
 <a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>
-<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
 <a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>
 <a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="c1"># Create memories</span>
-<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">&quot;q4-revenue&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Q4 revenue exceeded projections by 12%...&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">&quot;q3-revenue&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Q3 revenue was flat compared to Q2...&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">&quot;hiring-plan&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Engineering headcount target is 50 by EOY...&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"q4-revenue"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Q4 revenue exceeded projections by 12%..."</span><span class="p">)</span>
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"q3-revenue"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Q3 revenue was flat compared to Q2..."</span><span class="p">)</span>
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"hiring-plan"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Engineering headcount target is 50 by EOY..."</span><span class="p">)</span>
 <a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
 <a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="c1"># Semantic search with memory signals</span>
 <a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>    <span class="s2">&quot;revenue performance&quot;</span><span class="p">,</span>
-<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>    <span class="s2">"revenue performance"</span><span class="p">,</span>
+<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
 <a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a><span class="p">)</span>
 <a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a>
 <a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">topic</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">80</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">topic</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">80</span><span class="p">]</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="cache-management">Cache Management<a class="headerlink" href="#cache-management" title="Permanent link">&para;</a></h2>
 <p>EmbeddingField maintains a process-level cache of pre-normalized numpy matrices.
@@ -3482,7 +3510,7 @@ the same process.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">invalidate_cache</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Invalidate cache for a specific model</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">invalidate_cache</span><span class="p">(</span><span class="s2">&quot;Memory&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">invalidate_cache</span><span class="p">(</span><span class="s2">"Memory"</span><span class="p">)</span>
 <a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
 <a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># Invalidate all cached embeddings</span>
 <a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">invalidate_cache</span><span class="p">()</span>

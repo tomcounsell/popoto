@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2737,6 +2765,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#popoto.exceptions.NeverRecordException" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NeverRecordException
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2830,7 +2869,7 @@
 <span class="normal"><a href="#__codelineno-0-7">7</a></span>
 <span class="normal"><a href="#__codelineno-0-8">8</a></span>
 <span class="normal"><a href="#__codelineno-0-9">9</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-6" name="__codelineno-0-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">ModelException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Base exception for all Popoto ORM model-related errors.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="w">    </span><span class="sd">"""Base exception for all Popoto ORM model-related errors."""</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8"></a>
 <a id="__codelineno-0-9" name="__codelineno-0-9"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
@@ -2872,7 +2911,7 @@
 <span class="normal"><a href="#__codelineno-0-13">13</a></span>
 <span class="normal"><a href="#__codelineno-0-14">14</a></span>
 <span class="normal"><a href="#__codelineno-0-15">15</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-12" name="__codelineno-0-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">QueryException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a query is malformed or produces an unexpected result.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="w">    </span><span class="sd">"""Raised when a query is malformed or produces an unexpected result."""</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14"></a>
 <a id="__codelineno-0-15" name="__codelineno-0-15"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
@@ -2914,7 +2953,7 @@
 <span class="normal"><a href="#__codelineno-0-19">19</a></span>
 <span class="normal"><a href="#__codelineno-0-20">20</a></span>
 <span class="normal"><a href="#__codelineno-0-21">21</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-18" name="__codelineno-0-18"></a><span class="k">class</span><span class="w"> </span><span class="nc">PublisherException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a publish operation fails.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19"></a><span class="w">    </span><span class="sd">"""Raised when a publish operation fails."""</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20"></a>
 <a id="__codelineno-0-21" name="__codelineno-0-21"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
@@ -2956,7 +2995,7 @@
 <span class="normal"><a href="#__codelineno-0-25">25</a></span>
 <span class="normal"><a href="#__codelineno-0-26">26</a></span>
 <span class="normal"><a href="#__codelineno-0-27">27</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-24" name="__codelineno-0-24"></a><span class="k">class</span><span class="w"> </span><span class="nc">SubscriberException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a subscriber&#39;s message handler fails.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="w">    </span><span class="sd">"""Raised when a subscriber's message handler fails."""</span>
 <a id="__codelineno-0-26" name="__codelineno-0-26"></a>
 <a id="__codelineno-0-27" name="__codelineno-0-27"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
@@ -2990,8 +3029,8 @@ potentially orphaning references. This exception prevents accidental
 identity changes.</p>
 <p>To intentionally migrate a key, use <code>save(migrate_key=True)</code>.</p>
 <p>Example::</p>
-<div class="highlight"><pre><span></span><code>instance = MyModel.query.get(name=&quot;old_name&quot;)
-instance.name = &quot;new_name&quot;
+<div class="highlight"><pre><span></span><code>instance = MyModel.query.get(name="old_name")
+instance.name = "new_name"
 instance.save()  # Raises KeyMutationError
 
 # Intentional migration:
@@ -3028,7 +3067,7 @@ instance.save(migrate_key=True)  # Succeeds
 <span class="normal"><a href="#__codelineno-0-48">48</a></span>
 <span class="normal"><a href="#__codelineno-0-49">49</a></span>
 <span class="normal"><a href="#__codelineno-0-50">50</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-30" name="__codelineno-0-30"></a><span class="k">class</span><span class="w"> </span><span class="nc">KeyMutationError</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a KeyField value is changed after initial save.</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31"></a><span class="w">    </span><span class="sd">"""Raised when a KeyField value is changed after initial save.</span>
 <a id="__codelineno-0-32" name="__codelineno-0-32"></a>
 <a id="__codelineno-0-33" name="__codelineno-0-33"></a><span class="sd">    KeyField values form the Redis storage key (identity) of a model instance.</span>
 <a id="__codelineno-0-34" name="__codelineno-0-34"></a><span class="sd">    Changing them silently would delete the old key and create a new one,</span>
@@ -3039,13 +3078,13 @@ instance.save(migrate_key=True)  # Succeeds
 <a id="__codelineno-0-39" name="__codelineno-0-39"></a>
 <a id="__codelineno-0-40" name="__codelineno-0-40"></a><span class="sd">    Example::</span>
 <a id="__codelineno-0-41" name="__codelineno-0-41"></a>
-<a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="sd">        instance = MyModel.query.get(name=&quot;old_name&quot;)</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="sd">        instance.name = &quot;new_name&quot;</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="sd">        instance = MyModel.query.get(name="old_name")</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="sd">        instance.name = "new_name"</span>
 <a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">        instance.save()  # Raises KeyMutationError</span>
 <a id="__codelineno-0-45" name="__codelineno-0-45"></a>
 <a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="sd">        # Intentional migration:</span>
 <a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">        instance.save(migrate_key=True)  # Succeeds</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    """</span>
 <a id="__codelineno-0-49" name="__codelineno-0-49"></a>
 <a id="__codelineno-0-50" name="__codelineno-0-50"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
@@ -3097,15 +3136,93 @@ without error.</p>
 <span class="normal"><a href="#__codelineno-0-60">60</a></span>
 <span class="normal"><a href="#__codelineno-0-61">61</a></span>
 <span class="normal"><a href="#__codelineno-0-62">62</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="k">class</span><span class="w"> </span><span class="nc">SkipSaveException</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised by WriteFilterMixin to silently abort a save operation.</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">"""Raised by WriteFilterMixin to silently abort a save operation.</span>
 <a id="__codelineno-0-55" name="__codelineno-0-55"></a>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    When a model&#39;s compute_filter_score() returns a score below the</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    When a model's compute_filter_score() returns a score below the</span>
 <a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">    minimum threshold, this exception is raised during pre_save to</span>
 <a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    short-circuit persistence. The save() method catches it and returns</span>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">    without error.</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    """</span>
 <a id="__codelineno-0-61" name="__codelineno-0-61"></a>
 <a id="__codelineno-0-62" name="__codelineno-0-62"></a>    <span class="k">pass</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.exceptions.NeverRecordException" class="doc doc-heading">
+            <code>NeverRecordException</code>
+
+
+<a href="#popoto.exceptions.NeverRecordException" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="SkipSaveException (popoto.exceptions.SkipSaveException)" href="#popoto.exceptions.SkipSaveException">SkipSaveException</a></code></p>
+
+
+
+        <p>Raised by NeverRecordMixin when content must never be stored (#561).</p>
+<p>Subclasses SkipSaveException on purpose: every existing handler that
+already swallows a filtered save keeps working unchanged -- including
+<code>Model.save()</code>'s own catch and the broad <code>except Exception</code> in
+<code>SubconsciousMemory.extract_memories()</code> -- while callers that need to
+tell a privacy drop apart from a salience skip can catch this subclass.</p>
+<p>The message carries only a reason code and detector name. It must never
+quote the matched text, an offset, or a length: exception messages reach
+plaintext log files (<code>MemoryService._record_failure</code> writes
+<code>f"{type(exc).__name__}: {exc}"</code> to disk), so a quoted match would
+leak through a side channel the tombstone design closed.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#__codelineno-0-67">67</a></span>
+<span class="normal"><a href="#__codelineno-0-68">68</a></span>
+<span class="normal"><a href="#__codelineno-0-69">69</a></span>
+<span class="normal"><a href="#__codelineno-0-70">70</a></span>
+<span class="normal"><a href="#__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#__codelineno-0-73">73</a></span>
+<span class="normal"><a href="#__codelineno-0-74">74</a></span>
+<span class="normal"><a href="#__codelineno-0-75">75</a></span>
+<span class="normal"><a href="#__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#__codelineno-0-77">77</a></span>
+<span class="normal"><a href="#__codelineno-0-78">78</a></span>
+<span class="normal"><a href="#__codelineno-0-79">79</a></span>
+<span class="normal"><a href="#__codelineno-0-80">80</a></span>
+<span class="normal"><a href="#__codelineno-0-81">81</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordException</span><span class="p">(</span><span class="n">SkipSaveException</span><span class="p">):</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="w">    </span><span class="sd">"""Raised by NeverRecordMixin when content must never be stored (#561).</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    Subclasses SkipSaveException on purpose: every existing handler that</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    already swallows a filtered save keeps working unchanged -- including</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    ``Model.save()``'s own catch and the broad ``except Exception`` in</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    ``SubconsciousMemory.extract_memories()`` -- while callers that need to</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    tell a privacy drop apart from a salience skip can catch this subclass.</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    The message carries only a reason code and detector name. It must never</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">    quote the matched text, an offset, or a length: exception messages reach</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    plaintext log files (``MemoryService._record_failure`` writes</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">    ``f"{type(exc).__name__}: {exc}"`` to disk), so a quoted match would</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    leak through a side channel the tombstone design closed.</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    """</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 

@@ -1618,6 +1618,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3245,7 +3273,7 @@
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
 </code></pre></div>
 <p>The <code>relevance</code> field automatically timestamps records on save. Query for the most relevant recent records:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">memories</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">memories</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="base-score-weighting">Base Score Weighting<a class="headerlink" href="#base-score-weighting" title="Permanent link">&para;</a></h3>
 <p>Point <code>base_score_field</code> at another field to weight records differently:</p>
@@ -3253,7 +3281,7 @@
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">base_score_field</span><span class="o">=</span><span class="s2">"importance"</span><span class="p">)</span>
 </code></pre></div>
 <p>A record with <code>importance=5.0</code> stays relevant longer than one with <code>importance=1.0</code> — at a given threshold, lifetime scales as <code>score^(1/decay_rate)</code>. With the default <code>decay_rate=0.1</code> this ratio is very large (importance strongly dominates recency); with the prior <code>decay_rate=0.5</code> the ratio was <code>score²</code> (a more modest 25× for 5× importance). If you need faster forgetting, pass <code>decay_rate=0.5</code> or higher on the field constructor.</p>
 <h3 id="source-weighting-with-interactionweight">Source Weighting with InteractionWeight<a class="headerlink" href="#source-weighting-with-interactionweight" title="Permanent link">&para;</a></h3>
@@ -3264,13 +3292,13 @@
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">InteractionWeight</span><span class="o">.</span><span class="n">AGENT</span><span class="p">)</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">base_score_field</span><span class="o">=</span><span class="s2">"importance"</span><span class="p">)</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="c1"># CEO directive — stays relevant for years</span>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">TeamMemory</span><span class="p">(</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;pm-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"pm-1"</span><span class="p">,</span>
 <a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">importance</span><span class="o">=</span><span class="n">InteractionWeight</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">InteractionWeight</span><span class="o">.</span><span class="n">HUMAN</span><span class="p">,</span> <span class="n">InteractionWeight</span><span class="o">.</span><span class="n">EXECUTIVE</span><span class="p">),</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="n">content</span><span class="o">=</span><span class="s2">&quot;We&#39;re pivoting to enterprise&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="n">content</span><span class="o">=</span><span class="s2">"We're pivoting to enterprise"</span><span class="p">,</span>
 <a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <p>Human interactions are rare but high-signal; agent-to-agent interactions are
@@ -3351,16 +3379,16 @@ encode two principles: human interactions are stickier than agent
 interactions, and authority level determines how long directives persist.</p>
 <h3 id="refreshing-timestamps">Refreshing Timestamps<a class="headerlink" href="#refreshing-timestamps" title="Permanent link">&para;</a></h3>
 <p>Call <code>touch()</code> to reset the decay clock without a full save:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">memory</span><span class="o">.</span><span class="n">touch</span><span class="p">(</span><span class="s2">&quot;relevance&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">memory</span><span class="o">.</span><span class="n">touch</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="query-time-overrides">Query-Time Overrides<a class="headerlink" href="#query-time-overrides" title="Permanent link">&para;</a></h3>
 <p>Override <code>decay_rate</code> per query for different retrieval contexts:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Aggressive decay — only very recent records</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">hot</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">decay_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">hot</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">decay_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 </code></pre></div>
 <p>On a model that also declares a <a href="../validity-and-supersession/"><code>ValidityField</code></a>, a
 keyword-only <code>as_of</code> reconstructs ranking at a past moment instead of now:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">past</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">past</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
 </code></pre></div>
 <p><code>as_of</code> is ignored on models without a <code>ValidityField</code>. See
 <a href="../validity-and-supersession/#point-in-time-reconstruction">ValidityField and SupersessionProtocol</a>
@@ -3429,7 +3457,7 @@ stability matters to your application.</p>
 <a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
 </code></pre></div>
 <p>Name the field explicitly when a model carries more than one <code>ConfidenceField</code>, or opt out:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="s2">"certainty"</span><span class="p">)</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>   <span class="c1"># opt out</span>
 </code></pre></div>
 <p>Resolution order:</p>
@@ -3482,8 +3510,8 @@ takes effect immediately.</p>
 When that field declares <code>partition_by</code>, one decay index can span several <code>:data</code> hashes and no
 single hash covers the result set. Rather than silently modulating some members and not others, the
 query raises <code>QueryException</code> naming the filters it needs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># QueryException: ... ConfidenceField &#39;certainty&#39; ... is partitioned by project.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># QueryException: ... ConfidenceField 'certainty' ... is partitioned by project.</span>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="c1"># Query must include filter(s) for: project.</span>
 </code></pre></div>
 <p>Add the missing filter, or set <code>confidence_modulation_field=False</code> on the decay field.</p>

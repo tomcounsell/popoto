@@ -1674,6 +1674,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3347,12 +3375,12 @@
 <p><strong>Emergent mode under <code>"auto"</code>:</strong> the effective retrieval mode is determined by which fields are declared on the model at init time. Declaring or removing <code>BM25Field</code>/<code>EmbeddingField</code> changes the effective mode without any change at the <code>ContextAssembler</code> call site. For example: adding <code>EmbeddingField</code> to a BM25-only model silently flips <code>lexical → hybrid</code>.</p>
 <p><strong><code>EmbeddingField</code> alone does not enable query-sensitive retrieval.</strong> A model with <code>EmbeddingField</code> but no <code>BM25Field</code> resolves to <code>"composite"</code> under <code>"auto"</code> — query-blind, ranked by score indexes. Query-sensitive retrieval (lexical or hybrid) requires a <code>BM25Field</code>.</p>
 <p><strong><code>"auto"</code> warns when it lands on <code>"composite"</code>.</strong> That resolution is the one case where the emergent-mode convenience can quietly cost you correctness: query cues are accepted and then ignored, so the right memory can rank below unrelated ones with the call site looking healthy. The fall-through logs a <code>WARNING</code> on the <code>POPOTO.ContextAssembler</code> logger naming the model and the missing <code>BM25Field</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>WARNING POPOTO.ContextAssembler: ContextAssembler: retrieval_mode=&#39;auto&#39; resolved
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>to &#39;composite&#39; (QUERY-BLIND) because Memory declares no BM25Field. Query cues
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>WARNING POPOTO.ContextAssembler: ContextAssembler: retrieval_mode='auto' resolved
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>to 'composite' (QUERY-BLIND) because Memory declares no BM25Field. Query cues
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>passed to assemble() are IGNORED; records are ranked by score_weights alone.
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>Add a BM25Field to Memory for query-sensitive retrieval, e.g.
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>content_bm25 = BM25Field(source=&quot;content&quot;), or import the batteries-included
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>model: from popoto.recipes import DefaultMemory. Pass retrieval_mode=&#39;composite&#39;
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>content_bm25 = BM25Field(source="content"), or import the batteries-included
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>model: from popoto.recipes import DefaultMemory. Pass retrieval_mode='composite'
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>to silence this warning if query-blind ranking is intended.
 </code></pre></div>
 <p>Three ways to resolve it: declare a <code>BM25Field</code>, import <a href="../../guides/subconscious-memory-recipe/#quick-start"><code>DefaultMemory</code></a> which declares one, or pass <code>retrieval_mode="composite"</code> explicitly to affirm that query-blind ranking is what you want. The explicit mode never warns.</p>
@@ -3366,38 +3394,38 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Lexical mode — auto-detected when only BM25Field is on the model (no EmbeddingField)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>  <span class="c1"># has BM25Field, no EmbeddingField</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">},</span>  <span class="c1"># ignored in lexical pull path</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">},</span>  <span class="c1"># ignored in lexical pull path</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># retrieval_mode defaults to &quot;auto&quot;; resolves to &quot;lexical&quot; (BM25 + graph, no embeddings)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># retrieval_mode defaults to "auto"; resolves to "lexical" (BM25 + graph, no embeddings)</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># Hybrid mode — auto-detected when BM25Field + EmbeddingField are on the model</span>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>  <span class="c1"># has BM25Field AND EmbeddingField</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">},</span>  <span class="c1"># ignored in hybrid pull path</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">},</span>  <span class="c1"># ignored in hybrid pull path</span>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">)</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="c1"># retrieval_mode defaults to &quot;auto&quot;; resolves to &quot;hybrid&quot;</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="c1"># retrieval_mode defaults to "auto"; resolves to "hybrid"</span>
 <a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
 <a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="c1"># Force composite path (query-blind — ranks by score indexes only)</span>
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">&quot;composite&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">"composite"</span><span class="p">,</span>
 <a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="p">)</span>
 <a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>
 <a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="c1"># Force lexical explicitly (raises QueryException if BM25Field absent)</span>
 <a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
 <a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">&quot;lexical&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">"lexical"</span><span class="p">,</span>
 <a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="p">)</span>
 <a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>
 <a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="c1"># Force hybrid explicitly (raises QueryException if either field absent)</span>
 <a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
 <a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{},</span>
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">&quot;hybrid&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">"hybrid"</span><span class="p">,</span>
 <a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="p">)</span>
 </code></pre></div>
 <h2 id="primitive-synergy">Primitive Synergy<a class="headerlink" href="#primitive-synergy" title="Permanent link">&para;</a></h2>
@@ -3472,14 +3500,14 @@
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">)</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">},</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
 <a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="p">)</span>
 <a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>
 <a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="c1"># result.records — selected instances</span>
@@ -3556,9 +3584,9 @@
 <p>Pick the format for the job: <code>"content"</code> when you are injecting memories as prose context for the model to read, <code>"structured"</code> when downstream code parses the payload or the model needs to cite record IDs.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">content_field</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">,</span>  <span class="c1"># optional; auto-detected from the BM25Field source</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">"content"</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">content_field</span><span class="o">=</span><span class="s2">"content"</span><span class="p">,</span>  <span class="c1"># optional; auto-detected from the BM25Field source</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
 </code></pre></div>
 <p><code>content_field</code> names the text field <code>"content"</code> reads. Left at <code>None</code> it resolves from the model's <code>BM25Field</code> source, then a field literally named <code>content</code>, then (per record) the longest string value. A model with no string field at all yields an empty context block rather than an error.</p>
@@ -3733,44 +3761,44 @@ a ranking nudge, set <code>confidence_modulation_field=False</code> on the decay
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
 <a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="p">)</span>
 <a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
 <a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span>
-<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">},</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
 <a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="p">)</span>
 <a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>
 <a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="c1"># Build messages with injected memory context</span>
 <a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="n">messages</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;You are a helpful assistant.</span><span class="se">\n\n</span><span class="s2">Relevant context:</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">formatted</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">},</span>
-<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;What&#39;s our deployment strategy?&quot;</span><span class="p">},</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"system"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"You are a helpful assistant.</span><span class="se">\n\n</span><span class="s2">Relevant context:</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">formatted</span><span class="si">}</span><span class="s2">"</span><span class="p">},</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">"What's our deployment strategy?"</span><span class="p">},</span>
 <a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="p">]</span>
 <a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>
 <a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="c1"># Call the LLM</span>
 <a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4.1-nano&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"gpt-4.1-nano"</span><span class="p">,</span>
 <a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>    <span class="n">messages</span><span class="o">=</span><span class="n">messages</span><span class="p">,</span>
 <a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="p">)</span>
 <a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>
 <a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="n">answer</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span>
 <a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>
 <a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a><span class="c1"># Report outcomes — which memories did the agent actually use?</span>
-<a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a><span class="n">outcome_map</span> <span class="o">=</span> <span class="p">{</span><span class="n">r</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">&quot;acted&quot;</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">records</span><span class="p">}</span>
+<a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a><span class="n">outcome_map</span> <span class="o">=</span> <span class="p">{</span><span class="n">r</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">"acted"</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">records</span><span class="p">}</span>
 <a id="__codelineno-7-34" name="__codelineno-7-34" href="#__codelineno-7-34"></a><span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_context_used</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">records</span><span class="p">,</span> <span class="n">outcome_map</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="retrieval-quality-scoring">Retrieval Quality Scoring<a class="headerlink" href="#retrieval-quality-scoring" title="Permanent link">&para;</a></h2>
 <p>To score the quality of a retrieval — avg confidence, feeling-of-knowing, score spread, staleness — pass <code>assess_quality=True</code> to <code>assemble()</code> or call the standalone <code>assess()</code> probe before retrieval:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Pre-retrieval probe (cheap — no propagation, no push path)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assess</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">})</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assess</span><span class="p">({</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">})</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">fok_score</span> <span class="o">&lt;</span> <span class="mf">0.3</span><span class="p">:</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="k">return</span>  <span class="c1"># skip retrieval; memory store has nothing relevant</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># Post-retrieval quality attached to metadata</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span> <span class="n">assess_quality</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;quality&quot;</span><span class="p">]</span>  <span class="c1"># RetrievalQuality dataclass</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">({</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">},</span> <span class="n">assess_quality</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"quality"</span><span class="p">]</span>  <span class="c1"># RetrievalQuality dataclass</span>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">quality</span><span class="o">.</span><span class="n">avg_confidence</span><span class="p">,</span> <span class="n">quality</span><span class="o">.</span><span class="n">fok_score</span><span class="p">)</span>
 </code></pre></div>
 <p>See <a href="../metacognitive-layer/">Metacognitive Layer</a> for full documentation of <code>RetrievalQuality</code>, all four metrics, the <code>assess()</code> method, and the <code>AdaptiveAssembler</code> keep/revert loop.</p>
@@ -3783,12 +3811,12 @@ it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>  <span class="c1"># must declare a ConfidenceField</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">confidence_gate_threshold</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">confidence_gate_mode</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">,</span>  <span class="c1"># or &quot;flag&quot;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">confidence_gate_mode</span><span class="o">=</span><span class="s2">"refuse"</span><span class="p">,</span>  <span class="c1"># or "flag"</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">)</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;gate&quot;</span><span class="p">])</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># {&quot;applied&quot;: True, &quot;gate_score&quot;: 0.42, &quot;threshold&quot;: 0.5, &quot;mode&quot;: &quot;refuse&quot;, &quot;gated&quot;: True}</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"gate"</span><span class="p">])</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}</span>
 </code></pre></div>
 <p>The gate reads the rank-0 pull-path candidate's <code>ConfidenceField</code> value (via
 <code>get_confidence()</code>, always in <code>[0, 1]</code>), so it is mode-agnostic across

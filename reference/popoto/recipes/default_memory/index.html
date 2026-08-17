@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2735,7 +2763,7 @@ benchmarked configuration -- query-sensitive lexical retrieval, decay,
 confidence, and an association graph -- with no schema authoring::</p>
 <div class="highlight"><pre><span></span><code>from popoto.recipes import DefaultMemory, SubconsciousMemory
 
-sm = SubconsciousMemory(agent_id=&quot;agent-1&quot;)
+sm = SubconsciousMemory(agent_id="agent-1")
 </code></pre></div>
 <p>Field choices and why:</p>
 <p><code>memory_id</code> (AutoKeyField)
@@ -2764,6 +2792,19 @@ sm = SubconsciousMemory(agent_id=&quot;agent-1&quot;)
     Entity/record co-occurrence graph. Feeds the graph arm of lexical
     retrieval and receives write-time entity links from
     <code>SubconsciousMemory.extract_memories()</code>.</p>
+<p><code>NeverRecordMixin</code>
+    The never-record firewall (#561). Included where <code>WriteFilterMixin</code>
+    is not, and the difference is not inconsistency: the write filter drops
+    records it <em>guesses</em> are unimportant, which is the wrong default because
+    a wrong guess is silent data loss. The firewall drops content that is
+    <em>deterministically</em> a credential or explicitly marked off-the-record,
+    where a wrong guess costs one memory and the alternative costs a leaked
+    secret. It also drops loudly -- every drop increments an auditable
+    per-reason counter (<code>DefaultMemory.never_record_counts()</code>).
+    This matters most because the Claude Code / Codex / Hermes / OpenClaw
+    harness writes through this model on every turn using raw turn ingestion
+    (#515), so a pasted API key would otherwise be persisted verbatim.
+    Deploy-level escape hatch: <code>POPOTO_NEVER_RECORD_DISABLE=1</code>.</p>
 <p>Deliberately <strong>not</strong> included:</p>
 <p><code>WriteFilterMixin</code>
     It silently discards records below <code>_wf_min_threshold</code> (<code>save()</code>
@@ -2816,7 +2857,7 @@ need their own keyspace (or extra fields) subclass it::</p>
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-internal" title="AccessTrackerMixin (popoto.fields.access_tracker.AccessTrackerMixin)" href="../../fields/access_tracker/#popoto.fields.access_tracker.AccessTrackerMixin">AccessTrackerMixin</a></code>, <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../../models/base/#popoto.models.base.Model">Model</a></code></p>
+              Bases: <code><a class="autorefs autorefs-internal" title="NeverRecordMixin (popoto.privacy.never_record.NeverRecordMixin)" href="../../privacy/never_record/#popoto.privacy.never_record.NeverRecordMixin">NeverRecordMixin</a></code>, <code><a class="autorefs autorefs-internal" title="AccessTrackerMixin (popoto.fields.access_tracker.AccessTrackerMixin)" href="../../fields/access_tracker/#popoto.fields.access_tracker.AccessTrackerMixin">AccessTrackerMixin</a></code>, <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../../models/base/#popoto.models.base.Model">Model</a></code></p>
 
 
 
@@ -2828,12 +2869,12 @@ over this model, so query cues actually rank results.</p>
 <div class="highlight"><pre><span></span><code>from popoto.recipes import DefaultMemory
 
 DefaultMemory(
-    agent_id=&quot;agent-1&quot;,
-    content=&quot;Deploy uses blue-green with automatic rollback&quot;,
+    agent_id="agent-1",
+    content="Deploy uses blue-green with automatic rollback",
     importance=0.9,
 ).save()
 
-results = DefaultMemory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(n=5)
+results = DefaultMemory.query.filter(agent_id="agent-1").top_by_decay(n=5)
 </code></pre></div>
 
 
@@ -2845,22 +2886,7 @@ results = DefaultMemory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/recipes/default_memory.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
-<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
-<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
-<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
-<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
-<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
-<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
-<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
-<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
-<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
-<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
-<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
-<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
 <span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
 <span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
 <span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
@@ -2875,37 +2901,52 @@ results = DefaultMemory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(
 <span class="normal"><a href="#__codelineno-0-108">108</a></span>
 <span class="normal"><a href="#__codelineno-0-109">109</a></span>
 <span class="normal"><a href="#__codelineno-0-110">110</a></span>
-<span class="normal"><a href="#__codelineno-0-111">111</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="k">class</span><span class="w"> </span><span class="nc">DefaultMemory</span><span class="p">(</span><span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Batteries-included agent memory: query-sensitive retrieval, no schema.</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">    Equivalent to the quickstart&#39;s Level 4 model minus ``WriteFilterMixin``.</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">    ``ContextAssembler(retrieval_mode=&#39;auto&#39;)`` resolves to ``&quot;lexical&quot;``</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">    over this model, so query cues actually rank results.</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">    Example::</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">        from popoto.recipes import DefaultMemory</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a><span class="sd">        DefaultMemory(</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">            agent_id=&quot;agent-1&quot;,</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">            content=&quot;Deploy uses blue-green with automatic rollback&quot;,</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">            importance=0.9,</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">        ).save()</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">        results = DefaultMemory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(n=5)</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="n">memory_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>    <span class="p">)</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a>    <span class="n">associations</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">()</span>
+<span class="normal"><a href="#__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#__codelineno-0-112">112</a></span>
+<span class="normal"><a href="#__codelineno-0-113">113</a></span>
+<span class="normal"><a href="#__codelineno-0-114">114</a></span>
+<span class="normal"><a href="#__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#__codelineno-0-118">118</a></span>
+<span class="normal"><a href="#__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="k">class</span><span class="w"> </span><span class="nc">DefaultMemory</span><span class="p">(</span><span class="n">NeverRecordMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-0-97" name="__codelineno-0-97"></a><span class="w">    </span><span class="sd">"""Batteries-included agent memory: query-sensitive retrieval, no schema.</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">    Equivalent to the quickstart's Level 4 model minus ``WriteFilterMixin``.</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="sd">    ``ContextAssembler(retrieval_mode='auto')`` resolves to ``"lexical"``</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">    over this model, so query cues actually rank results.</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a><span class="sd">    Example::</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a><span class="sd">        from popoto.recipes import DefaultMemory</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>
+<a id="__codelineno-0-107" name="__codelineno-0-107"></a><span class="sd">        DefaultMemory(</span>
+<a id="__codelineno-0-108" name="__codelineno-0-108"></a><span class="sd">            agent_id="agent-1",</span>
+<a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="sd">            content="Deploy uses blue-green with automatic rollback",</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="sd">            importance=0.9,</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">        ).save()</span>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">        results = DefaultMemory.query.filter(agent_id="agent-1").top_by_decay(n=5)</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a><span class="sd">    """</span>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a>    <span class="n">memory_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="__codelineno-0-119" name="__codelineno-0-119"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<a id="__codelineno-0-120" name="__codelineno-0-120"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">"importance"</span><span class="p">,</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">"agent_id"</span><span class="p">,</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a>    <span class="p">)</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a>    <span class="n">associations</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
               </details>
 

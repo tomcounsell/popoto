@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2785,7 +2813,7 @@ reconciliation ledger depends on.</p>
 
 
 <h3 id="popoto.transfer.import_.import_records" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">import_records</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s1">&#39;error&#39;</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="o">=</span><span class="s1">&#39;reject&#39;</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="o">=</span><span class="s1">&#39;error&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">import_records</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s1">'error'</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="o">=</span><span class="s1">'reject'</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="o">=</span><span class="s1">'error'</span><span class="p">)</span></code>
 
 <a href="#popoto.transfer.import_.import_records" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -3124,11 +3152,11 @@ print(report.summary())</p>
 <span class="normal"><a href="#__codelineno-0-387">387</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="k">def</span><span class="w"> </span><span class="nf">import_records</span><span class="p">(</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="n">model_class</span><span class="p">,</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">TextIO</span><span class="p">,</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="n">on_conflict</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="n">on_write_gate</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;reject&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="n">on_embedding_mismatch</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="n">on_conflict</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"error"</span><span class="p">,</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="n">on_write_gate</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"reject"</span><span class="p">,</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="n">on_embedding_mismatch</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"error"</span><span class="p">,</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ImportReport</span><span class="p">:</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Import records from a JSON Lines export into ``model_class``.</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="w">    </span><span class="sd">"""Import records from a JSON Lines export into ``model_class``.</span>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    Keys are always preserved, so re-running an import converges rather than</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    duplicating, and every ``Relationship`` value and application-level key</span>
@@ -3138,17 +3166,17 @@ print(report.summary())</p>
 <a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        model_class: The destination Model class.</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        stream: A text file-like object positioned at the manifest line.</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">        on_conflict: What to do when the destination already holds a key.</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">            ``&quot;error&quot;`` (default) refuses -- the only mode that cannot</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">            clobber; ``&quot;skip&quot;`` leaves the existing record untouched;</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">            ``&quot;overwrite&quot;`` replaces it, which makes a re-run idempotent.</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">        on_write_gate: ``&quot;reject&quot;`` (default) honors the destination model&#39;s</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">            ``"error"`` (default) refuses -- the only mode that cannot</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">            clobber; ``"skip"`` leaves the existing record untouched;</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">            ``"overwrite"`` replaces it, which makes a re-run idempotent.</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">        on_write_gate: ``"reject"`` (default) honors the destination model's</span>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">            ``WriteFilterMixin`` gate and reports every refusal;</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">            ``&quot;bypass&quot;`` writes around it. Bypass only disables Popoto&#39;s own</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            gate -- an application&#39;s ``save()`` override returning falsy still</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">            ``"bypass"`` writes around it. Bypass only disables Popoto's own</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            gate -- an application's ``save()`` override returning falsy still</span>
 <a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">            surfaces as a rejection.</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        on_embedding_mismatch: ``&quot;error&quot;`` (default) refuses when the export&#39;s</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">            provider fingerprint differs from the destination&#39;s; ``&quot;carry&quot;``</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">            imports the vectors anyway; ``&quot;regenerate&quot;`` drops them so</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        on_embedding_mismatch: ``"error"`` (default) refuses when the export's</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">            provider fingerprint differs from the destination's; ``"carry"``</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">            imports the vectors anyway; ``"regenerate"`` drops them so</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">            ``on_save`` re-embeds.</span>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    Returns:</span>
@@ -3160,23 +3188,23 @@ print(report.summary())</p>
 <a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">        ValueError: If a policy argument is not one of its allowed values.</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">        ModelException: If the manifest is missing, the format version is</span>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">            unsupported, the model name does not match, an embedding</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">            provenance mismatch is refused, or ``on_conflict=&quot;error&quot;`` hits a</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">            provenance mismatch is refused, or ``on_conflict="error"`` hits a</span>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">            collision. The first three raise before anything is written.</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    Note:</span>
 <a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        Import is not atomic across records and assumes the destination is not</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">        under concurrent write for this model. The recovery path for an</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">        interrupted run is to re-run with ``on_conflict=&quot;overwrite&quot;``.</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">        interrupted run is to re-run with ``on_conflict="overwrite"``.</span>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        with open(&quot;memories.jsonl&quot;) as fh:</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">            report = Memory.import_records(fh, on_conflict=&quot;overwrite&quot;)</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        with open("memories.jsonl") as fh:</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">            report = Memory.import_records(fh, on_conflict="overwrite")</span>
 <a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        print(report.summary())</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">&quot;on_conflict&quot;</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">_ON_CONFLICT</span><span class="p">)</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">&quot;on_write_gate&quot;</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">_ON_WRITE_GATE</span><span class="p">)</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    """</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">"on_conflict"</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">_ON_CONFLICT</span><span class="p">)</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">"on_write_gate"</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">_ON_WRITE_GATE</span><span class="p">)</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="n">_check_choice</span><span class="p">(</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="s2">&quot;on_embedding_mismatch&quot;</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">_ON_EMBEDDING_MISMATCH</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="s2">"on_embedding_mismatch"</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">_ON_EMBEDDING_MISMATCH</span>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="p">)</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">ImportReport</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
@@ -3188,34 +3216,34 @@ print(report.summary())</p>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>            <span class="n">manifest</span> <span class="o">=</span> <span class="n">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>                <span class="sa">f</span><span class="s2">&quot;first line of the export is not valid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>                <span class="sa">f</span><span class="s2">"first line of the export is not valid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="k">break</span>
 <a id="__codelineno-0-348" name="__codelineno-0-348"></a>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="n">manifest</span> <span class="o">=</span> <span class="n">_validate_manifest</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">manifest</span><span class="p">)</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="n">report</span><span class="o">.</span><span class="n">source_matched_count</span> <span class="o">=</span> <span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;matched_count&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="n">report</span><span class="o">.</span><span class="n">source_matched_count</span> <span class="o">=</span> <span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"matched_count"</span><span class="p">)</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="n">report</span><span class="o">.</span><span class="n">fidelity</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fields&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;mixins&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"fields"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"mixins"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
 <a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="p">}</span>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="n">drop_state</span> <span class="o">=</span> <span class="n">_resolve_embedding_provenance</span><span class="p">(</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="n">model_class</span><span class="p">,</span> <span class="n">manifest</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">report</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a>    <span class="p">)</span>
 <a id="__codelineno-0-358" name="__codelineno-0-358"></a>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="n">batch</span><span class="p">:</span> <span class="s2">&quot;list[dict]&quot;</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="n">batch</span><span class="p">:</span> <span class="s2">"list[dict]"</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="k">for</span> <span class="n">line_number</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>            <span class="n">record</span> <span class="o">=</span> <span class="n">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ERRORED</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;malformed JSON line: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">ERRORED</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"malformed JSON line: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;key&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"key"</span><span class="p">)</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">key</span><span class="p">:</span>
 <a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="sa">f</span><span class="s2">&quot;line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
 <a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="n">ERRORED</span><span class="p">,</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="s2">&quot;record has no usable &#39;key&#39;; keys are always preserved, so a &quot;</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="s2">&quot;record without one cannot be placed&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="s2">"record has no usable 'key'; keys are always preserved, so a "</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="s2">"record without one cannot be placed"</span><span class="p">,</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="n">batch</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>

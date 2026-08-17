@@ -1348,6 +1348,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3058,8 +3086,8 @@ embedding provider for all <code>EmbeddingField</code> instances and <code>seman
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-voyage-key&quot;</span><span class="p">),</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">&quot;/data/chatbot-memory&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-voyage-key"</span><span class="p">),</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/chatbot-memory"</span><span class="p">,</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
 </code></pre></div>
 <p>See <a href="../../configuration/#content-and-embedding-configuration">Configuration</a> for
@@ -3069,50 +3097,50 @@ all options including OpenAI provider setup.</p>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span><span class="p">,</span> <span class="n">EmbeddingField</span><span class="p">,</span> <span class="n">DecayingSortedField</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Knowledge</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Long-lived knowledge base entries. Ingest documents, FAQs, or any</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="sd">    reference material the chatbot should be able to cite.&quot;&quot;&quot;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="sd">"""Long-lived knowledge base entries. Ingest documents, FAQs, or any</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="sd">    reference material the chatbot should be able to cite."""</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">chunk_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>              <span class="c1"># e.g. &quot;faq&quot;, &quot;docs&quot;, &quot;manual&quot;</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>              <span class="c1"># e.g. "faq", "docs", "manual"</span>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>         <span class="c1"># full text stored on filesystem</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>  <span class="c1"># auto-generated on save</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>  <span class="c1"># auto-generated on save</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">ConversationTurn</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Stores each user/assistant exchange. Decaying relevance ensures</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="sd">    recent conversation context surfaces first.&quot;&quot;&quot;</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="sd">"""Stores each user/assistant exchange. Decaying relevance ensures</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="sd">    recent conversation context surfaces first."""</span>
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">turn_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">session_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>          <span class="c1"># groups turns by conversation</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="n">role</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                <span class="c1"># &quot;user&quot; or &quot;assistant&quot;</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="n">role</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                <span class="c1"># "user" or "assistant"</span>
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 <a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;session_id&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">"importance"</span><span class="p">,</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">"session_id"</span><span class="p">,</span>
 <a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="p">)</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="step-3-ingest-knowledge">Step 3: Ingest Knowledge<a class="headerlink" href="#step-3-ingest-knowledge" title="Permanent link">&para;</a></h2>
 <p>Load your knowledge base into Popoto. Each chunk gets an embedding automatically
 on save.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">ingest_document</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">chunks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Ingest a list of text chunks from a document source.&quot;&quot;&quot;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">"""Ingest a list of text chunks from a document source."""</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">for</span> <span class="n">chunk_text</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">Knowledge</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">chunk_text</span><span class="p">)</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># Example: ingest FAQ entries</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">faqs</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="s2">&quot;Our return policy allows returns within 30 days of purchase with receipt.&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="s2">&quot;Shipping is free on orders over $50. Standard shipping takes 3-5 business days.&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="s2">&quot;Premium members get 20</span><span class="si">% o</span><span class="s2">ff all orders and priority customer support.&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="s2">"Our return policy allows returns within 30 days of purchase with receipt."</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="s2">"Shipping is free on orders over $50. Standard shipping takes 3-5 business days."</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="s2">"Premium members get 20</span><span class="si">% o</span><span class="s2">ff all orders and priority customer support."</span><span class="p">,</span>
 <a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">]</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">ingest_document</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;faq&quot;</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="n">faqs</span><span class="p">)</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">ingest_document</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"faq"</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="n">faqs</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="step-4-retrieve-context-and-generate-responses">Step 4: Retrieve Context and Generate Responses<a class="headerlink" href="#step-4-retrieve-context-and-generate-responses" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">openai</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">openai</span><span class="o">.</span><span class="n">OpenAI</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">openai</span><span class="o">.</span><span class="n">OpenAI</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-openai-key"</span><span class="p">)</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">ask</span><span class="p">(</span><span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Answer a user question using RAG retrieval from Popoto.&quot;&quot;&quot;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="sd">"""Answer a user question using RAG retrieval from Popoto."""</span>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="c1"># 1. Search knowledge base by meaning</span>
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">knowledge_results</span> <span class="o">=</span> <span class="n">Knowledge</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
@@ -3124,70 +3152,70 @@ on save.</p>
 <a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span>
 <a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="p">)</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
 <a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="n">question</span><span class="p">,</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>        <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>        <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
 <a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>        <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
 <a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="p">)</span>
 <a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>
 <a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="c1"># 3. Build context block</span>
 <a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>    <span class="n">context_parts</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>    <span class="k">if</span> <span class="n">knowledge_results</span><span class="p">:</span>
-<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;## Relevant Knowledge&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"## Relevant Knowledge"</span><span class="p">)</span>
 <a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">knowledge_results</span><span class="p">:</span>
-<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>            <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">k</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>            <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"- </span><span class="si">{</span><span class="n">k</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>    <span class="k">if</span> <span class="n">conversation_results</span><span class="p">:</span>
-<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">## Recent Conversation&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">## Recent Conversation"</span><span class="p">)</span>
 <a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>        <span class="k">for</span> <span class="n">turn</span> <span class="ow">in</span> <span class="n">conversation_results</span><span class="p">:</span>
-<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>            <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">turn</span><span class="o">.</span><span class="n">role</span><span class="si">}</span><span class="s2">]: </span><span class="si">{</span><span class="n">turn</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>            <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">turn</span><span class="o">.</span><span class="n">role</span><span class="si">}</span><span class="s2">]: </span><span class="si">{</span><span class="n">turn</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>
-<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>    <span class="n">context_block</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context_parts</span><span class="p">)</span>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>    <span class="n">context_block</span> <span class="o">=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context_parts</span><span class="p">)</span>
 <a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>
 <a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>    <span class="c1"># 4. Call the LLM</span>
 <a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>    <span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">"gpt-4o"</span><span class="p">,</span>
 <a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>        <span class="n">messages</span><span class="o">=</span><span class="p">[</span>
 <a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a>            <span class="p">{</span>
-<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a>                <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>                <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="p">(</span>
-<a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>                    <span class="s2">&quot;You are a helpful customer support assistant. &quot;</span>
-<a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>                    <span class="s2">&quot;Answer based on the provided context. &quot;</span>
-<a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>                    <span class="s2">&quot;If the context does not contain the answer, say so.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
-<a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">context_block</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a>                <span class="s2">"role"</span><span class="p">:</span> <span class="s2">"system"</span><span class="p">,</span>
+<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>                <span class="s2">"content"</span><span class="p">:</span> <span class="p">(</span>
+<a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>                    <span class="s2">"You are a helpful customer support assistant. "</span>
+<a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>                    <span class="s2">"Answer based on the provided context. "</span>
+<a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>                    <span class="s2">"If the context does not contain the answer, say so.</span><span class="se">\n\n</span><span class="s2">"</span>
+<a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context_block</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>                <span class="p">),</span>
 <a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a>            <span class="p">},</span>
-<a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a>            <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">question</span><span class="p">},</span>
+<a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a>            <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="n">question</span><span class="p">},</span>
 <a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a>        <span class="p">],</span>
 <a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a>    <span class="p">)</span>
 <a id="__codelineno-4-51" name="__codelineno-4-51" href="#__codelineno-4-51"></a>    <span class="n">answer</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span>
 <a id="__codelineno-4-52" name="__codelineno-4-52" href="#__codelineno-4-52"></a>
 <a id="__codelineno-4-53" name="__codelineno-4-53" href="#__codelineno-4-53"></a>    <span class="c1"># 5. Store both turns for future retrieval</span>
 <a id="__codelineno-4-54" name="__codelineno-4-54" href="#__codelineno-4-54"></a>    <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-4-55" name="__codelineno-4-55" href="#__codelineno-4-55"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">question</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-4-55" name="__codelineno-4-55" href="#__codelineno-4-55"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"user"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">question</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
 <a id="__codelineno-4-56" name="__codelineno-4-56" href="#__codelineno-4-56"></a>    <span class="p">)</span>
 <a id="__codelineno-4-57" name="__codelineno-4-57" href="#__codelineno-4-57"></a>    <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-4-58" name="__codelineno-4-58" href="#__codelineno-4-58"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+<a id="__codelineno-4-58" name="__codelineno-4-58" href="#__codelineno-4-58"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"assistant"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
 <a id="__codelineno-4-59" name="__codelineno-4-59" href="#__codelineno-4-59"></a>    <span class="p">)</span>
 <a id="__codelineno-4-60" name="__codelineno-4-60" href="#__codelineno-4-60"></a>
 <a id="__codelineno-4-61" name="__codelineno-4-61" href="#__codelineno-4-61"></a>    <span class="k">return</span> <span class="n">answer</span>
 </code></pre></div>
 <h2 id="step-5-use-it">Step 5: Use It<a class="headerlink" href="#step-5-use-it" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">session</span> <span class="o">=</span> <span class="s2">&quot;session-abc123&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">session</span> <span class="o">=</span> <span class="s2">"session-abc123"</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">&quot;What is your return policy?&quot;</span><span class="p">))</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># =&gt; &quot;You can return items within 30 days of purchase with a receipt...&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">"What is your return policy?"</span><span class="p">))</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># =&gt; "You can return items within 30 days of purchase with a receipt..."</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">&quot;Do I get free shipping?&quot;</span><span class="p">))</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># =&gt; &quot;Yes, shipping is free on orders over $50...&quot;</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">"Do I get free shipping?"</span><span class="p">))</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># =&gt; "Yes, shipping is free on orders over $50..."</span>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
 <a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1"># Follow-up that uses conversation context</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">&quot;What about for premium members?&quot;</span><span class="p">))</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1"># =&gt; &quot;Premium members get 20% off all orders and priority support...&quot;</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">"What about for premium members?"</span><span class="p">))</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1"># =&gt; "Premium members get 20% off all orders and priority support..."</span>
 </code></pre></div>
 <h2 id="variations">Variations<a class="headerlink" href="#variations" title="Permanent link">&para;</a></h2>
 <h3 id="use-openai-embeddings-instead-of-voyage">Use OpenAI Embeddings Instead of Voyage<a class="headerlink" href="#use-openai-embeddings-instead-of-voyage" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">OpenAIProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span><span class="p">),</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">OpenAIProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-openai-key"</span><span class="p">),</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">)</span>
 </code></pre></div>
 <p>Install: <code>pip install popoto[openai]</code></p>
@@ -3200,16 +3228,16 @@ over time using <code>ConfidenceField</code>:</p>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">chunk_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
 <a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 <a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
 <a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># After the LLM uses a knowledge entry successfully:</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
 <a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
 <a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="c1"># Blend confidence into retrieval ranking:</span>
 <a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Knowledge</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
 <a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">question</span><span class="p">,</span>
-<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
 <a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="p">)</span>
 </code></pre></div>
@@ -3222,7 +3250,7 @@ over time using <code>ConfidenceField</code>:</p>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="p">)</span>
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="c1"># ... rest of the pipeline</span>
 <a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="k">await</span> <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">async_create</span><span class="p">(</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">question</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"user"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">question</span><span class="p">,</span>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="p">)</span>
 </code></pre></div>
 <h2 id="key-points">Key Points<a class="headerlink" href="#key-points" title="Permanent link">&para;</a></h2>

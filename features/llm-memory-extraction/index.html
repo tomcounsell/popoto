@@ -1558,6 +1558,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3161,7 +3189,7 @@ stripped.</p>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubconsciousMemory</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">RawTurnExtractionProvider</span><span class="p">(),</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">)</span>
 </code></pre></div>
@@ -3191,9 +3219,9 @@ information loss the provider exists to avoid.</p>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">ClaudeExtractionProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-key&quot;</span><span class="p">),</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">ClaudeExtractionProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="p">)</span>
 </code></pre></div>
 <p><code>ClaudeExtractionProvider</code> calls the Anthropic Messages API once per <code>extract()</code> call with structured JSON-schema output, so facts, entities, importance, and confidence come back typed -- no ad hoc parsing. <code>api_key</code> defaults to the <code>ANTHROPIC_API_KEY</code> env var (via the Anthropic SDK's normal resolution) if not passed.</p>
@@ -3204,11 +3232,11 @@ information loss the provider exists to avoid.</p>
 <p>Two more optional <code>SubconsciousMemory</code> kwargs let extracted facts feed other memory-system primitives. Both are opt-in and no-ops unless set:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">ClaudeExtractionProvider</span><span class="p">(),</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">confidence_field</span><span class="o">=</span><span class="s2">&quot;certainty&quot;</span><span class="p">,</span>         <span class="c1"># name of a ConfidenceField on Memory</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">co_occurrence_field</span><span class="o">=</span><span class="s2">&quot;associations&quot;</span><span class="p">,</span>   <span class="c1"># name of a CoOccurrenceField on Memory</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">confidence_field</span><span class="o">=</span><span class="s2">"certainty"</span><span class="p">,</span>         <span class="c1"># name of a ConfidenceField on Memory</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">co_occurrence_field</span><span class="o">=</span><span class="s2">"associations"</span><span class="p">,</span>   <span class="c1"># name of a CoOccurrenceField on Memory</span>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
 </code></pre></div>
 <ul>
@@ -3235,26 +3263,26 @@ information loss the provider exists to avoid.</p>
 <a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">memory_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
 <a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
 <a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">base_score_field</span><span class="o">=</span><span class="s2">"importance"</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s2">"agent_id"</span><span class="p">)</span>
 <a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 <a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">associations</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">(</span><span class="n">symmetric</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>
 <a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
 <a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
 <a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">ClaudeExtractionProvider</span><span class="p">(),</span>  <span class="c1"># requires popoto[anthropic]</span>
-<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>    <span class="n">confidence_field</span><span class="o">=</span><span class="s2">&quot;certainty&quot;</span><span class="p">,</span>
-<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>    <span class="n">co_occurrence_field</span><span class="o">=</span><span class="s2">&quot;associations&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>    <span class="n">confidence_field</span><span class="o">=</span><span class="s2">"certainty"</span><span class="p">,</span>
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>    <span class="n">co_occurrence_field</span><span class="o">=</span><span class="s2">"associations"</span><span class="p">,</span>
 <a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="p">)</span>
 <a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>
 <a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a><span class="n">new_memories</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span>
-<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>    <span class="s2">&quot;Alice met Bob at the AI conference in Paris. They discussed the new product launch.&quot;</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>    <span class="s2">"Alice met Bob at the AI conference in Paris. They discussed the new product launch."</span>
 <a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="p">)</span>
-<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="c1"># Each saved Memory&#39;s `certainty` field is now seeded (blended with the 0.5 prior),</span>
-<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a><span class="c1"># and entity pairs mentioned together (e.g. &quot;Alice&quot;/&quot;Bob&quot;, &quot;Alice&quot;/&quot;Paris&quot;) are</span>
+<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="c1"># Each saved Memory's `certainty` field is now seeded (blended with the 0.5 prior),</span>
+<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a><span class="c1"># and entity pairs mentioned together (e.g. "Alice"/"Bob", "Alice"/"Paris") are</span>
 <a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a><span class="c1"># linked in `associations`.</span>
 </code></pre></div>
 <h2 id="writing-a-custom-provider">Writing a Custom Provider<a class="headerlink" href="#writing-a-custom-provider" title="Permanent link">&para;</a></h2>
@@ -3265,13 +3293,13 @@ information loss the provider exists to avoid.</p>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ExtractedFact</span><span class="p">]:</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_call</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>  <span class="c1"># e.g. a different LLM, a local NER model, ...</span>
 <a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>            <span class="n">ExtractedFact</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">f</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span> <span class="n">entities</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entities&quot;</span><span class="p">,</span> <span class="p">[]),</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>                           <span class="n">importance</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;importance&quot;</span><span class="p">),</span> <span class="n">confidence</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;confidence&quot;</span><span class="p">))</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>            <span class="n">ExtractedFact</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">f</span><span class="p">[</span><span class="s2">"text"</span><span class="p">],</span> <span class="n">entities</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"entities"</span><span class="p">,</span> <span class="p">[]),</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>                           <span class="n">importance</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"importance"</span><span class="p">),</span> <span class="n">confidence</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"confidence"</span><span class="p">))</span>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">facts</span>
 <a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="p">]</span>
 <a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>                         <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span> <span class="n">extraction_provider</span><span class="o">=</span><span class="n">MyProvider</span><span class="p">())</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>                         <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span> <span class="n">extraction_provider</span><span class="o">=</span><span class="n">MyProvider</span><span class="p">())</span>
 </code></pre></div>
 <h2 id="evaluation-extraction-lost-to-raw-ingestion">Evaluation: extraction lost to raw ingestion<a class="headerlink" href="#evaluation-extraction-lost-to-raw-ingestion" title="Permanent link">&para;</a></h2>
 <p>Extraction has been measured against plain turn ingestion on the judged-answer

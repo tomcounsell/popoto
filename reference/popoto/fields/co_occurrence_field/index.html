@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3551,7 +3579,7 @@ Default 500.</p>
 <span class="normal"><a href="#__codelineno-0-733">733</a></span>
 <span class="normal"><a href="#__codelineno-0-734">734</a></span>
 <span class="normal"><a href="#__codelineno-0-735">735</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="k">class</span><span class="w"> </span><span class="nc">CoOccurrenceField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A field that maintains weighted association edges between model instances.</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="w">    </span><span class="sd">"""A field that maintains weighted association edges between model instances.</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>
 <a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">    Uses per-PK Redis sorted sets to store weighted edges to other PKs.</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">    Supports symmetric (bidirectional) and asymmetric (unidirectional) modes.</span>
@@ -3578,23 +3606,23 @@ Default 500.</p>
 <a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">            key = UniqueKeyField()</span>
 <a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">            content = StringField()</span>
 <a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">            associations = CoOccurrenceField(symmetric=True, max_edges=100)</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    """</span>
 <a id="__codelineno-0-254" name="__codelineno-0-254"></a>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="c1"># Export/import: edge weights are accumulated by strengthen()/weaken_all()</span>
 <a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="c1"># calls over time -- a function of interaction history between records,</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="c1"># not of any single record&#39;s own field value -- so they cannot be</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="c1"># not of any single record's own field value -- so they cannot be</span>
 <a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="c1"># rebuilt from a per-record export/import replay. Not addressed in v1</span>
 <a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="c1"># -- see #556.</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;partial&quot;</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"partial"</span>
 <a id="__codelineno-0-261" name="__codelineno-0-261"></a>    <span class="n">roundtrip_note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a>        <span class="s2">&quot;Weighted association edges reflect interaction history, not &quot;</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="s2">&quot;carried or rebuilt by import; see #556&quot;</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>        <span class="s2">"Weighted association edges reflect interaction history, not "</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="s2">"carried or rebuilt by import; see #556"</span>
 <a id="__codelineno-0-264" name="__codelineno-0-264"></a>    <span class="p">)</span>
 <a id="__codelineno-0-265" name="__codelineno-0-265"></a>
 <a id="__codelineno-0-266" name="__codelineno-0-266"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">symmetric</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;symmetric&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">max_edges</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;max_edges&quot;</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="n">decay_factor</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;decay_factor&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">symmetric</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"symmetric"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">max_edges</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"max_edges"</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="n">decay_factor</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"decay_factor"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-270" name="__codelineno-0-270"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">decay_factor</span> <span class="o">=</span> <span class="p">(</span>
 <a id="__codelineno-0-271" name="__codelineno-0-271"></a>            <span class="n">decay_factor</span>
 <a id="__codelineno-0-272" name="__codelineno-0-272"></a>            <span class="k">if</span> <span class="n">decay_factor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
@@ -3604,25 +3632,25 @@ Default 500.</p>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_edges</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelException</span>
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_edges must be &gt;= 1 (got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">max_edges</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span><span class="sa">f</span><span class="s2">"max_edges must be &gt;= 1 (got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">max_edges</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decay_factor</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">):</span>
 <a id="__codelineno-0-281" name="__codelineno-0-281"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelException</span>
 <a id="__codelineno-0-282" name="__codelineno-0-282"></a>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a>                <span class="sa">f</span><span class="s2">&quot;decay_factor must be &gt;= 0 and &lt; 1 (got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">decay_factor</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>                <span class="sa">f</span><span class="s2">"decay_factor must be &gt;= 0 and &lt; 1 (got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">decay_factor</span><span class="si">}</span><span class="s2">)"</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>            <span class="p">)</span>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="c1"># CoOccurrenceField stores no value on the model instance itself</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;null&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"type"</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"null"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"default"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 <a id="__codelineno-0-292" name="__codelineno-0-292"></a>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_edge_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">):</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Redis key for a PK&#39;s edge sorted set.</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="w">        </span><span class="sd">"""Build the Redis key for a PK's edge sorted set.</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        Public API for external callers that need direct Redis access to</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        a PK&#39;s edge set (e.g., bulk edge inspection, custom graph queries,</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        a PK's edge set (e.g., bulk edge inspection, custom graph queries,</span>
 <a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">        monitoring). Prefer the higher-level methods (link, get_linked,</span>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">        propagate) for normal operations.</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>
@@ -3633,13 +3661,13 @@ Default 500.</p>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">            pk: The primary key string.</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">            str: The Redis key for this PK&#39;s edge sorted set.</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">            str: The Redis key for this PK's edge sorted set.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">        """</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="n">base_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":"</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_edge_key_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">):</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Redis key prefix for BFS propagation.</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="w">        </span><span class="sd">"""Build the Redis key prefix for BFS propagation.</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">        Public API for external callers that need to scan or iterate over</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        all edge sorted sets for a field (e.g., graph analytics, bulk cleanup).</span>
@@ -3651,9 +3679,9 @@ Default 500.</p>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">            str: The key prefix (ending with colon).</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        """</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>        <span class="n">base_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":"</span>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">link</span><span class="p">(</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>        <span class="bp">self</span><span class="p">,</span>
@@ -3663,7 +3691,7 @@ Default 500.</p>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="n">initial_weight</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">,</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="p">):</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a weighted edge between two PKs.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="w">        </span><span class="sd">"""Create a weighted edge between two PKs.</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">        If symmetric=True, creates edges in both directions. Uses an atomic</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">        Lua script to handle ZADD + ZCARD + conditional pruning.</span>
@@ -3683,21 +3711,21 @@ Default 500.</p>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">            ValueError: If source_pk == target_pk (no self-loops), or if</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">                ``initial_weight`` exceeds ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">                (would violate the contraction invariant).</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">        """</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="k">if</span> <span class="n">initial_weight</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>            <span class="n">initial_weight</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_INITIAL_WEIGHT</span>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="n">source_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="k">if</span> <span class="n">source_pk</span> <span class="o">==</span> <span class="n">target_pk</span><span class="p">:</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot link a PK to itself (no self-loops)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Cannot link a PK to itself (no self-loops)"</span><span class="p">)</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="k">if</span> <span class="n">initial_weight</span> <span class="o">&gt;</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="p">:</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>                <span class="sa">f</span><span class="s2">&quot;initial_weight (</span><span class="si">{</span><span class="n">initial_weight</span><span class="si">}</span><span class="s2">) exceeds &quot;</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="sa">f</span><span class="s2">&quot;CO_OCCURRENCE_WEIGHT_CAP &quot;</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">); edges above the &quot;</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="sa">f</span><span class="s2">&quot;cap violate the per-hop contraction invariant used by &quot;</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="sa">f</span><span class="s2">&quot;propagate().&quot;</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>                <span class="sa">f</span><span class="s2">"initial_weight (</span><span class="si">{</span><span class="n">initial_weight</span><span class="si">}</span><span class="s2">) exceeds "</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="sa">f</span><span class="s2">"CO_OCCURRENCE_WEIGHT_CAP "</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">); edges above the "</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="sa">f</span><span class="s2">"cap violate the per-hop contraction invariant used by "</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="sa">f</span><span class="s2">"propagate()."</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
@@ -3731,7 +3759,7 @@ Default 500.</p>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="n">delta</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a>    <span class="p">):</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Increase the weight of an existing edge.</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">        </span><span class="sd">"""Increase the weight of an existing edge.</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">        Uses an atomic Lua script (STRENGTHEN_CLAMP_LUA) to read the</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">        current weight, add delta, and clamp at</span>
@@ -3753,9 +3781,9 @@ Default 500.</p>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">            ValueError: If delta &lt;= 0.</span>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        """</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="k">if</span> <span class="n">delta</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;delta must be &gt; 0 (got </span><span class="si">{</span><span class="n">delta</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"delta must be &gt; 0 (got </span><span class="si">{</span><span class="n">delta</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>        <span class="n">source_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>        <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
@@ -3791,39 +3819,39 @@ Default 500.</p>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>                <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>                <span class="n">stream_name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                    <span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;_stream_name&quot;</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="o">.</span><span class="n">_stream_name</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                    <span class="n">model_class</span><span class="p">,</span> <span class="s2">"_stream_name"</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="o">.</span><span class="n">_stream_name</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>                <span class="p">)</span>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a>                <span class="n">max_length</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>                    <span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                    <span class="s2">&quot;_stream_max_length&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                    <span class="s2">"_stream_max_length"</span><span class="p">,</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a>                    <span class="n">EventStreamMixin</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>                <span class="p">)</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a>                <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;stream:</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>                <span class="n">partition_field</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;_stream_partition_field&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>                <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"stream:</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>                <span class="n">partition_field</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"_stream_partition_field"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>                <span class="k">if</span> <span class="n">partition_field</span><span class="p">:</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>                    <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stream_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">source_pk</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>                    <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">stream_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">source_pk</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>                <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                    <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                    <span class="s2">&quot;pk&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                    <span class="s2">&quot;op&quot;</span><span class="p">:</span> <span class="s2">&quot;strengthen&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                    <span class="s2">&quot;ts&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()),</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>                    <span class="s2">&quot;changed_fields&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>                    <span class="s2">&quot;source_pk&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>                    <span class="s2">&quot;target_pk&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">),</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                    <span class="s2">&quot;delta&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                    <span class="s2">"model"</span><span class="p">:</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                    <span class="s2">"pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                    <span class="s2">"op"</span><span class="p">:</span> <span class="s2">"strengthen"</span><span class="p">,</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                    <span class="s2">"ts"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()),</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>                    <span class="s2">"changed_fields"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>                    <span class="s2">"source_pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>                    <span class="s2">"target_pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">),</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                    <span class="s2">"delta"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>                <span class="p">}</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>                    <span class="n">stream_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="n">max_length</span><span class="p">,</span> <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>                <span class="p">)</span>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                <span class="k">pass</span>  <span class="c1"># Best-effort, don&#39;t block strengthen</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                <span class="k">pass</span>  <span class="c1"># Best-effort, don't block strengthen</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>            <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># Pipeline defers execution</span>
 <a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">new_weight</span><span class="p">)</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">unlink</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove an edge between two PKs.</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="w">        </span><span class="sd">"""Remove an edge between two PKs.</span>
 <a id="__codelineno-0-499" name="__codelineno-0-499"></a>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a><span class="sd">        If symmetric=True, removes edges in both directions.</span>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>
@@ -3832,7 +3860,7 @@ Default 500.</p>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">            source_pk: Source primary key string.</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">            target_pk: Target primary key string.</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">            pipeline: Optional Redis pipeline.</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">        """</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">source_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>
@@ -3845,7 +3873,7 @@ Default 500.</p>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>            <span class="n">db</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_key</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>
 <a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">weaken_all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Multiplicatively decay all edge weights for a PK.</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="w">        </span><span class="sd">"""Multiplicatively decay all edge weights for a PK.</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">        Edges that fall below a threshold (factor * 0.01) after weakening</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">        are automatically pruned.</span>
@@ -3862,12 +3890,12 @@ Default 500.</p>
 <a id="__codelineno-0-534" name="__codelineno-0-534"></a>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">            ValueError: If factor &gt; 1 or factor &lt; 0.</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">        """</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>        <span class="k">if</span> <span class="n">factor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-539" name="__codelineno-0-539"></a>            <span class="n">factor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decay_factor</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>
 <a id="__codelineno-0-541" name="__codelineno-0-541"></a>        <span class="k">if</span> <span class="n">factor</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">factor</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;factor must be between 0 and 1 inclusive (got </span><span class="si">{</span><span class="n">factor</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"factor must be between 0 and 1 inclusive (got </span><span class="si">{</span><span class="n">factor</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>        <span class="n">pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>        <span class="n">edge_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
@@ -3890,7 +3918,7 @@ Default 500.</p>
 <a id="__codelineno-0-562" name="__codelineno-0-562"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a>
 <a id="__codelineno-0-564" name="__codelineno-0-564"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_linked</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">,</span> <span class="n">min_weight</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Get linked PKs sorted by weight descending.</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="w">        </span><span class="sd">"""Get linked PKs sorted by weight descending.</span>
 <a id="__codelineno-0-566" name="__codelineno-0-566"></a>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-568" name="__codelineno-0-568"></a><span class="sd">            model_class: The Model class.</span>
@@ -3901,14 +3929,14 @@ Default 500.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">            list[tuple[str, float]]: List of (pk, weight) tuples,</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">                sorted by weight descending.</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">        """</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a>        <span class="n">pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="n">edge_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="c1"># ZREVRANGEBYSCORE: highest to lowest, with score filter</span>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrangebyscore</span><span class="p">(</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>            <span class="n">edge_key</span><span class="p">,</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>            <span class="s2">&quot;+inf&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>            <span class="s2">"+inf"</span><span class="p">,</span>
 <a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">min_weight</span><span class="p">),</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>            <span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a>            <span class="n">num</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
@@ -3917,7 +3945,7 @@ Default 500.</p>
 <a id="__codelineno-0-589" name="__codelineno-0-589"></a>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="k">return</span> <span class="p">[</span>
 <a id="__codelineno-0-591" name="__codelineno-0-591"></a>            <span class="p">(</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>                <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">member</span><span class="p">,</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>                <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">member</span><span class="p">,</span>
 <a id="__codelineno-0-593" name="__codelineno-0-593"></a>                <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">),</span>
 <a id="__codelineno-0-594" name="__codelineno-0-594"></a>            <span class="p">)</span>
 <a id="__codelineno-0-595" name="__codelineno-0-595"></a>            <span class="k">for</span> <span class="n">member</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
@@ -3931,7 +3959,7 @@ Default 500.</p>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>        <span class="n">decay_per_hop</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">,</span>
 <a id="__codelineno-0-604" name="__codelineno-0-604"></a>        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
 <a id="__codelineno-0-605" name="__codelineno-0-605"></a>    <span class="p">):</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;BFS graph propagation with exponential weight decay per hop.</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="w">        </span><span class="sd">"""BFS graph propagation with exponential weight decay per hop.</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a><span class="sd">        Traverses edges starting from seed PKs, applying multiplicative</span>
 <a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="sd">        decay at each hop. When the same PK is reached via multiple paths,</span>
@@ -3958,7 +3986,7 @@ Default 500.</p>
 <a id="__codelineno-0-630" name="__codelineno-0-630"></a><span class="sd">        Raises:</span>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">            ValueError: If ``CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop &gt;= 1.0``</span>
 <a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="sd">                (contraction invariant violated; propagation would amplify).</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">        """</span>
 <a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="k">if</span> <span class="n">decay_per_hop</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>            <span class="n">decay_per_hop</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_DECAY_PER_HOP</span>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>        <span class="c1"># Runtime contraction guard: enforces cap * decay_per_hop &lt; 1 so</span>
@@ -3968,10 +3996,10 @@ Default 500.</p>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>        <span class="c1"># (1.0 * 0.5 = 0.5 &lt; 1) this never raises.</span>
 <a id="__codelineno-0-641" name="__codelineno-0-641"></a>        <span class="k">if</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span> <span class="o">*</span> <span class="n">decay_per_hop</span> <span class="o">&gt;=</span> <span class="mf">1.0</span><span class="p">:</span>
 <a id="__codelineno-0-642" name="__codelineno-0-642"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>                <span class="sa">f</span><span class="s2">&quot;Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP &quot;</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>                <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">) * decay_per_hop &quot;</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a>                <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">decay_per_hop</span><span class="si">}</span><span class="s2">) &gt;= 1.0; propagation would amplify &quot;</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>                <span class="sa">f</span><span class="s2">&quot;instead of decay. Lower the cap or decay_per_hop.&quot;</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>                <span class="sa">f</span><span class="s2">"Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP "</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>                <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">) * decay_per_hop "</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>                <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">decay_per_hop</span><span class="si">}</span><span class="s2">) &gt;= 1.0; propagation would amplify "</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>                <span class="sa">f</span><span class="s2">"instead of decay. Lower the cap or decay_per_hop."</span>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a>            <span class="p">)</span>
 <a id="__codelineno-0-648" name="__codelineno-0-648"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">seed_pks</span><span class="p">:</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>            <span class="k">return</span> <span class="p">{}</span>
@@ -4001,7 +4029,7 @@ Default 500.</p>
 <a id="__codelineno-0-673" name="__codelineno-0-673"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="mi">2</span><span class="p">):</span>
 <a id="__codelineno-0-674" name="__codelineno-0-674"></a>                <span class="n">pk</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>                    <span class="n">pk</span> <span class="o">=</span> <span class="n">pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a>                    <span class="n">pk</span> <span class="o">=</span> <span class="n">pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>                <span class="n">weight</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
 <a id="__codelineno-0-678" name="__codelineno-0-678"></a>                <span class="n">scores</span><span class="p">[</span><span class="n">pk</span><span class="p">]</span> <span class="o">=</span> <span class="n">weight</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a>
@@ -4016,10 +4044,10 @@ Default 500.</p>
 <a id="__codelineno-0-688" name="__codelineno-0-688"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-689" name="__codelineno-0-689"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-690" name="__codelineno-0-690"></a>    <span class="p">):</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Clean up edges when a model instance is deleted.</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="w">        </span><span class="sd">"""Clean up edges when a model instance is deleted.</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">        Removes the instance&#39;s own edge sorted set AND removes it from</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        all other instances&#39; edge sorted sets via SCAN + ZREM.</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">        Removes the instance's own edge sorted set AND removes it from</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        all other instances' edge sorted sets via SCAN + ZREM.</span>
 <a id="__codelineno-0-695" name="__codelineno-0-695"></a>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">        Args:</span>
 <a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">            model_instance: The Model instance being deleted.</span>
@@ -4027,15 +4055,15 @@ Default 500.</p>
 <a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">            field_value: Current field value (unused).</span>
 <a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">            pipeline: Optional Redis pipeline.</span>
 <a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">            **kwargs: Additional context.</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        """</span>
 <a id="__codelineno-0-703" name="__codelineno-0-703"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">CoOccurrenceField</span><span class="p">):</span>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>            <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a>                <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a>            <span class="p">)</span>
 <a id="__codelineno-0-708" name="__codelineno-0-708"></a>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="c1"># Get this instance&#39;s PK from its redis key</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="c1"># Get this instance's PK from its redis key</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-711" name="__codelineno-0-711"></a>
 <a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="c1"># Get the edge key for this instance</span>
 <a id="__codelineno-0-713" name="__codelineno-0-713"></a>        <span class="n">edge_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
@@ -4045,14 +4073,14 @@ Default 500.</p>
 <a id="__codelineno-0-717" name="__codelineno-0-717"></a>            <span class="n">linked</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-718" name="__codelineno-0-718"></a>            <span class="k">for</span> <span class="n">target_pk</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">:</span>
 <a id="__codelineno-0-719" name="__codelineno-0-719"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_pk</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>                    <span class="n">target_pk</span> <span class="o">=</span> <span class="n">target_pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>                    <span class="n">target_pk</span> <span class="o">=</span> <span class="n">target_pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-721" name="__codelineno-0-721"></a>                <span class="n">target_edge_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>                <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-723" name="__codelineno-0-723"></a>                    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a>                <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-725" name="__codelineno-0-725"></a>                    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="c1"># Delete this instance&#39;s edge sorted set</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="c1"># Delete this instance's edge sorted set</span>
 <a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-729" name="__codelineno-0-729"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="k">else</span><span class="p">:</span>
@@ -4184,10 +4212,10 @@ propagate) for normal operations.</p>
 <span class="normal"><a href="#__codelineno-0-309">309</a></span>
 <span class="normal"><a href="#__codelineno-0-310">310</a></span>
 <span class="normal"><a href="#__codelineno-0-311">311</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_edge_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">):</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the Redis key for a PK&#39;s edge sorted set.</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="w">    </span><span class="sd">"""Build the Redis key for a PK's edge sorted set.</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>
 <a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    Public API for external callers that need direct Redis access to</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    a PK&#39;s edge set (e.g., bulk edge inspection, custom graph queries,</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    a PK's edge set (e.g., bulk edge inspection, custom graph queries,</span>
 <a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    monitoring). Prefer the higher-level methods (link, get_linked,</span>
 <a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    propagate) for normal operations.</span>
 <a id="__codelineno-0-300" name="__codelineno-0-300"></a>
@@ -4198,10 +4226,10 @@ propagate) for normal operations.</p>
 <a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">        pk: The primary key string.</span>
 <a id="__codelineno-0-306" name="__codelineno-0-306"></a>
 <a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        str: The Redis key for this PK&#39;s edge sorted set.</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        str: The Redis key for this PK's edge sorted set.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    """</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">base_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":"</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4295,7 +4323,7 @@ all edge sorted sets for a field (e.g., graph analytics, bulk cleanup).</p>
 <span class="normal"><a href="#__codelineno-0-326">326</a></span>
 <span class="normal"><a href="#__codelineno-0-327">327</a></span>
 <span class="normal"><a href="#__codelineno-0-328">328</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_edge_key_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">):</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the Redis key prefix for BFS propagation.</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="w">    </span><span class="sd">"""Build the Redis key prefix for BFS propagation.</span>
 <a id="__codelineno-0-315" name="__codelineno-0-315"></a>
 <a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">    Public API for external callers that need to scan or iterate over</span>
 <a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    all edge sorted sets for a field (e.g., graph analytics, bulk cleanup).</span>
@@ -4307,9 +4335,9 @@ all edge sorted sets for a field (e.g., graph analytics, bulk cleanup).</p>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        str: The key prefix (ending with colon).</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    """</span>
 <a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="n">base_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="k">return</span> <span class="n">base_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="o">+</span> <span class="s2">":"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4546,7 +4574,7 @@ Lua script to handle ZADD + ZCARD + conditional pruning.</p>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="n">initial_weight</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">,</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="p">):</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a weighted edge between two PKs.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="w">    </span><span class="sd">"""Create a weighted edge between two PKs.</span>
 <a id="__codelineno-0-339" name="__codelineno-0-339"></a>
 <a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    If symmetric=True, creates edges in both directions. Uses an atomic</span>
 <a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">    Lua script to handle ZADD + ZCARD + conditional pruning.</span>
@@ -4566,21 +4594,21 @@ Lua script to handle ZADD + ZCARD + conditional pruning.</p>
 <a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">        ValueError: If source_pk == target_pk (no self-loops), or if</span>
 <a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">            ``initial_weight`` exceeds ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``</span>
 <a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">            (would violate the contraction invariant).</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    """</span>
 <a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="k">if</span> <span class="n">initial_weight</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
 <a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="n">initial_weight</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_INITIAL_WEIGHT</span>
 <a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="n">source_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-363" name="__codelineno-0-363"></a>
 <a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="k">if</span> <span class="n">source_pk</span> <span class="o">==</span> <span class="n">target_pk</span><span class="p">:</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot link a PK to itself (no self-loops)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Cannot link a PK to itself (no self-loops)"</span><span class="p">)</span>
 <a id="__codelineno-0-366" name="__codelineno-0-366"></a>    <span class="k">if</span> <span class="n">initial_weight</span> <span class="o">&gt;</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="p">:</span>
 <a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="sa">f</span><span class="s2">&quot;initial_weight (</span><span class="si">{</span><span class="n">initial_weight</span><span class="si">}</span><span class="s2">) exceeds &quot;</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>            <span class="sa">f</span><span class="s2">&quot;CO_OCCURRENCE_WEIGHT_CAP &quot;</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>            <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">); edges above the &quot;</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>            <span class="sa">f</span><span class="s2">&quot;cap violate the per-hop contraction invariant used by &quot;</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>            <span class="sa">f</span><span class="s2">&quot;propagate().&quot;</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="sa">f</span><span class="s2">"initial_weight (</span><span class="si">{</span><span class="n">initial_weight</span><span class="si">}</span><span class="s2">) exceeds "</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>            <span class="sa">f</span><span class="s2">"CO_OCCURRENCE_WEIGHT_CAP "</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>            <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">); edges above the "</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>            <span class="sa">f</span><span class="s2">"cap violate the per-hop contraction invariant used by "</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>            <span class="sa">f</span><span class="s2">"propagate()."</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
@@ -4874,7 +4902,7 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-403" name="__codelineno-0-403"></a>    <span class="n">delta</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
 <a id="__codelineno-0-404" name="__codelineno-0-404"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="p">):</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Increase the weight of an existing edge.</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="w">    </span><span class="sd">"""Increase the weight of an existing edge.</span>
 <a id="__codelineno-0-407" name="__codelineno-0-407"></a>
 <a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    Uses an atomic Lua script (STRENGTHEN_CLAMP_LUA) to read the</span>
 <a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    current weight, add delta, and clamp at</span>
@@ -4896,9 +4924,9 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-425" name="__codelineno-0-425"></a>
 <a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        ValueError: If delta &lt;= 0.</span>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    """</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="k">if</span> <span class="n">delta</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;delta must be &gt; 0 (got </span><span class="si">{</span><span class="n">delta</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"delta must be &gt; 0 (got </span><span class="si">{</span><span class="n">delta</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>
 <a id="__codelineno-0-432" name="__codelineno-0-432"></a>    <span class="n">source_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>    <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
@@ -4934,32 +4962,32 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>            <span class="n">stream_name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                <span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;_stream_name&quot;</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="o">.</span><span class="n">_stream_name</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                <span class="n">model_class</span><span class="p">,</span> <span class="s2">"_stream_name"</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="o">.</span><span class="n">_stream_name</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>            <span class="p">)</span>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="n">max_length</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a>                <span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="s2">&quot;_stream_max_length&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="s2">"_stream_max_length"</span><span class="p">,</span>
 <a id="__codelineno-0-471" name="__codelineno-0-471"></a>                <span class="n">EventStreamMixin</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
 <a id="__codelineno-0-472" name="__codelineno-0-472"></a>            <span class="p">)</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a>            <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;stream:</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="n">partition_field</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">&quot;_stream_partition_field&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>            <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"stream:</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="n">partition_field</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"_stream_partition_field"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>            <span class="k">if</span> <span class="n">partition_field</span><span class="p">:</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>                <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stream_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">source_pk</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>                <span class="n">stream_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">stream_key</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">source_pk</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                <span class="s2">&quot;pk&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                <span class="s2">&quot;op&quot;</span><span class="p">:</span> <span class="s2">&quot;strengthen&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                <span class="s2">&quot;ts&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()),</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>                <span class="s2">&quot;changed_fields&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>                <span class="s2">&quot;source_pk&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>                <span class="s2">&quot;target_pk&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">),</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                <span class="s2">&quot;delta&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                <span class="s2">"model"</span><span class="p">:</span> <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                <span class="s2">"pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                <span class="s2">"op"</span><span class="p">:</span> <span class="s2">"strengthen"</span><span class="p">,</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                <span class="s2">"ts"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()),</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>                <span class="s2">"changed_fields"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>                <span class="s2">"source_pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">),</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>                <span class="s2">"target_pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">),</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                <span class="s2">"delta"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span>
 <a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="p">}</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>                <span class="n">stream_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="n">max_length</span><span class="p">,</span> <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>            <span class="p">)</span>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>            <span class="k">pass</span>  <span class="c1"># Best-effort, don&#39;t block strengthen</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>            <span class="k">pass</span>  <span class="c1"># Best-effort, don't block strengthen</span>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>    <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># Pipeline defers execution</span>
@@ -5083,7 +5111,7 @@ called with a pipeline (execution deferred).</p>
 <span class="normal"><a href="#__codelineno-0-515">515</a></span>
 <span class="normal"><a href="#__codelineno-0-516">516</a></span>
 <span class="normal"><a href="#__codelineno-0-517">517</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-497" name="__codelineno-0-497"></a><span class="k">def</span><span class="w"> </span><span class="nf">unlink</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove an edge between two PKs.</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="w">    </span><span class="sd">"""Remove an edge between two PKs.</span>
 <a id="__codelineno-0-499" name="__codelineno-0-499"></a>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a><span class="sd">    If symmetric=True, removes edges in both directions.</span>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>
@@ -5092,7 +5120,7 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">        source_pk: Source primary key string.</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">        target_pk: Target primary key string.</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">        pipeline: Optional Redis pipeline.</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">    """</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>    <span class="n">source_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>    <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>
@@ -5292,7 +5320,7 @@ factor=0 removes all edges.</p>
 <span class="normal"><a href="#__codelineno-0-560">560</a></span>
 <span class="normal"><a href="#__codelineno-0-561">561</a></span>
 <span class="normal"><a href="#__codelineno-0-562">562</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-519" name="__codelineno-0-519"></a><span class="k">def</span><span class="w"> </span><span class="nf">weaken_all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Multiplicatively decay all edge weights for a PK.</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="w">    </span><span class="sd">"""Multiplicatively decay all edge weights for a PK.</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    Edges that fall below a threshold (factor * 0.01) after weakening</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">    are automatically pruned.</span>
@@ -5309,12 +5337,12 @@ factor=0 removes all edges.</p>
 <a id="__codelineno-0-534" name="__codelineno-0-534"></a>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">        ValueError: If factor &gt; 1 or factor &lt; 0.</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    """</span>
 <a id="__codelineno-0-538" name="__codelineno-0-538"></a>    <span class="k">if</span> <span class="n">factor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-539" name="__codelineno-0-539"></a>        <span class="n">factor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decay_factor</span>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>
 <a id="__codelineno-0-541" name="__codelineno-0-541"></a>    <span class="k">if</span> <span class="n">factor</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">factor</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;factor must be between 0 and 1 inclusive (got </span><span class="si">{</span><span class="n">factor</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"factor must be between 0 and 1 inclusive (got </span><span class="si">{</span><span class="n">factor</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 <a id="__codelineno-0-543" name="__codelineno-0-543"></a>
 <a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="n">pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="n">edge_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
@@ -5488,7 +5516,7 @@ sorted by weight descending.</p>
 <span class="normal"><a href="#__codelineno-0-594">594</a></span>
 <span class="normal"><a href="#__codelineno-0-595">595</a></span>
 <span class="normal"><a href="#__codelineno-0-596">596</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_linked</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">,</span> <span class="n">min_weight</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Get linked PKs sorted by weight descending.</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="w">    </span><span class="sd">"""Get linked PKs sorted by weight descending.</span>
 <a id="__codelineno-0-566" name="__codelineno-0-566"></a>
 <a id="__codelineno-0-567" name="__codelineno-0-567"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-568" name="__codelineno-0-568"></a><span class="sd">        model_class: The Model class.</span>
@@ -5499,14 +5527,14 @@ sorted by weight descending.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">        list[tuple[str, float]]: List of (pk, weight) tuples,</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">            sorted by weight descending.</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    """</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a>    <span class="n">pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="n">edge_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>
 <a id="__codelineno-0-580" name="__codelineno-0-580"></a>    <span class="c1"># ZREVRANGEBYSCORE: highest to lowest, with score filter</span>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrangebyscore</span><span class="p">(</span>
 <a id="__codelineno-0-582" name="__codelineno-0-582"></a>        <span class="n">edge_key</span><span class="p">,</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="s2">&quot;+inf&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="s2">"+inf"</span><span class="p">,</span>
 <a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">min_weight</span><span class="p">),</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>        <span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="n">num</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
@@ -5515,7 +5543,7 @@ sorted by weight descending.</p>
 <a id="__codelineno-0-589" name="__codelineno-0-589"></a>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a>    <span class="k">return</span> <span class="p">[</span>
 <a id="__codelineno-0-591" name="__codelineno-0-591"></a>        <span class="p">(</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>            <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">member</span><span class="p">,</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>            <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">member</span><span class="p">,</span>
 <a id="__codelineno-0-593" name="__codelineno-0-593"></a>            <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">),</span>
 <a id="__codelineno-0-594" name="__codelineno-0-594"></a>        <span class="p">)</span>
 <a id="__codelineno-0-595" name="__codelineno-0-595"></a>        <span class="k">for</span> <span class="n">member</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
@@ -5778,7 +5806,7 @@ weights. Seeds are not included in results (except for depth=0).</p>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>    <span class="n">decay_per_hop</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">,</span>
 <a id="__codelineno-0-604" name="__codelineno-0-604"></a>    <span class="n">threshold</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
 <a id="__codelineno-0-605" name="__codelineno-0-605"></a><span class="p">):</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;BFS graph propagation with exponential weight decay per hop.</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="w">    </span><span class="sd">"""BFS graph propagation with exponential weight decay per hop.</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a><span class="sd">    Traverses edges starting from seed PKs, applying multiplicative</span>
 <a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="sd">    decay at each hop. When the same PK is reached via multiple paths,</span>
@@ -5805,7 +5833,7 @@ weights. Seeds are not included in results (except for depth=0).</p>
 <a id="__codelineno-0-630" name="__codelineno-0-630"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">        ValueError: If ``CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop &gt;= 1.0``</span>
 <a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="sd">            (contraction invariant violated; propagation would amplify).</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">    """</span>
 <a id="__codelineno-0-634" name="__codelineno-0-634"></a>    <span class="k">if</span> <span class="n">decay_per_hop</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>        <span class="n">decay_per_hop</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_DECAY_PER_HOP</span>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="c1"># Runtime contraction guard: enforces cap * decay_per_hop &lt; 1 so</span>
@@ -5815,10 +5843,10 @@ weights. Seeds are not included in results (except for depth=0).</p>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>    <span class="c1"># (1.0 * 0.5 = 0.5 &lt; 1) this never raises.</span>
 <a id="__codelineno-0-641" name="__codelineno-0-641"></a>    <span class="k">if</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span> <span class="o">*</span> <span class="n">decay_per_hop</span> <span class="o">&gt;=</span> <span class="mf">1.0</span><span class="p">:</span>
 <a id="__codelineno-0-642" name="__codelineno-0-642"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="sa">f</span><span class="s2">&quot;Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP &quot;</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>            <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">) * decay_per_hop &quot;</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a>            <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">decay_per_hop</span><span class="si">}</span><span class="s2">) &gt;= 1.0; propagation would amplify &quot;</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>            <span class="sa">f</span><span class="s2">&quot;instead of decay. Lower the cap or decay_per_hop.&quot;</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="sa">f</span><span class="s2">"Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP "</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>            <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span><span class="si">}</span><span class="s2">) * decay_per_hop "</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>            <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">decay_per_hop</span><span class="si">}</span><span class="s2">) &gt;= 1.0; propagation would amplify "</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>            <span class="sa">f</span><span class="s2">"instead of decay. Lower the cap or decay_per_hop."</span>
 <a id="__codelineno-0-647" name="__codelineno-0-647"></a>        <span class="p">)</span>
 <a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">seed_pks</span><span class="p">:</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="k">return</span> <span class="p">{}</span>
@@ -5848,7 +5876,7 @@ weights. Seeds are not included in results (except for depth=0).</p>
 <a id="__codelineno-0-673" name="__codelineno-0-673"></a>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="mi">2</span><span class="p">):</span>
 <a id="__codelineno-0-674" name="__codelineno-0-674"></a>            <span class="n">pk</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>                <span class="n">pk</span> <span class="o">=</span> <span class="n">pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a>                <span class="n">pk</span> <span class="o">=</span> <span class="n">pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>            <span class="n">weight</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
 <a id="__codelineno-0-678" name="__codelineno-0-678"></a>            <span class="n">scores</span><span class="p">[</span><span class="n">pk</span><span class="p">]</span> <span class="o">=</span> <span class="n">weight</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a>
@@ -6033,10 +6061,10 @@ all other instances' edge sorted sets via SCAN + ZREM.</p>
 <a id="__codelineno-0-688" name="__codelineno-0-688"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-689" name="__codelineno-0-689"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
 <a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="p">):</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Clean up edges when a model instance is deleted.</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="w">    </span><span class="sd">"""Clean up edges when a model instance is deleted.</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">    Removes the instance&#39;s own edge sorted set AND removes it from</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">    all other instances&#39; edge sorted sets via SCAN + ZREM.</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">    Removes the instance's own edge sorted set AND removes it from</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">    all other instances' edge sorted sets via SCAN + ZREM.</span>
 <a id="__codelineno-0-695" name="__codelineno-0-695"></a>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">        model_instance: The Model instance being deleted.</span>
@@ -6044,15 +6072,15 @@ all other instances' edge sorted sets via SCAN + ZREM.</p>
 <a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">        field_value: Current field value (unused).</span>
 <a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        pipeline: Optional Redis pipeline.</span>
 <a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">        **kwargs: Additional context.</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">    """</span>
 <a id="__codelineno-0-703" name="__codelineno-0-703"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
 <a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">CoOccurrenceField</span><span class="p">):</span>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a>            <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="p">)</span>
 <a id="__codelineno-0-708" name="__codelineno-0-708"></a>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="c1"># Get this instance&#39;s PK from its redis key</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;saved_redis_key&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="c1"># Get this instance's PK from its redis key</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"saved_redis_key"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-711" name="__codelineno-0-711"></a>
 <a id="__codelineno-0-712" name="__codelineno-0-712"></a>    <span class="c1"># Get the edge key for this instance</span>
 <a id="__codelineno-0-713" name="__codelineno-0-713"></a>    <span class="n">edge_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
@@ -6062,14 +6090,14 @@ all other instances' edge sorted sets via SCAN + ZREM.</p>
 <a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="n">linked</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="k">for</span> <span class="n">target_pk</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">:</span>
 <a id="__codelineno-0-719" name="__codelineno-0-719"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_pk</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>                <span class="n">target_pk</span> <span class="o">=</span> <span class="n">target_pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>                <span class="n">target_pk</span> <span class="o">=</span> <span class="n">target_pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
 <a id="__codelineno-0-721" name="__codelineno-0-721"></a>            <span class="n">target_edge_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-723" name="__codelineno-0-723"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a>            <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-725" name="__codelineno-0-725"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="c1"># Delete this instance&#39;s edge sorted set</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="c1"># Delete this instance's edge sorted set</span>
 <a id="__codelineno-0-728" name="__codelineno-0-728"></a>    <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-729" name="__codelineno-0-729"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-730" name="__codelineno-0-730"></a>    <span class="k">else</span><span class="p">:</span>

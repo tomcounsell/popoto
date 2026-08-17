@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2952,13 +2980,13 @@ alone.</p>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">project_key</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;memories.jsonl&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">export_records</span><span class="p">(</span><span class="n">project_key</span><span class="o">=</span><span class="s2">&quot;ai&quot;</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="n">fh</span><span class="p">)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"memories.jsonl"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">export_records</span><span class="p">(</span><span class="n">project_key</span><span class="o">=</span><span class="s2">"ai"</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="n">fh</span><span class="p">)</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
 </code></pre></div>
 <p>With no arguments, <code>export_records()</code> exports every record of the model:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;all_memories.jsonl&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"all_memories.jsonl"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">export_records</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">fh</span><span class="p">)</span>
 </code></pre></div>
 <p>Filter arguments are forwarded verbatim to <code>Model.query.filter(...)</code> — plain keyword
@@ -3027,8 +3055,8 @@ for the full accounting.</p>
 </table>
 <p><code>result.summary()</code> renders all of this as human-readable text.</p>
 <h2 id="importing">Importing<a class="headerlink" href="#importing" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;memories.jsonl&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s2">&quot;overwrite&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"memories.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s2">"overwrite"</span><span class="p">)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
 </code></pre></div>
@@ -3127,8 +3155,8 @@ written and some not. The recovery path is to re-run the same file with
 <code>on_conflict="overwrite"</code>: already-landed records overwrite themselves with identical
 values (a no-op in effect), and records that had not yet been written land normally.
 Because keys are always preserved, this converges rather than producing duplicates.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;memories.jsonl&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s2">&quot;overwrite&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"memories.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s2">"overwrite"</span><span class="p">)</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">errored</span> <span class="ow">or</span> <span class="n">report</span><span class="o">.</span><span class="n">partial</span><span class="p">:</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>  <span class="c1"># inspect what needs attention</span>

@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3095,7 +3123,7 @@ included in the JSON report for reproducibility.</p>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>redis-cli<span class="w"> </span>ping<span class="w">   </span><span class="c1"># should return PONG</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Install benchmark optional dependencies</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[benchmark]&quot;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[benchmark]"</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Verify</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>pip<span class="w"> </span>show<span class="w"> </span>huggingface_hub<span class="w"> </span>sentence-transformers
@@ -3316,7 +3344,7 @@ diagnose the vector signal's standalone strength, not as a production retrieval 
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Hybrid — BM25 + vector (downloads MiniLM on first run):</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[benchmark]&quot;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[benchmark]"</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--retrieval-mode<span class="w"> </span>hybrid
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Vector — pure cosine over EmbeddingField only (diagnostic; downloads MiniLM):</span>
@@ -4066,7 +4094,7 @@ arm off unless you have real association edges, not adjacency ones.</p>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        — ingest each turn as a memory record via Popoto Model.save()
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        — track session_id → Redis key mapping
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>      ExternalScenario.run()
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        — call ContextAssembler.assemble(query_cues={&quot;topic&quot;: query})
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        — call ContextAssembler.assemble(query_cues={"topic": query})
 <a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        — reverse-map Redis keys → session_ids
 <a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        — return ScenarioResult(retrieved_ids, relevant_ids)
 <a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>      ExternalScenario.teardown()
@@ -4089,7 +4117,7 @@ compatible with both Redis and Valkey:
 - <code>SET</code>, <code>GET</code> (model instance storage via msgpack)
 - <code>SCAN</code>, <code>DEL</code> (cleanup)</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Verify no module commands used:</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;BF\.\|CMS\.\|TOPK\.\|FT\.&quot;</span><span class="w"> </span>tests/benchmarks/<span class="w">  </span><span class="c1"># should return nothing</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">"BF\.\|CMS\.\|TOPK\.\|FT\."</span><span class="w"> </span>tests/benchmarks/<span class="w">  </span><span class="c1"># should return nothing</span>
 </code></pre></div>
 <h3 id="extending-the-harness">Extending the Harness<a class="headerlink" href="#extending-the-harness" title="Permanent link">&para;</a></h3>
 <p>To add a new dataset:

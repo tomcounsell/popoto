@@ -1440,6 +1440,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2854,12 +2882,12 @@ Point it at Redis or Valkey on <code>localhost:6379</code> and you are running.<
 <h2 id="memory-around-an-llm-turn">Memory around an LLM turn<a class="headerlink" href="#memory-around-an-llm-turn" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubconsciousMemory</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">messages</span><span class="p">,</span> <span class="n">assembly</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>   <span class="c1"># pre-turn: retrieve + inject</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">answer</span> <span class="o">=</span> <span class="n">call_your_llm</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>                   <span class="c1"># your LLM call</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>        <span class="c1"># post-turn: save what was learned</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">&quot;acted&quot;</span><span class="p">)</span>      <span class="c1"># feedback: reinforce what was used</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">"acted"</span><span class="p">)</span>      <span class="c1"># feedback: reinforce what was used</span>
 </code></pre></div>
 <p><code>agent_id</code> is the only required argument. It partitions every index, and an
 explicit <code>.filter(agent_id=...)</code> query always honors that partition — but
@@ -2907,15 +2935,15 @@ and to everything else in your keyspace.</p>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">location</span> <span class="o">=</span> <span class="n">GeoField</span><span class="p">()</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;American&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"American"</span><span class="p">,</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">)</span>
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> serves </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="si">}</span><span class="s2"> food.&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1"># =&gt; &#39;Burger Palace serves American food.&#39;</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> serves </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="si">}</span><span class="s2"> food."</span><span class="p">)</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1"># =&gt; 'Burger Palace serves American food.'</span>
 </code></pre></div>
 <p>Reading and writing happen at RAM speed. Popoto adds
 <a href="async/">async operations</a>, <a href="multi-tenancy/">multi-tenancy</a> via KeyField
@@ -2932,7 +2960,7 @@ fidelity for moving records between Redis instances.</p>
 dependency, and the suite carries explicit Valkey-safety tests asserting that
 indexes stay on plain types. Point <code>REDIS_URL</code> at a
 <a href="https://valkey.io">Valkey</a> server and the same code runs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">REDIS_URL</span> <span class="o">=</span> <span class="s2">&quot;redis://HOST[:PORT]/DATABASE[?password=PASSWORD]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">REDIS_URL</span> <span class="o">=</span> <span class="s2">"redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"</span>
 </code></pre></div>
 <p><code>REDIS_URL</code> is optional in local development. See
 <a href="configuration/">Configuration</a> for the full connection options.</p>

@@ -1458,6 +1458,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2889,7 +2917,7 @@ fix is one function in <code>popoto/integrations/hooks.py</code>.</p>
 checkout: <code>pip install -e '.[mcp]'</code>.</p>
 </div>
 <h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;popoto[mcp]&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[mcp]'</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>popoto-memory<span class="w"> </span>doctor
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.hermes/hooks/popoto-memory
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>cp<span class="w"> </span>plugins/hermes/HOOK.yaml<span class="w"> </span>plugins/hermes/handler.py<span class="w"> </span>~/.hermes/hooks/popoto-memory/
@@ -2928,7 +2956,7 @@ so this stays the harness's decision.</p>
 timestamps and <code>records</code> climbs.</p>
 <p>If they stay at <code>never</code>, the handler is not being reached. Test the adapter
 directly, bypassing Hermes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;event_type&quot;:&quot;pre_llm_call&quot;,&quot;session_id&quot;:&quot;t&quot;,&quot;extra&quot;:{&quot;user_message&quot;:&quot;how do deploys work?&quot;}}&#39;</span><span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">'{"event_type":"pre_llm_call","session_id":"t","extra":{"user_message":"how do deploys work?"}}'</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>popoto-memory<span class="w"> </span>hook
 </code></pre></div>
 <p>If that returns <code>{"context": "..."}</code> but Hermes still shows nothing, the

@@ -1334,6 +1334,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2859,7 +2887,7 @@ popoto.enable_error_reporting()
 <span class="normal"><a href="#__codelineno-0-90">90</a></span>
 <span class="normal"><a href="#__codelineno-0-91">91</a></span>
 <span class="normal"><a href="#__codelineno-0-92">92</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="k">def</span><span class="w"> </span><span class="nf">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Enable opt-in error reporting to the Popoto maintainers.</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="w">    </span><span class="sd">"""Enable opt-in error reporting to the Popoto maintainers.</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    When enabled, exceptions originating in Popoto code are reported to</span>
 <a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    a Sentry project maintained by the Popoto authors. This helps</span>
@@ -2870,12 +2898,12 @@ popoto.enable_error_reporting()
 <a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    function silently does nothing.</span>
 <a id="__codelineno-0-71" name="__codelineno-0-71"></a>
 <a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    The reporter uses an isolated Sentry client that does **not**</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    interfere with your application&#39;s own ``sentry_sdk.init()`` or</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    interfere with your application's own ``sentry_sdk.init()`` or</span>
 <a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    global Sentry configuration.</span>
 <a id="__codelineno-0-75" name="__codelineno-0-75"></a>
 <a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    Args:</span>
 <a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">        dsn: Optional Sentry DSN override. By default, errors are</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">            reported to the Popoto maintainers&#39; Sentry project. Set</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">            reported to the Popoto maintainers' Sentry project. Set</span>
 <a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">            ``POPOTO_SENTRY_DSN`` env var or pass a DSN here to</span>
 <a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">            redirect reports to your own project instead.</span>
 <a id="__codelineno-0-81" name="__codelineno-0-81"></a>
@@ -2884,7 +2912,7 @@ popoto.enable_error_reporting()
 <a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        import popoto</span>
 <a id="__codelineno-0-85" name="__codelineno-0-85"></a>
 <a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">        popoto.enable_error_reporting()</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    """</span>
 <a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-89" name="__codelineno-0-89"></a>        <span class="n">_do_enable</span><span class="p">(</span><span class="n">dsn</span><span class="p">)</span>
 <a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
@@ -2936,11 +2964,11 @@ internal error occurs.</p>
 <span class="normal"><a href="#__codelineno-0-145">145</a></span>
 <span class="normal"><a href="#__codelineno-0-146">146</a></span>
 <span class="normal"><a href="#__codelineno-0-147">147</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="k">def</span><span class="w"> </span><span class="nf">capture_exception</span><span class="p">(</span><span class="n">exc</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="ne">BaseException</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Capture an exception and send it to the Popoto Sentry project.</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="w">    </span><span class="sd">"""Capture an exception and send it to the Popoto Sentry project.</span>
 <a id="__codelineno-0-128" name="__codelineno-0-128"></a>
 <a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">    This is a no-op if error reporting has not been enabled or if any</span>
 <a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">    internal error occurs.</span>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">    """</span>
 <a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">_enabled</span> <span class="ow">or</span> <span class="n">_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a>            <span class="k">return</span>

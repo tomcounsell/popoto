@@ -1618,6 +1618,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3254,16 +3282,16 @@
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">associations</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">(</span><span class="n">symmetric</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_edges</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># Create instances</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">mem_a</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;concept_a&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Machine learning&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">mem_b</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;concept_b&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Neural networks&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">mem_c</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;concept_c&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Deep learning&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">mem_a</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"concept_a"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Machine learning"</span><span class="p">)</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">mem_b</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"concept_b"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Neural networks"</span><span class="p">)</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">mem_c</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"concept_c"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Deep learning"</span><span class="p">)</span>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="n">pk_a</span> <span class="o">=</span> <span class="n">mem_a</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="n">pk_b</span> <span class="o">=</span> <span class="n">mem_b</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">pk_c</span> <span class="o">=</span> <span class="n">mem_c</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1"># Access the field instance</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;associations&quot;</span><span class="p">]</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">"associations"</span><span class="p">]</span>
 </code></pre></div>
 <h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">&para;</a></h2>
 <h3 id="linkmodel_class-source_pk-target_pk-initial_weight01-pipelinenone"><code>link(model_class, source_pk, target_pk, initial_weight=0.1, pipeline=None)</code><a class="headerlink" href="#linkmodel_class-source_pk-target_pk-initial_weight01-pipelinenone" title="Permanent link">&para;</a></h3>
@@ -3299,13 +3327,13 @@
 <h3 id="get_linkedmodel_class-pk-min_weight001-limit20"><code>get_linked(model_class, pk, min_weight=0.01, limit=20)</code><a class="headerlink" href="#get_linkedmodel_class-pk-min_weight001-limit20" title="Permanent link">&para;</a></h3>
 <p>Get linked PKs sorted by weight descending.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">linked</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_linked</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk_a</span><span class="p">,</span> <span class="n">min_weight</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Returns: [(&quot;target_pk_1&quot;, 0.8), (&quot;target_pk_2&quot;, 0.3), ...]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Returns: [("target_pk_1", 0.8), ("target_pk_2", 0.3), ...]</span>
 </code></pre></div>
 <h3 id="propagatemodel_class-seed_pks-depth2-decay_per_hop05-threshold001"><code>propagate(model_class, seed_pks, depth=2, decay_per_hop=0.5, threshold=0.01)</code><a class="headerlink" href="#propagatemodel_class-seed_pks-depth2-decay_per_hop05-threshold001" title="Permanent link">&para;</a></h3>
 <p>BFS graph propagation with exponential weight decay per hop. Uses a server-side Lua script for efficiency.</p>
 <p>Per-hop transfer is always &lt;= <code>decay_per_hop</code> because edge weights are clamped. The BFS threshold reliably terminates the walk. A runtime guard raises <code>ValueError</code> if <code>cap * decay_per_hop &gt;= 1.0</code>. A read-time <code>min(edge_weight, cap)</code> in the Lua BFS handles pre-existing over-cap weights as defense-in-depth.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">scores</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="p">[</span><span class="n">pk_a</span><span class="p">],</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">decay_per_hop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># Returns: {&quot;pk_b&quot;: 0.4, &quot;pk_c&quot;: 0.08, ...}</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># Returns: {"pk_b": 0.4, "pk_c": 0.08, ...}</span>
 </code></pre></div>
 <ul>
 <li>When same PK reached via multiple paths, uses <code>max(weight)</code></li>
@@ -3355,7 +3383,7 @@
 </code></pre></div>
 <h3 id="with-confidencefield">With ConfidenceField<a class="headerlink" href="#with-confidencefield" title="Permanent link">&para;</a></h3>
 <p>Confidence values can modulate effective edge weights:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">)</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">linked</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_linked</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">effective_weights</span> <span class="o">=</span> <span class="p">[(</span><span class="n">pk</span><span class="p">,</span> <span class="n">w</span> <span class="o">*</span> <span class="n">confidence</span><span class="p">)</span> <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">]</span>
 </code></pre></div>

@@ -1342,6 +1342,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3519,32 +3547,32 @@
 <p>Popoto works with both Redis and <a href="https://valkey.io">Valkey</a> (the open-source Redis fork). The same configuration works for either - just point <code>REDIS_URL</code> at your server.</p>
 <h3 id="using-redis_url-recommended">Using REDIS_URL (Recommended)<a class="headerlink" href="#using-redis_url-recommended" title="Permanent link">&para;</a></h3>
 <p>Set <code>REDIS_URL</code> as an environment variable before starting your application.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379/0&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/0"</span>
 </code></pre></div>
 <p>The URL format follows the Redis URI scheme:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>redis://[[username:]password@]host[:port][/database]
 </code></pre></div>
 <p>Common examples:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Local development (default if REDIS_URL is not set)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379/0&quot;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/0"</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Remote Redis with password</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">&quot;redis://:mypassword@redis.example.com:6379/0&quot;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://:mypassword@redis.example.com:6379/0"</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Redis with username and password (Redis 6+)</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">&quot;redis://myuser:mypassword@redis.example.com:6379/0&quot;</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://myuser:mypassword@redis.example.com:6379/0"</span>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Heroku Redis, Render, Railway, etc.</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">&quot;redis://default:abc123@some-host.cloud:6379&quot;</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://default:abc123@some-host.cloud:6379"</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># Valkey (same format works)</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379/0&quot;</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/0"</span>
 </code></pre></div>
 <p>When <code>REDIS_URL</code> is set, Popoto calls <code>redis.from_url()</code> to establish the connection. This works with both Redis and Valkey servers.</p>
 <h3 id="default-connection">Default Connection<a class="headerlink" href="#default-connection" title="Permanent link">&para;</a></h3>
 <p>If <code>REDIS_URL</code> is not set, Popoto connects to <code>127.0.0.1:6379</code> using a connection pool:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># This is what Popoto does internally when REDIS_URL is not set</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6379</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">"127.0.0.1"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6379</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">POPOTO_REDIS_DB</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
 </code></pre></div>
 <p>No configuration is needed for local development with Redis running on the default port.</p>
@@ -3553,10 +3581,10 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_REDIS_DB_settings</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Connect to a different Redis instance</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;redis.example.com&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6380</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">"redis.example.com"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6380</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Connect with password</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;redis.example.com&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6379</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="s2">&quot;secret&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">"redis.example.com"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6379</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="s2">"secret"</span><span class="p">)</span>
 </code></pre></div>
 <p>The function accepts the same keyword arguments as <code>redis.Redis()</code>.</p>
 <p>The replacement connection keeps the same pooling policy as the one built at import: a
@@ -3569,7 +3597,7 @@ callers wait for a free connection instead of opening an unbounded number of soc
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Positional arguments — redis.Redis() and BlockingConnectionPool()</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># do not share a positional signature, so they cannot be forwarded to a pool</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;localhost&quot;</span><span class="p">,</span> <span class="mi">6379</span><span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="mi">6379</span><span class="p">)</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -3604,10 +3632,10 @@ callers wait for a free connection instead of opening an unbounded number of soc
 <a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>HGETALL<span class="w"> </span>Restaurant:Burger<span class="o">{</span><span class="p">&amp;</span><span class="c1">#58;}Palace</span>
 <a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># Check sorted set indexes</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>ZRANGE<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SortedF</span><span class="s2">:Restaurant:rating&quot;</span><span class="w"> </span><span class="m">0</span><span class="w"> </span>-1<span class="w"> </span>WITHSCORES
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>ZRANGE<span class="w"> </span><span class="s2">"</span><span class="nv">$SortedF</span><span class="s2">:Restaurant:rating"</span><span class="w"> </span><span class="m">0</span><span class="w"> </span>-1<span class="w"> </span>WITHSCORES
 <a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
 <a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># Check geo indexes</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>GEOPOS<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GeoF</span><span class="s2">:Restaurant:location&quot;</span><span class="w"> </span><span class="s2">&quot;Restaurant:Burger Palace&quot;</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>GEOPOS<span class="w"> </span><span class="s2">"</span><span class="nv">$GeoF</span><span class="s2">:Restaurant:location"</span><span class="w"> </span><span class="s2">"Restaurant:Burger Palace"</span>
 <a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
 <a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="c1"># Watch all Redis commands in real time</span>
 <a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>MONITOR
@@ -3621,8 +3649,8 @@ these field types.</p>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-key&quot;</span><span class="p">),</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">&quot;/data/popoto-content&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span><span class="p">,</span>
 <a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">)</span>
 </code></pre></div>
 <table>
@@ -3699,8 +3727,8 @@ full staleness-window table and the cost of the default mode.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">VoyageProvider</span><span class="p">(</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-voyage-key&quot;</span><span class="p">,</span>  <span class="c1"># or set VOYAGE_API_KEY env var</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;voyage-3&quot;</span><span class="p">,</span>           <span class="c1"># default model, 1024 dimensions</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-voyage-key"</span><span class="p">,</span>  <span class="c1"># or set VOYAGE_API_KEY env var</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"voyage-3"</span><span class="p">,</span>           <span class="c1"># default model, 1024 dimensions</span>
 <a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">)</span>
 <a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
 </code></pre></div>
@@ -3714,8 +3742,8 @@ when saving vs searching. Batch size limit is 128 texts per API call.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OpenAIProvider</span><span class="p">(</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span><span class="p">,</span>       <span class="c1"># or set OPENAI_API_KEY env var</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;text-embedding-3-small&quot;</span><span class="p">,</span>  <span class="c1"># default model</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-openai-key"</span><span class="p">,</span>       <span class="c1"># or set OPENAI_API_KEY env var</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"text-embedding-3-small"</span><span class="p">,</span>  <span class="c1"># default model</span>
 <a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">dim</span><span class="o">=</span><span class="mi">1536</span><span class="p">,</span>                        <span class="c1"># default dimensions</span>
 <a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">)</span>
 <a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
@@ -3734,8 +3762,8 @@ embedding model, and start the server:</p>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaProvider</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
 <a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OllamaProvider</span><span class="p">(</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;http://localhost:11434&quot;</span><span class="p">,</span>  <span class="c1"># default</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;nomic-embed-text&quot;</span><span class="p">,</span>           <span class="c1"># default (768-dim)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>  <span class="c1"># default</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">,</span>           <span class="c1"># default (768-dim)</span>
 <a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="n">dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                           <span class="c1"># auto-detect on first embed()</span>
 <a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="p">)</span>
 <a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
@@ -3771,10 +3799,10 @@ The storage location is resolved in this order:</p>
 <li>Default: <code>~/.popoto/content</code></li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Set via environment variable</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_CONTENT_PATH</span><span class="o">=</span><span class="s2">&quot;/data/popoto-content&quot;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_CONTENT_PATH</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Or set via configure()</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_path</span><span class="o">=</span><span class="s2">&quot;/data/popoto-content&quot;</span><span class="p">)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span><span class="p">)</span>
 </code></pre></div>
 <p>Files are organized by model class name under the base path, using
 content-addressable storage (SHA-256) for versioning. You can also supply a
@@ -3825,10 +3853,10 @@ explicitly enable it.</p>
 <h3 id="custom-dsn">Custom DSN<a class="headerlink" href="#custom-dsn" title="Permanent link">&para;</a></h3>
 <p>To send reports to your own Sentry project instead of the Popoto maintainers,
 set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_SENTRY_DSN</span><span class="o">=</span><span class="s2">&quot;https://your-key@your-org.ingest.sentry.io/your-project&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_SENTRY_DSN</span><span class="o">=</span><span class="s2">"https://your-key@your-org.ingest.sentry.io/your-project"</span>
 </code></pre></div>
 <p>Or pass the DSN directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="o">=</span><span class="s2">&quot;https://your-key@your-org.ingest.sentry.io/your-project&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="o">=</span><span class="s2">"https://your-key@your-org.ingest.sentry.io/your-project"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="what-gets-sent">What Gets Sent<a class="headerlink" href="#what-gets-sent" title="Permanent link">&para;</a></h3>
 <ul>
@@ -3891,6 +3919,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td>unset (falsy)</td>
 <td>Kill switch that restores 1.8.2 <code>str(value)</code> key bytes for <code>KeyField(type=datetime)</code> values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect <code>audit_datetime_keys()</code>, which always reports the truth. See <a href="../fields/#datetime-keyfields">Datetime KeyFields</a> and migration cookbook recipe 19.</td>
 </tr>
+<tr>
+<td><code>POPOTO_NEVER_RECORD_DISABLE</code></td>
+<td>unset (falsy)</td>
+<td>Kill switch for the never-record firewall (<code>NeverRecordMixin</code>). The firewall is default-on: unset, it blocks credential- and secret-shaped content on <code>save()</code> for any model that carries the mixin. A truthy value disables the check globally, restoring pre-firewall behavior with no model code change. See <a href="../fields/#neverrecordmixin">NeverRecordMixin</a>.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="thread-safety">Thread Safety<a class="headerlink" href="#thread-safety" title="Permanent link">&para;</a></h2>
@@ -3911,7 +3944,7 @@ threads can safely execute Redis operations concurrently:</p>
 <a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>
 <a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="c1"># Safe: each thread gets its own connection from the pool</span>
 <a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="k">as</span> <span class="n">pool</span><span class="p">:</span>
-<a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">increment</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;counter1&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">increment</span><span class="p">,</span> <span class="p">[</span><span class="s2">"counter1"</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -3924,8 +3957,8 @@ transactions or Lua scripts for atomic operations.</p>
 <p>Model instances should not be shared across threads. Each thread should create
 or load its own instances:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># UNSAFE: sharing instance across threads</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">&quot;alice&quot;</span><span class="p">)</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="c1"># Don&#39;t pass `user` to another thread</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">"alice"</span><span class="p">)</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="c1"># Don't pass `user` to another thread</span>
 <a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>
 <a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="c1"># SAFE: each thread loads its own instance</span>
 <a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_user</span><span class="p">(</span><span class="n">username</span><span class="p">):</span>
@@ -3961,21 +3994,21 @@ connection logger:</p>
 <a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
 <a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="c1"># Set all Popoto loggers to DEBUG</span>
 <a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">[</span>
-<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>    <span class="s2">&quot;POPOTO-REDIS_DB&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>    <span class="s2">&quot;POPOTO.model_base&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>    <span class="s2">&quot;POPOTO.Query&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>    <span class="s2">&quot;POPOTO.field&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>    <span class="s2">&quot;POPOTO.KeyFieldMixin&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>    <span class="s2">&quot;POPOTO.SortedFieldMixin&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>    <span class="s2">&quot;POPOTO.GeoField&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>    <span class="s2">&quot;POPOTO.Relationship&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>    <span class="s2">&quot;POPOTO-publisher&quot;</span><span class="p">,</span>
-<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>    <span class="s2">&quot;POPOTO-subscriber&quot;</span><span class="p">,</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>    <span class="s2">"POPOTO-REDIS_DB"</span><span class="p">,</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>    <span class="s2">"POPOTO.model_base"</span><span class="p">,</span>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>    <span class="s2">"POPOTO.Query"</span><span class="p">,</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>    <span class="s2">"POPOTO.field"</span><span class="p">,</span>
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>    <span class="s2">"POPOTO.KeyFieldMixin"</span><span class="p">,</span>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>    <span class="s2">"POPOTO.SortedFieldMixin"</span><span class="p">,</span>
+<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>    <span class="s2">"POPOTO.GeoField"</span><span class="p">,</span>
+<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>    <span class="s2">"POPOTO.Relationship"</span><span class="p">,</span>
+<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>    <span class="s2">"POPOTO-publisher"</span><span class="p">,</span>
+<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>    <span class="s2">"POPOTO-subscriber"</span><span class="p">,</span>
 <a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a><span class="p">]:</span>
 <a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
 <a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>
 <a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a><span class="c1"># Or configure a specific logger</span>
-<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;POPOTO.Query&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"POPOTO.Query"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="logger-reference">Logger Reference<a class="headerlink" href="#logger-reference" title="Permanent link">&para;</a></h3>
 <table>
@@ -4040,22 +4073,22 @@ connection logger:</p>
 <p><strong>Django:</strong>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># settings.py</span>
 <a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="n">LOGGING</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    <span class="s1">&#39;version&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    <span class="s1">&#39;handlers&#39;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>        <span class="s1">&#39;console&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;class&#39;</span><span class="p">:</span> <span class="s1">&#39;logging.StreamHandler&#39;</span><span class="p">},</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    <span class="s1">'version'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    <span class="s1">'handlers'</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>        <span class="s1">'console'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'class'</span><span class="p">:</span> <span class="s1">'logging.StreamHandler'</span><span class="p">},</span>
 <a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    <span class="p">},</span>
-<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>    <span class="s1">&#39;loggers&#39;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>        <span class="s1">&#39;POPOTO-REDIS_DB&#39;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>            <span class="s1">&#39;handlers&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;console&#39;</span><span class="p">],</span>
-<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>            <span class="s1">&#39;level&#39;</span><span class="p">:</span> <span class="s1">&#39;INFO&#39;</span><span class="p">,</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>    <span class="s1">'loggers'</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>        <span class="s1">'POPOTO-REDIS_DB'</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>            <span class="s1">'handlers'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'console'</span><span class="p">],</span>
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>            <span class="s1">'level'</span><span class="p">:</span> <span class="s1">'INFO'</span><span class="p">,</span>
 <a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>        <span class="p">},</span>
 <a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>    <span class="p">},</span>
 <a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="p">}</span>
 </code></pre></div></p>
 <p><strong>Flask:</strong>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;POPOTO-REDIS_DB&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="n">app</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Popoto logging configured&quot;</span><span class="p">)</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"POPOTO-REDIS_DB"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="n">app</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Popoto logging configured"</span><span class="p">)</span>
 </code></pre></div></p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>

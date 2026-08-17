@@ -1519,6 +1519,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3009,12 +3037,12 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">PolicyEntry</span><span class="p">,</span> <span class="n">compute_fingerprint</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">policy</span> <span class="o">=</span> <span class="n">PolicyEntry</span><span class="p">(</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">}),</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">state_features</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">action_type</span><span class="o">=</span><span class="s2">&quot;run_playbook&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">action_spec</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;playbook&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy.yml&quot;</span><span class="p">},</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">q_value</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;0.5&quot;</span><span class="p">),</span>  <span class="c1"># optional: seed initial Q-value at construction</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">}),</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">state_features</span><span class="o">=</span><span class="p">{</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">},</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">action_type</span><span class="o">=</span><span class="s2">"run_playbook"</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">action_spec</span><span class="o">=</span><span class="p">{</span><span class="s2">"playbook"</span><span class="p">:</span> <span class="s2">"deploy.yml"</span><span class="p">},</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">q_value</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">"0.5"</span><span class="p">),</span>  <span class="c1"># optional: seed initial Q-value at construction</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
@@ -3048,9 +3076,9 @@
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.streams.consumer</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamConsumer</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">consumer</span> <span class="o">=</span> <span class="n">StreamConsumer</span><span class="p">(</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">stream_key</span><span class="o">=</span><span class="s2">&quot;stream:policy_mutations&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">group_name</span><span class="o">=</span><span class="s2">&quot;crystallizer&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">consumer_name</span><span class="o">=</span><span class="s2">&quot;worker-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">stream_key</span><span class="o">=</span><span class="s2">"stream:policy_mutations"</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">group_name</span><span class="o">=</span><span class="s2">"crystallizer"</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">consumer_name</span><span class="o">=</span><span class="s2">"worker-1"</span><span class="p">,</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">handler</span><span class="o">=</span><span class="n">crystallization_handler</span><span class="p">,</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">)</span>
 </code></pre></div>
