@@ -6,7 +6,7 @@ understand what each piece buys before you keep or drop it.
 
 > **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
 >
-> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 15
+> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 17
 > primitives and the layers composed on them.
 
 ## Level 0: Import the defaults
