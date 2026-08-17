@@ -49,6 +49,8 @@ def composite_score(
     post_filter: Optional[Callable[[str, float], bool]] = None,
     co_occurrence_boost: dict = None,
     temperature: float = 1.0,
+    *,
+    as_of: Optional[float] = None,
 ) -> list:
 ```
 
@@ -65,6 +67,7 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 | `post_filter` | `Callable[[str, float], bool]` | `None` | `(redis_key, score) -> bool` filter applied after scoring. |
 | `co_occurrence_boost` | `dict` | `None` | `{redis_key: weight}` from `CoOccurrenceField.propagate()`. |
 | `temperature` | `float` | `1.0` | Score scaling factor. Divides each composite score by this value. Low values (0.02-0.1) sharpen discrimination; high values (2.0+) flatten scores. Must be > 0. |
+| `as_of` | `float` | `None` | Keyword-only. Epoch seconds at which [`ValidityField`](validity-and-supersession.md) membership is evaluated (issue #580). `None` means "now". Ignored on models without a `ValidityField`. |
 
 ### Supported index types
 

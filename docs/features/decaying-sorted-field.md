@@ -134,6 +134,17 @@ Override `decay_rate` per query for different retrieval contexts:
 hot = Memory.query.filter(agent_id="agent-1").top_by_decay(5, decay_rate=1.0)
 ```
 
+On a model that also declares a [`ValidityField`](validity-and-supersession.md), a
+keyword-only `as_of` reconstructs ranking at a past moment instead of now:
+
+```python
+past = Memory.query.filter(agent_id="agent-1").top_by_decay(5, as_of=two_weeks_ago)
+```
+
+`as_of` is ignored on models without a `ValidityField`. See
+[ValidityField and SupersessionProtocol](validity-and-supersession.md#point-in-time-reconstruction)
+for how membership is evaluated at a past instant.
+
 ## Confidence-Modulated Decay
 
 `base_score_field` scales the curve's **magnitude**, which never changes relative order: a demoted
@@ -304,4 +315,5 @@ for ranges and provenance.
 
 - [CyclicDecayField](cyclic-decay-field.md) — adds cyclical resonance and homeostatic pressure
 - [ConfidenceField](confidence-field.md) — the evidence signal that modulates the rate
+- [ValidityField and SupersessionProtocol](validity-and-supersession.md) — the orthogonal membership axis: validity decides whether a record is retrievable at all, decay decides its rank among what remains
 - [Agent Memory overview](agent-memory.md) — full primitives reference
