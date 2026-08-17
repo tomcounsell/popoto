@@ -35,14 +35,20 @@ sm.extract_memories(answer, importance=0.6)        # post-turn: save what was le
 sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
 ```
 
-`agent_id` is the only required argument. It partitions every index, so two
-agents sharing one Redis never see each other's memories. Leaving `model_class`
+`agent_id` is the only required argument. It partitions every index, and an
+explicit `.filter(agent_id=...)` query always honors that partition — but
+`inject_context`'s default retrieval path (lexical/BM25) does not yet filter
+by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis via the default loop can
+retrieve each other's memories. Leaving `model_class`
 unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
 an association graph.
 
 [Add memory to your agent](guides/agent-memory-quickstart.md) walks the same
 loop up level by level, from a single decaying field to the full assembly.
+Running inside Claude Code, Codex, Hermes, or OpenClaw instead of your own
+loop? [Add memory to your harness](features/harness-integration.md) wires the
+same primitives into hooks and MCP, no glue code required.
 
 ## What is measured
 
@@ -179,8 +185,12 @@ sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what wa
 ```
 
 That is a working memory loop with query-sensitive retrieval on by default.
-`agent_id` is the only required argument; it partitions every index, so two
-agents sharing one Redis never see each other's memories.
+`agent_id` is the only required argument; it partitions every index, and an
+explicit `.filter(agent_id=...)` query (Levels 1+ below) always honors that
+partition. `inject_context`'s default retrieval path (lexical/BM25) does not
+yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so at Level 0 two agents sharing one Redis can
+retrieve each other's memories — a distinct Redis database per agent is the
+actual isolation boundary until that lands.
 
 This is also the configuration the published benchmarks run. If you take
 nothing else from this page, take this.
@@ -653,7 +663,7 @@ sm.extract_memories(answer, importance=0.6)        # post-turn
 sm.report_outcomes(assembly, outcome="acted")      # feedback
 ```
 
-That is the whole loop. `agent_id` is the only required argument — it partitions every index, so two agents sharing one Redis never see each other's memories.
+That is the whole loop. `agent_id` is the only required argument — it partitions every index, and an explicit `.filter(agent_id=...)` query always honors that partition. `inject_context`'s default retrieval path (lexical/BM25) does not yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis through the default loop can retrieve each other's memories; a distinct Redis database per agent is the actual isolation boundary today.
 
 ### What the defaults give you
 
@@ -1059,7 +1069,52 @@ class AbstractExtractionProvider(ABC):
 
 Implementations turn raw text into `ExtractedFact` records. Provider implementations should not raise for ordinary extraction failures -- return an empty list instead (see `ClaudeExtractionProvider`'s fail-open contract below). Write your own provider by subclassing this ABC and implementing `extract()`.
 
-## The Default: `HeuristicExtractionProvider`
+### Shipped providers
+
+| Provider | Records per turn | Dependencies | Default for |
+|---|---|---|---|
+| `RawTurnExtractionProvider` | 1, verbatim | none | the harness path (`popoto.integrations`) |
+| `HeuristicExtractionProvider` | one per sentence | none | `SubconsciousMemory` |
+| `ClaudeExtractionProvider` | model's choice | `popoto[anthropic]`, API key | opt-in only |
+
+The two defaults differ deliberately. `SubconsciousMemory` keeps the
+heuristic for backward compatibility -- changing it would silently alter the
+write behavior of existing code. The harness path is new surface with no
+compatibility obligation, so it takes the arm that
+[measured best](#evaluation-extraction-lost-to-raw-ingestion).
+
+## `RawTurnExtractionProvider`
+
+Verbatim pass-through: one turn in, one `ExtractedFact` out. No sentence
+splitting, no length filter, no rewriting -- only surrounding whitespace is
+stripped.
+
+```python
+from popoto.extraction import RawTurnExtractionProvider
+from popoto.recipes import SubconsciousMemory
+
+sm = SubconsciousMemory(
+    agent_id="agent-1",
+    extraction_provider=RawTurnExtractionProvider(),
+)
+```
+
+**This is the harness default**, because a hook fires on every turn and the
+[evaluation below](#evaluation-extraction-lost-to-raw-ingestion) put raw
+ingestion at 0.3636 judged accuracy against the heuristic's 0.2078 on the
+same slice. Defaulting the highest-volume write path in the product to the
+measured-worst arm would fill a new user's corpus with the weakest records
+Popoto knows how to make. `POPOTO_MEMORY_INGEST=heuristic` opts back into
+splitting and logs that cost on first use. See
+[Harness Integration](harness-integration.md).
+
+It states no importance or confidence opinion, so the caller-supplied
+`importance` is used and `ConfidenceField` stays at its prior. An optional
+`max_chars` truncates very long turns; leave it unset unless turns are large
+enough to threaten Redis value limits, since truncating is the same
+information loss the provider exists to avoid.
+
+## The `SubconsciousMemory` Default: `HeuristicExtractionProvider`
 
 Zero-dependency, stdlib-only, and used automatically when no `extraction_provider` is passed to `SubconsciousMemory`. It splits text on sentence-ending punctuation (`.!?`) followed by whitespace or end-of-string, strips each sentence, and drops any shorter than `min_length` (default 10 chars). Every surviving sentence becomes an `ExtractedFact` with no entities and `importance=None`, `confidence=None` -- so downstream wiring always falls back to the caller-supplied `importance` and never touches `confidence_field`.
 
@@ -1235,6 +1290,895 @@ testing on your own data before ruling extraction out.
 - [SubconsciousMemory Recipe](../guides/subconscious-memory-recipe.md) -- the recipe that consumes extraction providers
 - [ConfidenceField](confidence-field.md) -- update formula and blending behavior
 - [CoOccurrenceField](co-occurrence-field.md) -- association graph seeded from co-mentioned entities
+- [Harness Integration](harness-integration.md) -- where `RawTurnExtractionProvider` is the default write path
+
+---
+
+## Overview
+
+# Harness Integration
+
+Subconscious memory for Claude Code, Codex, Hermes, and OpenClaw, backed by
+your own Redis or Valkey. No API keys, no hosted service, no schema to write.
+
+```bash
+pip install 'popoto[mcp]'
+popoto-memory doctor
+```
+
+Then paste your harness's config block. The next turn silently carries
+relevant memories; the turn after that remembers what was just said.
+
+!!! note "Pre-release"
+    `popoto[mcp]` is not on PyPI yet. Until a release ships, install from a
+    checkout: `pip install -e '.[mcp]'`. The hook path needs only
+    `pip install popoto`; the extra is for the MCP server.
+
+## Hooks recall and capture; MCP tools search, save, and correct
+
+That split is the whole design, and it is the part worth understanding
+before anything else.
+
+Subconscious memory means the memory layer runs on **every** turn, whether
+or not the model asks for it. A plain MCP tool server cannot deliver that,
+because MCP tools are agent-elected: the model calls a tool when it decides
+to. Memory then becomes something the model chooses, which is instructed
+memory wearing a subconscious label.
+
+Vendors who bet the other way say so. Supermemory, explaining why it shipped
+a plugin on top of its MCP server: "We cannot control when claude code
+chooses to run the tools. This means that we have no control / data point to
+learn things from, and a memory system is only good if there's things to
+recall later." Mem0's troubleshooting page tells users that if memories are
+not being captured, they installed the MCP-only variant and need the
+marketplace plugin, "since MCP-only installs require manual memory
+operations."
+
+Every harness here has a deterministic, model-independent surface that fires
+per turn. That surface, not MCP, carries recall and capture. MCP remains the
+portable core for the discretionary half: searching on demand, saving
+explicitly, correcting a memory that turned out wrong.
+
+## Per-harness capability
+
+Auto-inject means memories reach the model with no tool call. Auto-capture
+means the turn is stored with no tool call.
+
+| Harness | Auto-inject | Auto-capture | Discretionary tools | Setup |
+|---|---|---|---|---|
+| Claude Code | yes (`UserPromptSubmit`) | yes (`Stop`, async) | yes (MCP) | 2 commands, or 8 config lines |
+| Codex | yes (`UserPromptSubmit`) | yes (`Stop`) | yes (MCP) | config + feature flag + `/hooks` trust review |
+| Hermes | yes (`pre_llm_call`) | yes (`post_llm_call`) | yes (MCP) | 2-file hook directory |
+| OpenClaw | no, plugin required | no, plugin required | yes (MCP) | MCP config only |
+
+Verification is not uniform either, and the difference matters more than the
+capability table:
+
+| Harness | Contract verified against |
+|---|---|
+| Claude Code | a live `claude` 2.1.220 run; payloads captured and committed as test fixtures |
+| Codex | the `codex-cli` 0.144.4 binary's own hook-input schema, not a live turn |
+| Hermes | vendor documentation only |
+| OpenClaw | vendor documentation only |
+
+Guides: [Claude Code](../guides/harness-claude-code.md) (the reference),
+[Codex](../guides/harness-codex.md), [Hermes](../guides/harness-hermes.md),
+[OpenClaw](../guides/harness-openclaw.md).
+
+## What happens on a turn
+
+```
+user types
+    |
+    v  pre-model hook              popoto-memory hook
+assemble from Redis
+    |
+    v  context appended to the USER turn
+model
+    |
+    v  post-model hook, async      popoto-memory hook
+turn saved verbatim, outcomes reported
+    |
+    v
+next turn's assembly is better
+```
+
+**Read path.** The harness fires its pre-model event with the user's prompt.
+The adapter normalizes the payload to `(event, query_text, session_id, cwd)`,
+`MemoryService.assemble()` runs `ContextAssembler` over
+[`DefaultMemory`](agent-memory.md) on the lexical/BM25 path, and the
+formatted block goes back in the harness's own response shape:
+`{"hookSpecificOutput": {"additionalContext": "..."}}` for Claude Code and
+Codex, `{"context": "..."}` for Hermes, `{"appendContext": "..."}` for
+OpenClaw. The selected record keys are queued under the session so the
+following write event can report outcomes against exactly those records.
+
+**Write path.** The harness fires its post-model event carrying the
+assistant's final text. The turn is saved through
+`RawTurnExtractionProvider`, one verbatim record. The queued keys from the
+read path are popped and reported through `ObservationProtocol` with
+outcome `used`, which confirms the staged read and auto-resolves
+predictions — `_apply_used()` (`src/popoto/fields/observation.py:391`)
+explicitly does not touch `ConfidenceField`, `CyclicDecayField`, or
+`DecayingSortedField`. Outcome `acted`, which does raise confidence and
+affect decay, is reserved for an explicit, discretionary `memory_feedback`
+MCP tool call — the automatic hook path never emits it. Nothing is written
+to stdout, and on Claude Code this hook is configured `"async": true` so it
+never sits on the turn's critical path.
+
+**Known gap: the read→write handoff is a session-wide FIFO, not a turn ID.**
+`MemoryService` queues selected record keys per `session_id` as a plain
+list and pops one entry per write event; it does not key the entry on a
+turn identifier, even though Claude Code and Codex fixtures both carry one
+(`prompt_id` / `turn_id`). A read whose paired write event never fires — an
+aborted turn, a crashed session — leaves its entry in the list and shifts
+every later push/pop pairing by one, and a `SubagentStop`-configured
+session pops one queued entry per subagent against a single earlier read.
+The failure mode is misattributed outcome reporting (confidence/decay
+adjustments land on the wrong turn's records), not a crash, and it is
+bounded by `MAX_PENDING_TURNS` (32) per session. Tracked as follow-up work
+in #574; not fixed in this PR.
+
+Neither path parses a transcript file. Every harness supplies the assistant's
+final text on the event itself, so a change to the JSONL format cannot break
+capture.
+
+### Injection lands in the user turn, never the system prompt
+
+`SubconsciousMemory.inject_context()`, the library API, appends to
+`messages[0]`, which invalidates a cached system prefix on every turn. The
+hook path does not do that: Claude Code `additionalContext`, Hermes
+`pre_llm_call` context, and OpenClaw `appendContext` all land in the user
+turn. Hermes documents the choice as caching-motivated. `MemoryService`
+returns a context *string* and never touches a message array, so where the
+text goes is the harness's decision.
+
+## The write path is raw ingestion, on purpose
+
+Issue #489 evaluated LLM extraction, heuristic sentence-splitting, and raw
+turn ingestion on the same slice. **Every extraction arm lost to raw
+ingestion on judged accuracy: heuristic 0.2078 against raw 0.3636.**
+
+A hook fires on every turn, so the harness surface would otherwise generate
+more memories through the measured-worst write path than every other Popoto
+usage combined, and the quality of that corpus is exactly what a new user
+judges the product on. So
+[`RawTurnExtractionProvider`](llm-memory-extraction.md) is the default here:
+one turn in, one record out, stored verbatim.
+
+`POPOTO_MEMORY_INGEST=heuristic` switches to sentence-splitting and logs
+that measured cost the first time it is used.
+
+## Configuration
+
+Every variable is optional. The zero-configuration path is "local Redis or
+Valkey on the default port, memories tagged with this project's agent id" —
+see the scoping caveat on `POPOTO_MEMORY_AGENT_ID` below before wiring the
+hook into more than one project on one database.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `POPOTO_MEMORY_URL` | `REDIS_URL`, else `redis://localhost:6379/0` | Valkey URLs are identical |
+| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Tags writes and is honored as a read filter on the composite-score retrieval path. The shipped default is the lexical/BM25 path, which does **not** yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)) — a project's memories can be retrieved by another `agent_id` on the same database. Not a project-isolation boundary today; use a distinct `POPOTO_MEMORY_URL` database per project for that instead |
+| `POPOTO_MEMORY_MAX_ITEMS` | `5` | Diverges from the benchmark; see below |
+| `POPOTO_MEMORY_MAX_TOKENS` | `800` | Under Codex's 2500-token `additionalContextLimit` |
+| `POPOTO_MEMORY_INGEST` | `raw` | `raw` or `heuristic` |
+| `POPOTO_MEMORY_ENABLED` | `1` | Kill switch that needs no config edit |
+| `POPOTO_MEMORY_LOG` | `~/.popoto/memory.log` | Where swallowed errors land |
+
+A malformed value falls back to its default rather than raising. A typo in a
+harness config must not break a turn.
+
+### The one deliberate divergence from the benchmarked configuration
+
+Scoring is unchanged: `score_weights={"relevance": 1.0}` and the
+lexical/BM25 retrieval path that `DefaultMemory` selects, exactly as
+benchmarked.
+
+`max_items` and `max_tokens` are not. The retrieval benchmark ran at
+`max_items=20`, a reasonable budget for a question-answering evaluation and
+the wrong one for a coding harness, where a turn fires every few seconds and
+context is contested by file contents, tool output, and the system prompt.
+Codex additionally caps injected context at 2500 tokens. The defaults here
+are 5 items and 800 tokens. Raise them with the environment variables if
+your turns are long and infrequent.
+
+## Diagnosing
+
+A hook has no console, so `popoto-memory doctor` is the error surface.
+
+```
+$ popoto-memory doctor
+popoto-memory doctor
+
+  status         enabled
+  redis url      redis://localhost:6379/0
+  redis          reachable, valkey 9.1.0, ping 4.91 ms
+  agent id       my-project
+  model          DefaultMemory
+  retrieval      lexical (query-sensitive)
+  ingest         raw
+  budget         5 items / 800 tokens
+  records        142
+  hook read      1.71 ms (in-process)
+  successes      assemble=88, capture=142
+  failures       none
+  last assemble  2026-08-07T18:41:03+00:00
+  last capture   2026-08-07T18:41:07+00:00
+  log            /Users/dev/.popoto/memory.log
+```
+
+What to read:
+
+- **`retrieval`** should say `lexical (query-sensitive)`. If it says
+  `composite -- QUERY-BLIND`, the prompt text is being ignored when ranking.
+  See [Query-Blind Retrieval](../guides/query-blind-retrieval.md).
+- **`last assemble` / `last capture`** are how a silent break becomes
+  visible. A hook that stopped firing shows a stale timestamp, or `never`.
+- **`failures`** counts swallowed exceptions per operation. Every one of
+  them also wrote a line to the log, and the last five lines are printed
+  underneath.
+- **Redis unreachable** exits 1 and prints the command to fix it.
+
+`popoto-memory doctor --json` emits the same data machine-readably.
+
+## Failure behavior
+
+A memory failure must never break a user's turn, so every path swallows and
+continues. Swallowing silently is the failure mode that makes users conclude
+memory does not work, so each swallowed exception always appends a line to
+`POPOTO_MEMORY_LOG` -- that's the reliable channel. It also tries to
+increment a Redis counter that `doctor` reads back, but that write is
+best-effort against the same client that just failed: when the failure is
+Redis being unreachable, the counter does not get incremented, which is
+exactly when `doctor` has nothing to read back anyway.
+
+| Situation | Behavior |
+|---|---|
+| Redis down, read hook | exit 0, no stdout, one log line, four lines on stderr, counter not incremented (same client is down) |
+| Redis down, write hook | exit 0, turn dropped, logged. No retry queue |
+| Healthy Redis, empty corpus (fresh DB / first run) | exit 0, no stdout, one stderr line -- a BM25 advisory that it collected no query signal and fell back to composite (query-blind). Expected on a user's first turn after install; stderr goes quiet and stdout carries content once the corpus is seeded. See [Query-Blind Retrieval](../guides/query-blind-retrieval.md). |
+| Malformed JSON on stdin | exit 0, no output, logged as `hook_decode` |
+| Empty prompt | no retrieval attempted, no output |
+| Empty assistant message | nothing written |
+| Missing `session_id` | recall still runs; outcome reporting degrades to a no-op |
+| Nothing retrieved | no `additionalContext` key at all, rather than an empty header |
+
+Output is built as one string and written once, because Codex treats stdout
+that starts with `{` but fails to parse as a hook failure.
+
+## MCP tools
+
+Four tools, one `memory_` prefix, frozen. They end up in users' configs and
+in other projects' docs, so a rename breaks installs silently; a test
+asserts the four names literally.
+
+| Tool | Purpose |
+|---|---|
+| `memory_search` | Find something specific mid-task that was not already injected |
+| `memory_save` | Store a deliberate fact the turn text would not preserve |
+| `memory_feedback` | Mark a memory `contradicted` or `acted`, adjusting its confidence without deleting it |
+| `memory_status` | Connection, scope, retrieval mode, record count, failures |
+
+Errors come back as MCP error results with a readable message, never a
+traceback rendered as tool output.
+
+An explicit `memory_search` does not consume the outcome-reporting slot of a
+subconscious injection: a deliberate search is not a per-turn recall and must
+not be reported as one.
+
+## Latency
+
+The read hook is synchronous and on the critical path of every turn. The
+budget is 400 ms p95 end to end, enforced by
+`tests/test_integrations_latency.py`.
+
+Measured on an Apple M-series laptop, Python 3.12.13, redis 8.6.2 on
+localhost, 50 records in scope, 25 subprocess invocations:
+
+| Measure | Value |
+|---|---|
+| p50 | 193 ms |
+| p95 | 200 ms |
+| max | 211 ms |
+
+Nearly all of that is Python interpreter startup, not Redis: in-process
+assembly measures 1-2 ms. `popoto.integrations` keeps its module scope free
+of heavy imports for this reason, and the write hook runs `"async": true` on
+Claude Code so only the read path is ever on the critical path.
+
+## Corpus growth
+
+Every turn in every session writes a record. `agent_id` defaults to the
+working directory's basename, so corpora are per-project rather than global,
+and `doctor` reports the record count. `POPOTO_MEMORY_ENABLED=0` stops
+writes without editing any harness config.
+
+Popoto's decay primitives rank stale memories down over time.
+[`MemoryLifecycle`](../recipes.md) can hard-delete them, but it requires a
+`tier` KeyField that `DefaultMemory` does not declare, so it is not wired
+into the harness path; running it needs a model of your own.
+
+## Try it without a harness
+
+```bash
+popoto-memory demo                          # narrated tour of the loop
+python examples/harness_memory/verify.py    # the same loop as assertions
+```
+
+Both run against local Redis or Valkey with no API keys and clean up after
+themselves. See `examples/harness_memory/README.md`.
+
+## Where the code lives
+
+```
+src/popoto/integrations/
+    service.py      MemoryService: assemble, capture, feedback, search, correct, status
+    config.py       environment and cwd resolution
+    hooks.py        harness payload in, harness payload out
+    mcp_server.py   stdio MCP server, four frozen tool names
+    cli.py          popoto-memory: hook | mcp | doctor | demo
+    demo.py         the zero-key loop
+plugins/            declarative harness assets, one directory per harness
+.claude-plugin/     marketplace manifest for the Claude Code plugin
+```
+
+`popoto.integrations` depends on `popoto.recipes` and `popoto.extraction`;
+nothing in core depends on it. The core install is unchanged, and the hook
+path does not require `mcp` at all.
+
+---
+
+## Claude Code
+
+# Add Memory to Claude Code
+
+Claude Code is the reference wiring. It has the richest verified hook
+contract, a packaged two-command install, and it is the harness this
+integration's payload fixtures were captured from live.
+
+!!! note "Pre-release"
+    `popoto[mcp]` is not on PyPI yet. Until a release ships, install from a
+    checkout: `pip install -e '.[mcp]'`. Hooks work on a bare
+    `pip install popoto`; the extra is only for the MCP tools.
+
+## Install
+
+```bash
+pip install 'popoto[mcp]'
+popoto-memory doctor
+```
+
+`doctor` must print `redis reachable` and `retrieval lexical
+(query-sensitive)` before you go further. If Redis is not running:
+
+```bash
+redis-server        # or: valkey-server
+```
+
+Then either the plugin or the manual block. They do the same thing.
+
+### Plugin
+
+```bash
+claude plugin marketplace add tomcounsell/popoto
+claude plugin install popoto-memory@popoto
+```
+
+### Manual
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "popoto-memory hook" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "popoto-memory hook", "async": true }] }
+    ]
+  }
+}
+```
+
+Eight lines. `"async": true` on `Stop` keeps the write off the turn's
+critical path.
+
+To scope memory to one project rather than to `~/.claude/settings.json`
+globally, put the same block in that project's `.claude/settings.json`.
+
+Restart Claude Code either way.
+
+## Verify
+
+Have a conversation that establishes a fact, then start a new session and
+ask about it.
+
+```
+you:    we deploy blue-green, and a failed health check rolls back automatically
+claude: ...
+
+(new session)
+
+you:    what happens if a deploy fails its health check?
+claude: it rolls back automatically to the previous green environment
+```
+
+The recall happened because `UserPromptSubmit` fired, not because Claude
+decided to look something up.
+
+Then:
+
+```bash
+popoto-memory doctor
+```
+
+`last assemble` and `last capture` carry recent timestamps, `records` is
+climbing, and `failures` reads `none`. Those three lines are the whole
+health check.
+
+## What is stored, and where
+
+In your Redis or Valkey, in the `DefaultMemory:*` keyspace, tagged with an
+`agent_id` that defaults to the basename of your working directory. That tag
+is honored as a read filter only on the composite-score retrieval path; the
+shipped default lexical/BM25 path does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two
+projects on one Redis can retrieve each other's memories. Use a distinct
+`POPOTO_MEMORY_URL` database per project for real isolation.
+
+One turn becomes one record, verbatim. Issue #489 measured
+sentence-splitting extraction at 0.2078 judged accuracy against 0.3636 for
+raw ingestion on the same slice, so raw is the default here.
+
+Nothing leaves your machine. There is no API key because there is nothing to
+authenticate to.
+
+Inspect it directly:
+
+```bash
+redis-cli --scan --pattern 'DefaultMemory:*' | head
+```
+
+## Latency
+
+Measured on an Apple M-series laptop, Python 3.12.13, redis 8.6.2 on
+localhost, 50 records in scope, 25 subprocess invocations of the read hook:
+**p50 193 ms, p95 200 ms, max 211 ms**, against a 400 ms p95 budget that
+`tests/test_integrations_latency.py` enforces.
+
+Nearly all of that is Python interpreter startup. The Redis work itself is
+1-2 ms.
+
+## The MCP tools
+
+The plugin also registers a stdio MCP server, or add it yourself:
+
+```json
+{ "mcpServers": { "popoto-memory": { "command": "popoto-memory", "args": ["mcp"] } } }
+```
+
+`memory_search`, `memory_save`, `memory_feedback`, `memory_status`. These
+are for deliberate use: searching for something specific mid-task, saving a
+fact the turn text would not preserve, marking a memory wrong. Recall and
+capture do not depend on them, and Claude never has to call one for memory
+to work.
+
+## Tuning
+
+Every setting is an environment variable and every one is optional. The full
+table is in [Harness Integration](../features/harness-integration.md). The
+three worth knowing:
+
+```bash
+export POPOTO_MEMORY_AGENT_ID=my-project      # share one corpus across directories
+export POPOTO_MEMORY_MAX_ITEMS=10             # default 5
+export POPOTO_MEMORY_ENABLED=0                # kill switch, no config edit
+```
+
+Hooks inherit your shell environment, so exporting these in your shell
+profile is enough.
+
+## When it is not working
+
+```bash
+popoto-memory doctor
+```
+
+| What `doctor` says | What it means |
+|---|---|
+| `redis UNREACHABLE` | No server, or the wrong `POPOTO_MEMORY_URL`. It prints the fix. |
+| `last activity never` | The hooks are not firing. Check that `popoto-memory` is on the `PATH` your harness sees, and that you restarted Claude Code. |
+| `retrieval composite -- QUERY-BLIND` | Ranking is ignoring the prompt text. See [Query-Blind Retrieval](query-blind-retrieval.md). |
+| `FAILURES assemble=N` | Something is raising on the read path. The last five log lines print underneath. |
+| `records 0` after several turns | Capture is not running. Check the `Stop` hook specifically; `UserPromptSubmit` can work while `Stop` does not. |
+
+Test a hook by hand, which is exactly what Claude Code does:
+
+```bash
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"t","prompt":"how do deploys work?"}' \
+  | popoto-memory hook
+```
+
+You should get one line of JSON, or nothing at all if no memory matched.
+Never a traceback, and never a non-zero exit.
+
+## Uninstall
+
+```bash
+claude plugin uninstall popoto-memory@popoto   # or delete the settings block
+pip uninstall popoto
+```
+
+Your memories stay in your Redis until you delete them:
+
+```bash
+redis-cli --scan --pattern 'DefaultMemory:*' | xargs redis-cli del
+```
+
+## Verified against
+
+`claude` 2.1.220, on macOS, 2026-08-07. The `UserPromptSubmit` and `Stop`
+payloads in `tests/fixtures/harness_payloads/claude_code_*.json` were
+captured from a live run of that version, and each file records the command
+that reproduces the capture.
+
+---
+
+## Codex
+
+# Add Memory to Codex
+
+Codex sends `hook_event_name` on stdin and reads
+`hookSpecificOutput.additionalContext` from stdout, exactly as Claude Code
+does. The same `popoto-memory hook` command string serves both, so the
+behavior is identical once it is wired up.
+
+Wiring it up is not identical. Codex gates hooks twice, and both gates are
+worth understanding before you debug a silent failure.
+
+!!! note "Pre-release"
+    `popoto[mcp]` is not on PyPI yet. Until a release ships, install from a
+    checkout: `pip install -e '.[mcp]'`.
+
+## Install
+
+```bash
+pip install 'popoto[mcp]'
+popoto-memory doctor
+```
+
+Write `~/.codex/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "user_prompt_submit": [
+      { "hooks": [{ "type": "command", "command": "popoto-memory hook" }] }
+    ],
+    "stop": [
+      { "hooks": [{ "type": "command", "command": "popoto-memory hook", "async": true }] }
+    ]
+  }
+}
+```
+
+Note the snake_case event names: Codex matches hooks on `user_prompt_submit`
+and `stop` in configuration, while the payload it sends carries
+`hook_event_name: "UserPromptSubmit"`. The adapter accepts both spellings.
+
+Turn hooks on in `~/.codex/config.toml`:
+
+```toml
+[features]
+hooks = true
+```
+
+Then, inside Codex, run `/hooks` and approve the entry.
+
+## The trust review is a feature, not a step to skip
+
+Codex hashes every non-managed command hook and skips it until you have
+reviewed that exact definition. Editing the command re-triggers the review.
+
+That is correct behavior. A hook is an arbitrary command that Codex runs on
+your behalf before and after every turn, with your environment. A memory
+integration that silently installed one would be indistinguishable from
+something worse. Read the command, then approve it.
+
+There is a `--dangerously-bypass-hook-trust` flag for automation. The name
+is accurate; do not use it interactively.
+
+## The failure mode that wastes an afternoon
+
+**A project-level `.codex/hooks.json` in an untrusted project is skipped
+with no message at all.** Codex does not warn, log, or fail. Memory simply
+never happens.
+
+This was reproduced first-hand against codex-cli 0.144.4: with a project
+`.codex/hooks.json` and `codex exec --enable hooks
+--dangerously-bypass-hook-trust`, no hook ran and nothing was reported.
+
+Install at `~/.codex/hooks.json` instead.
+
+`POPOTO_MEMORY_AGENT_ID` tags writes and is honored as a read filter only on
+the composite-score retrieval path — the shipped default lexical/BM25 path
+does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so setting it per project does **not**
+isolate one project's memories from another's on the same database:
+
+```bash
+export POPOTO_MEMORY_AGENT_ID=my-project
+```
+
+If you need real per-project isolation today, point each project at its own
+`POPOTO_MEMORY_URL` database instead.
+
+## Context limit
+
+Codex caps injected context at 2500 tokens (`additionalContextLimit`). The
+default `POPOTO_MEMORY_MAX_TOKENS` is 800, comfortably under it. If you
+raise it, stay below the cap: Codex will truncate rather than tell you.
+
+## MCP tools
+
+```bash
+codex mcp add popoto-memory -- popoto-memory mcp
+```
+
+Or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.popoto-memory]
+command = "popoto-memory"
+args = ["mcp"]
+```
+
+This registers `memory_search`, `memory_save`, `memory_feedback`, and
+`memory_status`. It does **not** give you the subconscious loop: MCP tools
+only run when the model elects to call them. If you configure MCP and skip
+the hooks, you have instructed memory, not subconscious memory.
+
+## Verify
+
+```bash
+popoto-memory doctor
+```
+
+After a few turns, `last assemble` and `last capture` carry recent
+timestamps and `records` climbs. If both stay at `never`, the hooks are not
+firing: check `[features] hooks = true`, check that you approved them via
+`/hooks`, and check that the file is at `~/.codex/hooks.json` rather than in
+a project.
+
+Test the command directly, which is what Codex does:
+
+```bash
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"t","prompt":"how do deploys work?"}' \
+  | popoto-memory hook
+```
+
+## Verified against
+
+`codex-cli` 0.144.4. The hook input contract was read from that binary's own
+schema: `session_id`, `transcript_path`, `hook_event_name`,
+`permission_mode`, `turn_id`, `agent_transcript_path`, `agent_type`,
+`last_assistant_message`, `prompt`, `cwd`, `stop_hook_active` -- matching
+Claude Code field for field, which is why one executable serves both.
+
+The fixtures in `tests/fixtures/harness_payloads/codex_*.json` are derived
+from that schema, **not** from a live turn: the live capture attempt hit the
+silent project-level skip described above. A live acceptance run on a
+trusted project is still outstanding. Each fixture records this in its
+`_provenance` field.
+
+---
+
+## Hermes
+
+# Add Memory to Hermes
+
+Hermes is the only harness here whose hooks are Python. The handler runs
+inside the gateway process, so the read path is a single Redis round trip
+with no interpreter startup at all -- the fastest of the four.
+
+!!! warning "Verified against documentation, not a live run"
+    Hermes is not installed on any machine this integration is developed on.
+    The hook contract below comes from Nous Research's documentation, and
+    the payload fixtures in `tests/fixtures/harness_payloads/hermes_*.json`
+    are docs-derived, so the round-trip tests prove our reading of the docs
+    rather than the harness itself. If the field names have moved,
+    `popoto-memory doctor` will show no `last assemble` timestamp and the
+    fix is one function in `popoto/integrations/hooks.py`.
+
+!!! note "Pre-release"
+    `popoto[mcp]` is not on PyPI yet. Until a release ships, install from a
+    checkout: `pip install -e '.[mcp]'`.
+
+## Install
+
+```bash
+pip install 'popoto[mcp]'
+popoto-memory doctor
+mkdir -p ~/.hermes/hooks/popoto-memory
+cp plugins/hermes/HOOK.yaml plugins/hermes/handler.py ~/.hermes/hooks/popoto-memory/
+hermes mcp add popoto-memory -- popoto-memory mcp
+```
+
+Two files, no config file to edit.
+
+`HOOK.yaml` declares the events:
+
+```yaml
+name: popoto-memory
+events:
+  - pre_llm_call
+  - post_llm_call
+```
+
+`handler.py` exposes `async def handle(event_type, context)` and forwards
+straight to the shared adapter. It builds one `MemoryService` and keeps it
+for the life of the gateway, so there is no per-turn setup cost.
+
+## Why in-process matters here
+
+On Claude Code and Codex the read hook is a subprocess: p95 200 ms,
+essentially all of it Python startup. On Hermes none of that applies. The
+same assembly measures 1-2 ms in-process, which is what `popoto-memory
+doctor` reports as `hook read`.
+
+The tradeoff is that a bug in the handler is a bug in the gateway process.
+The handler is written accordingly: it catches everything, returns `None` on
+any failure, and lets the reason land in `~/.popoto/memory.log` and in
+`popoto-memory doctor`.
+
+## Injection lands in the user message
+
+Hermes places `pre_llm_call` context in the user message rather than the
+system prompt, and documents that the choice is to preserve prompt caching.
+That is the same placement Claude Code's `additionalContext` gets, and it is
+why per-turn injection does not invalidate a cached prefix.
+
+`MemoryService` returns a context string and never touches a message array,
+so this stays the harness's decision.
+
+## Verify
+
+```bash
+popoto-memory doctor
+```
+
+After a few turns, `last assemble` and `last capture` carry recent
+timestamps and `records` climbs.
+
+If they stay at `never`, the handler is not being reached. Test the adapter
+directly, bypassing Hermes:
+
+```bash
+echo '{"event_type":"pre_llm_call","session_id":"t","extra":{"user_message":"how do deploys work?"}}' \
+  | popoto-memory hook
+```
+
+If that returns `{"context": "..."}` but Hermes still shows nothing, the
+problem is the hook registration or the payload field names, not the memory
+layer.
+
+## MCP tools
+
+`hermes mcp add popoto-memory -- popoto-memory mcp` registers
+`memory_search`, `memory_save`, `memory_feedback`, and `memory_status` for
+deliberate use. Recall and capture do not depend on them.
+
+## Configuration
+
+Identical to every other harness, and all environment-driven. See
+[Harness Integration](../features/harness-integration.md) for the table. The
+gateway must have these in its environment, not just your interactive shell,
+since the handler runs in the gateway process.
+
+---
+
+## OpenClaw
+
+# Add Memory to OpenClaw
+
+**OpenClaw gets the MCP tools. It does not get automatic injection or
+automatic capture.** That is the current state, stated plainly rather than
+buried: on OpenClaw this is instructed memory, not subconscious memory.
+
+!!! note "Pre-release"
+    `popoto[mcp]` is not on PyPI yet. Until a release ships, install from a
+    checkout: `pip install -e '.[mcp]'`.
+
+## Install
+
+```bash
+pip install 'popoto[mcp]'
+popoto-memory doctor
+```
+
+Add to `~/.openclaw/openclaw.json` under `mcp.servers`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "popoto-memory": {
+        "command": "popoto-memory",
+        "args": ["mcp"]
+      }
+    }
+  }
+}
+```
+
+Restart OpenClaw. You get four tools:
+
+| Tool | Purpose |
+|---|---|
+| `memory_search` | Find something stored earlier |
+| `memory_save` | Store a fact |
+| `memory_feedback` | Mark a memory `contradicted` or `acted` |
+| `memory_status` | Connection, scope, retrieval mode, record count |
+
+## What you are missing, and why
+
+On Claude Code, Codex, and Hermes, memory runs on every turn because the
+harness fires a hook that this package handles. The model is never asked.
+That is the property that makes memory reliable: a memory system is only
+worth having if things were actually recorded to recall later, and a model
+that must choose to record will not choose consistently.
+
+On OpenClaw the model has to call `memory_save` and `memory_search`. It will
+sometimes. It will often not.
+
+OpenClaw's per-turn hooks -- `before_prompt_build`, which returns
+`appendContext`, and `llm_output` -- live in TypeScript plugins rather than
+in a command string. The adapter here already speaks that contract:
+`tests/fixtures/harness_payloads/openclaw_*.json` round-trip through it and
+produce `{"appendContext": "..."}`. A thin plugin that shells out to
+`popoto-memory hook` is all that is missing.
+
+Whether an OpenClaw plugin may spawn a subprocess is unverified. Plugins
+load as in-process Node modules, so `child_process` should be reachable, and
+no documentation says otherwise. "Should be" is not verification, and
+OpenClaw is not installed on any machine this integration is developed on,
+so the plugin is not shipped.
+
+The alternative -- reimplementing the memory path in TypeScript -- would be
+a second implementation of the core, and is not going to happen.
+
+Resolving this takes one person with OpenClaw installed running a plugin
+that calls `child_process.execFile`. If that works, the plugin is a dozen
+lines: pass the event through to `popoto-memory hook`, return its JSON.
+
+## Getting more out of the tools in the meantime
+
+Because recall is model-elected here, telling the agent when to search
+actually helps, which is not true on the other harnesses. Something like
+this in your instructions:
+
+```
+Before answering a question about how this project works, call
+memory_search. After learning something durable about the project, call
+memory_save.
+```
+
+That is a workaround for a missing hook surface, not the intended design.
+
+## Verify
+
+```bash
+popoto-memory doctor
+```
+
+`records` climbing means `memory_save` is being called. If `records` stays
+at 0 across a long session, the model is not electing to use the tools --
+which is the whole problem described above, not a bug in the setup.
+
+## Configuration
+
+Identical to every other harness, all environment-driven. See
+[Harness Integration](../features/harness-integration.md).
 
 ---
 
