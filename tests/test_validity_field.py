@@ -1919,3 +1919,68 @@ class TestTransferRoundTrip:
         rev_str = rev.decode() if isinstance(rev, bytes) else rev
         assert fwd_str == new_after.db_key.redis_key
         assert rev_str == old_after.db_key.redis_key
+
+    def test_open_claim_pointer_survives_round_trip(self):
+        """The identity-scoped open pointer must be carried too (PR #582).
+
+        ``SupersessionProtocol.supersede(..., identity_key=...)`` resolves the
+        incumbent *solely* through ``{prefix}:open:{digest}``: ``old_member``
+        is passed as ``''`` and ``SUPERSEDE_LUA`` GETs the pointer. If the
+        round trip drops that pointer, the next supersession on the identity
+        closes nothing, writes no chain link, and repoints the pointer at the
+        newcomer — leaving the pre-transfer incumbent orphaned open forever.
+        Because gating is subtractive, that record stays fully retrievable:
+        the same silent resurrection this field exists to prevent, deferred
+        by one supersession.
+        """
+        identity = SupersessionProtocol.identity_key("sky", "color")
+        pointer_key = ValidityField.get_open_pointer_key(
+            ValidFact, "validity", identity
+        )
+
+        v1 = _save(ValidFact, name="rt-ptr-v1")
+        # First claim on the identity: nothing to close, pointer now names v1.
+        assert SupersessionProtocol.supersede(v1, identity_key=identity) is None
+        assert POPOTO_REDIS_DB.get(pointer_key) is not None
+
+        self._round_trip(ValidFact)
+
+        v1_after = ValidFact.query.filter(name="rt-ptr-v1").first()
+        assert v1_after is not None
+
+        # 1. The pointer is restored and names the incumbent.
+        pointed = POPOTO_REDIS_DB.get(pointer_key)
+        assert pointed is not None, (
+            "open-claim pointer dropped across export/import: the next "
+            "supersede on this identity will silently close nothing"
+        )
+        pointed_str = pointed.decode() if isinstance(pointed, bytes) else pointed
+        assert pointed_str == v1_after.db_key.redis_key
+
+        # 2. A subsequent identity-scoped supersede closes the incumbent.
+        time.sleep(0.02)
+        v2 = _save(ValidFact, name="rt-ptr-v2")
+        closed = SupersessionProtocol.supersede(v2, identity_key=identity)
+        assert closed == v1_after.db_key.redis_key
+
+        _, invalid_at, _ = _interval(ValidFact, "validity", v1_after)
+        assert invalid_at is not None and invalid_at != float("inf")
+        assert not ValidityField.is_valid_at(
+            ValidFact, "validity", v1_after.db_key.redis_key
+        )
+
+        # 3. Both chain links written, pointer repointed at the newcomer.
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+        fwd = POPOTO_REDIS_DB.hget(keys["chain_fwd"], v1_after.db_key.redis_key)
+        rev = POPOTO_REDIS_DB.hget(keys["chain_rev"], v2.db_key.redis_key)
+        assert fwd is not None and rev is not None
+        fwd_str = fwd.decode() if isinstance(fwd, bytes) else fwd
+        rev_str = rev.decode() if isinstance(rev, bytes) else rev
+        assert fwd_str == v2.db_key.redis_key
+        assert rev_str == v1_after.db_key.redis_key
+
+        repointed = POPOTO_REDIS_DB.get(pointer_key)
+        repointed_str = (
+            repointed.decode() if isinstance(repointed, bytes) else repointed
+        )
+        assert repointed_str == v2.db_key.redis_key

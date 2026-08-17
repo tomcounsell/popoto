@@ -625,8 +625,17 @@ alongside `ObservationProtocol` (`__init__.py:49`, `__all__` at `:192`), and the
 - [ ] Supersession chains traverse both directions from any record; records are closed, never
       deleted.
 - [ ] Gate-disabled decay scores are identical to pre-change scores (byte-parity test).
-- [ ] p50 validity-gated retrieval within 1 ms of ungated at 20k records, measured by an
-      in-repo deterministic micro-benchmark test.
+- [ ] ~~p50 validity-gated retrieval within 1 ms of ungated at 20k records, measured by an
+      in-repo deterministic micro-benchmark test.~~ **WAIVED by the PM on 2026-08-17**; the
+      measured miss is ~1.4x and structural (the decay Lua full-scans its partition, so a 1 ms
+      absolute budget is unreachable on any full-scan path). Tracked in
+      [#585](https://github.com/tomcounsell/popoto/issues/585). What shipped instead: a
+      deterministic ratio-based micro-benchmark asserting < 4.0 against a same-process ungated
+      control. See Scope Amendments below.
+- [ ] **Validity state survives a `popoto.transfer` round trip** — all six derived keys,
+      including the identity-scoped open-claim pointer, so a post-import `supersede()` on the
+      same identity still closes the incumbent. *Added 2026-08-17 by scope amendment; see
+      Scope Amendments below.*
 - [ ] All new ops accept `pipeline=`; tuning constants in `Defaults`; tests at
       `tests/test_validity_field.py`; docs page under `docs/features/`.
 - [ ] Tests pass (`/do-test`), narrow scope: the files named in Test Impact plus the new file.
@@ -748,6 +757,8 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 | Type check | `mypy src/` | error count not increased vs. base in the same env |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 | Full suite (not just the nine named files) | `pytest -q --ignore=tests/test_dataframe_field.py` | no failures attributable to this branch |
+| Round-trip fidelity, all six derived keys (scope amendment 1) | `pytest tests/test_validity_field.py::TestTransferRoundTrip tests/test_transfer_roundtrip.py -q` | exit code 0 |
+| The round-trip pointer test is not vacuous | stub `import_state`'s `open_pointers` loop to a no-op, rerun the row above | `test_open_claim_pointer_survives_round_trip` FAILS |
 
 ## Critique Results
 
@@ -859,6 +870,11 @@ real but low.
 
 ## Open Questions
 
+> **All three were ruled on by the PM on 2026-08-17 — see [Scope Amendments & PM
+> Rulings](#scope-amendments--pm-rulings-2026-08-17) below.** Q1 and Q3 accepted as proposed;
+> Q2 (LongMemEval-S) deferred to [#586](https://github.com/tomcounsell/popoto/issues/586). The
+> questions are left below as written for the record.
+
 1. **Chain links as derived HASHes instead of `Relationship` fields (D3).** The issue sketch
    names `superseded_by` / `supersedes` as `RelationshipField`s. A `Relationship` value lives
    inside the model hash, so writing it onto the incumbent mutates the incumbent — which the
@@ -882,6 +898,83 @@ real but low.
    is a no-op for every model without a `ValidityField`, which is all of them today —
    including `DefaultMemory` (see No-Gos) — so the blast radius of "on by default" is zero at
    merge and grows only as adopters opt in by declaring the field.
+
+---
+
+## Scope Amendments & PM Rulings (2026-08-17)
+
+The three items the plan escalated rather than self-cleared were ruled on by the PM on
+**2026-08-17**. All three rulings are recorded here as decisions, not proposals. No critique
+verdict marker is synthesized for this amendment — the CRITIQUE stage ran on 2026-08-16 against
+the pre-amendment plan and is not re-run.
+
+### Amendment 1 — Transfer round-trip fidelity is in scope (NEW WORK, PM-approved 2026-08-17)
+
+**This exceeds the plan as critiqued on 2026-08-16 and is added deliberately.**
+
+The plan (D1) fixed the field's state at six derived keys and treated `popoto.transfer` as out
+of frame — the word does not appear in the pre-amendment document. PR review found that
+omission is not neutral: `ValidityField` defines its own `on_save`, so it would have inherited
+`roundtrip_policy = "rebuild"` from `Field`, and on import `on_save` runs in `mode="open"`.
+Every superseded record would come back with a **fresh open interval**, and because all three
+gating layers are subtractive by design, a record with no closure is fully retrievable. An
+export/import would silently resurrect exactly what this field exists to close.
+
+The first correction declared `roundtrip_policy = "carry"` and carried five of the six keys —
+the three interval ZSETs and the record's two chain links. Review then reproduced a second,
+subtler failure in the same family: the sixth key, the identity-scoped open-claim pointer
+`{prefix}:open:{digest}`, was still dropped. `SupersessionProtocol.supersede(new,
+identity_key=...)` resolves the incumbent *solely* through that pointer (`old_member=''`, and
+`SUPERSEDE_LUA` `GET`s `KEYS[4]`). With the pointer missing, the next supersession on that
+identity closes nothing, writes no chain link, and repoints at the newcomer — leaving the
+pre-transfer incumbent orphaned open forever, and the identity with two concurrently-open
+claims under `validity__current=True`.
+
+**PM ruling: fix it correctly by carrying the pointer.** The `roundtrip_policy = "partial"` +
+`roundtrip_note` route — documenting the loss rather than repairing it — was considered and
+**rejected**: it would ship a known data-integrity defect behind a disclosure.
+
+Implementation, following the `ConfidenceField` / `CyclicDecayField` `export_state`/
+`import_state` exemplars:
+
+- `find_open_pointers_for_member()` — extracted from `on_delete`, which already performed this
+  `SCAN` + `GET`-compare. The digest is opaque and there is no record → digest reverse lookup,
+  so a scan is the only available answer; both callers are admin/rare paths, never save or read.
+- `export_state` returns `open_pointers` as a list of bare digests (not full Redis keys), so the
+  destination rebuilds them under its own prefix.
+- `import_state` restores them with a plain `SET`, matching the existing deliberate choice of
+  non-`NX` writes: `_restore_state` runs *after* `save()`, so an `NX` form would silently no-op
+  against the interval `on_save` just seeded.
+- `TestTransferRoundTrip::test_open_claim_pointer_survives_round_trip` asserts the pointer
+  survives, that a post-import `supersede()` closes the incumbent and writes both chain links,
+  and that the pointer repoints at the newcomer. Verified non-vacuous: stubbing the
+  `import_state` carry to a no-op fails it on the pointer assertion.
+
+Success Criteria gains a corresponding row.
+
+### Amendment 2 — The p50-at-20k criterion is WAIVED for this PR
+
+Ruled on **2026-08-17**. Measured ~1.4x rather than within 1 ms, and read as **structural**: the
+decay Lua full-scans its partition, so an absolute 1 ms budget is unreachable on any full-scan
+path regardless of the gate's cost. Tracked in
+[#585](https://github.com/tomcounsell/popoto/issues/585), which owes the decision on restating
+the target as a ratio versus scoping it to a non-full-scan path. The waiver is for this PR only;
+the criterion is not deleted, it is moved.
+
+### Amendment 3 — The LongMemEval-S gate is DEFERRED
+
+Ruled on **2026-08-17**, resolving Open Question 2 as proposed. Tracked in
+[#586](https://github.com/tomcounsell/popoto/issues/586). Wave A ships unbenchmarked because the
+run would measure nothing today: no benchmark model declares a `ValidityField` and no Wave A
+unit produces supersessions, so before and after would be identical by construction. The run is
+owed by the first wave with a producer — #560 (M1) or #564 (M5).
+
+### Open Questions 1 and 3 — resolved as planned
+
+Question 1 (chain links as derived HASHes rather than `Relationship` fields) and Question 3
+(`VALIDITY_GATING_ENABLED = True` from day one, matching the repo's default-ON kill-switch
+precedent rather than an opt-in release) were both accepted as the plan proposed. Blast radius
+of the default-on gate is zero at merge: no shipped model declares a `ValidityField`.
 
 ---
 

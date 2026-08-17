@@ -270,8 +270,9 @@ class ValidityField(Field):
     # here: a transfer export/import round trip would silently reopen every
     # superseded record, because gating is subtractive (see the warning on
     # :meth:`resolve_valid_keys`) and a record with no interval entry is
-    # fully retrievable. "carry" restores the interval scores and chain
-    # links explicitly, after ``save()`` has already run.
+    # fully retrievable. "carry" restores all six derived keys explicitly --
+    # interval scores, chain links, and the identity-scoped open-claim
+    # pointers -- after ``save()`` has already run.
     roundtrip_policy: str = "carry"
 
     #: Sentinel written into exported ``invalid_at`` in place of Python's
@@ -287,6 +288,32 @@ class ValidityField(Field):
     OPEN_SENTINEL_TOKEN = "+inf"
 
     @classmethod
+    def find_open_pointers_for_member(
+        cls, model: "ModelLike", field_name: str, member_key: str
+    ) -> "list[str]":
+        """Return the pointer keys under ``{prefix}:open:*`` that name ``member_key``.
+
+        There is no record -> identity-digest reverse lookup by design (plan D1
+        fixes the key count at six, and the digest is opaque: identity is
+        caller-defined and hashed by ``SupersessionProtocol.identity_key``), so
+        the only way to answer "which identities currently claim this record as
+        their open one?" is to ``SCAN`` the pointer keyspace and compare values.
+        Both callers are admin/rare paths — :meth:`on_delete` and
+        :meth:`export_state` — never save or read.
+
+        A record may legitimately match zero pointers: it was never superseded
+        on an identity, or it has already been closed and the pointer moved on.
+        """
+        prefix = cls.get_prefix_db_key(model, field_name).redis_key
+        matched = []
+        for pointer_key in scan_keys(f"{prefix}:open:*"):
+            pointer_key = _as_str(pointer_key)
+            current = POPOTO_REDIS_DB.get(pointer_key)
+            if current is not None and _as_str(current) == member_key:
+                matched.append(pointer_key)
+        return matched
+
+    @classmethod
     def export_state(  # type: ignore[override]
         cls,
         model_instance: "Model",
@@ -294,28 +321,42 @@ class ValidityField(Field):
         field_value: Any,
         **kwargs: Any,
     ) -> "Optional[dict[str, Any]]":
-        """Export this record's interval scores and supersession chain links.
+        """Export this record's interval scores, chain links, and open claims.
 
-        Reads the member's score from each of the three interval ZSETs plus
-        its own forward/reverse chain-link entries, if any.
+        Reads the member's score from each of the three interval ZSETs, its
+        own forward/reverse chain-link entries, and every identity-scoped
+        open-claim pointer (``{prefix}:open:{digest}``, see
+        :meth:`get_open_pointer_key`) that currently names this record.
 
-        The identity-scoped open-claim pointer
-        (``{prefix}:open:{digest}``, see :meth:`get_open_pointer_key`) is
-        deliberately NOT carried: it is keyed by identity digest rather than
-        by record and is explicitly out of scope for per-field state (see
-        :meth:`get_all_keys`'s docstring). ``on_save`` never writes it
-        either on this path -- it calls :meth:`execute_supersede` with no
-        ``identity_digest``, so ``mode="open"`` always resolves ``ptr_key``
-        to ``''`` and :data:`SUPERSEDE_LUA` skips the ``SET`` entirely.
-        A record round-tripped through export/import therefore never leaves
-        a stale pointer aimed at it (see :meth:`import_state`).
+        All six derived keys are therefore carried. The pointer matters more
+        than its "per-identity, not per-record" shape suggests:
+        ``SupersessionProtocol.supersede(new, identity_key=...)`` resolves the
+        incumbent *solely* through it (``old_member=''``, and
+        :data:`SUPERSEDE_LUA` ``GET``s ``KEYS[4]``). A round trip that dropped
+        the pointer would leave the next supersession on that identity closing
+        nothing and writing no chain link, while still repointing the pointer
+        at the newcomer -- orphaning the incumbent open forever. Gating is
+        subtractive (see :meth:`resolve_valid_keys`), so that orphan stays
+        fully retrievable: the same silent resurrection ``roundtrip_policy =
+        "carry"`` exists to prevent, deferred by one supersession.
+
+        Capturing the pointers costs a ``SCAN`` of ``{prefix}:open:*`` per
+        record (see :meth:`find_open_pointers_for_member`) because the digest
+        is opaque and there is no record -> digest reverse lookup. Export is
+        an admin-path operation and that cost is accepted deliberately, on
+        the same reasoning as :meth:`on_delete`'s scan.
 
         Returns:
             ``{"valid_from": float, "invalid_at": float | "+inf",
             "ingested_at": float, "chain_fwd": str | None,
-            "chain_rev": str | None}``, or ``None`` when this instance has
-            no interval entry at all (never saved through this field, or
-            already deleted).
+            "chain_rev": str | None, "open_pointers": list[str]}``, or
+            ``None`` when this instance has no interval entry at all (never
+            saved through this field, or already deleted). ``open_pointers``
+            holds identity digests, not full Redis keys, so the destination
+            rebuilds them under its own prefix; it is commonly empty -- a
+            record that was never superseded on an identity, or one already
+            closed, legitimately owns no pointer, and its interval and chain
+            state are still exported.
         """
         field = model_instance._meta.fields.get(field_name)
         if not isinstance(field, ValidityField):
@@ -345,12 +386,25 @@ class ValidityField(Field):
         else:
             invalid_at_out = float(invalid_at)
 
+        # Pointer keys are ``{prefix}:open:{digest}``; the digest is the last
+        # segment (16 hex chars from blake2b, never contains a separator), so
+        # a single rsplit recovers it without re-deriving the prefix.
+        open_pointers = [
+            pointer_key.rsplit(":", 1)[-1]
+            for pointer_key in cls.find_open_pointers_for_member(
+                model_instance, field_name, member_key
+            )
+        ]
+
         return {
             "valid_from": float(valid_from) if valid_from is not None else None,
             "invalid_at": invalid_at_out,
             "ingested_at": float(ingested_at) if ingested_at is not None else None,
             "chain_fwd": _as_str(fwd) if fwd is not None else None,
             "chain_rev": _as_str(rev) if rev is not None else None,
+            # Plain list of strings: spec-valid JSON with no special tokens
+            # needed, unlike ``invalid_at``'s :data:`OPEN_SENTINEL_TOKEN`.
+            "open_pointers": open_pointers,
         }
 
     @classmethod
@@ -374,10 +428,15 @@ class ValidityField(Field):
         -- exactly the resurrection bug this field exists to prevent.
         Plain ``ZADD``/``HSET`` overwrite instead.
 
-        No open-claim pointer is written (see :meth:`export_state`): it is
-        out of scope for per-field state, and ``on_save`` never touches it
-        on this path either, so a restored CLOSED record cannot leave a
-        stale pointer aimed at it.
+        Carried open-claim pointers are restored with a plain ``SET``, for
+        the same reason: ``on_save`` cannot write them at all on this path
+        (it calls :meth:`execute_supersede` with no ``identity_digest``, so
+        ``KEYS[4]`` is ``''`` and :data:`SUPERSEDE_LUA` skips the ``SET``),
+        and an unconditional ``SET`` is what makes the identity's next
+        supersession resolve this record as the incumbent (see
+        :meth:`export_state` for why dropping it resurrects records). Only
+        the digests actually captured at export are written, so a record
+        that owned no open claim still writes none.
 
         Chain links are restored independently of import order: ``HSET``
         does not require the counterpart record to already exist, and
@@ -420,6 +479,12 @@ class ValidityField(Field):
         chain_rev = state.get("chain_rev")
         if chain_rev:
             POPOTO_REDIS_DB.hset(keys["chain_rev"], member_key, chain_rev)
+
+        for digest in state.get("open_pointers") or []:
+            POPOTO_REDIS_DB.set(
+                cls.get_open_pointer_key(model_instance, field_name, str(digest)),
+                member_key,
+            )
 
         return None
 
@@ -867,13 +932,9 @@ class ValidityField(Field):
         member = kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
         keys = cls.get_all_keys(model_instance, field_name)
 
-        prefix = cls.get_prefix_db_key(model_instance, field_name).redis_key
-        stale_pointers = []
-        for pointer_key in scan_keys(f"{prefix}:open:*"):
-            pointer_key = _as_str(pointer_key)
-            current = POPOTO_REDIS_DB.get(pointer_key)
-            if current is not None and _as_str(current) == member:
-                stale_pointers.append(pointer_key)
+        stale_pointers = cls.find_open_pointers_for_member(
+            model_instance, field_name, member
+        )
 
         if pipeline is not None:
             pipeline.zrem(keys["valid_from"], member)

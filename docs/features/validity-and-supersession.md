@@ -79,6 +79,40 @@ so no read path needs special-case handling for an open record.
 An as-of-`t` membership test is `valid_from <= t AND invalid_at > t`: two
 `ZRANGEBYSCORE`s intersected client-side, or two `ZSCORE`s inside Lua.
 
+## Export & import
+
+`ValidityField` declares `roundtrip_policy = "carry"` (see
+[Writing Custom Fields](../field-authoring.md) for the protocol, and
+[Export & Import](../guides/export-import.md) for the user-facing guide). All
+six derived keys above survive a `popoto.transfer` round trip:
+
+| Carried | How |
+|---|---|
+| `valid_from`, `invalid_at`, `ingested_at` scores | exported per record, re-`ZADD`ed after `save()` |
+| `chain:fwd` / `chain:rev` links for the record | exported per record, re-`HSET` |
+| `open:{digest}` pointers naming the record | digests exported per record, re-`SET` |
+
+This is not optional bookkeeping. Because no validity byte lives in the model
+hash, `"rebuild"` — the `Field` default — would give every imported record a
+brand-new *open* interval, and since all three gating layers are subtractive, a
+record with no closure is fully retrievable. An export/import would therefore
+silently resurrect every superseded record. Carrying the `open:{digest}`
+pointer matters for the same reason one step later:
+`SupersessionProtocol.supersede(new, identity_key=...)` resolves the incumbent
+*only* through that pointer, so a round trip that dropped it would leave the
+identity's next supersession closing nothing while repointing at the newcomer,
+orphaning the incumbent open forever.
+
+Cost: the digest is opaque and there is no record → identity reverse lookup, so
+export `SCAN`s `{prefix}:open:*` once per record to find the pointers aimed at
+it. Export is an admin-path operation and that cost is accepted deliberately —
+the same trade `on_delete` already makes. Save and read paths are untouched.
+
+Restore ordering does not matter: `import_state` runs *after* `save()` and
+writes plain `ZADD`/`HSET`/`SET` (never the `NX` forms `on_save` uses, which
+would no-op against the fresh interval `on_save` just seeded), and a chain link
+whose counterpart has not landed yet reads as a chain end until it does.
+
 ## `ValidityField` API
 
 ```python
