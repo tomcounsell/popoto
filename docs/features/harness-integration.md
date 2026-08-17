@@ -237,8 +237,9 @@ exactly when `doctor` has nothing to read back anyway.
 
 | Situation | Behavior |
 |---|---|
-| Redis down, read hook | exit 0, no output, one log line, counter not incremented (same client is down) |
+| Redis down, read hook | exit 0, no stdout, one log line, four lines on stderr, counter not incremented (same client is down) |
 | Redis down, write hook | exit 0, turn dropped, logged. No retry queue |
+| Healthy Redis, empty corpus (fresh DB / first run) | exit 0, no stdout, one stderr line -- a BM25 advisory that it collected no query signal and fell back to composite (query-blind). Expected on a user's first turn after install; stderr goes quiet and stdout carries content once the corpus is seeded. See [Query-Blind Retrieval](../guides/query-blind-retrieval.md). |
 | Malformed JSON on stdin | exit 0, no output, logged as `hook_decode` |
 | Empty prompt | no retrieval attempted, no output |
 | Empty assistant message | nothing written |
