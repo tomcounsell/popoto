@@ -50,6 +50,55 @@ class KeyMutationError(ModelException):
     pass
 
 
+class AppendOnlyViolation(ModelException):
+    """Raised by ``AppendOnlyMixin`` when a write would destroy a record (#560).
+
+    Append-only models accept exactly one write per Redis key and no deletes.
+    Every shape that would overwrite or remove an existing record raises this:
+    re-saving a persisted instance, saving a fresh object whose key collides
+    with a stored one, ``delete()``, ``delete_all()``, and
+    ``save(migrate_key=True)`` (a key migration ``DELETE``s the old key, so it
+    is a destroy dressed as a save).
+
+    The message names the offending Redis key and never the record's content.
+    That discipline is load-bearing and mirrors ``NeverRecordException``:
+    exception text reaches plaintext log files, so quoting a value would leak
+    it through a side channel.
+
+    The documented escape hatch is ``AppendOnlyMixin.hard_delete(instance)``,
+    which is retention/admin-only and greppable by design.
+    """
+
+    pass
+
+
+class JournalBlockedError(ModelException):
+    """Raised when a provenance-journal write is refused by the firewall (#560).
+
+    ``ProvenanceJournal`` scans candidate content with
+    :func:`popoto.privacy.never_record.scan_never_record` *before* it issues or
+    queues a single Redis command, so a blocked capture or annotation raises
+    rather than returning a sentinel. That matters most for annotations: a
+    ``Model.save()`` blocked by the firewall returns the *pipeline* in pipeline
+    mode, which is indistinguishable from success, and a caller that queued a
+    supersede on top of it would close a target's validity interval against an
+    annotation that was never written.
+
+    Deliberately **not** a :class:`NeverRecordException` subclass. That class
+    inherits :class:`SkipSaveException` so existing handlers silently swallow a
+    filtered save; a journal caller must never silently lose a capture, so this
+    error is outside that hierarchy and propagates.
+
+    Carries a content-free ``verdict`` (reason code plus detector name) under
+    the same no-quoting rule as :class:`NeverRecordException`.
+    """
+
+    def __init__(self, message: str, verdict=None) -> None:
+        super().__init__(message)
+        #: The blocking ``NeverRecordVerdict``, or ``None``. Content-free.
+        self.verdict = verdict
+
+
 class SkipSaveException(ModelException):
     """Raised by WriteFilterMixin to silently abort a save operation.
 

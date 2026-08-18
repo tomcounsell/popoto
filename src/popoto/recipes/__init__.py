@@ -16,18 +16,22 @@ from .memory_telemetry import (
     report_outcomes,
 )
 from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
+from .provenance_journal import AnnotationResult, JournalEntry, ProvenanceJournal
 from .subconscious_memory import SubconsciousMemory
 from .trajectory_memory import TrajectoryMemory
 
 __all__ = [
     "AdaptiveAssembler",
+    "AnnotationResult",
     "AssemblyEvent",
     "AssemblyResult",
     "ContextAssembler",
     "DefaultMemory",
+    "JournalEntry",
     "LifecycleState",
     "MemoryLifecycle",
     "PolicyEntry",
+    "ProvenanceJournal",
     "RetrievalQuality",
     "SubconsciousMemory",
     "TelemetryAnalyzer",
