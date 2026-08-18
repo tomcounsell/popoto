@@ -524,6 +524,13 @@ Two additional refusals the `EXISTS` check cannot express, both mandatory:
   key return 0, the guard pass, and `base.py:1517`/`:1623` `DELETE` the old key — destroying
   an entry through a supported public kwarg. The guard also refuses whenever
   `self.obsolete_redis_key` is set.
+
+  **Build finding:** the `obsolete_redis_key` half is belt-and-braces, not the load-bearing
+  check. For a model whose `KeyField` is part of the key, mutating it changes
+  `db_key.redis_key`, so the mixin's `EXISTS` inspects the *new* (free) key and passes, and
+  `base.py:1225` raises `KeyMutationError` first. The `migrate_key=True` refusal is the one
+  that actually closes the destruction path. Both routes are pinned by
+  `test_mutating_a_key_field_closes_both_routes_to_a_key_migration`.
 - **`on_conflict="overwrite"` is unsupported on append-only models.** `transfer/import_.py:215`
   calls `instance.save(...)`, so every colliding record raises `AppendOnlyViolation` and is
   classified `ERRORED`. Documented; `"skip"` is the supported mode.
@@ -749,7 +756,12 @@ single-segment key rendering cannot silently start dropping annotations.
   redis key that does not exist).
 - `kind` outside `JOURNAL_KINDS` — raises `ValueError` in `pre_save`. Tested per invalid
   value.
-- `append(..., at=<non-numeric>)` — `ValidityField` raises; asserted.
+- `append(..., at=<non-numeric>)` — **plan corrected during build.** This section originally
+  said "`ValidityField` raises." It does not: `ValidityField.on_save` catches
+  `(TypeError, ValueError)` and silently falls back to the save clock
+  (`validity_field.py:883-886`), so a malformed instant would be swallowed and the entry
+  would get the wrong valid-time with no signal. D7's `_coerce_instant()` raises `ValueError`
+  in the pre-flight instead, before anything is issued. Asserted.
 
 ### Error State Rendering
 
