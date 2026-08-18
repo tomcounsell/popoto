@@ -2,6 +2,11 @@
 Custom exceptions for the Popoto Redis ORM library.
 """
 
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from .privacy.never_record import NeverRecordVerdict
+
 
 class ModelException(Exception):
     """Base exception for all Popoto ORM model-related errors."""
@@ -93,7 +98,9 @@ class JournalBlockedError(ModelException):
     the same no-quoting rule as :class:`NeverRecordException`.
     """
 
-    def __init__(self, message: str, verdict=None) -> None:
+    def __init__(
+        self, message: str, verdict: Optional["NeverRecordVerdict"] = None
+    ) -> None:
         super().__init__(message)
         #: The blocking ``NeverRecordVerdict``, or ``None``. Content-free.
         self.verdict = verdict

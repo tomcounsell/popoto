@@ -160,7 +160,7 @@ beyond the stream bound noted on the class.
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Optional, Sequence, Type, Union
 
 import redis.client
 
@@ -185,6 +185,8 @@ from ..redis_db import POPOTO_REDIS_DB
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from redis.client import Pipeline
+
+    from ..models.query import QueryBuilder
 
 logger = logging.getLogger("POPOTO.ProvenanceJournal")
 
@@ -287,7 +289,7 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
     #: :attr:`Defaults.JOURNAL_KINDS`". A subclass that sets it must name a
     #: **superset** of the core four (validated in ``__init_subclass__``), so
     #: extending the vocabulary can never quietly drop a core kind.
-    _journal_kinds: tuple = ()
+    _journal_kinds: "tuple[str, ...]" = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Validate a subclass's ``_journal_kinds`` override at definition time."""
@@ -332,7 +334,7 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
 
 
 def validate_kind_and_target(
-    model: type, kind: Any, target: Any
+    model: Type["JournalEntry"], kind: Any, target: Any
 ) -> "tuple[str, Optional[str]]":
     """Check one ``kind``/``target`` pair against ``model``'s vocabulary.
 
@@ -391,7 +393,7 @@ class ProvenanceJournal:
     """
 
     #: The entry model this façade reads and writes.
-    entry_model: type = JournalEntry
+    entry_model: Type[JournalEntry] = JournalEntry
 
     # ------------------------------------------------------------------
     # Writes
@@ -659,7 +661,9 @@ class ProvenanceJournal:
     # ------------------------------------------------------------------
 
     @classmethod
-    def annotations_for(cls, entry: Union[str, "JournalEntry"]) -> list:
+    def annotations_for(
+        cls, entry: Union[str, "JournalEntry"]
+    ) -> Union["QueryBuilder", "list[JournalEntry]"]:
         """Return every entry annotating ``entry``, in one ``filter()`` call.
 
         Args:
@@ -675,7 +679,7 @@ class ProvenanceJournal:
         return cls.entry_model.query.filter(target=target_key)
 
     @classmethod
-    def chain(cls, entry: Union[str, "JournalEntry"]) -> list:
+    def chain(cls, entry: Union[str, "JournalEntry"]) -> "list[Any]":
         """Return the supersession chain through ``entry``, oldest first.
 
         A display and replay-verification read, **not** the membership query:
@@ -692,7 +696,7 @@ class ProvenanceJournal:
             ``[entry]`` when it has no chain links; ``[]`` for an unsaved entry
             or an unresolvable key.
         """
-        instance = entry
+        instance: Any = entry
         if isinstance(entry, str):
             instance = cls.entry_model.query.get(redis_key=entry)
             if instance is None:
@@ -842,12 +846,19 @@ class ProvenanceJournal:
         )
 
         owns_pipeline = pipeline is None
-        pipe = POPOTO_REDIS_DB.pipeline() if owns_pipeline else pipeline
+        pipe = POPOTO_REDIS_DB.pipeline() if pipeline is None else pipeline
 
         entry.save(pipeline=pipe)
 
         close_index: Optional[int] = None
         if should_close and coupling_enabled:
+            # ``should_close`` is ``kind in _CLOSING_KINDS and target_key is not
+            # None``, so a close can never be reached without a target. Asserted
+            # rather than annotated away because a ``None`` here is exactly the
+            # #588 shape: ``execute_supersede`` would take its no-target branch,
+            # return without closing anything, and the caller would still be
+            # told ``target_closed``.
+            assert target_key is not None
             close_index = len(pipe.command_stack)
             # execute_supersede, NOT SupersessionProtocol.invalidate (#588):
             # SupersessionProtocol resolves its member keys through

@@ -140,10 +140,10 @@ class AppendOnlyMixin:
 
     def save(
         self,
-        pipeline: "Pipeline" = None,
+        pipeline: Optional["Pipeline"] = None,
         ignore_errors: bool = False,
         skip_auto_now: bool = False,
-        update_fields: list = None,
+        update_fields: Optional[list[str]] = None,
         migrate_key: bool = False,
         skip_write_filter: bool = False,
         **kwargs: Any,
@@ -218,7 +218,7 @@ class AppendOnlyMixin:
 
     def delete(
         self,
-        pipeline: "Pipeline" = None,
+        pipeline: Optional["Pipeline"] = None,
         *args: Any,
         **kwargs: Any,
     ) -> Union["Pipeline", bool]:
@@ -279,7 +279,12 @@ class AppendOnlyMixin:
         # Reach Model.delete() past this mixin's refusing override. Field
         # on_delete hooks own index/chain/interval cleanup; duplicating them
         # here would drift.
-        existed = bool(super(AppendOnlyMixin, instance).delete(**kwargs))
+        # Same reason as ``super().save()`` above: the mixin does not inherit
+        # from ``Model``, so the checker cannot see the ``delete`` that the MRO
+        # of every composing class supplies.
+        existed = bool(
+            super(AppendOnlyMixin, instance).delete(**kwargs)  # type: ignore[misc]
+        )
 
         validity_field_names = [
             field_name
