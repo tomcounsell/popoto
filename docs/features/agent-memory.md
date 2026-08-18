@@ -48,6 +48,7 @@ Each primitive below covers one of those. Each is independently useful.
 | TagField | Optional multi-value scoping for a centrally hosted Redis serving many agents | [reference](../fields.md#tagfield) |
 | ValidityField | Bitemporal validity intervals: a record is either a member of default retrieval or it isn't | [page](validity-and-supersession.md) |
 | SupersessionProtocol | Write-side vocabulary for "this claim replaces what was previously believed" | [page](validity-and-supersession.md) |
+| AppendOnlyMixin | Write-once records: no in-place mutation, no delete, corrections are new records | [page](provenance-journal.md) |
 
 ## The layers composed on top
 
@@ -59,6 +60,7 @@ counted separately, never summed into the primitive count.
 | ContextAssembler | The capstone: one `assemble()` call runs query-driven retrieval, proactive surfacing, budgeting, and formatting | [page](context-assembler.md) |
 | Hybrid Retrieval | Fuses keyword, vector, and graph signals via weighted Reciprocal Rank Fusion | [page](hybrid-retrieval.md) |
 | SubconsciousMemory | Wraps a chat loop: inject before the model call, extract after, report outcomes | [recipe](../guides/subconscious-memory-recipe.md) |
+| ProvenanceJournal | Append-only attributed entries — speaker, turn, verbatim span — with confirm/supersede/retract annotations | [page](provenance-journal.md) |
 | MemoryLifecycle | Episodic-to-semantic promotion, confidence-aware forgetting, restorable tombstones | [recipe](../recipes.md#memorylifecycle) |
 | PolicyCache | Reinforcement-learning-style action selection over crystallized state-action-outcome patterns | [page](policy-cache.md) |
 | StreamConsumer | Consumer-group framework for background processing of the mutation stream | [recipe](../recipes.md#streamconsumer) |
