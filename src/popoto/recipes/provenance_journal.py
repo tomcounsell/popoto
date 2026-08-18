@@ -142,15 +142,28 @@ Deliberately **not** included
 ``EmbeddingField``
     It requires an embedding provider (an API key or a local Ollama), so it
     cannot be a zero-configuration default, and similarity search over the
-    journal is not this module's job. The extension point is explicit rather
-    than a gap -- subclass and add one::
+    journal is not this module's job.
 
-        class SearchableEntry(JournalEntry):
-            statement_vec = EmbeddingField(source="statement")
+Do not subclass :class:`JournalEntry`
+-------------------------------------
+Popoto's ``ModelBase`` metaclass does **not** inherit ``Field`` attributes from
+a base model class: ``class SubEntry(JournalEntry): pass`` produces a model
+with an *empty* field set, so every record it writes persists nothing. This is
+an ORM-level limitation, not a journal one, and it is why this module ships no
+subclass extension seam.
 
-    Subclassing also gives the subclass its own keyspace
-    (``SearchableEntry:*``) and its own validity/chain keys, and is the same
-    seam ``_journal_kinds`` uses to extend the annotation vocabulary.
+Two consequences, both load-bearing:
+
+* To extend the annotation vocabulary, call
+  :meth:`JournalEntry.register_kind` -- it extends the vocabulary *in place*
+  and records whether the new kind carries a ``target`` and whether it closes
+  its target's validity interval.
+* To get a different field set (an ``EmbeddingField``, say) or a separate
+  keyspace, declare your own ``Model`` with the same mixins and the same field
+  set and point a :class:`ProvenanceJournal` subclass at it. Copying the field
+  set is required, not stylistic. :meth:`ProvenanceJournal._write` refuses an
+  ``entry_model`` that is missing them, so the failure is loud rather than a
+  keyspace full of empty records.
 
 All numeric behavior is left to the field defaults and to
 ``popoto.fields.constants.Defaults``; this module pins no constants of its own
@@ -194,12 +207,24 @@ logger = logging.getLogger("POPOTO.ProvenanceJournal")
 #: ``ValidityField`` key helper call in this module, so a rename is one edit.
 VALIDITY_FIELD_NAME = "validity"
 
-#: Kinds that carry no ``target``. Everything else in the vocabulary annotates
-#: exactly one entry.
-_TARGETLESS_KINDS = frozenset({"assert"})
+#: Core kinds that carry no ``target``. Everything else in the core vocabulary
+#: annotates exactly one entry.
+_CORE_TARGETLESS_KINDS = frozenset({"assert"})
 
-#: Kinds whose annotation closes the target's validity interval.
-_CLOSING_KINDS = frozenset({"supersede", "retract"})
+#: Core kinds whose annotation closes the target's validity interval.
+_CORE_CLOSING_KINDS = frozenset({"supersede", "retract"})
+
+#: Kinds registered beyond the core four, ``name -> (targetless, closing)``.
+#:
+#: Process-global and additive, written only by
+#: :meth:`JournalEntry.register_kind`. It is deliberately *not* a per-subclass
+#: attribute: Popoto's ``ModelBase`` metaclass drops ``Field`` attributes on a
+#: model subclass, so a subclass-based extension seam cannot work at all (see
+#: the module docstring). Behavioural flags live here rather than in frozen
+#: module-level sets so that a registered kind can actually be targetless or
+#: membership-closing, instead of being permanently target-required and
+#: permanently inert.
+_REGISTERED_KINDS: "dict[str, tuple[bool, bool]]" = {}
 
 #: Set once the first uncoupled ``supersede``/``retract`` has warned, so the
 #: degraded mode is announced exactly once per process rather than per call.
@@ -217,24 +242,40 @@ class AnnotationResult:
 
     Attributes:
         entry: The appended :class:`JournalEntry`.
-        target_closed: Whether the target's validity interval was closed. On a
-            capture (``append``) and on ``confirm`` this is always False by
-            design -- neither changes membership. On ``supersede``/``retract``
-            it is False when the coupling switch is off. When the journal owned
-            the pipeline it reflects the script's actual reply (so a
-            concurrently-closed target correctly reports False); when the
-            *caller* supplied the pipeline nothing has executed yet, and it
-            reports that the close was queued.
+        target_closed: Whether the target's validity interval was closed by
+            this call.
+
+            * **Journal-owned pipeline** (no ``pipeline=`` argument): a real
+              ``bool``, read from the supersede script's own reply. ``False``
+              on a capture or a ``confirm`` (neither changes membership), when
+              the coupling switch is off, and when the target was *already*
+              closed by a concurrent annotation -- which is the honest answer,
+              since this call closed nothing.
+            * **Caller-supplied pipeline**: ``None``, meaning *unknown until
+              you execute*. Nothing has run, so no truthful ``bool`` exists.
+              Reporting ``True`` for a queued close would reproduce exactly the
+              #588 silent-no-op shape this type exists to prevent -- a re-close
+              of an already-closed target is queued the same way and applies
+              nothing. Read ``results[close_index]`` after your own
+              ``execute()`` for the real outcome.
         coupling_enabled: The state of
             :attr:`Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED` at write time.
         pipeline: The caller-supplied pipeline, returned unexecuted, or
             ``None`` when the journal owned and executed its own.
+        close_index: Index of the queued interval-close command in the
+            caller-supplied pipeline, so ``pipeline.execute()[close_index]``
+            gives the same answer ``target_closed`` carries on the
+            journal-owned path (the closed member's key, or ``''`` when the
+            target was already closed). ``None`` whenever no close was queued
+            onto a caller pipeline -- always so on the journal-owned path,
+            where the pipeline has already executed.
     """
 
     entry: "JournalEntry"
-    target_closed: bool
+    target_closed: Optional[bool]
     coupling_enabled: bool
     pipeline: Optional[Any] = None
+    close_index: Optional[int] = None
 
 
 class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
@@ -285,37 +326,99 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
     # exposes it as a per-model class attribute.
     _stream_max_length = 10000
 
-    #: Annotation vocabulary override for subclasses. Empty means "use
-    #: :attr:`Defaults.JOURNAL_KINDS`". A subclass that sets it must name a
-    #: **superset** of the core four (validated in ``__init_subclass__``), so
-    #: extending the vocabulary can never quietly drop a core kind.
-    _journal_kinds: "tuple[str, ...]" = ()
+    @classmethod
+    def register_kind(
+        cls, name: str, *, targetless: bool = False, closing: bool = False
+    ) -> None:
+        """Extend the annotation vocabulary in place.
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Validate a subclass's ``_journal_kinds`` override at definition time."""
-        super().__init_subclass__(**kwargs)
-        declared = cls.__dict__.get("_journal_kinds")
-        if not declared:
-            return
-        missing = set(Defaults.JOURNAL_KINDS) - set(declared)
-        if missing:
+        The extension seam for downstream modules that need kinds the core
+        four do not cover -- a merge/equivalence kind, a queue-able kind, an
+        exposure kind. Registration is process-global and additive: it never
+        removes or reclassifies a core kind, so the vocabulary can only grow.
+
+        This is a registration call rather than a model subclass on purpose.
+        Popoto's ``ModelBase`` metaclass does not inherit ``Field`` attributes,
+        so a ``JournalEntry`` subclass has an empty field set and persists
+        nothing -- see the module docstring.
+
+        Registering also records the kind's *behaviour*, which a plain
+        vocabulary list cannot: without ``targetless``/``closing`` a new kind
+        would be permanently target-required and permanently inert for
+        membership::
+
+            JournalEntry.register_kind("merge", closing=True)
+            ProvenanceJournal.append(
+                agent_id="a1", kind="merge", target=old, statement="merged"
+            )  # closes old's interval, exactly like a supersede
+
+        The reader rule this seam is built around is unchanged: an entry whose
+        ``kind`` a reader does not recognize is **inert for membership** --
+        never silently treated as a ``supersede`` or a ``retract``.
+
+        Args:
+            name: The new kind. Must be a non-empty string outside
+                :attr:`Defaults.JOURNAL_KINDS`, which is frozen because
+                changing it would reclassify already-stored entries.
+            targetless: True for an original-capture kind that carries no
+                ``target``, like ``assert``.
+            closing: True if an entry of this kind closes its target's
+                validity interval, like ``supersede`` and ``retract``.
+
+        Raises:
+            ValueError: On an empty name, a core kind, a ``targetless`` and
+                ``closing`` combination (a kind with no target has nothing to
+                close), or a re-registration under different flags. Registering
+                the same name with the same flags again is a no-op.
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"kind name must be a non-empty string, got {name!r}")
+        if name in tuple(Defaults.JOURNAL_KINDS):
             raise ValueError(
-                f"{cls.__name__}._journal_kinds must be a superset of the core "
-                f"vocabulary {tuple(Defaults.JOURNAL_KINDS)}; missing "
-                f"{sorted(missing)}. Extend the vocabulary, never narrow it -- "
-                f"a reader that meets an unknown kind treats it as inert for "
-                f"membership, but a missing core kind changes what supersedes."
+                f"{name!r} is a core kind; Defaults.JOURNAL_KINDS is frozen "
+                f"because changing it reclassifies already-stored entries"
             )
+        if targetless and closing:
+            raise ValueError(
+                f"{name!r}: a targetless kind carries no target, so it has "
+                f"nothing to close -- targetless and closing are exclusive"
+            )
+        flags = (bool(targetless), bool(closing))
+        existing = _REGISTERED_KINDS.get(name)
+        if existing is not None and existing != flags:
+            raise ValueError(
+                f"{name!r} is already registered as "
+                f"targetless={existing[0]}, closing={existing[1]}; "
+                f"re-registering it as targetless={flags[0]}, "
+                f"closing={flags[1]} would reclassify stored entries"
+            )
+        _REGISTERED_KINDS[name] = flags
 
     @classmethod
     def journal_kinds(cls) -> "tuple[str, ...]":
-        """Return this model's annotation vocabulary.
+        """Return the annotation vocabulary: the core four plus registrations.
 
-        The subclass override when one is declared, else
-        :attr:`Defaults.JOURNAL_KINDS` read at call time (so a runtime
-        assignment to ``Defaults`` is honored rather than frozen at import).
+        :attr:`Defaults.JOURNAL_KINDS` is read at call time (so a runtime
+        assignment to ``Defaults`` is honored rather than frozen at import),
+        followed by every :meth:`register_kind` name in registration order.
         """
-        return tuple(cls._journal_kinds) or tuple(Defaults.JOURNAL_KINDS)
+        return tuple(Defaults.JOURNAL_KINDS) + tuple(_REGISTERED_KINDS)
+
+    @classmethod
+    def kind_is_targetless(cls, kind: Any) -> bool:
+        """True if ``kind`` is an original capture that carries no ``target``."""
+        if kind in _CORE_TARGETLESS_KINDS:
+            return True
+        registered = _REGISTERED_KINDS.get(kind) if isinstance(kind, str) else None
+        return bool(registered and registered[0])
+
+    @classmethod
+    def kind_is_closing(cls, kind: Any) -> bool:
+        """True if an entry of ``kind`` closes its target's validity interval."""
+        if kind in _CORE_CLOSING_KINDS:
+            return True
+        registered = _REGISTERED_KINDS.get(kind) if isinstance(kind, str) else None
+        return bool(registered and registered[1])
 
     def pre_save(self, *args: Any, **kwargs: Any) -> Any:
         """Validate ``kind`` and the ``kind``/``target`` combination, then save.
@@ -357,7 +460,7 @@ def validate_kind_and_target(
         raise ValueError(
             f"{model.__name__}.kind must be one of {vocabulary}, got {kind!r}"
         )
-    if kind in _TARGETLESS_KINDS:
+    if model.kind_is_targetless(kind):
         if target:
             raise ValueError(
                 f"{model.__name__}: a {kind!r} entry is an original capture and "
@@ -375,15 +478,15 @@ def validate_kind_and_target(
 class ProvenanceJournal:
     """Stateless façade over :class:`JournalEntry` -- the only supported API.
 
-    Every method is a classmethod; there is no instance state. Point a
-    subclass at a :class:`JournalEntry` subclass to get your own keyspace or
-    an extended kind vocabulary::
+    Every method is a classmethod; there is no instance state.
 
-        class ProjectEntry(JournalEntry):
-            pass
-
-        class ProjectJournal(ProvenanceJournal):
-            entry_model = ProjectEntry
+    To extend the annotation vocabulary, call
+    :meth:`JournalEntry.register_kind` -- **not** a model subclass. Popoto's
+    ``ModelBase`` metaclass does not inherit ``Field`` attributes, so a
+    ``JournalEntry`` subclass has an empty field set and persists nothing.
+    :meth:`_write` refuses an ``entry_model`` missing the journal field set for
+    exactly that reason; a separate keyspace means declaring your own ``Model``
+    with the same mixins and the same fields.
 
     Treating this as the sole read and write API is a stated contract, not a
     style preference: the single-record-type decision is cheaply reversible
@@ -432,9 +535,10 @@ class ProvenanceJournal:
             at: Valid-from instant for the entry. Defaults to now. Set at
                 construction rather than passed to the supersede script -- see
                 the ``supersede`` implementation note on #588.
-            kind: Normally left at ``"assert"``. An extended vocabulary
-                (``_journal_kinds`` on a subclass) is reachable here, with the
-                same ``kind``/``target`` consistency rules.
+            kind: Normally left at ``"assert"``. A kind added with
+                :meth:`JournalEntry.register_kind` is reachable here, with the
+                same ``kind``/``target`` consistency rules -- and closes the
+                target's interval if it was registered ``closing=True``.
             target: Only for a non-``assert`` kind. A
                 :class:`JournalEntry` or its Redis key.
             pipeline: Optional caller pipeline. Must be transactional. When
@@ -443,7 +547,8 @@ class ProvenanceJournal:
 
         Returns:
             AnnotationResult: with ``target_closed=False`` -- a capture never
-            changes another entry's membership.
+            changes another entry's membership. ``None`` instead when the
+            caller supplied the pipeline (nothing has executed yet).
 
         Raises:
             JournalBlockedError: If any content is refused by the never-record
@@ -451,9 +556,11 @@ class ProvenanceJournal:
             ValueError: On a missing ``agent_id``, empty content, a bad
                 ``kind``/``target`` pairing, a nonexistent or cross-agent
                 target, a backdated ``at``, or a non-transactional pipeline.
+            TypeError: If ``entry_model`` does not declare the journal field
+                set (a ``JournalEntry`` subclass, which persists nothing).
             AppendOnlyViolation: If the record's Redis key already exists.
         """
-        if kind in _TARGETLESS_KINDS and not (statement or "").strip():
+        if cls.entry_model.kind_is_targetless(kind) and not (statement or "").strip():
             if not (verbatim or "").strip():
                 raise ValueError(
                     f"{cls.entry_model.__name__}: an entry with neither a "
@@ -511,7 +618,8 @@ class ProvenanceJournal:
             pipeline: See :meth:`append`.
 
         Returns:
-            AnnotationResult: with ``target_closed=False``.
+            AnnotationResult: with ``target_closed=False``, or ``None`` when
+            the caller supplied the pipeline (nothing has executed yet).
 
         Raises:
             JournalBlockedError: If content is refused by the firewall.
@@ -574,7 +682,10 @@ class ProvenanceJournal:
             AnnotationResult: ``target_closed`` is False when the coupling
             switch is off, or when the target was already closed by a
             concurrent annotation (which is correct: both annotations are real
-            provenance, one close applies).
+            provenance, one close applies). It is ``None`` when the caller
+            supplied the pipeline -- nothing has executed, so no truthful
+            answer exists yet; read ``results[close_index]`` after your own
+            ``execute()``.
 
         Raises:
             JournalBlockedError: If content is refused by the firewall. The
@@ -730,6 +841,7 @@ class ProvenanceJournal:
         pre-flight cannot be bypassed by adding a method.
         """
         model = cls.entry_model
+        _require_journal_shape(model)
         instant = _coerce_instant(at)
         subject_tags = list(subjects or [])
 
@@ -747,7 +859,12 @@ class ProvenanceJournal:
         #    membership change with zero provenance. And the mixin's scan
         #    surface yields only ``str`` values, so ``subjects`` (a list) is
         #    never scanned by it at all.
-        _scan_or_block(statement, verbatim, speaker, turn_id, *subject_tags)
+        #
+        #    ``agent_id`` is scanned too, and it is the one value here that
+        #    *must* be: it is rendered into the record's Redis key NAME, which
+        #    is the one place ``hard_delete`` cannot scrub retroactively -- the
+        #    name of an annotation's ``$IndexedF:`` index key embeds it.
+        _scan_or_block(agent_id, statement, verbatim, speaker, turn_id, *subject_tags)
 
         # 2. Vocabulary and kind/target consistency.
         target_key = _resolve_member_key(target)
@@ -821,7 +938,7 @@ class ProvenanceJournal:
         # ---- End of pre-flight. From here on, commands are issued.
 
         coupling_enabled = bool(Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED)
-        should_close = kind in _CLOSING_KINDS and target_key is not None
+        should_close = model.kind_is_closing(kind) and target_key is not None
         if should_close and not coupling_enabled:
             _warn_uncoupled_once(model.__name__)
 
@@ -852,13 +969,20 @@ class ProvenanceJournal:
 
         close_index: Optional[int] = None
         if should_close and coupling_enabled:
-            # ``should_close`` is ``kind in _CLOSING_KINDS and target_key is not
-            # None``, so a close can never be reached without a target. Asserted
-            # rather than annotated away because a ``None`` here is exactly the
-            # #588 shape: ``execute_supersede`` would take its no-target branch,
+            # ``should_close`` is ``kind_is_closing(kind) and target_key is not
+            # None``, so a close can never be reached without a target. Raised
+            # rather than asserted (``python -O`` strips asserts) and rather
+            # than annotated away, because a ``None`` here is exactly the #588
+            # shape: ``execute_supersede`` would take its no-target branch,
             # return without closing anything, and the caller would still be
-            # told ``target_closed``.
-            assert target_key is not None
+            # told the target was closed.
+            if target_key is None:
+                raise RuntimeError(
+                    f"{model.__name__}: reached the interval close with no "
+                    f"target key. execute_supersede would silently close "
+                    f"nothing while the result reported a close (#588). This "
+                    f"is a bug in this module, not a caller error."
+                )
             close_index = len(pipe.command_stack)
             # execute_supersede, NOT SupersessionProtocol.invalidate (#588):
             # SupersessionProtocol resolves its member keys through
@@ -882,14 +1006,19 @@ class ProvenanceJournal:
             )
 
         if not owns_pipeline:
-            # The caller owns execution, so nothing has run yet. Report the
-            # close as queued rather than confirmed, and hand the pipeline back
-            # unexecuted.
+            # The caller owns execution, so nothing has run yet and there is no
+            # truthful answer to "was the target closed". Report ``None`` --
+            # *unknown until you execute* -- and hand back the index of the
+            # queued close so the caller can read the real outcome from their
+            # own ``execute()`` results. Reporting ``True`` here would be
+            # affirmatively wrong for a re-close of an already-closed target:
+            # the command queues identically and applies nothing.
             return AnnotationResult(
                 entry=entry,
-                target_closed=bool(should_close and coupling_enabled),
+                target_closed=None,
                 coupling_enabled=coupling_enabled,
                 pipeline=pipe,
+                close_index=close_index,
             )
 
         results = pipe.execute()
@@ -906,6 +1035,49 @@ class ProvenanceJournal:
             coupling_enabled=coupling_enabled,
             pipeline=None,
         )
+
+
+#: A field every journal entry model must declare. Used as the canary in
+#: :func:`_require_journal_shape`, because it is the field a caller is most
+#: obviously trying to store when they reach for the journal at all.
+_REQUIRED_ENTRY_FIELD = "statement"
+
+
+def _require_journal_shape(model: Any) -> None:
+    """Refuse an ``entry_model`` that would silently persist an empty record.
+
+    Popoto's ``ModelBase`` metaclass does **not** inherit ``Field`` attributes
+    from a base model class, so ``class SubEntry(JournalEntry): pass`` yields a
+    model whose ``_meta.fields`` is *empty*. Without this guard the journal
+    would accept it and write records carrying no ``statement``, no
+    ``verbatim``, no ``kind``, no ``target`` and no validity interval -- data
+    loss with no error anywhere.
+
+    :class:`JournalEntry` itself is exempt from the field check (it is the
+    reference shape); anything else must declare the field set itself.
+
+    Raises:
+        TypeError: If ``model`` is not :class:`JournalEntry` and does not
+            declare the journal field set.
+    """
+    if model is JournalEntry:
+        return
+    fields = getattr(getattr(model, "_meta", None), "fields", {}) or {}
+    if _REQUIRED_ENTRY_FIELD in fields:
+        return
+    model_name = getattr(model, "__name__", repr(model))
+    raise TypeError(
+        f"{model_name} is not a usable journal entry "
+        f"model: it declares no {_REQUIRED_ENTRY_FIELD!r} field, so every "
+        f"record it writes would persist nothing. If it subclasses "
+        f"JournalEntry, that is the cause: Popoto's ModelBase metaclass does "
+        f"not inherit Field attributes from a base model class, so a "
+        f"JournalEntry subclass has an EMPTY field set. Do not subclass "
+        f"JournalEntry. To extend the annotation vocabulary call "
+        f"JournalEntry.register_kind(...); for a separate keyspace or a "
+        f"different field set, declare your own Model with the same mixins "
+        f"and the same fields."
+    )
 
 
 def _coerce_instant(at: Optional[float]) -> float:

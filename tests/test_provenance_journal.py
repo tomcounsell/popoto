@@ -102,6 +102,19 @@ class MutableNote(popoto.Model):
     statement = popoto.StringField(default="")
 
 
+class SubclassedEntry(JournalEntry):
+    """A ``JournalEntry`` subclass — which Popoto's ORM silently guts.
+
+    Defined once at module scope (re-declaring a model per test would register
+    the same model name repeatedly). It exists to pin the ORM limitation and to
+    prove :class:`ProvenanceJournal` refuses it loudly. Never write through it.
+    """
+
+
+class SubclassedJournal(ProvenanceJournal):
+    entry_model = SubclassedEntry
+
+
 # --- Fixtures and helpers ---
 
 
@@ -114,8 +127,13 @@ def restore_defaults():
     the plan's D6.
     """
     coupling = Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED
+    # ``register_kind`` writes a process-global registry, so it outlives the
+    # keyspace flush and has to be restored explicitly.
+    registered = dict(journal_module._REGISTERED_KINDS)
     yield
     Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED = coupling
+    journal_module._REGISTERED_KINDS.clear()
+    journal_module._REGISTERED_KINDS.update(registered)
     journal_module._UNCOUPLED_WARNED.clear()
 
 
@@ -716,6 +734,16 @@ class TestNeverRecordComposition:
                 agent_id=AGENT, statement="a claim", subjects=["launch", SECRET]
             )
         assert JournalEntry.query.filter(agent_id=AGENT) == []
+        assert not _keyspace_contains(SECRET)
+
+    def test_a_blocked_agent_id_raises_and_never_reaches_a_key_name(self):
+        """``agent_id`` is rendered into the record's Redis key NAME, which is
+        the one place ``hard_delete`` cannot scrub retroactively — an index key
+        whose *name* embeds a record key survives the sweep. So it is scanned
+        in the pre-flight rather than left to the mixin (which scans field
+        *values*, after the key already exists)."""
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.append(agent_id=SECRET, statement="a claim")
         assert not _keyspace_contains(SECRET)
 
     def test_the_mixin_alone_still_does_not_scan_tag_lists(self):
@@ -1421,3 +1449,185 @@ class TestConcurrentDoubleClose:
         assert target.db_key.redis_key not in _redis_keys(
             JournalEntry.query.filter(validity__current=True)
         )
+
+    def test_a_reclose_on_a_caller_pipeline_reports_unknown_not_closed(self):
+        """The caller-pipeline path must not claim a close it cannot know about.
+
+        Same state as the test above — the target is already closed — but the
+        second annotation is queued onto a *caller's* pipeline. Nothing has
+        executed, so ``target_closed`` is ``None`` (unknown), not ``True``:
+        reporting ``True`` here would be the #588 silent-no-op shape that
+        ``AnnotationResult`` exists to prevent. ``close_index`` is the seam for
+        the real answer.
+        """
+        t0 = time.time() - 200.0
+        target = _append(at=t0)
+        first = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="correction one", at=t0 + 50.0
+        )
+        assert first.target_closed is True
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        second = ProvenanceJournal.supersede(
+            target,
+            agent_id=AGENT,
+            statement="correction two",
+            at=t0 + 100.0,
+            pipeline=pipe,
+        )
+        assert second.target_closed is None
+        assert second.close_index is not None
+
+        results = pipe.execute()
+        assert not results[second.close_index]
+        # The entry itself is real provenance and did land.
+        assert POPOTO_REDIS_DB.exists(second.entry.db_key.redis_key)
+        # And the close it reported nothing about genuinely applied nothing.
+        assert _interval(target)[1] == pytest.approx(t0 + 50.0)
+
+    def test_a_caller_pipeline_append_queues_no_close_at_all(self):
+        """``close_index is None`` is the "nothing was queued to close" signal."""
+        pipe = POPOTO_REDIS_DB.pipeline()
+        result = ProvenanceJournal.append(
+            agent_id=AGENT, statement="a capture", pipeline=pipe
+        )
+        assert result.target_closed is None
+        assert result.close_index is None
+        pipe.execute()
+
+
+class TestKindRegistry:
+    """``JournalEntry.register_kind`` — the extension seam that replaces the
+    subclass seam an earlier revision advertised (see
+    :class:`TestEntryModelGuard` for why that one could never work)."""
+
+    def test_a_registered_closing_kind_round_trips_end_to_end(self):
+        """``register_kind("merge", closing=True)`` must actually close.
+
+        The behaviour the frozen module-level ``_CLOSING_KINDS`` set could not
+        express: before this, an extended kind was permanently membership-inert
+        no matter how it was declared.
+        """
+        JournalEntry.register_kind("merge", closing=True)
+        assert "merge" in JournalEntry.journal_kinds()
+
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        result = ProvenanceJournal.append(
+            agent_id=AGENT,
+            kind="merge",
+            target=target,
+            statement="merged into the canonical claim",
+            at=t0 + 50.0,
+        )
+
+        assert result.target_closed is True
+        assert result.entry.kind == "merge"
+        assert result.entry.target == target.db_key.redis_key
+        assert _interval(target)[1] == pytest.approx(t0 + 50.0)
+        assert target.db_key.redis_key not in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+        assert _redis_keys(ProvenanceJournal.annotations_for(target)) == [
+            result.entry.db_key.redis_key
+        ]
+
+    def test_a_registered_targetless_kind_round_trips_end_to_end(self):
+        """A registered ``targetless`` kind behaves like ``assert``, not like an
+        annotation: no target required, and a target is refused."""
+        JournalEntry.register_kind("observe", targetless=True)
+
+        result = ProvenanceJournal.append(
+            agent_id=AGENT, kind="observe", statement="the room went quiet"
+        )
+        assert result.entry.kind == "observe"
+        assert result.entry.target is None
+        assert result.target_closed is False
+        assert result.entry.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+        target = _append()
+        with pytest.raises(ValueError, match="must not carry a target"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, kind="observe", target=target, statement="x"
+            )
+
+    def test_a_registered_non_closing_kind_annotates_without_changing_membership(self):
+        """The default flags: target required, membership untouched."""
+        JournalEntry.register_kind("cite")
+        target = _append()
+        result = ProvenanceJournal.append(
+            agent_id=AGENT, kind="cite", target=target, statement="see also"
+        )
+        assert result.target_closed is False
+        assert _interval(target)[1] == float("inf")
+
+        with pytest.raises(ValueError, match="must name a target"):
+            ProvenanceJournal.append(agent_id=AGENT, kind="cite", statement="see also")
+
+    def test_an_unregistered_kind_is_still_refused(self):
+        with pytest.raises(ValueError, match="kind must be one of"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, kind="merge", statement="not registered"
+            )
+
+    @pytest.mark.parametrize(
+        "name,kwargs,match",
+        [
+            ("supersede", {}, "core kind"),
+            ("", {}, "non-empty string"),
+            ("   ", {}, "non-empty string"),
+            ("both", {"targetless": True, "closing": True}, "exclusive"),
+        ],
+    )
+    def test_register_kind_refuses_an_illegal_registration(self, name, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            JournalEntry.register_kind(name, **kwargs)
+        assert name not in journal_module._REGISTERED_KINDS
+
+    def test_re_registering_the_same_kind_differently_is_refused(self):
+        """Reclassifying a kind would reclassify every entry already stored
+        under it, so it is refused; an identical re-registration is a no-op."""
+        JournalEntry.register_kind("merge", closing=True)
+        JournalEntry.register_kind("merge", closing=True)  # idempotent
+        with pytest.raises(ValueError, match="already registered"):
+            JournalEntry.register_kind("merge")
+
+
+class TestEntryModelGuard:
+    """A ``JournalEntry`` subclass must fail loudly, never write empty records."""
+
+    def test_a_journal_entry_subclass_loses_every_field(self):
+        """Pins the ORM limitation this guard exists for.
+
+        Popoto's ``ModelBase`` metaclass does not inherit ``Field`` attributes
+        from a base model class, so a subclass has an *empty* field set. This
+        is the fact that makes a subclass extension seam impossible, and it is
+        asserted here so a future ORM change makes this test fail loudly rather
+        than leaving a now-unnecessary guard unexplained.
+        """
+        assert "statement" in JournalEntry._meta.fields
+        assert dict(SubclassedEntry._meta.fields) == {}
+
+    def test_a_subclassed_entry_model_is_rejected_before_anything_is_written(self):
+        before = set(scan_keys("*"))
+        with pytest.raises(TypeError) as excinfo:
+            SubclassedJournal.append(agent_id=AGENT, statement="would be lost")
+
+        message = str(excinfo.value)
+        assert "SubclassedEntry" in message
+        assert "does not inherit Field attributes" in message
+        assert "register_kind" in message
+        assert set(scan_keys("*")) == before
+
+    def test_the_guard_covers_every_mutating_method(self):
+        target = _append()
+        for call in (
+            lambda: SubclassedJournal.confirm(target, agent_id=AGENT),
+            lambda: SubclassedJournal.supersede(target, agent_id=AGENT),
+            lambda: SubclassedJournal.retract(target, agent_id=AGENT),
+        ):
+            with pytest.raises(TypeError, match="not a usable journal entry model"):
+                call()
+        assert _interval(target)[1] == float("inf")

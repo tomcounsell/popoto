@@ -559,11 +559,23 @@ new_member=<annotation key>, close_at=<instant>, pipeline=pipe)` into the same t
 pipeline. `SupersessionProtocol` is used only for **read-side** traversal (`superseded_by`,
 `supersedes`, `chain`), never on the write path.
 
-Every mutating op returns `AnnotationResult(entry, target_closed: bool, coupling_enabled:
-bool)`. This exists specifically so the kill switch cannot reproduce #588's failure shape: a
-caller must be able to distinguish "target closed" from "target not closed" **without reading
-Redis**. The first uncoupled `supersede`/`retract` in a process also emits a warn-once
-`logger.warning`.
+Every mutating op returns `AnnotationResult(entry, target_closed: Optional[bool],
+coupling_enabled: bool, pipeline, close_index: Optional[int])`. This exists specifically so
+the kill switch cannot reproduce #588's failure shape: a caller must be able to distinguish
+"target closed" from "target not closed" **without reading Redis**. The first uncoupled
+`supersede`/`retract` in a process also emits a warn-once `logger.warning`.
+
+**`target_closed` shape revised at review (PR #589).** It was `bool`, returned as
+`bool(should_close and coupling_enabled)` on the caller-supplied-pipeline path — which is
+affirmatively wrong there: nothing has executed, and a re-close of an already-closed target
+queues identically to a first close and applies nothing, so the caller-pipeline path reported
+`target_closed=True` for exactly the silent-no-op the type exists to prevent (the
+journal-owned path, reading the script's reply, correctly reported `False`). It is now
+`Optional[bool]`: a real `bool` from the Lua reply on the journal-owned path, and `None` —
+*unknown until you execute* — on the caller-pipeline path, paired with a new
+`close_index: Optional[int]` so the caller can read `results[close_index]` after their own
+`execute()`. `close_index` is `None` whenever no close was queued (always on the
+journal-owned path). Breaking shape change, landed before M3–M8 bind to it.
 
 **Atomicity, stated precisely.** This deviates from the #560 amendment's literal wording
 ("in the same script") in favor of "in the same MULTI/EXEC transaction," because forking
@@ -633,10 +645,25 @@ is explicit rather than a gap.
   a tunable; changing it reclassifies stored entries. **It ships with an extension seam**,
   because M5 (#564) will want merge/equivalence kinds, M7 (#566) a queue-able kind, and M8
   (#567) an exposure kind, and none of them should have to edit a core constant declared
-  frozen: a `JournalEntry` subclass may set `_journal_kinds`, validated at class definition
-  as a **superset** of the core four. The reader rule is stated as a contract: an entry whose
-  `kind` a reader does not recognize is **inert for membership** — never silently treated as
-  `supersede` or `retract`.
+  frozen.
+
+  **Revised at review (PR #589), because the original seam could not work.** The seam was a
+  `JournalEntry` subclass setting `_journal_kinds`, validated at class definition as a
+  superset of the core four. Popoto's `ModelBase` metaclass does not inherit `Field`
+  attributes, so *any* `JournalEntry` subclass has an empty field set and persists nothing —
+  the seam destroyed data by construction. It is replaced by
+  **`JournalEntry.register_kind(name, *, targetless=False, closing=False)`**, which extends
+  the vocabulary in place on one model. The two flags are load-bearing: `_TARGETLESS_KINDS`
+  and `_CLOSING_KINDS` were module-level frozensets, so a kind added by the old seam was
+  permanently target-required and permanently membership-inert; both now route through the
+  registry, so `register_kind("merge", closing=True)` actually closes its target's interval.
+  `register_kind` refuses an empty name, a core kind, `targetless` with `closing`, and a
+  re-registration under different flags. `ProvenanceJournal._write` additionally refuses an
+  `entry_model` that does not declare the field set, naming the metaclass limitation, so the
+  destroyed-data shape cannot silently recur.
+
+  The reader rule is unchanged and still a contract: an entry whose `kind` a reader does not
+  recognize is **inert for membership** — never silently treated as `supersede` or `retract`.
 
 Registration note (verified against the suite, and the reverse of what an earlier draft of
 this plan said): kill switches are **exempted** in `tests/benchmarks/test_defaults_sync.py`'s
@@ -1175,8 +1202,9 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
   rationale comment matching the `VALIDITY_GATING_ENABLED` precedent. **Do not touch
   `tests/benchmarks/overrides.py`** — a `MODULE_CONSTANTS` entry would require a module-level
   alias that must not exist for a runtime-flippable switch.
-- Support the `_journal_kinds` subclass extension seam, validated as a superset of the core
-  four; unknown kinds are inert for membership
+- Support the `JournalEntry.register_kind(name, *, targetless=, closing=)` extension seam
+  (revised at review from a subclass seam — see *Review findings applied (PR #589)*); unknown
+  kinds are inert for membership
 - Export from `src/popoto/recipes/__init__.py` (alphabetized, both the import and `__all__`)
 
 ### 3. Test suite
@@ -1338,6 +1366,27 @@ reversed something the plan asserted: the defaults-sync registration mechanism
 | NIT | integration | `agent_id = KeyField()` with `None` collapses the stream key and renders `"None"` into the record key | **D4** `append()` requires `agent_id` non-null | |
 | NIT | scope | Cross-agent supersession silently permitted | **D7 step 3** rejects cross-agent targets | |
 | BLOCKER (method) | scope | The scope critic had no `gh` access and could not verify the literal AC walk or that the No-Go slug targets exist | Verified by me directly: #562, #563, #564, #565, #588 all exist, are OPEN, and cover the deferred work; #560's five ACs plus the Amendment acceptance addition each map to a Success Criterion | |
+
+### Review findings applied (PR #589)
+
+Code review of the implementation returned two BLOCKERs, three CONCERNs and two NITs. All
+seven are patched; two of them changed decisions in this plan rather than only the code.
+
+**A Popoto ORM limitation discovered at review, stated here because downstream modules need
+it: `ModelBase` does not inherit `Field` attributes from a base model class.** Measured
+directly — `JournalEntry._meta.fields` has 12 entries, `class Sub(JournalEntry): pass` has
+**0**. Any Popoto model subclass silently persists an empty record. This is not
+journal-specific and is not worked around here (repairing model inheritance is far out of
+scope); M3–M8 must not reach for a model subclass as an extension point.
+
+| Severity | Finding | Addressed by |
+|---|---|---|
+| BLOCKER | The advertised `_journal_kinds` subclass seam silently destroys data — any `JournalEntry` subclass has an empty field set, and the seam was advertised in five places with no test | **D5 revised**: seam replaced by `JournalEntry.register_kind(name, *, targetless=, closing=)`; `_journal_kinds`/`__init_subclass__` and every subclass example removed from the module, the class docstrings and the feature page; `ProvenanceJournal._write` raises `TypeError` naming the metaclass limitation for any `entry_model` missing the field set |
+| BLOCKER | `AnnotationResult.target_closed` was affirmatively wrong on the caller-pipeline path — `bool(should_close and coupling_enabled)` reports `True` for a re-close that applies nothing, the exact #588 shape the type exists to prevent | **D3 revised**: `target_closed: Optional[bool]`, `None` on the caller-pipeline path, plus `close_index: Optional[int]`. Breaking shape change landed before M3–M8 bind |
+| CONCERN | `_TARGETLESS_KINDS`/`_CLOSING_KINDS` were module-level frozensets, so an extended kind was permanently target-required and permanently membership-inert | Both routed through the `register_kind` registry (`kind_is_targetless` / `kind_is_closing`), so `register_kind("merge", closing=True)` actually closes |
+| CONCERN | `hard_delete`'s "every trace" was overstated: an `$IndexedF:JournalEntry:target:<escaped erased key>` key's *name* embeds the erased key, and `stream:journal` XADD entries carry its `pk`/`target` | Claim scoped to the erased record's **own derived state** in `append_only.py` and on the feature page; both survivors named explicitly; the stream added to the numbered sweep as a "not swept" step. Neither leaks `verbatim`/`statement`, so the erasure purpose still holds |
+| NIT | `assert target_key is not None` is stripped under `python -O`, but its own comment makes it a correctness guard | Converted to `if target_key is None: raise RuntimeError(...)` |
+| NIT | `agent_id` was never firewall-scanned, yet it is rendered into every record's Redis key *name* — the one place `hard_delete` cannot scrub retroactively | Added to the `_scan_or_block` tuple, with a regression test |
 
 ---
 

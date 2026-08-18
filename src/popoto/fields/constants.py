@@ -350,9 +350,11 @@ class Defaults:
     # an original capture and carries no target; the other three are
     # annotations and each names exactly one target entry. Downstream modules
     # that need more kinds (M5 merge/equivalence, M7 queueing, M8 exposure)
-    # extend via a ``JournalEntry`` subclass setting ``_journal_kinds``, which
-    # is validated at class-definition time as a superset of these four rather
-    # than by editing this tuple. Reader rule: an entry whose ``kind`` a reader
+    # extend via ``JournalEntry.register_kind(name, targetless=, closing=)``,
+    # which adds to the vocabulary in place rather than editing this tuple.
+    # (Registration rather than a model subclass because Popoto's ModelBase
+    # metaclass does not inherit Field attributes, so a JournalEntry subclass
+    # has an empty field set.) Reader rule: an entry whose ``kind`` a reader
     # does not recognize is inert for membership -- never silently treated as
     # ``supersede`` or ``retract``.
     JOURNAL_KINDS = ("assert", "confirm", "supersede", "retract")

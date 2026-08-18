@@ -239,7 +239,10 @@ class AppendOnlyMixin:
 
     @classmethod
     def hard_delete(cls, instance: Any, **kwargs: Any) -> bool:
-        """Erase a record and every trace of it. Retention/admin only.
+        """Erase a record and every trace of its own derived state.
+
+        Retention/admin only. The scope is exact and is **not** "every trace of
+        the record anywhere in the keyspace" -- see *What survives* below.
 
         The deliberate hole in the append-only contract, kept explicit and
         greppable so an audit can find every call site. It exists for erasure,
@@ -264,6 +267,31 @@ class AppendOnlyMixin:
            but a neighbor's link may still name it as a *value*
            (``fwd`` holds ``old -> erased``). Left behind, that is a dangling
            link into a record that no longer exists.
+        4. **Not swept:** the model's event stream. If the model composes
+           ``EventStreamMixin``, the mutation was ``XADD``ed to
+           ``stream:{_stream_name}``, and those entries are retained up to
+           ``_stream_max_length`` regardless of this call.
+
+        What survives, named rather than implied
+        ----------------------------------------
+        Two things outlive a ``hard_delete`` and are not reachable from the
+        erased record's own derived state:
+
+        * **An index key whose NAME embeds the erased record's Redis key.**
+          Another record that referenced the erased one by key -- a journal
+          annotation's ``target``, say -- owns a
+          ``$IndexF:{Model}:{field}:{escaped erased key}`` Set. That Set
+          belongs to the *referencing* record, not the erased one, so nothing
+          here touches it, and the erased key survives, escaped, inside its
+          name.
+        * **Event-stream entries.** Any ``XADD``ed mutation carrying the erased
+          record's key (and any ``_stream_metadata_fields``) stays in the
+          stream until trimmed.
+
+        Neither carries the record's field *values*, so an erasure motivated by
+        removing content achieves that; an erasure motivated by removing every
+        occurrence of the record's key does not. Erase the referencing records
+        too, or trim the stream, if that is the requirement.
 
         Args:
             instance: The record to erase. Must be saved.

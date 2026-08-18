@@ -138,42 +138,97 @@ annotation and close the target's interval in the same transaction — and
 differ only in semantics: a supersession replaces a claim with a better one,
 a retraction withdraws it with no replacement.
 
-### The extension seam, and the reader rule
+### The extension seam: `register_kind`, and the reader rule
 
 The core vocabulary — `Defaults.JOURNAL_KINDS = ("assert", "confirm",
 "supersede", "retract")` — is a frozen tuple, not a tunable: changing it would
-reclassify already-stored entries. It ships with a subclass extension seam
-instead. A `JournalEntry` subclass can set `_journal_kinds` to add more kinds
-(a merge/equivalence kind, a queue-able kind, an exposure kind), validated at
-class-definition time as a **superset** of the core four:
+reclassify already-stored entries. Downstream modules that need more kinds (a
+merge/equivalence kind, a queue-able kind, an exposure kind) register them
+instead:
 
 ```python
-class ProjectEntry(JournalEntry):
-    _journal_kinds = ("assert", "confirm", "supersede", "retract", "merge")
+JournalEntry.register_kind("merge", closing=True)
+
+claim = ProvenanceJournal.append(
+    agent_id="agent-1", statement="Launch date is the 30th"
+).entry
+
+ProvenanceJournal.append(
+    agent_id="agent-1",
+    kind="merge",
+    target=claim,
+    statement="Folded into the canonical launch-date claim",
+)   # -> target_closed=True: appends the annotation AND closes claim's
+    #    interval, exactly like a supersede
 ```
 
-Declaring `_journal_kinds` without the core four raises `ValueError` at class
-definition — a subclass can extend the vocabulary, never narrow it.
+`register_kind` is a **registration call, not a model subclass** — see
+[Do not subclass `JournalEntry`](#do-not-subclass-journalentry) for why a
+subclass seam cannot work in this ORM. Registration is process-global and
+purely additive: it can never remove or reclassify a core kind.
+
+The two flags are the point of the call, not decoration. They record the kind's
+*behavior*, which a bare vocabulary list cannot:
+
+| Flag | Meaning | Core kinds with it |
+|---|---|---|
+| `targetless=True` | An original capture that carries no `target` | `assert` |
+| `closing=True` | An entry of this kind closes its target's validity interval | `supersede`, `retract` |
+
+Defaults are `targetless=False, closing=False`: target required, membership
+untouched — the `confirm` shape. `register_kind` raises `ValueError` on an
+empty name, on a core kind (`Defaults.JOURNAL_KINDS` is frozen), on
+`targetless` and `closing` together (a kind with no target has nothing to
+close), and on re-registering an existing name under *different* flags, since
+that would reclassify entries already stored under it. Re-registering with the
+same flags is a no-op.
 
 The reader rule this seam is built around: **an entry whose `kind` a reader
 does not recognize is inert for membership.** A reader that only knows the
-core four must treat a `merge`-kind entry from `ProjectEntry` as "not a
-supersede, not a retract" and leave the target's membership alone — never
-silently promote an unknown kind to `supersede`/`retract` behavior. This is
-what lets the vocabulary grow across modules without every existing reader
-needing a simultaneous upgrade.
+core four must treat a `merge`-kind entry as "not a supersede, not a retract"
+and leave the target's membership alone — never silently promote an unknown
+kind to `supersede`/`retract` behavior. This is what lets the vocabulary grow
+across modules without every existing reader needing a simultaneous upgrade.
+
+### Do not subclass `JournalEntry`
+
+Popoto's `ModelBase` metaclass does **not** inherit `Field` attributes from a
+base model class. A `JournalEntry` subclass therefore has an *empty* field set
+and would persist nothing at all:
+
+```pycon
+>>> class SubEntry(JournalEntry): pass
+>>> sorted(JournalEntry._meta.fields)
+['agent_id', 'captured_at', 'entry_id', 'kind', 'speaker', 'stated',
+ 'statement', 'subjects', 'target', 'turn_id', 'validity', 'verbatim']
+>>> sorted(SubEntry._meta.fields)
+[]
+```
+
+This is an ORM-level limitation, not a journal one, and it applies to every
+Popoto model — it is recorded here because the journal is the module whose
+extension story it changes. `ProvenanceJournal` refuses such a model rather
+than filling a keyspace with empty records:
+
+```pycon
+>>> class SubJournal(ProvenanceJournal): entry_model = SubEntry
+>>> SubJournal.append(agent_id="agent-1", statement="would be lost")
+Traceback (most recent call last):
+    ...
+TypeError: SubEntry is not a usable journal entry model: it declares no
+'statement' field, so every record it writes would persist nothing. ...
+```
+
+To extend the annotation vocabulary, call `JournalEntry.register_kind()`. For a
+separate keyspace or a different field set (an `EmbeddingField`, say), declare
+your own `Model` with the same mixins and the same fields and point a
+`ProvenanceJournal` subclass at it.
 
 ## The `ProvenanceJournal` API
 
 `ProvenanceJournal` is a stateless façade — every method is a `classmethod`,
 there is no instance state — and it is the **only supported** read and write
-API. Point a subclass at a `JournalEntry` subclass for a separate keyspace or
-an extended kind vocabulary:
-
-```python
-class ProjectJournal(ProvenanceJournal):
-    entry_model = ProjectEntry
-```
+API.
 
 | Method | Effect |
 |---|---|
@@ -185,14 +240,39 @@ class ProjectJournal(ProvenanceJournal):
 | `chain(entry)` | The supersession chain through `entry`, oldest first — a display/replay read, walking `ValidityField`'s chain hashes, **not** the membership query |
 
 Every mutating method returns an `AnnotationResult(entry, target_closed,
-coupling_enabled, pipeline)` — a typed result readable without touching
-Redis, so a caller never has to issue a read just to find out whether an
-annotation actually changed membership. `target_closed` is always `False` for
-`append`/`confirm`; on `supersede`/`retract` it reflects whether the target's
-interval was actually closed by this call — `False` when the
-[validity coupling switch](#the-kill-switch-popoto_journal_coupling_disable)
-is off, or when the target was already closed by a concurrent annotation
-(both annotations are real provenance, one close applies).
+coupling_enabled, pipeline, close_index)` — a typed result readable without
+touching Redis, so a caller never has to issue a read just to find out whether
+an annotation actually changed membership.
+
+`target_closed` is `Optional[bool]`, and which of the three values you get
+depends on who owns the pipeline:
+
+- **The journal owns it** (no `pipeline=` argument): a real `bool`, read from
+  the supersede script's own reply. `False` for `append`/`confirm` (neither
+  changes membership), `False` when the
+  [validity coupling switch](#the-kill-switch-popoto_journal_coupling_disable)
+  is off, and `False` when the target was *already* closed by a concurrent
+  annotation — which is the honest answer, since this call closed nothing
+  (both annotations are real provenance, one close applies).
+- **The caller supplied one**: `None` — *unknown until you execute*. Nothing
+  has run, so no truthful `bool` exists. A re-close of an already-closed
+  target queues exactly like a first close and applies nothing, so reporting
+  `True` for a queued close would be affirmatively wrong. Read the real
+  outcome from your own `execute()`:
+
+```python
+pipe = popoto.get_redis().pipeline()
+result = ProvenanceJournal.supersede(first, agent_id="agent-1",
+                                     statement="...", pipeline=pipe)
+assert result.target_closed is None          # nothing has executed yet
+results = pipe.execute()
+closed = bool(results[result.close_index])   # the real answer
+```
+
+`close_index` is the index of the queued interval-close command in the
+caller's pipeline. It is `None` whenever no close was queued — always so on
+the journal-owned path, where the pipeline has already executed and
+`target_closed` carries the answer directly.
 
 Every method also raises before writing anything on: a firewall-blocked
 value (`JournalBlockedError`), an out-of-vocabulary `kind` or an inconsistent
@@ -380,10 +460,11 @@ supported deployment action, and with the firewall off, verbatim human
 speech — including credentials, if the firewall is disabled — lands in a
 keyspace whose only removal path is this classmethod.
 
-`hard_delete` sweeps **derived state**, not just the record hash — this
-matters because a sweep that only deletes the hash would leave orphaned index
-and chain entries pointing at nothing, exactly the corrupted-index shape the
-ORM's query layer has to treat as readable-but-skippable elsewhere:
+`hard_delete` sweeps **the erased record's own derived state**, not just its
+hash — this matters because a sweep that only deleted the hash would leave
+orphaned index and chain entries pointing at nothing, exactly the
+corrupted-index shape the ORM's query layer has to treat as
+readable-but-skippable elsewhere:
 
 1. The record hash, the class Set, and every `$IndexedF:`/`$TagF:` index Set,
    via `Model.delete()` itself (reached past the mixin's own delete-refusing
@@ -400,8 +481,27 @@ ORM's query layer has to treat as readable-but-skippable elsewhere:
 
 Verified: after `hard_delete()` on the correction entry from the example
 above, `annotations_for(first)` (a `filter(target=...)` read) returns no
-results and no `$*`-prefixed key in the keyspace still names the erased
-entry's Redis key.
+results, and the erased entry's Redis key appears in no `$*`-prefixed key's
+*contents*.
+
+**Two things survive, and the scope is "the erased record's own derived
+state", not "every trace of it anywhere".** Neither carries the erased
+record's `verbatim` or `statement` content, so an erasure motivated by
+removing content achieves that — but an erasure motivated by removing every
+occurrence of the record's *key* does not:
+
+1. **An index key whose NAME embeds the erased record's Redis key.** An
+   annotation that targeted the erased entry owns a
+   `$IndexF:JournalEntry:target:<escaped erased key>` Set — observed intact
+   after the sweep as
+   `$IndexF:JournalEntry:target:JournalEntry{&#58;}agent///-1{&#58;}c1077a2e…`.
+   That Set belongs to the *annotating* record, not the erased one, so the
+   sweep does not touch it and the erased key survives, escaped, inside its
+   name. Erase the annotations too if that matters.
+2. **`stream:journal` entries.** Every journal mutation is `XADD`ed to the
+   event stream carrying the record's `pk` and its `target` metadata field,
+   retained up to `_stream_max_length` (10,000 entries) regardless of
+   `hard_delete`. Trim or delete the stream separately if required.
 
 ## Gotchas
 
@@ -423,16 +523,12 @@ entry's Redis key.
 - **No `EmbeddingField`.** Deliberate, mirroring `DefaultMemory`: an embedding
   field pulls an optional extra (an API key or a local Ollama), and
   similarity search over the journal was not part of this feature's scope.
-  Subclass to add one:
-
-  ```python
-  class SearchableEntry(JournalEntry):
-      statement_vec = EmbeddingField(source="statement")
-  ```
-
-  A subclass gets its own keyspace (`SearchableEntry:*`) and its own
-  validity/chain keys — the same seam `_journal_kinds` uses to extend the
-  annotation vocabulary.
+  Adding one means declaring your own model with the journal field set plus
+  the embedding field — **not** subclassing `JournalEntry`, which loses every
+  field (see [Do not subclass `JournalEntry`](#do-not-subclass-journalentry)).
+- **`target_closed` is `None`, not `False`, on a caller-supplied pipeline.**
+  Nothing has executed at that point, so the journal reports "unknown" rather
+  than guessing. Read `results[close_index]` after your own `execute()`.
 
 ## See Also
 
