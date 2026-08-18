@@ -408,6 +408,31 @@ indistinguishable from a successful queue, so a naive annotate-and-close that
 relied on the mixin alone could close a target's interval against an
 annotation the firewall actually refused to write.
 
+**`target` is deliberately *excluded* from the scan surface, because it is a
+machine-generated pointer rather than content.** `target` holds a Redis key
+Popoto itself rendered — `JournalEntry:<agent_id>:<uuid4 hex>` — and scanning
+it for payment cards is a category error with a measured cost: a uuid4 hex
+sometimes contains a 13–19 digit run that passes the **Luhn** checksum, so the
+firewall flagged the annotation as `payment_card`/`luhn` at a rate of roughly
+1 target key in 250.
+
+```python
+scan_never_record("JournalEntry:agent/-under/-test:8ef1fc6db384458286216656bfb2cf04")
+# NeverRecordVerdict(blocked=True, reason='payment_card', detector='luhn')
+```
+
+Because that block lands at a `save()` gate that *returns* instead of raising,
+the effect was a silently dropped annotation whose target's interval got closed
+anyway. The narrowing is exactly one field — `verbatim`, `statement`,
+`speaker`, `turn_id`, `kind`, `agent_id` and `subjects` are all still scanned,
+and the firewall is not weakened for anything a human or a model ever wrote.
+
+The pre-flight derives its scanned values from the *same method* the mixin uses
+(`_never_record_scan_values`) rather than a parallel list, so the two cannot
+drift apart and let the mixin block something the pre-flight passed. If a
+`save()` in the annotate-and-close path ever does return falsy, the journal
+raises `RuntimeError` rather than proceeding to close the target.
+
 **A blocked capture leaves only a content-free tombstone, and that is the
 whole signal.** A capture the firewall drops never reaches the journal at
 all: it leaves a random id and a reason code in the `$NR:` keyspace (see

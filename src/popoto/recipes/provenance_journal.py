@@ -173,7 +173,7 @@ beyond the stream bound noted on the class.
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional, Sequence, Type, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union
 
 import redis.client
 
@@ -432,6 +432,49 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
             return True
         registered = _REGISTERED_KINDS.get(kind) if isinstance(kind, str) else None
         return bool(registered and registered[1])
+
+    #: Non-key fields whose value Popoto itself generates, never a caller or a
+    #: speaker. Excluded from the never-record scan surface -- see
+    #: :meth:`_never_record_scan_values`.
+    _MACHINE_GENERATED_FIELDS = frozenset({"target"})
+
+    def _never_record_scan_values(self) -> Iterator[str]:
+        """Yield the content values the firewall scans, minus machine pointers.
+
+        ``target`` holds a Redis key **Popoto generated** -- ``JournalEntry:
+        <agent_id>:<uuid4 hex>``. It is an internal pointer, not user content,
+        and scanning it for payment cards is a category error with a measured
+        cost: a uuid4 hex sometimes contains a 13-19 digit run that passes the
+        Luhn checksum, so the firewall blocks the annotation as
+        ``reason='payment_card', detector='luhn'``. Verified example::
+
+            scan_never_record(
+                "JournalEntry:agent/-under/-test:8ef1fc6db384458286216656bfb2cf04"
+            )
+            # -> NeverRecordVerdict(blocked=True, reason='payment_card',
+            #                       detector='luhn')
+
+        Measured at 5-8 blocked per 2000 random target keys (~0.25-0.4%), which
+        is what made ``test_hard_delete_removes_the_record_and_every_derived_
+        trace`` fail roughly 1 run in 150 on CI. The block landed at
+        ``Model.save()`` step 0, which *returns* rather than raises, so the
+        annotation was silently dropped while the invalidate EVAL still closed
+        the target -- a membership change with zero provenance. (PR #589.)
+
+        Every genuine content field is still scanned: ``verbatim``,
+        ``statement``, ``speaker``, ``turn_id``, ``kind``, and -- via the
+        façade's pre-flight, which also covers the ``subjects`` list the mixin
+        cannot see -- ``agent_id`` and ``subjects``. This narrows the surface by
+        exactly one machine-generated pointer; it does not weaken the firewall
+        for anything a human or a model ever wrote.
+        """
+        skip = self._MACHINE_GENERATED_FIELDS
+        for field_name in self._never_record_scan_field_names():
+            if field_name in skip:
+                continue
+            value = getattr(self, field_name, None)
+            if isinstance(value, str) and value.strip():
+                yield value
 
     def pre_save(self, *args: Any, **kwargs: Any) -> Any:
         """Validate ``kind`` and the ``kind``/``target`` combination, then save.
@@ -864,22 +907,9 @@ class ProvenanceJournal:
         # each one is a question that cannot be answered after the fact
         # without having already written something.
 
-        # 1. The firewall, scanned here rather than left to NeverRecordMixin.
-        #    Two reasons. ``Model.save()`` returns the *pipeline* when the
-        #    firewall fires in pipeline mode -- indistinguishable from success
-        #    -- so a naive annotate-and-close would queue the invalidate EVAL
-        #    against an annotation that was never written and commit a
-        #    membership change with zero provenance. And the mixin's scan
-        #    surface yields only ``str`` values, so ``subjects`` (a list) is
-        #    never scanned by it at all.
-        #
-        #    ``agent_id`` is scanned too, and it is the one value here that
-        #    *must* be: it is rendered into the record's Redis key NAME, which
-        #    is the one place ``hard_delete`` cannot scrub retroactively -- the
-        #    name of an annotation's ``$IndexedF:`` index key embeds it.
-        _scan_or_block(agent_id, statement, verbatim, speaker, turn_id, *subject_tags)
-
-        # 2. Vocabulary and kind/target consistency.
+        # 1. Vocabulary and kind/target consistency. Pure, in-memory checks --
+        #    they issue no Redis command, so they are safe to run ahead of the
+        #    firewall.
         target_key = _resolve_member_key(target)
         kind, target_key = validate_kind_and_target(model, kind, target_key)
 
@@ -889,8 +919,57 @@ class ProvenanceJournal:
                 f"-- a None renders the literal 'None' into the record key"
             )
 
+        # 2. Build the entry. Construction is pure: ``AutoKeyField`` assigns a
+        #    key in ``__init__`` but nothing is issued to Redis. Building it
+        #    *here*, before the firewall, is what lets step 3 scan exactly the
+        #    value set ``NeverRecordMixin`` will scan at save time.
+        entry = model(
+            agent_id=agent_id,
+            captured_at=time.time() if captured_at is None else float(captured_at),
+            turn_id=turn_id,
+            speaker=speaker,
+            verbatim=verbatim,
+            statement=statement,
+            subjects=subject_tags,
+            stated=stated,
+            kind=kind,
+            target=target_key,
+            # Valid-time is set at CONSTRUCTION, not passed to the supersede
+            # script. ValidityField.on_save uses the field value as valid_from
+            # and its ZADD NX runs earlier in the pipeline, which makes the
+            # supersede script's own valid_from write a silent no-op -- so a
+            # backdated instant passed only to execute_supersede is silently
+            # replaced by the save clock (#588).
+            validity=instant,
+        )
+
+        # 3. The firewall, scanned here rather than left to NeverRecordMixin.
+        #    ``Model.save()`` *returns* rather than raises when the firewall
+        #    fires (``return pipeline if pipeline else False``, base.py step 0),
+        #    and in pipeline mode the pipeline it returns is indistinguishable
+        #    from success -- so a naive annotate-and-close would queue the
+        #    invalidate EVAL against an annotation that was never written and
+        #    commit a membership change with zero provenance.
+        #
+        #    The scanned values are derived from
+        #    ``entry._never_record_scan_values()`` -- the *same method* the
+        #    mixin calls -- rather than re-listed here. That equality is
+        #    load-bearing: PR #589 shipped a hand-written list that omitted
+        #    ``target``, the mixin scanned it anyway, a Luhn-passing uuid4 hex
+        #    blocked the save, and the drop was silent. Two value sets that can
+        #    drift are two chances to reach that path; one set cannot drift.
+        #
+        #    Two additions the mixin structurally cannot make. ``agent_id`` is a
+        #    KeyField, excluded from the mixin's surface, and it is the one
+        #    value here that *must* be scanned: it is rendered into the record's
+        #    Redis key NAME, the one place ``hard_delete`` cannot scrub
+        #    retroactively -- the name of an annotation's ``$IndexedF:`` index
+        #    key embeds it. And ``subject_tags`` is a list, so the mixin's
+        #    str-only yield never sees it.
+        _scan_or_block(agent_id, *subject_tags, *entry._never_record_scan_values())
+
         if target_key is not None:
-            # 3. The target exists, and belongs to this agent. ``target`` is a
+            # 4. The target exists, and belongs to this agent. ``target`` is a
             #    full Redis key that could name another agent's partition, so a
             #    cross-agent annotation is rejected rather than silently
             #    closing a neighbour's record.
@@ -912,7 +991,7 @@ class ProvenanceJournal:
                     f"annotation to {agent_id!r}"
                 )
 
-            # 4. The requested instant is not before the target's *stored*
+            # 5. The requested instant is not before the target's *stored*
             #    valid_from. This cannot be delegated to
             #    ``execute_supersede``: its CLOSE_BEFORE_START -> ValueError
             #    remap applies only on the non-pipeline branch, and its
@@ -933,7 +1012,7 @@ class ProvenanceJournal:
                     f"state to store."
                 )
 
-        # 5. A non-transactional caller pipeline would silently void the
+        # 6. A non-transactional caller pipeline would silently void the
         #    atomicity guarantee, so it is refused rather than honored.
         if pipeline is not None:
             if not isinstance(pipeline, redis.client.Pipeline):
@@ -947,19 +1026,34 @@ class ProvenanceJournal:
                     f"annotate-and-close atomicity guarantee. Use "
                     f"popoto.get_redis().pipeline() (transactional by default)."
                 )
-            # A WATCHing pipeline executes immediately rather than queueing,
-            # so Model.save() fails part-way through and leaves an entry hash
-            # with no indexes and no validity interval. On an append-only
-            # model that orphan is permanent -- only hard_delete can remove
-            # it -- so this is refused here rather than discovered at write
-            # time. (Pre-existing ORM behavior: a plain Model.save() against a
-            # watching pipeline fails identically. Found in PR #589 review.)
-            if getattr(pipeline, "watching", False):
+            # A WATCHing pipeline that has not yet been put into MULTI executes
+            # each command immediately rather than queueing, so Model.save()
+            # fails part-way through and leaves an entry hash with no indexes
+            # and no validity interval. On an append-only model that orphan is
+            # permanent -- only hard_delete can remove it -- so this is refused
+            # here rather than discovered at write time. (Pre-existing ORM
+            # behavior: a plain Model.save() against such a pipeline fails
+            # identically. Found in PR #589 review.)
+            #
+            # ``watching and not explicit_transaction`` is the precise
+            # condition, NOT ``watching`` alone. watch() + multi() is the
+            # standard redis-py optimistic-locking pattern: multi() sets
+            # ``explicit_transaction = True``, after which commands queue
+            # normally and the whole annotate-and-close applies atomically at
+            # execute(). Refusing that case made the journal strictly less
+            # capable than a bare Popoto model, which accepts it. (Round-3
+            # review of PR #589.)
+            if getattr(pipeline, "watching", False) and not getattr(
+                pipeline, "explicit_transaction", False
+            ):
                 raise ValueError(
-                    f"{model.__name__}: a WATCHing pipeline executes "
-                    f"immediately instead of queueing, which would leave a "
-                    f"permanent orphan record on an append-only model. "
-                    f"Call UNWATCH, or use a fresh pipeline."
+                    f"{model.__name__}: a WATCHing pipeline that is not yet in "
+                    f"MULTI executes commands immediately instead of queueing, "
+                    f"which would leave a permanent orphan record on an "
+                    f"append-only model. Call pipeline.multi() to open the "
+                    f"transaction -- that keeps your optimistic lock and makes "
+                    f"the annotate-and-close atomic -- or use a fresh pipeline. "
+                    f"Do NOT call UNWATCH: it would discard the lock you took."
                 )
 
         # ---- End of pre-flight. From here on, commands are issued.
@@ -969,30 +1063,40 @@ class ProvenanceJournal:
         if should_close and not coupling_enabled:
             _warn_uncoupled_once(model.__name__)
 
-        entry = model(
-            agent_id=agent_id,
-            captured_at=time.time() if captured_at is None else float(captured_at),
-            turn_id=turn_id,
-            speaker=speaker,
-            verbatim=verbatim,
-            statement=statement,
-            subjects=subject_tags,
-            stated=stated,
-            kind=kind,
-            target=target_key,
-            # Valid-time is set at CONSTRUCTION, not passed to the supersede
-            # script. ValidityField.on_save uses the field value as valid_from
-            # and its ZADD NX runs earlier in the pipeline, which makes the
-            # supersede script's own valid_from write a silent no-op -- so a
-            # backdated instant passed only to execute_supersede is silently
-            # replaced by the save clock (#588).
-            validity=instant,
-        )
-
         owns_pipeline = pipeline is None
         pipe = POPOTO_REDIS_DB.pipeline() if pipeline is None else pipeline
 
-        entry.save(pipeline=pipe)
+        saved = entry.save(pipeline=pipe)
+
+        # Defence in depth against the whole class of bug this module's worst
+        # failure mode belongs to. ``Model.save()`` has several early-return
+        # gates (the never-record firewall, the write filter) that *return*
+        # instead of raising; each one is a way for the annotation to not be
+        # written while the invalidate EVAL below is queued anyway, closing the
+        # target's interval with zero provenance backing it -- and reporting
+        # ``target_closed=True`` for an entry that does not exist.
+        #
+        # The pre-flight now scans the same value set the firewall does, so the
+        # firewall gate is unreachable from here; this raise is what makes that
+        # claim *checkable* rather than assumed, and it covers the gates that
+        # have not been analysed yet. Raised, not asserted -- ``python -O``
+        # strips asserts, and this must hold in production above all.
+        blocked = getattr(entry, "_never_record_verdict", None)
+        if not saved or blocked is not None:
+            reason = (
+                f"the never-record firewall ({blocked.reason})"
+                if blocked is not None
+                else "an early-return gate in Model.save()"
+            )
+            raise RuntimeError(
+                f"{model.__name__}: the annotation was not written -- "
+                f"{reason} stopped it, and Model.save() signals that by "
+                f"returning rather than raising. Nothing further is issued: "
+                f"queueing the interval close now would commit a membership "
+                f"change with no provenance behind it. This is a bug in this "
+                f"module (the pre-flight should have caught it), not a caller "
+                f"error."
+            )
 
         close_index: Optional[int] = None
         if should_close and coupling_enabled:
@@ -1074,11 +1178,26 @@ class ProvenanceJournal:
 #: persisted 3 of 12 fields -- no ``verbatim``, no ``kind``, no ``target``, and
 #: no validity interval at all. A partial field set is exactly as lossy as an
 #: empty one, so the guard checks the whole set.
+#:
+#: "The whole set" means every non-key field :class:`JournalEntry` declares.
+#: Round 3 caught the set at 6 of 12 while the comment claimed completeness: a
+#: model declaring exactly those 6 passed and then silently dropped
+#: ``speaker``, ``turn_id``, ``subjects``, ``stated`` and ``captured_at`` --
+#: attribution and provenance-of-the-provenance, which is the entire point of
+#: this module. The five were added rather than the comment softened, because
+#: "who said it, in which turn, and was it actually said" is not optional
+#: metadata on a provenance record. ``entry_id`` is excluded: it is the
+#: ``AutoKeyField``, and a model needs *a* key field, not that name.
 _REQUIRED_ENTRY_FIELDS = frozenset(
     {
         "agent_id",
-        "statement",
+        "captured_at",
+        "turn_id",
+        "speaker",
         "verbatim",
+        "statement",
+        "subjects",
+        "stated",
         "kind",
         "target",
         "validity",

@@ -723,10 +723,50 @@ by the mixin. Subject tags are populated from human speech by M4 (#563) and are 
 carrier of names and identifiers. M1 does not leave this to the mixin: `append()` calls
 `scan_never_record()` on each subject tag explicitly as part of D7 step 1. The residual mixin
 hole is stated on the feature page and pinned by a test asserting current behavior, so it
-cannot drift silently. Related: `target` survives the entropy detector only because a redis
-key contains `:`, which is outside `_ENTROPY_CHARSET` (`never_record.py:253`) — a regression
-test asserts a `target`-carrying annotation is never firewall-blocked, so a future
-single-segment key rendering cannot silently start dropping annotations.
+cannot drift silently.
+
+**D8a (correction, round 3) — `target` is *excluded* from the scan surface, and the original
+D8 claim that scanning it was safe-and-deliberate was wrong.** D8 originally reasoned that
+`target` "survives the entropy detector because a redis key contains `:`, outside
+`_ENTROPY_CHARSET`", and treated its inclusion in the scan as intentional. The entropy
+detector was never the problem. **The Luhn detector is.** `target` holds
+`JournalEntry:<agent_id>:<uuid4 hex>`, and a uuid4 hex sometimes contains a 13–19 digit run
+that passes the Luhn checksum, so the firewall blocks the annotation as
+`reason='payment_card', detector='luhn'`. Verified:
+
+```python
+scan_never_record("JournalEntry:agent/-under/-test:8ef1fc6db384458286216656bfb2cf04")
+# -> NeverRecordVerdict(blocked=True, reason='payment_card', detector='luhn')
+```
+
+Measured at **5–8 blocked per 2000 random target keys (~0.25–0.4%)**, which matched an
+observed ~0.7% (1 in 150) intermittent CI failure of
+`test_hard_delete_removes_the_record_and_every_derived_trace`. The consequence was the exact
+BLOCKER this plan's round-1 critique identified (see the Critique table): the block lands at
+`Model.save()` step 0, which **returns rather than raises**, so the annotation was silently
+not written while the invalidate EVAL still closed the target — a membership change with
+zero provenance, and `AnnotationResult.target_closed=True` for an entry that does not exist.
+D7's pre-flight was supposed to make that unreachable; it did not, because it scanned a
+*different* value set than the mixin.
+
+Two changes close it, and both are needed:
+
+1. `JournalEntry._never_record_scan_values` excludes `target`. It is a **machine-generated
+   internal pointer** — a Redis key Popoto itself rendered — not user content, and scanning
+   it for payment cards is a category error. Every genuine content field is still scanned:
+   `verbatim`, `statement`, `speaker`, `turn_id`, `kind`, plus `agent_id` and `subjects` via
+   the pre-flight. The narrowing is exactly one field.
+2. The D7 pre-flight now derives its scanned values from
+   `entry._never_record_scan_values()` — the *same method* the mixin calls — instead of a
+   hand-written list, plus `agent_id` (a KeyField, structurally outside the mixin's surface)
+   and `subjects` (a list, likewise). Two value sets that can drift are two chances to reach
+   the silent path; one set cannot drift. A defensive `RuntimeError` on a falsy `save()`
+   return in the annotate-and-close path makes any *future* early-return gate in
+   `Model.save()` fail loudly instead of closing a target with no annotation behind it.
+
+Pinned by tests: the verified Luhn-tripping key round-trips and survives a full `hard_delete`
+cycle; a property-style sweep asserts none of 4000 synthetic target keys is ever blocked; and
+a spy test asserts the pre-flight's scanned values are a superset of the mixin's surface.
 
 ## Failure Path Test Strategy
 

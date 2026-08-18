@@ -59,6 +59,7 @@ Tests cover:
 import os
 import sys
 import time
+import uuid
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -70,6 +71,7 @@ from src.popoto import ValidityField
 from src.popoto.exceptions import AppendOnlyViolation, JournalBlockedError
 from src.popoto.fields.constants import Defaults, _read_journal_coupling_switch
 from src.popoto.fields.supersession import SupersessionProtocol
+from src.popoto.privacy.never_record import scan_never_record
 from src.popoto.recipes import provenance_journal as journal_module
 from src.popoto.recipes.provenance_journal import (
     VALIDITY_FIELD_NAME,
@@ -846,6 +848,253 @@ class TestNeverRecordComposition:
         ]
 
 
+# A target key whose uuid4 hex contains a Luhn-passing digit run. Not
+# hand-crafted — this exact value came out of a random sample and is the
+# verified reproduction of the CI failure fixed in PR #589 round 3:
+#
+#   scan_never_record("JournalEntry:agent/-under/-test:8ef1fc...cf04")
+#   -> NeverRecordVerdict(blocked=True, reason='payment_card', detector='luhn')
+#
+# ``agent/-under/-test`` is Popoto's escaped rendering of AGENT, so building an
+# entry with this entry_id under AGENT reproduces the key byte for byte.
+LUHN_TRIPPING_ENTRY_ID = "8ef1fc6db384458286216656bfb2cf04"
+LUHN_TRIPPING_TARGET_KEY = f"JournalEntry:agent/-under/-test:{LUHN_TRIPPING_ENTRY_ID}"
+
+
+class TestMachineGeneratedTargetIsNotScanned:
+    """``target`` holds a Redis key Popoto generated, not user content.
+
+    Scanning it for payment cards is a category error, and a measurable one:
+    roughly 1 target key in 250 contains a 13-19 digit run that passes the Luhn
+    checksum. The block landed at ``Model.save()`` step 0, which *returns*
+    instead of raising, so the annotation was silently dropped while the
+    invalidate EVAL still closed the target — a membership change with zero
+    provenance, and ``target_closed=True`` for an entry that does not exist.
+    That is the war-room's top blocker resurfacing through a different door.
+    """
+
+    def test_the_verified_luhn_tripping_key_is_still_blocked_as_raw_content(self):
+        """Pin the trigger itself, so this suite fails loudly if the detector
+        changes and these tests start passing for the wrong reason."""
+        verdict = scan_never_record(LUHN_TRIPPING_TARGET_KEY)
+        assert verdict.blocked is True
+        assert verdict.reason == "payment_card"
+        assert verdict.detector == "luhn"
+
+    def test_target_is_absent_from_the_scan_surface(self):
+        entry = JournalEntry(
+            agent_id=AGENT,
+            kind="confirm",
+            target=LUHN_TRIPPING_TARGET_KEY,
+            statement="a claim",
+        )
+        assert LUHN_TRIPPING_TARGET_KEY not in set(entry._never_record_scan_values())
+
+    def test_every_genuine_content_field_is_still_scanned(self):
+        """The narrowing is exactly one machine-generated pointer. If a future
+        edit widened it to a field a human or a model wrote, that is a privacy
+        regression, not a flake fix."""
+        entry = JournalEntry(
+            agent_id=AGENT,
+            kind="confirm",
+            target=LUHN_TRIPPING_TARGET_KEY,
+            statement="the statement",
+            verbatim="the verbatim",
+            speaker="the speaker",
+            turn_id="the-turn",
+        )
+        scanned = set(entry._never_record_scan_values())
+        for value in (
+            "the statement",
+            "the verbatim",
+            "the speaker",
+            "the-turn",
+        ):
+            assert value in scanned
+
+    def test_a_luhn_tripping_target_key_round_trips_and_closes_normally(self):
+        """The CI failure, deterministically. Before the fix this raised
+        nothing and wrote nothing — ``supersede`` returned
+        ``target_closed=True`` for an annotation that was never saved."""
+        t0 = time.time() - 100.0
+        target = JournalEntry(
+            agent_id=AGENT,
+            entry_id=LUHN_TRIPPING_ENTRY_ID,
+            kind="assert",
+            statement="the launch slipped to the 30th",
+            validity=t0,
+        )
+        target.save()
+        assert target.db_key.redis_key == LUHN_TRIPPING_TARGET_KEY
+
+        result = ProvenanceJournal.supersede(
+            LUHN_TRIPPING_TARGET_KEY,
+            agent_id=AGENT,
+            statement="it slipped to the 31st",
+            at=t0 + 50.0,
+        )
+
+        # The annotation exists — the whole point.
+        assert result.entry.target == LUHN_TRIPPING_TARGET_KEY
+        stored = JournalEntry.query.get(redis_key=result.entry.db_key.redis_key)
+        assert stored is not None
+        assert stored.statement == "it slipped to the 31st"
+
+        # ...and target_closed is a claim about a record that really is there.
+        assert result.target_closed is True
+        assert _interval(target)[1] == t0 + 50.0
+        assert ProvenanceJournal.annotations_for(LUHN_TRIPPING_TARGET_KEY) == [stored]
+
+    def test_no_synthetic_target_key_is_ever_firewall_blocked(self):
+        """Property-style sweep over the real key rendering.
+
+        A single round-trip proves nothing at a ~0.4% rate, so assert the
+        invariant across a few thousand keys instead: a machine-generated
+        target pointer must never reach a blocking verdict through the scan
+        surface, whatever uuid4 hands back.
+        """
+        offenders = []
+        for _ in range(4000):
+            entry = JournalEntry(
+                agent_id=AGENT,
+                kind="confirm",
+                target=f"JournalEntry:agent/-under/-test:{uuid.uuid4().hex}",
+                statement="a claim",
+            )
+            for value in entry._never_record_scan_values():
+                verdict = scan_never_record(value)
+                if verdict.blocked:
+                    offenders.append((value, verdict.reason, verdict.detector))
+        assert offenders == [], offenders[:5]
+
+    def test_a_luhn_tripping_key_survives_a_full_hard_delete_cycle(self):
+        """The CI test that actually failed, pinned deterministically.
+
+        ``hard_delete`` of a target must leave the annotation standing; the
+        intermittent failure was the annotation never having been written.
+        """
+        t0 = time.time() - 100.0
+        target = JournalEntry(
+            agent_id=AGENT,
+            entry_id=LUHN_TRIPPING_ENTRY_ID,
+            kind="assert",
+            statement="the launch slipped to the 30th",
+            validity=t0,
+        )
+        target.save()
+        annotation = ProvenanceJournal.supersede(
+            LUHN_TRIPPING_TARGET_KEY,
+            agent_id=AGENT,
+            statement="it slipped to the 31st",
+            at=t0 + 50.0,
+        ).entry
+
+        assert JournalEntry.hard_delete(target) is True
+
+        survivor = JournalEntry.query.get(redis_key=annotation.db_key.redis_key)
+        assert survivor is not None
+        assert survivor.statement == "it slipped to the 31st"
+
+
+class TestPreFlightScansExactlyWhatTheMixinScans:
+    """The structural half of the fix.
+
+    The defect was not only that ``target`` got scanned; it was that the
+    pre-flight scanned a *different* value set than the mixin would, so the
+    mixin could block something the pre-flight passed — and ``Model.save()``
+    signals that block by returning, not raising. Two sets that can drift are
+    two chances to reach the silent path. One set cannot drift.
+    """
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            pytest.param({"statement": f"key {SECRET}"}, id="statement"),
+            pytest.param({"verbatim": f"he said {SECRET}"}, id="verbatim"),
+            pytest.param({"speaker": SECRET}, id="speaker"),
+            pytest.param({"turn_id": SECRET}, id="turn_id"),
+            pytest.param({"subjects": ["launch", SECRET]}, id="subjects"),
+            pytest.param({"agent_id": SECRET}, id="agent_id"),
+        ],
+    )
+    def test_every_mixin_scanned_field_raises_in_preflight_never_silently(self, kwargs):
+        """Whichever field carries it, the block must arrive as a raised
+        ``JournalBlockedError`` from the pre-flight — never as a ``save()``
+        that returned falsy while the close went ahead."""
+        target = _append()
+        call = {"agent_id": AGENT, "statement": "a correction"}
+        call.update(kwargs)
+
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.supersede(target, **call)
+
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+        keys = _keys()
+        assert POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key) is None
+        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert not _keyspace_contains(SECRET)
+
+    def test_the_preflight_scans_a_superset_of_the_mixin_surface(self, monkeypatch):
+        """Derived from the same method, asserted rather than trusted.
+
+        Captures the values the pre-flight actually scanned during a real call
+        and checks they cover everything the resulting entry exposes to the
+        mixin. If they ever fail to, the mixin can block what the pre-flight
+        passed, and the silent-drop path is reachable again.
+        """
+        target = _append()
+        scanned = []
+        real = journal_module._scan_or_block
+
+        def spy(*values):
+            scanned.extend(values)
+            return real(*values)
+
+        monkeypatch.setattr(journal_module, "_scan_or_block", spy)
+        result = ProvenanceJournal.supersede(
+            target,
+            agent_id=AGENT,
+            statement="a correction",
+            verbatim="he said it slipped",
+            speaker="ada",
+            turn_id="t-41",
+            subjects=["launch", "dates"],
+        )
+
+        mixin_surface = set(result.entry._never_record_scan_values())
+        assert mixin_surface  # guard against a vacuous pass
+        assert mixin_surface <= set(scanned)
+        # ...plus the two the mixin structurally cannot reach.
+        assert AGENT in set(scanned)
+        assert {"launch", "dates"} <= set(scanned)
+
+    def test_a_save_that_returns_falsy_raises_instead_of_closing_the_target(
+        self, monkeypatch
+    ):
+        """The defensive backstop.
+
+        ``Model.save()`` has several early-return gates that signal refusal by
+        returning rather than raising. Any of them reaching this code path
+        means an annotation was not written — and queueing the interval close
+        anyway is exactly the zero-provenance membership change this module
+        exists to prevent. Simulated by forcing the falsy return, because the
+        pre-flight now makes the real firewall gate unreachable.
+        """
+        target = _append()
+        monkeypatch.setattr(JournalEntry, "save", lambda self, **kw: False)
+
+        with pytest.raises(RuntimeError, match="annotation was not written"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction"
+            )
+
+        assert _interval(target)[1] == float("inf")
+        assert target.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+
 # ---------------------------------------------------------------------------
 # E. D7 pre-flight — every rejection issues zero commands
 # ---------------------------------------------------------------------------
@@ -1012,6 +1261,64 @@ class TestPreFlightValidation:
         assert set(scan_keys("*")) == before
         assert _interval(target)[1] == float("inf")
         assert ProvenanceJournal.annotations_for(target) == []
+
+    def test_a_watching_pipeline_in_multi_is_accepted_and_the_close_applies(self):
+        """``watch()`` + ``multi()`` is the standard redis-py optimistic-lock
+        pattern and must be accepted.
+
+        After ``multi()`` redis-py sets ``explicit_transaction = True`` and
+        commands queue normally, so the annotate-and-close applies atomically
+        at ``execute()``. The refusal was keyed on ``watching`` alone, which
+        over-refused: a bare ``Plain(name="x").save(pipeline=p)`` succeeds on
+        such a pipeline, so the journal was strictly less capable than a bare
+        Popoto model. (Round-3 review of PR #589.)
+        """
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        pipe = POPOTO_REDIS_DB.pipeline()
+        try:
+            pipe.watch(target.db_key.redis_key)
+            pipe.multi()
+            assert pipe.watching is True
+            assert pipe.explicit_transaction is True
+
+            result = ProvenanceJournal.supersede(
+                target,
+                agent_id=AGENT,
+                statement="a correction",
+                at=t0 + 50.0,
+                pipeline=pipe,
+            )
+            # Queued, not applied: nothing has executed yet.
+            assert result.target_closed is None
+            assert _interval(target)[1] == float("inf")
+
+            results = pipe.execute()
+        finally:
+            pipe.reset()
+
+        assert bool(results[result.close_index]) is True
+        assert _interval(target)[1] == t0 + 50.0
+        stored = JournalEntry.query.get(redis_key=result.entry.db_key.redis_key)
+        assert stored is not None
+        assert stored.statement == "a correction"
+
+    def test_the_watch_refusal_recommends_multi_and_never_unwatch(self):
+        """UNWATCH would silently discard the caller's optimistic lock, so the
+        remediation must not suggest it."""
+        target = _append()
+        pipe = POPOTO_REDIS_DB.pipeline()
+        try:
+            pipe.watch("some:key")
+            with pytest.raises(ValueError) as excinfo:
+                ProvenanceJournal.supersede(
+                    target, agent_id=AGENT, statement="a correction", pipeline=pipe
+                )
+        finally:
+            pipe.reset()
+        message = str(excinfo.value)
+        assert "multi()" in message
+        assert "Do NOT call UNWATCH" in message
 
     def test_a_non_pipeline_object_is_refused_before_any_command(self, monkeypatch):
         target = _append()
@@ -1774,6 +2081,22 @@ class TestEntryModelGuard:
         for present in ("agent_id", "statement"):
             assert repr(present) not in message
         assert set(scan_keys("*")) == before
+
+    def test_the_required_set_is_the_whole_field_set_the_comment_claims(self):
+        """Keep ``_REQUIRED_ENTRY_FIELDS``' docstring true.
+
+        It claimed to check "the whole set" while checking 6 of 12, so a model
+        declaring exactly those 6 passed and then silently dropped ``speaker``,
+        ``turn_id``, ``subjects``, ``stated`` and ``captured_at`` — attribution
+        and provenance-of-the-provenance. Asserted against the reference model
+        rather than restated as a literal, so adding a field to
+        :class:`JournalEntry` without adding it to the guard fails here.
+
+        ``entry_id`` is the sole exemption: it is the ``AutoKeyField``, and a
+        journal model needs *a* key field, not that particular name.
+        """
+        declared = set(JournalEntry._meta.field_names)
+        assert journal_module._REQUIRED_ENTRY_FIELDS == declared - {"entry_id"}
 
     def test_the_partial_subclass_is_refused_by_every_mutating_method(self):
         target = _append()
