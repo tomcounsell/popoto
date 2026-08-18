@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Large
 owner: Valor Engels
 created: 2026-08-17
 tracking: https://github.com/tomcounsell/popoto/issues/560
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-08-18T03:07:09Z
 ---
 
 # M1 — Provenance journal: append-only entry model with confirm/supersede/retract annotations
@@ -40,11 +42,26 @@ words are gone and there is no way to audit what the agent believed at any past 
 
 **Desired outcome:**
 
-An append-only journal where every capture is immutable and fully attributed — speaker, turn
-id, verbatim span, subjects, stated-vs-inferred — and corrections are *new entries* pointing
-at prior entries. Nothing is destroyed. Given any entry, every annotation targeting it is one
-query away. When a `supersede` or `retract` annotation lands, its target leaves
-`validity__current` membership in the same transaction, with no chain walk at read time.
+An append-only journal where every capture *that clears the never-record firewall* is
+immutable and fully attributed — speaker, turn id, verbatim span, subjects,
+stated-vs-inferred — and corrections are *new entries* pointing at prior entries. Given any
+entry, every annotation targeting it is one query away. When a `supersede` or `retract`
+annotation lands, its target leaves `validity__current` membership in the same transaction,
+with no chain walk at read time.
+
+Two boundaries stated up front, because the rest of the plan is written against them rather
+than around them:
+
+- **"Nothing is destroyed" is scoped to what gets stored.** A capture blocked by the M2
+  firewall is dropped *before* storage and leaves only a content-free tombstone in the
+  `$NR:` keyspace, which is not part of the journal and is not returned by any journal
+  query. The journal-side signal is a gap in `turn_id` coverage, nothing more. M1
+  deliberately writes no placeholder entry (see D8).
+- **Immutability is an ORM-layer contract, not a storage guarantee.** It holds against every
+  Python write path in `models/base.py`. It does not hold against a raw Redis client, and
+  the repo's own migration cookbook (`src/popoto/models/migrations.py:277-295`) teaches a
+  `delete` + re-`hset` recipe that bypasses it by construction. This is documented on the
+  feature page, not papered over.
 
 ## Freshness Check
 
@@ -77,16 +94,37 @@ query away. When a `supersede` or `retract` annotation lands, its target leaves
   `subjects` may be described in docs.
 
 **The issue's grep claim is stale and should not be quoted forward.** The issue says
-`grep -rn 'supersede|provenance|speaker|verbatim' src/` returns zero hits. It now returns
-**132**. Breakdown measured at `9180680`:
+`grep -rn 'supersede|provenance|speaker|verbatim' src/` returns zero hits.
 
-| Token | Hits | What they are |
-|---|---|---|
-| `provenance` | ~20 | Pre-existing and unrelated — export/import manifest provenance (`transfer/export.py`, `transfer/import_.py`, `transfer/format.py`, `transfer/results.py`) and "identity provenance" comments in `models/encoding.py:418,442,493,630`. These predated the issue; the claim was inaccurate as written. |
-| `supersede`/`superseded` | ~25 | Genuinely new via #582 — `validity_field.py` (`SUPERSEDE_LUA:157`, `validity__current:66`), `supersession.py`, `query.py:427`, `constants.py:131`. Plus pre-existing `_superseded_by` plumbing in `observation.py:167-483`. |
-| `verbatim` | ~8 | All prose/behavioral, no stored field — `extraction/__init__.py:16,189`, `integrations/mcp_server.py:87`, `integrations/service.py:115`, `default_memory.py:5,59`, `trajectory_memory.py:361`. |
-| `speaker` | **0** | Still completely absent. |
-| `journal`/`JournalEntry` | **0** | No append-only substrate exists. |
+Re-measured at `9180680` in this worktree, case-insensitive, counting **matching lines** (a
+line with two hits counts once — which is why the per-token rows below do not sum to the
+total; several lines match more than one token):
+
+| Command | Matching lines |
+|---|---|
+| `grep -rniE 'supersede\|provenance\|speaker\|verbatim' src/` | **137** |
+| `grep -rniE 'provenance' src/` | 41 |
+| `grep -rniE 'supersede' src/` | 80 |
+| `grep -rniE 'verbatim' src/` | 18 |
+| `grep -rniE 'speaker' src/` | **0** |
+| `grep -rniE 'journal' src/` | **2** |
+
+What each bucket actually is:
+
+- **`provenance` (41)** — pre-existing and unrelated to memory entries: export/import manifest
+  provenance (`transfer/export.py`, `transfer/import_.py`, `transfer/format.py`,
+  `transfer/results.py`) and "identity provenance" comments in `models/encoding.py:418,442,493,630`.
+  These predated the issue, so the "zero hits" claim was inaccurate when written.
+- **`supersede` (80)** — almost entirely new via #582: `validity_field.py`
+  (`SUPERSEDE_LUA:157`, `validity__current:66`), `supersession.py`, `query.py:427`,
+  `constants.py:131`. Plus pre-existing `_superseded_by` plumbing in `observation.py:167-483`.
+- **`verbatim` (18)** — all prose and behavioral description, **no stored field**:
+  `extraction/__init__.py:16,189`, `integrations/mcp_server.py:87`, `integrations/service.py:115`,
+  `default_memory.py:5,59`, `trajectory_memory.py:361`.
+- **`speaker` (0)** — completely absent.
+- **`journal` (2)** — both are forward references to this issue, not an implementation:
+  `supersession.py:25` and `validity_field.py:29` each say the primitive is shaped so "an
+  append-only journal (#560) can adopt this field/protocol unchanged."
 
 The accurate form of the claim, which this plan builds on: **no memory model stores speaker,
 turn id, a verbatim source span, subject tags, a stated-vs-inferred marker, or an
@@ -323,26 +361,40 @@ Three spikes ran against this worktree at `9180680`, Python 3.12.13, redis-py 8.
 1. **Entry point** — a caller (today: a test or an application; after M3, the auditable
    extractor) calls `ProvenanceJournal.append(...)` with speaker, turn id, verbatim span,
    statement, subjects, stated-vs-inferred, and optionally an explicit valid-time instant.
-2. **Privacy firewall** — `JournalEntry` composes `NeverRecordMixin`, so `Model.save()` step
-   0 (`base.py:1232-1244`) scans every non-key string field, including `verbatim` and
-   `statement`. A blocked entry writes a content-free tombstone and never reaches Redis. This
-   is the first gate; nothing downstream sees the content.
-3. **Append-only guard** — `AppendOnlyMixin.save()` runs before `super().save()` and refuses
-   any save whose redis key already exists.
-4. **Persistence** — `Model.save()` writes the entry hash, the class Set, the
+2. **Pre-flight validation (D7)** — before any Redis write is issued or queued, `append()`
+   and every annotation op validate: content clears the firewall (an explicit
+   `scan_never_record()` call, which also covers `subjects`, see D8), `kind` is legal, the
+   `kind`/`target` combination is consistent, the target exists, the requested instant is
+   not before the target's stored `valid_from`, and any caller-supplied pipeline is
+   transactional. Every one of these raises before a single command is issued or queued.
+3. **Append-only guard** — `AppendOnlyMixin.save()` runs *before* `super().save()` because it
+   is first in the MRO, so the `EXISTS` check precedes the firewall gate. The ordering is
+   MRO-determined and harmless: `AppendOnlyViolation` messages carry only the redis key,
+   never content, and blocked content is still never written.
+4. **Privacy firewall** — `JournalEntry` composes `NeverRecordMixin`, so `Model.save()` step
+   0 (`base.py:1232-1244`) re-scans every non-key **string** field, including `verbatim` and
+   `statement`, as defence in depth behind step 2. A blocked entry writes a content-free
+   tombstone and never reaches Redis.
+5. **Persistence** — `Model.save()` writes the entry hash, the class Set, the
    `IndexedField` Sets for `turn_id`/`speaker`/`kind`/`target`, the `TagField` Sets for
    `subjects`, and `ValidityField.on_save` opens the entry's interval
    (`valid_from`, `invalid_at=+inf`, `ingested_at`) via `SUPERSEDE_LUA` in `mode="open"`.
-5. **Annotation** — `confirm(entry, ...)` appends a `kind="confirm"` entry with
+6. **Annotation** — `confirm(entry, ...)` appends a `kind="confirm"` entry with
    `target=<entry redis key>` and stops there; membership is unaffected.
-   `supersede(entry, ...)` / `retract(entry, ...)` open one pipeline, queue the annotation's
-   `save(pipeline=pipe)`, queue `ValidityField.execute_supersede(mode="invalidate",
-   old_member=<target>, new_member=<annotation>, close_at=<instant>, pipeline=pipe)`, and
-   `execute()`. One MULTI/EXEC.
-6. **Notification** — `EventStreamMixin` `XADD`s the mutation onto `stream:journal` inside
-   the same pipeline, so a downstream `StreamConsumer` (the M5 reconciler's wake-up channel)
-   sees the entry and the stream entry commit or fail together.
-7. **Output** — `annotations_for(entry)` is one `filter(target=<redis key>)`;
+   `supersede(entry, ...)` / `retract(entry, ...)` run step 2's pre-flight, then open one
+   transactional pipeline, queue the annotation's `save(pipeline=pipe)`, queue
+   `ValidityField.execute_supersede(mode="invalidate", old_member=<target>,
+   new_member=<annotation>, close_at=<instant>, pipeline=pipe)`, and `execute()` — one
+   MULTI/EXEC — then return a typed `AnnotationResult` (D3).
+7. **Notification** — `EventStreamMixin` `XADD`s the mutation onto the single unpartitioned
+   key `stream:journal` inside the same pipeline, so a downstream `StreamConsumer` (the M5
+   reconciler's wake-up channel) sees the entry, and the record and the stream entry commit
+   together. The stream is deliberately **not** partitioned by `agent_id`: `StreamConsumer`
+   takes exactly one `stream_key` (`streams/consumer.py:75-87`) with no partition-discovery
+   mechanism, so a partitioned stream would ship a channel the named consumer cannot read.
+   `agent_id` rides in `_stream_metadata_fields` instead, so consumers can filter without
+   hydrating.
+8. **Output** — `annotations_for(entry)` is one `filter(target=<redis key>)`;
    `chain(entry)` walks V0's `chain:fwd`/`chain:rev` hashes for display/replay;
    `JournalEntry.query.filter(validity__current=True)` is the live membership view (M6's
    input) and excludes superseded and retracted targets with no chain walk.
@@ -366,9 +418,30 @@ Three spikes ran against this worktree at `9180680`, Python 3.12.13, redis-py 8.
   which the epic's build-order comment names as new to the program. Entry hashes are owned by
   M1 and are **never mutated**; the validity zsets and chain hashes remain owned by V0 as
   derived index state.
-- **Reversibility**: high. The journal is a new keyspace with no reader outside its own
-  tests until M3/M5/M6 land. Reverting is deleting two modules, their exports, their
-  `Defaults` entries, and their keys. No existing model or query path changes behavior.
+- **Substrate, not sidecar** — stated explicitly because a plan critic correctly noted the
+  field list has no pointer back to a `DefaultMemory` row, and whether that is a gap depends
+  entirely on this answer. Issue #560's Desired outcome is that "the working belief set
+  becomes a view computed at read time (module M6)," and the epic's build-order comment puts
+  membership in the validity indexes. **The journal is the memory substrate**: M3 (#562)
+  writes entries, M6 (#565) computes the belief sheet over `validity__current`, and there is
+  no second row type for an entry to point at. M1 therefore ships **no** `record_key` /
+  `source_record` field, deliberately. The `[ORDERED]` backfill No-Go is a one-way migration
+  of legacy `DefaultMemory` rows into the journal after M6 lands a reader — not evidence of a
+  sidecar design.
+- **Reversibility**: **high before data exists, low after.** Reverting the code is deleting
+  two modules, their exports, their `Defaults` entries, and their keys; no existing model or
+  query path changes behavior. But the D1 one-model decision is only cheaply reversible while
+  the keyspace is empty: validity and chain keys are namespaced per model
+  (`$ValidityF:{Model}:{field}:...`, `validity_field.py:589`) and every record's redis key
+  embeds the class name, so a later split into `JournalEntry` + `Annotation` fragments the
+  zsets and both chain hashes across two keyspaces and requires rewriting immutable records
+  under new keys — a data migration of a store that by contract cannot be mutated or deleted.
+  Mitigation, adopted as a stated contract rather than left to chance: **`ProvenanceJournal`
+  is the only documented read and write API**, so a future split stays behind the façade.
+- **Transfer/export**: `AppendOnlyMixin` declares `roundtrip_policy = "rebuild"`, and
+  `on_conflict="overwrite"` is unsupported on append-only models (`transfer/import_.py:215`
+  calls `instance.save()`, so collisions raise and are classified `ERRORED`). `"skip"` is the
+  supported conflict mode.
 
 ## Appetite
 
@@ -440,31 +513,70 @@ naming an existing `JournalEntry`) and a test per invalid combination.
 
 **D2 — Enforcement by `save()`/`delete()` override, keyed on `EXISTS`.** Per spike-1.
 `models/base.py` is not touched. The guard reads `self.db_key.redis_key` and refuses if the
-key exists. `delete()` unconditionally raises. The escape hatch is a named classmethod —
-`JournalEntry.hard_delete(instance)` / `AppendOnlyMixin.hard_delete` — documented as
-retention/admin-only and greppable, rather than a `skip_append_only=True` kwarg that would
-require modifying `base.py:1114`'s signature.
+key exists. It always reads `POPOTO_REDIS_DB` directly, **never** a caller-supplied pipeline —
+an `EXISTS` queued on a pipeline returns a `Pipeline` object, which is always truthy and would
+block every save. `delete()` unconditionally raises.
+
+Two additional refusals the `EXISTS` check cannot express, both mandatory:
+
+- **`save(migrate_key=True)` always raises**, regardless of `EXISTS`. `agent_id` is a
+  `KeyField`; mutating it and calling `save(migrate_key=True)` makes `EXISTS` on the *new*
+  key return 0, the guard pass, and `base.py:1517`/`:1623` `DELETE` the old key — destroying
+  an entry through a supported public kwarg. The guard also refuses whenever
+  `self.obsolete_redis_key` is set.
+- **`on_conflict="overwrite"` is unsupported on append-only models.** `transfer/import_.py:215`
+  calls `instance.save(...)`, so every colliding record raises `AppendOnlyViolation` and is
+  classified `ERRORED`. Documented; `"skip"` is the supported mode.
+
+`AppendOnlyMixin` declares `roundtrip_policy = "rebuild"` (it owns no Redis state of its
+own). This is not optional: the mixin lives in `src/popoto/fields/`, is named `*Mixin`, and
+touches `POPOTO_REDIS_DB`, which is exactly the predicate
+`tests/test_transfer_roundtrip.py:656-696` uses to collect stateful model-level mixins, and
+`test_every_model_level_mixin_has_a_policy_declared` (`:752-767`) requires the attribute in
+the class's own `__dict__`.
+
+The escape hatch is a named classmethod — `AppendOnlyMixin.hard_delete(instance)` —
+documented as retention/admin-only and greppable, rather than a `skip_append_only=True`
+kwarg that would require modifying `base.py:1114`'s signature. `hard_delete` **must sweep
+derived state**, not just the record hash: the validity zsets, both chain hashes, the
+`$TagF:`/`$IndexedF:` index keys, and the class Set. A `hard_delete` that leaves index and
+chain state behind is worse than no escape hatch, because it produces exactly the orphan
+shape Race 1 describes.
 
 **D3 — Valid-time is set at construction; the write path calls `execute_supersede`
-directly.** Per spike-2 and #588. `ProvenanceJournal` constructs the annotation with
-`validity=<instant>` so `ValidityField.on_save` writes the intended `valid_from`, then
-queues `save(pipeline=pipe)` and `ValidityField.execute_supersede(..., mode="invalidate",
-old_member=<target key>, new_member=<annotation key>, close_at=<instant>, pipeline=pipe)`
-into the same transactional pipeline. `SupersessionProtocol` is used only for **read-side**
-traversal (`superseded_by`, `supersedes`, `chain`), never on the write path. This deviates
-from the #560 amendment's literal wording ("in the same script") in favor of "in the same
-MULTI/EXEC transaction", because forking `SUPERSEDE_LUA` would violate the epic's "one
-supersession mechanism" rule. The atomicity property the amendment asks for — target
-excluded from `validity__current` the instant the annotation is visible — holds exactly, and
-is asserted by test.
+directly; every annotation op returns a typed result.** Per spike-2 and #588.
+`ProvenanceJournal` constructs the annotation with `validity=<instant>` so
+`ValidityField.on_save` writes the intended `valid_from`, then queues `save(pipeline=pipe)`
+and `ValidityField.execute_supersede(..., mode="invalidate", old_member=<target key>,
+new_member=<annotation key>, close_at=<instant>, pipeline=pipe)` into the same transactional
+pipeline. `SupersessionProtocol` is used only for **read-side** traversal (`superseded_by`,
+`supersedes`, `chain`), never on the write path.
+
+Every mutating op returns `AnnotationResult(entry, target_closed: bool, coupling_enabled:
+bool)`. This exists specifically so the kill switch cannot reproduce #588's failure shape: a
+caller must be able to distinguish "target closed" from "target not closed" **without reading
+Redis**. The first uncoupled `supersede`/`retract` in a process also emits a warn-once
+`logger.warning`.
+
+**Atomicity, stated precisely.** This deviates from the #560 amendment's literal wording
+("in the same script") in favor of "in the same MULTI/EXEC transaction," because forking
+`SUPERSEDE_LUA` would violate the epic's "one supersession mechanism" rule. The property
+that holds, and that the amendment actually asks for, is: **no interleaving reader observes
+the annotation without the close.** The property that does **not** hold, and that this plan
+does not claim, is rollback — Redis `MULTI/EXEC` does not roll back sibling commands when one
+command errors at execute time, which `base.py:1563-1571` documents verbatim as the rationale
+for #476's eager EVALs. A command-level error inside `EXEC` can therefore leave the
+annotation appended with the target still open. D7's pre-flight exists to make that window
+unreachable in practice, and the residual is a documented, tested boundary rather than an
+impossibility claim.
 
 **D4 — Field list.**
 
 | Field | Type | Why |
 |---|---|---|
-| `entry_id` | `AutoKeyField()` | Immutable UUID identity; makes the TOCTOU window in D2 practically unreachable for appends |
-| `agent_id` | `KeyField()` | Partition key, mirroring `DefaultMemory:117`; keeps multi-agent journals separable |
-| `ingested_at` | `FloatField()` | Transaction time — the entry timestamp the issue names. Distinct from `valid_from` |
+| `entry_id` | `AutoKeyField()` | Immutable UUID identity; makes the TOCTOU window in D2 practically unreachable for appends. `AutoKeyField` assigns at `__init__`, before save, so `db_key.redis_key` is concrete pre-save and D2's guard reads the right key |
+| `agent_id` | `KeyField()` | Partition key, mirroring `DefaultMemory:117`; keeps multi-agent journals separable. Required non-null by `append()`: a `None` value renders the literal `"None"` into the record key |
+| `captured_at` | `FloatField()` | Wall-clock capture time of the source turn. **Deliberately not named `ingested_at`**: `ValidityField.on_save` hardcodes `ingested_at=now` (the save clock) into `$ValidityF:...:ingested_at` and ignores any model field (`validity_field.py:882-896`), so two fields under one name would silently disagree and M5/M6 would get different answers depending on which they read. The validity ingest axis is always the save clock; this field is the source turn's clock |
 | `turn_id` | `IndexedField(type=str, null=True)` | "All entries from turn T" in one query |
 | `speaker` | `IndexedField(type=str, null=True)` | "All entries attributed to S" in one query |
 | `verbatim` | `StringField(default="")` | The exact source span. Privacy-sensitive — the reason `NeverRecordMixin` is mandatory |
@@ -476,9 +588,21 @@ is asserted by test.
 | `validity` | `ValidityField()` | `valid_from` / `invalid_at` / `ingested_at` axes per the #560 amendment |
 
 Composition: `class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model)`,
-with `_stream_name = "journal"`, `_stream_partition_field = "agent_id"`, and
-`_stream_metadata_fields = ("kind", "target")` so the M5 reconciler can filter without
-hydrating.
+with `_stream_name = "journal"`, **no** `_stream_partition_field` (see Data Flow step 7 — a
+partitioned stream is unreadable by `StreamConsumer`'s single-key API), and
+`_stream_metadata_fields = ("agent_id", "kind", "target")` so the M5 reconciler can filter
+without hydrating. `_stream_max_length` is set directly on the class body as a pinned
+constant with a rationale comment — `EventStreamMixin` already exposes it as a per-model class
+attribute (`event_stream.py:82`), so routing it through `Defaults` would add a sync-test
+exemption and buy nothing.
+
+**Note on `filter(validity=...)`:** `validity` is the correct field name (the query params
+`validity__current` / `validity__as_of` are derived from it, so there is no collision), but
+`ValidityField.filter_query` handles only those two suffixes and returns an empty `set()` for
+a bare exact-value filter — `filter(validity=t)` silently returns nothing. `target` and `kind`
+collide with nothing; the only reserved names are `limit`, `order_by`, `values`. This is
+documented on the feature page so a downstream module does not write `filter(validity=t)` and
+get a silent empty result.
 
 **No `EmbeddingField`.** Deliberate, mirroring `default_memory.py:62-72`: it pulls an
 optional extra, and similarity lookup over the journal is not on M1's acceptance list. The
@@ -488,15 +612,34 @@ is explicit rather than a gap.
 **D5 — Constants and kill switch.** New `Defaults` entries, following the
 `{PRIMITIVE}_{WHAT}` convention with sweep-provenance comments and a section header:
 
-- `JOURNAL_VALIDITY_COUPLING_ENABLED = True` — **deploy-level kill switch.** When `False`,
+- `JOURNAL_VALIDITY_COUPLING_ENABLED = _read_journal_coupling_switch()` — **deploy-level kill
+  switch, env-backed.** Reads `POPOTO_JOURNAL_COUPLING_DISABLE`, phrased as a *disable* so
+  default-on holds when unset, exactly matching `_read_never_record_switch`
+  (`constants.py:32-39`) and `DATETIME_KEY_LEGACY`. A plain class attribute would not qualify
+  as deploy-level: PyPI adopters who cannot edit model code could not flip it, which is the
+  specific failure `feedback_default_on_design` calls out. When disabled,
   `supersede`/`retract` still append their annotation entries and still write `target`, but
   do not close the target's interval; membership degrades to "everything ever appended,"
-  which is exactly pre-M1 behavior. Boolean, not swept.
-- `JOURNAL_STREAM_MAX_LENGTH` — the `EventStreamMixin` trim bound for `stream:journal`, pinned
-  rather than inherited, because the reconciler's wake-up channel has different volume
-  characteristics from the generic mutation stream.
-- `JOURNAL_KINDS` — the frozen kind vocabulary. Not a tunable; changing it reclassifies stored
-  entries.
+  which is pre-M1 behavior. The degraded mode is **observable**: `AnnotationResult.target_closed`
+  is `False` and `coupling_enabled` is `False` (D3). Boolean, not swept.
+- `JOURNAL_KINDS` — the core kind vocabulary, a frozen tuple of the four the issue names. Not
+  a tunable; changing it reclassifies stored entries. **It ships with an extension seam**,
+  because M5 (#564) will want merge/equivalence kinds, M7 (#566) a queue-able kind, and M8
+  (#567) an exposure kind, and none of them should have to edit a core constant declared
+  frozen: a `JournalEntry` subclass may set `_journal_kinds`, validated at class definition
+  as a **superset** of the core four. The reader rule is stated as a contract: an entry whose
+  `kind` a reader does not recognize is **inert for membership** — never silently treated as
+  `supersede` or `retract`.
+
+Registration note (verified against the suite, and the reverse of what an earlier draft of
+this plan said): kill switches are **exempted** in `tests/benchmarks/test_defaults_sync.py`'s
+`field_kwargs_and_class_attrs` set, **not** registered in `tests/benchmarks/overrides.py`'s
+`MODULE_CONSTANTS`. Every comparable switch — `VALIDITY_GATING_ENABLED`,
+`NEVER_RECORD_ENABLED`, `TAG_SCOPING_ENABLED`, `DATETIME_KEY_LEGACY` — is handled that way,
+with an in-file comment stating that an import-time alias "would defeat the whole point of a
+runtime-flippable deploy switch." Registering them in `MODULE_CONSTANTS` would make
+`test_module_alias_matches_defaults` fail with `AttributeError`, since `getattr(mod, attr)`
+would look for a module-level alias that must not exist.
 
 **There is deliberately no kill switch on the append-only invariant.** It is the model's
 defining contract, not a capability: a deployment that disables it silently converts the
@@ -505,11 +648,51 @@ immutability. This is the one place this plan departs from the repo's "every cap
 a deploy-level kill switch" default, and it is flagged as an open question rather than
 assumed.
 
-**D6 — Test-teardown consequence.** Because `delete_all()` raises (spike-1), the test suite
-uses `hard_delete` plus an explicit derived-key wipe modeled on
-`tests/test_validity_field.py:206-254` — `ValidityField.get_all_keys(...)` values, the
-`{prefix}:open:*` glob, the `$TagF:`/`$IndexedF:` index keys (which, per #540, live outside
-the model key space), and a `Defaults` restore in an autouse fixture.
+**D6 — Test teardown needs almost nothing.** An earlier draft of this plan claimed the suite
+needed a bespoke derived-key wipe because `delete_all()` raises. That premise is false:
+`popoto.pytest_plugin` installs an **autouse, function-scoped** `_popoto_flush_db` fixture
+that calls `flushdb()` before every test (`src/popoto/pytest_plugin.py:234-250`). Isolation is
+already total. The suite therefore needs only a `Defaults` restore fixture (to undo kill-switch
+flips), matching the tail of `tests/test_validity_field.py`'s `clean_state`. The `hard_delete`
+seam is justified on **retention** grounds alone (Risk 4b), not on test-teardown grounds.
+
+**D7 — Pre-flight validation, before any command is issued or queued.** This is the plan's
+answer to the failure shape all three plan critics independently flagged: `Model.save()`
+returns `pipeline if pipeline else False` when the never-record gate fires
+(`base.py:1240-1244`) — **nothing is queued, and in pipeline mode the return value is
+indistinguishable from success.** A naive `supersede()` would then queue the invalidate EVAL
+anyway and commit, closing the target's interval against an annotation that was never
+written: a membership change with zero provenance, in the one module whose entire purpose is
+provenance. Every annotation op therefore validates, in order, *before opening the pipeline*:
+
+1. `scan_never_record()` over the annotation's content — including `subjects` (D8). Blocked
+   content raises; nothing is queued.
+2. `kind` ∈ the model's kind vocabulary, and the `kind`/`target` combination is consistent
+   (an `assert` entry has no `target`; a `confirm`/`supersede`/`retract` entry has one).
+3. The target exists (`EXISTS` on its redis key) and, if `agent_id` scoping is enforced,
+   belongs to the same agent — cross-agent targets are **rejected**, since `target` is a full
+   redis key that can name another agent's partition.
+4. The requested instant is not before the **target's stored `valid_from`**, read via
+   `ValidityField.get_interval_keys(...)`. This check must be done here and cannot be
+   delegated: `execute_supersede` only remaps `CLOSE_BEFORE_START` → `ValueError` on the
+   non-pipeline branch, and its client-side pre-check at `validity_field.py:764-772` compares
+   `close_at` against the *caller-supplied* `valid_from` (which D3 sets to the same instant),
+   so it never fires. Without this pre-read, a genuine backdate surfaces as a raw
+   `redis.exceptions.ResponseError` from `pipe.execute()` with the annotation already written.
+5. Any caller-supplied pipeline has `transaction is True`. `POPOTO_REDIS_DB.pipeline(transaction=False)`
+   is legal and would silently void the atomicity guarantee; M1 raises `ValueError` instead.
+
+**D8 — `subjects` is outside the firewall's scan surface, and M1 closes that gap itself.**
+`NeverRecordMixin._never_record_scan_values` yields only `isinstance(value, str)` values
+(`never_record.py:624-629`); a `TagField` value is a **list**, so `subjects` is never scanned
+by the mixin. Subject tags are populated from human speech by M4 (#563) and are a plausible
+carrier of names and identifiers. M1 does not leave this to the mixin: `append()` calls
+`scan_never_record()` on each subject tag explicitly as part of D7 step 1. The residual mixin
+hole is stated on the feature page and pinned by a test asserting current behavior, so it
+cannot drift silently. Related: `target` survives the entropy detector only because a redis
+key contains `:`, which is outside `_ENTROPY_CHARSET` (`never_record.py:253`) — a regression
+test asserts a `target`-carrying annotation is never firewall-blocked, so a future
+single-segment key rendering cannot silently start dropping annotations.
 
 ## Failure Path Test Strategy
 
@@ -522,11 +705,34 @@ the model key space), and a `Defaults` restore in an autouse fixture.
   propagates AND the target's interval was not closed.
 - `NeverRecordMixin.write_tombstone` wraps its audit write in `try/except: pass`
   (`never_record.py:501`) so audit failure never fails the firewall open. M1 adds no handler
-  of its own here. **Test:** assert a blocked `append()` returns the documented sentinel and
-  persists nothing, with the tombstone-write path fault-injected.
-- `ValidityField.execute_supersede` remaps a `CLOSE_BEFORE_START` Lua error to `ValueError`
-  (`validity_field.py:801-807`). **Test:** `supersede(entry, at=<before entry.valid_from>)`
-  raises `ValueError` and leaves both entries' intervals untouched.
+  of its own here. **Test:** with the tombstone-write path fault-injected, a blocked
+  `append()` still raises `JournalBlockedError` and persists nothing.
+- **The `append()` / annotation return contract on a privacy block is explicit, not a
+  "sentinel."** An earlier draft left this undefined, which is untenable for an API four
+  modules bind to — and the two save modes genuinely differ (`base.py:1244` returns `False`
+  without a pipeline and the *pipeline itself* with one, the latter indistinguishable from
+  success). M1 does not expose that ambiguity: D7 scans before any save, and blocked content
+  **raises `JournalBlockedError`** in both modes. **Test:** both modes raise; nothing is
+  persisted; the exception message carries the reason and detector only, never the matched
+  content (`never_record.py:646-652` discipline).
+- **A firewall-blocked annotation must close nothing.** This is the highest-severity failure
+  path in the plan (D7). **Test:** `supersede()` with never-record-triggering content raises,
+  the target remains in `validity__current`, `chain_fwd` has no entry for it, and
+  `annotations_for(target)` is empty.
+- `ValidityField.execute_supersede` remaps `CLOSE_BEFORE_START` to `ValueError` **only on the
+  non-pipeline branch** (`validity_field.py:796-807`), and its client-side pre-check
+  (`:764-772`) compares `close_at` to the caller-supplied `valid_from`, which D3 sets to the
+  same instant — so it never fires. Uncorrected, a backdated close surfaces as a raw
+  `redis.exceptions.ResponseError` from `pipe.execute()` with the annotation already written.
+  **M1 pre-reads the target's stored `valid_from` (D7 step 4) and raises `ValueError` before
+  queuing anything.** **Test:** `supersede(entry, at=<before the target's valid_from>)` raises
+  `ValueError`, no command is issued (asserted by call counter), and both intervals are
+  untouched. A second test pins the underlying V0 behavior — bypassing the pre-flight raises
+  `redis.exceptions.ResponseError` from `execute()` with the annotation appended — so the
+  reason the pre-flight exists cannot be refactored away.
+- **A non-transactional caller pipeline raises.** `pipeline(transaction=False)` is legal and
+  would silently void atomicity (D7 step 5). **Test:** passing one raises `ValueError` before
+  any queueing.
 - M1 introduces **no bare `except Exception: pass`** of its own. Verified as an anti-criterion
   row in Verification.
 
@@ -555,20 +761,31 @@ name the offending redis key and never the record content — the same side-chan
 
 ## Test Impact
 
-No existing tests are affected. This is a greenfield module: it adds two new source files,
-touches no existing model, changes no existing signature, and modifies no existing behavior.
-The only edits to existing files are additive — imports plus `__all__` entries in
-`src/popoto/__init__.py` and `src/popoto/recipes/__init__.py`, and new constants in
-`src/popoto/fields/constants.py`.
+"No existing tests are affected" would be wrong — an earlier draft claimed it. Two existing
+suites have guards that a new model-level mixin and new `Defaults` entries trip by design.
+The module is otherwise greenfield: it adds two new source files, touches no existing model,
+changes no existing signature, and modifies no existing behavior; the only edits to existing
+source files are additive.
 
 - [ ] `tests/benchmarks/test_defaults_sync.py::test_all_defaults_covered_by_module_constants`
-  — **UPDATE**: this is the specific assertion that fails when a `Defaults` entry is added
-  without a corresponding registration. It is the one existing test that will fail without a
-  change.
-- [ ] `tests/benchmarks/overrides.py` (`MODULE_CONSTANTS`) — **UPDATE**: the data the
-  assertion above reads. Adding the three `JOURNAL_*` constants to `constants.py` without
-  registering them here is what makes the test fail; editing the test file alone does not fix
-  it. Both files must change together.
+  — **UPDATE**: add `JOURNAL_VALIDITY_COUPLING_ENABLED` and `JOURNAL_KINDS` to the
+  `field_kwargs_and_class_attrs` exemption set **inside this test file** (`:110-135`), with a
+  rationale comment matching the `VALIDITY_GATING_ENABLED` / `NEVER_RECORD_ENABLED`
+  precedent.
+- [ ] `tests/benchmarks/overrides.py` (`MODULE_CONSTANTS`) — **NO CHANGE.** Registering the
+  kill switch here would create a required module-level alias that must not exist and would
+  make `test_module_alias_matches_defaults` fail with `AttributeError` (`:28-36`). An earlier
+  draft of this plan asserted the opposite; it was verified wrong against the suite.
+- [ ] `tests/test_transfer_roundtrip.py::test_every_model_level_mixin_has_a_policy_declared`
+  — **UPDATE (by source change, not test change)**: `AppendOnlyMixin` lives in
+  `src/popoto/fields/`, is named `*Mixin`, and references `POPOTO_REDIS_DB`, which is exactly
+  the collector predicate at `:656-696`. It must declare `roundtrip_policy = "rebuild"` in
+  its own `__dict__` (`:752-767`). No edit to the test file itself.
+- [ ] `tests/test_provenance_journal.py` — **CREATE**: the behavioral suite (one test file per
+  primitive, per the issue's constraints).
+- [ ] `tests/benchmarks/` — **CREATE**: the 20k append p50/p99 benchmark lives here behind a
+  marker, not in the unit-test file. With `flushdb` running before every test, a 20k-entry
+  benchmark inside the default suite would add minutes to every run.
 - [ ] `tests/test_provenance_journal.py` — **CREATE**: the new suite (one test file per
   primitive, per the issue's constraints).
 
@@ -603,22 +820,36 @@ The only edits to existing files are additive — imports plus `__all__` entries
 **Impact:** `ProvenanceJournal` calls `ValidityField.execute_supersede` with an explicit
 seven-argument contract. If V0 changes that signature or the KEYS/ARGV order, M1 breaks
 silently in the same way #588 describes — a no-op that looks like success.
-**Mitigation:** M1 asserts the contract structurally, not just behaviorally: a test that
-counts the commands queued on the pipeline (4 for a supersede) and a test that asserts
-`execute_supersede` is called with `mode="invalidate"` and both member arguments non-empty.
-This mirrors `tests/test_validity_field.py`'s "numkeys is 4 at all three call sites"
-structural assertion. Plus the regression tests for both #588 findings.
+**Mitigation:** M1 asserts the contract structurally, but by **shape, not by count**. An
+earlier draft said "4 queued commands for a supersede," a number taken from spike-2's toy
+`KeyField + ValidityField` model. Real `JournalEntry` queues the HSET, the class SADD, four
+`IndexedField` EVALs, the `TagField` commands, the validity `open` EVAL, the XADD, and the
+invalidate EVAL — roughly ten, and brittle to any field-set change. The assertions are
+therefore: exactly one queued EVAL with `ARGV[5] == "invalidate"` and both member arguments
+non-empty; exactly one with `ARGV[5] == "open"`; `numkeys == 6` on the supersede EVAL;
+`pipeline.transaction is True`; and zero mutating calls issued outside the pipeline. This
+mirrors `tests/test_validity_field.py:598-655`'s `_CallCounter` pattern rather than inventing
+a new one. Plus the regression tests for both #588 findings.
 
 ### Risk 2: The `EXISTS` guard adds a round trip to every append
 
 **Impact:** The journal is the write-hot path for the whole wave — every extracted fact
-becomes an entry. One extra RTT per append is a real cost at ingest volume.
+becomes an entry. One extra RTT per append is a real cost at ingest volume — and it is not
+the only one: D4's four `IndexedField`s plus the `TagField` are five inherited eager-EVAL
+sites per non-pipeline append (Race 1), so the honest per-append overhead is the `EXISTS` RTT
+*plus* five eager EVALs, not the single RTT an earlier draft attributed to the guard alone.
 **Mitigation:** Measure it. The plan includes a p50/p99 append micro-benchmark at the epic's
 20k-record scale target, reported with the environment, comparing `JournalEntry.save()`
-against an identical model without `AppendOnlyMixin`. If the overhead is material, the
-documented fallback is to skip the `EXISTS` when the key came from `AutoKeyField` (a
-freshly-generated UUID cannot collide) — but that is a measured decision, not an assumed one,
-and the number goes in the PR body either way.
+against an identical model without `AppendOnlyMixin`, and separately reporting the eager-EVAL
+count per append.
+
+**The fallback an earlier draft proposed is withdrawn as unsafe.** "Skip the `EXISTS` when
+the key came from `AutoKeyField`" would disable the guard for spike-1 matrix rows 2 (same
+instance re-saved) and 4 (`query.get(...)` then `.save()`) — both have AutoKeyField-derived
+keys, and they are the only shapes the guard catches in practice. If overhead proves
+material, the correct direction is to fold the existence check **into** the write
+(`HSETNX` on a sentinel field, or a `SETNX` claim key queued in the same pipeline), which
+also closes Race 2. Never to skip the check.
 
 ### Risk 3: One record type makes `kind`/`target` consistency a runtime concern
 
@@ -629,13 +860,26 @@ malformed provenance.
 existence checked before any write. Accepted as the stated cost of D1 rather than papered
 over.
 
-### Risk 4: Journal growth is unbounded by design
+### Risk 4a: Journal growth is unbounded by design
 
 **Impact:** Append-only plus never-delete means the keyspace only grows. At the epic's 20k
 target this is fine; a long-lived production agent is a different curve.
 **Mitigation:** Out of scope to solve, in scope to measure and document. The docs page states
-the growth characteristic explicitly (bytes per entry × append rate) and names `hard_delete`
-as the retention seam. A retention policy is downstream work with its own data-safety review.
+the growth characteristic explicitly (bytes per entry × append rate). A retention *policy* is
+downstream work with its own data-safety review.
+
+### Risk 4b: Append-only × firewall-disabled × no erasure path = un-erasable secrets
+
+**Impact:** Qualitatively different from growth, and split out for that reason.
+`POPOTO_NEVER_RECORD_DISABLE=1` is a supported, documented deployment action. With the
+firewall off, verbatim human speech — including credentials — lands in a keyspace whose only
+removal path is an admin classmethod. "Documented, not solved" is the right answer for growth
+and the wrong answer for erasure.
+**Mitigation:** In scope for M1, not deferred. `hard_delete` ships with a complete
+derived-state sweep (validity zsets, both chain hashes, `$TagF:`/`$IndexedF:` keys, class
+Set) — per D2, a `hard_delete` that leaves index or chain state behind is worse than none —
+and a Success Criterion asserts that after `hard_delete`, `filter()` returns nothing and no
+`$*` key retains the record's redis key.
 
 ## Race Conditions
 
@@ -650,8 +894,10 @@ nonexistent hash.
 **Data prerequisite:** The entry hash must exist before any reader resolves an index hit.
 **State prerequisite:** This is the exact hazard #476 traded deliberately (eager EVAL closes
 the unique-conflict window at the cost of this ordering).
-**Mitigation:** Inherited, not re-solved — M1 introduces no new eager-EVAL site and adds no
-`UniqueField`. The plan asserts the resulting orphan-index behavior is *readable*: an index
+**Mitigation:** The *mechanism* is inherited and not re-solved; the *exposure* is created by
+D4's field choice. Stated accurately: M1 accepts **five** inherited eager-EVAL sites per
+non-pipeline append (four `IndexedField`s plus the `TagField`) on the wave's write-hot path,
+and adds no `UniqueField`. That count feeds Risk 2's benchmark. The plan asserts the resulting orphan-index behavior is *readable*: an index
 hit whose hash is missing must be skipped by the query layer, not raise. Tested by
 constructing the orphan state directly (index write without the hash) and asserting
 `filter(target=...)` returns an empty set rather than erroring.
@@ -664,14 +910,21 @@ before either `HSET` lands, so both saves proceed and the second silently overwr
 first — the exact violation the guard exists to prevent.
 **Data prerequisite:** none.
 **State prerequisite:** Two writers producing the same key.
+**Second, more reachable shape (no concurrency required):** two appends of the same key
+queued into **one** pipeline. The guard's `EXISTS` executes immediately against
+`POPOTO_REDIS_DB` and cannot see a command already queued-but-unexecuted on the pipeline, so
+both pass and the second overwrites. This one *is* deterministically testable and is an
+explicit row in the re-save test matrix.
 **Mitigation:** Structurally narrowed rather than locked. `entry_id` is an `AutoKeyField`
 (UUID), so two independent appends cannot produce the same key; the window is only reachable
 when a caller supplies an explicit colliding key, which is a programming error the guard
-still catches in every non-concurrent case. The limitation is documented in the mixin
-docstring and on the docs page as a known boundary — **not** claimed as a hard guarantee. A
-storage-level guarantee would need an `HSETNX`-based write path (see Rabbit Holes). Tested to
-the extent it is testable: the sequential cases from spike-1's matrix are all asserted; the
-concurrent case is documented, not asserted, because a passing test would be a race itself.
+still catches in every non-concurrent, non-pipelined case. Both limitations are documented in
+the mixin docstring and on the docs page as known boundaries — **not** claimed as a hard
+guarantee. A storage-level guarantee would need an `HSETNX`-based write path (see Rabbit
+Holes and Risk 2's withdrawn-fallback note). Tested to the extent each shape is testable: the
+sequential cases from spike-1's matrix and the intra-pipeline duplicate are all asserted; the
+cross-process concurrent case is documented, not asserted, because a passing test would be a
+race itself.
 
 ### Race 3: Annotation targets an entry that is superseded concurrently
 
@@ -752,35 +1005,63 @@ Stated here so the omission is deliberate rather than overlooked.
 ## Success Criteria
 
 - [ ] `JournalEntry` and `ProvenanceJournal` exported from `popoto.recipes`;
-  `AppendOnlyMixin` and `AppendOnlyViolation` exported from `popoto` — all four importable
-  from a fresh interpreter
-- [ ] Re-saving an existing entry raises `AppendOnlyViolation`, for all four re-save shapes in
-  spike-1's matrix; `delete()` and `delete_all()` both raise
-- [ ] Entries persist and round-trip `speaker`, `turn_id`, `verbatim`, `subjects[]`, `stated`,
-  `kind`, `target`, `ingested_at`, and the validity interval
+  `AppendOnlyMixin`, `AppendOnlyViolation` and `JournalBlockedError` exported from `popoto` —
+  all importable from a fresh interpreter
+- [ ] Re-saving an existing entry raises `AppendOnlyViolation` for all six shapes in spike-1's
+  matrix as extended: same instance re-save, colliding fresh object, `query.get()`-then-save,
+  `delete()`, `delete_all()`, and **`save(migrate_key=True)`**; plus the intra-pipeline
+  duplicate append (Race 2) documented and asserted
+- [ ] Entries persist and round-trip `speaker`, `turn_id`, `verbatim`, **`statement`**,
+  `subjects[]`, `stated`, `kind`, `target`, `captured_at`, and the validity interval
 - [ ] `ProvenanceJournal.annotations_for(entry)` returns every annotation targeting it in one
-  `filter()` call
+  `filter()` call — asserted by wrapping `POPOTO_REDIS_DB.smembers`/`sinter` in the
+  `_CallCounter` pattern and counting index reads, not by inspection
 - [ ] After a `supersede` or `retract`, the target is absent from
-  `filter(validity__current=True)` immediately, with no chain walk — and still returned by
-  `filter(validity__as_of=<before the close>)`
-- [ ] The annotate-and-close sequence is one MULTI/EXEC: asserted by queued-command count and
-  by a fault-injection test showing partial application is impossible
+  `filter(validity__current=True)` immediately and still returned by
+  `filter(validity__as_of=<before the close>)` — **with no chain walk**, asserted by
+  monkeypatching `hget`/`hgetall` on `ValidityField.get_all_keys(...)["chain_fwd"|"chain_rev"]`
+  and requiring zero reads
+- [ ] The annotate-and-close sequence is queued into a single `transaction=True` pipeline:
+  `pipeline.transaction is True`; exactly one queued EVAL with `ARGV[5] == "invalidate"` and
+  `numkeys == 6`; exactly one with `ARGV[5] == "open"`; zero mutating calls outside the
+  pipeline. A fault injected **before** `execute()` applies nothing. **The documented boundary
+  is asserted too**: a command-level error inside `EXEC` can leave the annotation appended
+  with the target open — this is tested as a known state, not claimed impossible
+- [ ] A never-record-blocked `append()` raises `JournalBlockedError` and persists nothing; a
+  never-record-blocked `supersede()` raises, closes nothing, writes no chain link, and leaves
+  `annotations_for(target)` empty
+- [ ] `chain()` returns a 3-deep supersession chain in oldest→newest order
+- [ ] Every invalid `kind`/`target` combination, every out-of-vocabulary `kind`, every
+  cross-agent target, and every backdated `at` raises **before any command is issued**
+  (asserted by call counter, not just by exception type)
 - [ ] Regression tests for both #588 findings (pipeline no-op; valid-time skew) pass against
   M1's write path
 - [ ] Valkey-safe: no Redis-module command anywhere in the new code (core commands + reuse of
   V0's Lua only) — asserted by an anti-criterion grep
 - [ ] Every `ProvenanceJournal` mutating op accepts `pipeline=` and returns the pipeline
-  unexecuted when given one
-- [ ] `JOURNAL_VALIDITY_COUPLING_ENABLED = False` makes annotation writes byte-identical to
-  the no-validity path (asserted by command-level comparison, mirroring V0's kill-switch test)
-- [ ] Append p50/p99 measured at 20k entries and reported with python/redis-py versions
+  unexecuted when given one (asserted by `POPOTO_REDIS_DB` call count == 0 plus a non-empty
+  `command_stack`), and rejects a `transaction=False` pipeline with `ValueError`
+- [ ] With `POPOTO_JOURNAL_COUPLING_DISABLE=1`, a `supersede()` issues exactly the command set
+  of a bare `append()` and nothing more — asserted with the `_CallCounter` pattern from
+  `tests/test_validity_field.py:598-655` (the invalidate EVAL is absent; EVAL count equals the
+  plain-append count; the target's `invalid_at` is unchanged at `+inf`) — and the caller can
+  detect the degraded mode from `AnnotationResult.target_closed is False` **without reading
+  Redis**. "Byte-identical" is explicitly not claimed: `execute_supersede` puts a clock value
+  into ARGV, so two runs differ by construction, and the repo has no byte-comparison precedent
+- [ ] After `hard_delete`, `filter()` returns nothing and no `$*` key retains the record's
+  redis key (Risk 4b)
+- [ ] Append p50/p99 measured at 20k entries in `tests/benchmarks/`, reported with
+  python/redis-py versions, including the per-append eager-EVAL count
 - [ ] Tests pass (`/do-test`), narrow scope: `tests/test_provenance_journal.py` plus
-  `tests/test_validity_field.py` and `tests/benchmarks/test_defaults_sync.py`
+  `tests/test_validity_field.py`, `tests/test_transfer_roundtrip.py`, and
+  `tests/benchmarks/test_defaults_sync.py`
 - [ ] mypy error delta is 0 vs the merge-base. **Baseline already measured for this plan:
   1119 errors in 66 files (93 source files checked) at `9180680`**, using a clean detached
   sibling worktree and this worktree's venv — Python 3.12.13, redis-py 8.1.0, mypy 2.3.1,
-  Redis server 8.6.2. The branch number must equal 1119; any other number is stated with its
-  environment, never relayed without one
+  Redis server 8.6.2. The branch total must be 1119; **any excess is enumerated line-by-line
+  in the PR body with the redis-py version measured**, per CLAUDE.md gate 5, rather than
+  quietly relaxed. Two new modules that build redis pipelines are precisely the shape that
+  gate warns produces version-dependent `Awaitable[T] | T` errors
 - [ ] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
@@ -839,9 +1120,15 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 - Create `src/popoto/fields/append_only.py` with `AppendOnlyViolation` (in
   `src/popoto/exceptions.py` if that is where the repo keeps exception types) and
   `AppendOnlyMixin` overriding `save()` and `delete()`
-- Gate on `EXISTS self.db_key.redis_key`; never on `_db_content` or `_saved_field_values`
-- Add `hard_delete` classmethod as the documented retention/admin escape hatch
-- Module docstring states the ORM-layer boundary and the TOCTOU limitation plainly
+- Gate on `EXISTS self.db_key.redis_key` read from `POPOTO_REDIS_DB` **directly, never from a
+  caller-supplied pipeline**; never on `_db_content` or `_saved_field_values`
+- Raise unconditionally on `save(migrate_key=True)` and whenever `obsolete_redis_key` is set
+- Declare `roundtrip_policy = "rebuild"` in the class body — required by
+  `tests/test_transfer_roundtrip.py::test_every_model_level_mixin_has_a_policy_declared`
+- Add `hard_delete` classmethod as the documented retention/admin escape hatch, sweeping
+  derived state (validity zsets, both chain hashes, `$TagF:`/`$IndexedF:` keys, class Set)
+- Module docstring states the ORM-layer boundary, both TOCTOU shapes (cross-process and
+  intra-pipeline), and that `on_conflict="overwrite"` is unsupported
 - Export from `src/popoto/__init__.py` (import block + `__all__`)
 
 ### 2. Journal model, recipe, and constants
@@ -854,18 +1141,30 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 - **Agent Type**: builder
 - **Parallel**: false
 - Create `src/popoto/recipes/provenance_journal.py` with `JournalEntry` (field list per D4,
-  composing `AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model`) and the
-  `ProvenanceJournal` façade
-- `pre_save` validation for `kind` ∈ `JOURNAL_KINDS` and the `kind`/`target` consistency rules
+  composing `AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model`), the
+  `ProvenanceJournal` façade, `AnnotationResult`, and `JournalBlockedError`
+- Implement **D7's pre-flight in full** — firewall scan (incl. `subjects`, per D8), kind
+  vocabulary, `kind`/`target` consistency, target existence, same-agent target, `at >=`
+  target's stored `valid_from` read via `get_interval_keys`, and `pipeline.transaction is
+  True` — all raising **before any command is issued or queued**
+- `pre_save` validation as defence in depth for `kind` and the `kind`/`target` rules
 - `supersede`/`retract` build one transactional pipeline: annotation constructed with
   `validity=<instant>`, `save(pipeline=pipe)`, then `ValidityField.execute_supersede(...,
-  mode="invalidate", ...)`, then `execute()` — with an inline comment citing #588
-- Every mutating op accepts `pipeline=` and returns it unexecuted when supplied
-- Add `JOURNAL_VALIDITY_COUPLING_ENABLED`, `JOURNAL_STREAM_MAX_LENGTH`, `JOURNAL_KINDS` to
-  `src/popoto/fields/constants.py` under a new section header, **and register all three in
-  `tests/benchmarks/overrides.py`'s `MODULE_CONSTANTS`** — that registry, not the test file,
-  is what `test_defaults_sync.py::test_all_defaults_covered_by_module_constants` reads. Both
-  files change together or the suite fails.
+  mode="invalidate", ...)`, then `execute()` — with an inline comment citing #588 explaining
+  why `SupersessionProtocol` is not used here
+- Return `AnnotationResult(entry, target_closed, coupling_enabled)` from every mutating op;
+  warn-once on the first uncoupled annotation
+- Set `_stream_max_length` on the class body with a pinning comment; **no**
+  `_stream_partition_field`; `_stream_metadata_fields = ("agent_id", "kind", "target")`
+- Add `JOURNAL_VALIDITY_COUPLING_ENABLED` (env-backed via `_read_journal_coupling_switch`,
+  reading `POPOTO_JOURNAL_COUPLING_DISABLE`) and `JOURNAL_KINDS` to
+  `src/popoto/fields/constants.py` under a new section header, **and exempt both in
+  `tests/benchmarks/test_defaults_sync.py`'s `field_kwargs_and_class_attrs` set** with a
+  rationale comment matching the `VALIDITY_GATING_ENABLED` precedent. **Do not touch
+  `tests/benchmarks/overrides.py`** — a `MODULE_CONSTANTS` entry would require a module-level
+  alias that must not exist for a runtime-flippable switch.
+- Support the `_journal_kinds` subclass extension seam, validated as a superset of the core
+  four; unknown kinds are inert for membership
 - Export from `src/popoto/recipes/__init__.py` (alphabetized, both the import and `__all__`)
 
 ### 3. Test suite
@@ -877,15 +1176,22 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 - **Assigned To**: journal-tester
 - **Agent Type**: test-engineer
 - **Parallel**: false
-- Teardown fixture: `hard_delete` + derived-key wipe (`ValidityField.get_all_keys`,
-  `{prefix}:open:*`, `$TagF:`/`$IndexedF:` keys) + `Defaults` restore, modeled on
-  `tests/test_validity_field.py:206-254`
+- Teardown: **a `Defaults` restore fixture only.** `popoto.pytest_plugin`'s autouse
+  `_popoto_flush_db` already flushes before every test (`pytest_plugin.py:234-250`), so no
+  derived-key wipe is needed — see D6
 - A control model without `AppendOnlyMixin`, per the repo's convention
-- Cover: the spike-1 re-save matrix; field round-trip; `annotations_for` in one query;
-  membership exclusion after supersede/retract with `as_of` still returning the target;
-  queued-command-count and fault-injection atomicity; the kill switch producing a
-  byte-identical no-validity path; every Failure Path case; the orphan-index read (Race 1);
-  concurrent double-close idempotency (Race 3); the p50/p99 append benchmark at 20k
+- Cover: the extended re-save matrix (six shapes incl. `migrate_key=True`, plus the
+  intra-pipeline duplicate); full field round-trip incl. `statement`; `annotations_for` in one
+  query via `_CallCounter`; membership exclusion after supersede/retract with `as_of` still
+  returning the target and zero chain-hash reads; `chain()` over a 3-deep chain; every D7
+  pre-flight rejection asserted to issue zero commands; the blocked-annotation-closes-nothing
+  case; the kill switch via `_CallCounter` plus `AnnotationResult.target_closed`; the
+  `target`-survives-the-entropy-detector regression; `hard_delete`'s derived-state sweep; the
+  orphan-index read (Race 1); concurrent double-close idempotency (Race 3)
+- Atomicity/fault-injection work is a distinct skill from round-trip coverage; split it into
+  its own test class within the file
+- The 20k p50/p99 append benchmark goes in `tests/benchmarks/` behind a marker, **not** in
+  this file
 
 ### 4. Validation
 - **Task ID**: validate-journal
@@ -901,11 +1207,12 @@ ad-hoc script must set `REDIS_URL` to a non-zero DB before importing popoto.
 
 ### 5. Documentation
 - **Task ID**: document-feature
-- **Depends On**: validate-journal
+- **Depends On**: build-journal
 - **Validates**: `.venv/bin/python -m mkdocs build --strict` and `grep -q 'features/provenance-journal.md' mkdocs.yml`
 - **Assigned To**: journal-documentarian
 - **Agent Type**: documentarian
-- **Parallel**: false
+- **Parallel**: true (runs alongside build-tests and validate-journal — the docs are written
+  against the plan and the built API, and do not need the test results)
 - Everything in the Documentation section
 
 ### 6. Final validation
@@ -941,16 +1248,22 @@ corrected here):
 | Journal tests pass | `.venv/bin/python -m pytest tests/test_provenance_journal.py -q` | exit code 0 |
 | V0 suite still passes | `.venv/bin/python -m pytest tests/test_validity_field.py -q` | exit code 0 |
 | Defaults sync passes | `.venv/bin/python -m pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
-| Exports importable | `.venv/bin/python -c "from popoto import AppendOnlyMixin, AppendOnlyViolation; from popoto.recipes import JournalEntry, ProvenanceJournal"` | exit code 0 |
+| Transfer roundtrip guards pass | `.venv/bin/python -m pytest tests/test_transfer_roundtrip.py -q` | exit code 0 |
+| Exports importable | `.venv/bin/python -c "from popoto import AppendOnlyMixin, AppendOnlyViolation, JournalBlockedError; from popoto.recipes import JournalEntry, ProvenanceJournal"` | exit code 0 |
 | Lint clean | `.venv/bin/python -m ruff check src/` | exit code 0 |
-| Format clean | `.venv/bin/python -m black --check src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code 0 |
+| Format clean | `.venv/bin/python -m black --check src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py src/popoto/fields/constants.py src/popoto/__init__.py src/popoto/recipes/__init__.py` | exit code 0 |
 | Docs build | `.venv/bin/python -m mkdocs build --strict` | exit code 0 |
 | Docs page exists in nav | `grep -q 'features/provenance-journal.md' mkdocs.yml` | exit code 0 |
-| No Redis-module commands (anti-criterion) | `grep -rqE '(BF\|CMS\|TOPK\|TDIGEST\|JSON\|FT\|TS)\.[A-Z]' src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code != 0 |
+| No Redis-module commands (anti-criterion) | `grep -rqE '(^\|[^A-Za-z])(BF\|CMS\|TOPK\|TDIGEST\|JSON\|FT\|TS)\.[A-Z]' src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code != 0 |
 | No silent exception swallowing (anti-criterion) | `.venv/bin/python -c "import re,sys; src=open('src/popoto/recipes/provenance_journal.py').read()+open('src/popoto/fields/append_only.py').read(); sys.exit(1 if re.search(r'except[^\n]*:\s*\n\s*(pass\|\.\.\.)\s*\n', src) else 0)"` | exit code 0 |
 | Write path never uses SupersessionProtocol (anti-criterion, guards the #588 workaround) | `grep -qE 'SupersessionProtocol\.(supersede\|invalidate)\(' src/popoto/recipes/provenance_journal.py` | exit code != 0 |
-| No extraction-path wiring leaked in (anti-criterion for the M3 No-Go) | `git diff --quiet origin/main -- src/popoto/recipes/subconscious_memory.py` | exit code 0 |
-| `models/base.py` untouched (anti-criterion for D2) | `git diff --quiet origin/main -- src/popoto/models/base.py` | exit code 0 |
+| No extraction-path wiring leaked in (anti-criterion for the M3 No-Go) | `git diff --quiet $(git merge-base HEAD origin/main) -- src/popoto/recipes/subconscious_memory.py` | exit code 0 |
+| `models/base.py` untouched (anti-criterion for D2) | `git diff --quiet $(git merge-base HEAD origin/main) -- src/popoto/models/base.py` | exit code 0 |
+| `overrides.py` untouched (anti-criterion: kill switches are exempted in the test file, never aliased) | `git diff --quiet $(git merge-base HEAD origin/main) -- tests/benchmarks/overrides.py` | exit code 0 |
+
+The two `git diff` rows use `$(git merge-base HEAD origin/main)` rather than `origin/main`
+directly: diffing against a moving `origin/main` false-fails the moment another lane lands a
+commit touching those files.
 
 Note on the `(A\|B)` patterns above: every `\|` in the table is **markdown table-cell escaping
 only**. The patterns that actually run are `(BF|CMS|TOPK|TDIGEST|JSON|FT|TS)\.[A-Z]`,
@@ -966,27 +1279,74 @@ row into a real inversion.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+War room run 2026-08-18 against plan revision `16978e9`, three `plan-reviewer` critics with
+disjoint lenses (integration correctness / failure modes & honesty / scope & downstream
+contracts). All three returned **NEEDS REVISION**. Every BLOCKER and every CONCERN below is
+addressed in this revision; nothing was waived.
+
+Three findings were independently reproduced against source before acting, because each
+reversed something the plan asserted: the defaults-sync registration mechanism
+(`test_defaults_sync.py:110-135` vs `overrides.py:37`), the model-level-mixin policy guard
+(`test_transfer_roundtrip.py:656-696, 752-767`), and the autouse flush fixture
+(`pytest_plugin.py:234-250`).
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | all three | A never-record-blocked annotation still closes the target: `save()` returns the pipeline (not `False`) in pipeline mode, so nothing is queued but the invalidate EVAL commits anyway — membership change with zero provenance | **D7** pre-flight scan before opening the pipeline; `JournalBlockedError` raised | The single highest-severity finding of the round. Independently reported by all three critics from different angles |
+| BLOCKER | integration, honesty | "Partial application is impossible" is false — Redis MULTI/EXEC does not roll back siblings on a command error; `base.py:1563-1571` documents this verbatim as #476's rationale | **D3** atomicity restated as "no interleaving reader observes the annotation without the close"; rollback explicitly not claimed | The residual is now a tested, documented state rather than an impossibility claim |
+| BLOCKER | integration, honesty | `CLOSE_BEFORE_START` → `ValueError` remap does not apply on the pipeline path, and the client-side pre-check compares against the caller-supplied `valid_from`, so it never fires | **D7 step 4** pre-reads the target's stored `valid_from` and raises before queuing | A second test pins the raw V0 behavior so the pre-flight cannot be refactored away as redundant |
+| BLOCKER | integration, scope | The `MODULE_CONSTANTS` registration instruction was backwards and would have broken `test_module_alias_matches_defaults` with `AttributeError` | **D5** registration note; Test Impact marks `overrides.py` **NO CHANGE**; anti-criterion row added | This error was introduced by an earlier driver-side "fix" of mine. Verified directly against the suite before reversing |
+| BLOCKER | honesty | `save(migrate_key=True)` destroys entries through a supported public kwarg and the `EXISTS` guard cannot see it | **D2** raises unconditionally on `migrate_key=True` and on a set `obsolete_redis_key` | Added as a sixth row of the re-save matrix |
+| BLOCKER | honesty | Risk 2's performance fallback ("skip `EXISTS` for AutoKeyField keys") would disable the guard for precisely the two shapes it catches in practice | **Risk 2** fallback withdrawn; `HSETNX`/`SETNX` named as the correct direction | |
+| BLOCKER | honesty | The kill-switch "byte-identical" criterion is unachievable — a clock value enters ARGV, and the repo has no byte-comparison precedent | **Success Criteria** restated on the `_CallCounter` pattern from `test_validity_field.py:598-655` | |
+| BLOCKER | scope | No link from a `JournalEntry` to the memory record it justifies; plan never states substrate vs sidecar | **Architectural Impact** states the journal *is* the substrate, per #560's "belief set becomes a view computed at read time" | Decided in-plan, not escalated. No `record_key` field is added, deliberately |
+| CONCERN | honesty, scope | The kill switch reproduced #588's own silent-no-op shape by design | **D3** typed `AnnotationResult(entry, target_closed, coupling_enabled)` + warn-once | Caller can detect degraded mode without reading Redis |
+| CONCERN | honesty | `JOURNAL_VALIDITY_COUPLING_ENABLED` was called deploy-level but was a plain class attribute an adopter cannot flip | **D5** env-backed `_read_journal_coupling_switch()` / `POPOTO_JOURNAL_COUPLING_DISABLE` | Matches `_read_never_record_switch` convention |
+| CONCERN | honesty | `subjects` (a `TagField`) is never scanned by the firewall — `_never_record_scan_values` yields only `str` | **D8** explicit `scan_never_record()` on each tag in `append()`; residual mixin hole documented and pinned by test | |
+| CONCERN | integration | Two different `ingested_at` values under one name — the model field and the validity ZSET would silently disagree | **D4** model field renamed `captured_at`; validity ingest axis documented as always the save clock | |
+| CONCERN | scope | `_stream_partition_field = "agent_id"` produces per-agent stream keys that `StreamConsumer`'s single-key API cannot consume | **D4 / Data Flow 7** partition field dropped; `agent_id` moved into `_stream_metadata_fields` | M1 was about to ship a channel its named consumer could not read |
+| CONCERN | integration, honesty | "4 queued commands for a supersede" was arithmetic on the spike's toy model; real `JournalEntry` queues ~10 | **Risk 1** asserts shape (`ARGV[5]`, `numkeys`, `transaction`), never a literal count | |
+| CONCERN | integration | `AppendOnlyMixin` trips `test_every_model_level_mixin_has_a_policy_declared`; "no existing tests affected" was wrong | **D2** declares `roundtrip_policy = "rebuild"`; Test Impact lists the suite | |
+| CONCERN | integration, scope | D6's whole premise was false — the pytest plugin already flushes before every test | **D6** rewritten; teardown reduced to a `Defaults` restore; Open Question 2 withdrawn | |
+| CONCERN | honesty | `on_conflict="overwrite"` breaks on append-only models via `import_.py:215` | **Architectural Impact** documents `"skip"` as the supported mode | |
+| CONCERN | honesty | Caller-supplied `pipeline(transaction=False)` silently voids atomicity | **D7 step 5** raises `ValueError` | |
+| CONCERN | honesty | Race 2 has a second, deterministically testable shape: two appends of one key in one pipeline | **Race 2** documents it and adds it to the test matrix | |
+| CONCERN | scope | `JOURNAL_KINDS` frozen with no extension seam blocks M5/M7/M8 | **D5** `_journal_kinds` subclass override + "unknown kinds are inert for membership" reader rule | |
+| CONCERN | scope | D1 reversibility overstated — per-model key namespacing makes a later split a migration of an immutable store | **Architectural Impact** restated: high before data, low after; `ProvenanceJournal` as sole API is the mitigation | |
+| CONCERN | scope | Success Criteria omitted `statement`, never-record composition, `chain()`, and Risk 3's validation | **Success Criteria** all four added | |
+| CONCERN | honesty | Several criteria were prose-only with no stated method | **Success Criteria** each now names its mechanism (`_CallCounter`, chain-hash monkeypatch, call counts) | |
+| CONCERN | honesty | mypy delta asserted, not budgeted | **Success Criteria** excess must be enumerated line-by-line with redis-py version, per CLAUDE.md gate 5 | |
+| CONCERN | honesty | Freshness grep arithmetic did not sum (claimed 132, rows summed ~53) | **Freshness Check** re-measured: 137 matching lines; per-token counts given exactly with a note that lines matching two tokens count once | |
+| CONCERN | scope | 20k benchmark in the unit-test file would add minutes to every run; docs task serialized unnecessarily | **Test Impact / Tasks** benchmark moved to `tests/benchmarks/`; docs task now parallel from `build-journal` | |
+| NIT | honesty | Spike-1's "nothing escapes the override" overclaims — raw clients and the migration cookbook bypass it | **Problem / D2** scoped to "every Python write path in `models/base.py`", cookbook cited | |
+| NIT | honesty | Valkey anti-criterion regex unanchored, matches `PARTS.X` | **Verification** anchored with `(^\|[^A-Za-z])` | |
+| NIT | honesty, scope | Two verification rows diffed against a moving `origin/main`; `black --check` covered only 2 of 5 edited files | **Verification** `$(git merge-base HEAD origin/main)`; black row extended | |
+| NIT | integration, scope | `JOURNAL_STREAM_MAX_LENGTH` duplicated `_stream_max_length` and was never wired | **D4/D5** constant dropped; class attribute set directly with a pinning comment | |
+| NIT | integration | `filter(validity=t)` silently returns nothing | **D4** documented on the feature page | |
+| NIT | integration | `agent_id = KeyField()` with `None` collapses the stream key and renders `"None"` into the record key | **D4** `append()` requires `agent_id` non-null | |
+| NIT | scope | Cross-agent supersession silently permitted | **D7 step 3** rejects cross-agent targets | |
+| BLOCKER (method) | scope | The scope critic had no `gh` access and could not verify the literal AC walk or that the No-Go slug targets exist | Verified by me directly: #562, #563, #564, #565, #588 all exist, are OPEN, and cover the deferred work; #560's five ACs plus the Amendment acceptance addition each map to a Success Criterion | |
 
 ---
 
 ## Open Questions
 
+Two questions, both genuinely policy-level. A third question in an earlier draft — whether
+`hard_delete` was the right test-teardown seam — has been **decided in-plan rather than
+escalated**, because its premise was false: the pytest plugin already flushes the DB before
+every test (D6), so no teardown seam is needed. `hard_delete` ships, justified on Risk 4b
+erasure grounds alone, with a full derived-state sweep.
+
 1. **Should the append-only invariant have a deploy-level kill switch?** The repo's default
    is that every capability ships with one (`feedback_default_on_design`). This plan argues
    append-only is a *contract*, not a capability — disabling it silently converts the
    provenance journal into a mutable table while M3/M5/M6 still assume immutability. The
-   plan currently ships **no** switch on the invariant and one on the validity coupling
-   (`JOURNAL_VALIDITY_COUPLING_ENABLED`). Confirm, or specify the switch's semantics.
-2. **`hard_delete` as the retention seam — acceptable, or should M1 ship no deletion path at
-   all?** Tests need *some* teardown because `delete_all()` raises (spike-1). The
-   alternative to a named classmethod is that tests reach for raw `DEL`, which is worse
-   because it leaves derived index state. Confirm `hard_delete` is the right shape and the
-   right name.
-3. **Is "one MULTI/EXEC transaction" an acceptable reading of the #560 amendment's "in the
-   same script"?** D3 explains why forking `SUPERSEDE_LUA` is worse. The observable
-   atomicity property the amendment specifies is preserved exactly. Flagging because it is a
-   literal deviation from written wording on the wave keystone.
+   plan currently ships **no** switch on the invariant and one env-backed switch on the
+   validity coupling (`POPOTO_JOURNAL_COUPLING_DISABLE`). Confirm, or specify the switch's
+   semantics.
+2. **Is "one MULTI/EXEC transaction" an acceptable reading of the #560 amendment's "in the
+   same script"?** D3 explains why forking `SUPERSEDE_LUA` is worse. The property the
+   amendment observably asks for — no interleaving reader sees the annotation without the
+   close — is preserved exactly; rollback is not, and the plan says so rather than claiming
+   otherwise. Flagging because it is a literal deviation from written wording on the wave
+   keystone.
