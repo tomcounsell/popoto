@@ -115,6 +115,25 @@ class SubclassedJournal(ProvenanceJournal):
     entry_model = SubclassedEntry
 
 
+class PartiallyDeclaredEntry(JournalEntry):
+    """A subclass that re-declares *some* of the journal field set.
+
+    The round-2 review's false-negative repro: a single-canary shape guard saw
+    ``statement`` here and passed the model through, after which every write
+    persisted 3 of 12 fields — no ``verbatim``, no ``kind``, no ``target`` and
+    no validity interval at all. A partial field set is exactly as lossy as an
+    empty one. Never write through it.
+    """
+
+    entry_id = popoto.AutoKeyField()
+    agent_id = popoto.KeyField()
+    statement = popoto.StringField(default="")
+
+
+class PartiallyDeclaredJournal(ProvenanceJournal):
+    entry_model = PartiallyDeclaredEntry
+
+
 # --- Fixtures and helpers ---
 
 
@@ -962,6 +981,38 @@ class TestPreFlightValidation:
         assert counter.nonzero == {}, counter.nonzero
         assert list(pipe.command_stack) == []
 
+    def test_a_watching_pipeline_is_refused_before_any_command(self, monkeypatch):
+        """A WATCHing pipeline executes immediately instead of queueing.
+
+        Before this pre-flight the call reached ``Model.save()``, which wrote
+        the entry hash and then died with ``AttributeError: 'int' object has
+        no attribute 'sadd'`` — leaving a hash with no indexes and no validity
+        interval. On an append-only model that orphan is permanent, so the
+        refusal has to be a ``ValueError`` raised before any write, not an
+        ``AttributeError`` raised half-way through one.
+        """
+        target = _append()
+        before = set(scan_keys("*"))
+        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe.watch("some:key")
+        assert pipe.watching is True
+        counter = self._counted(monkeypatch)
+        try:
+            with pytest.raises(ValueError, match="WATCHing pipeline"):
+                ProvenanceJournal.supersede(
+                    target, agent_id=AGENT, statement="a correction", pipeline=pipe
+                )
+            assert counter.nonzero == {}, counter.nonzero
+            assert list(pipe.command_stack) == []
+        finally:
+            # A live WATCH is connection state, not keyspace state, so the
+            # plugin's flush cannot clear it. Leaking one would silently make
+            # a later test's pipeline execute immediately too.
+            pipe.reset()
+        assert set(scan_keys("*")) == before
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+
     def test_a_non_pipeline_object_is_refused_before_any_command(self, monkeypatch):
         target = _append()
         counter = self._counted(monkeypatch)
@@ -1586,6 +1637,78 @@ class TestKindRegistry:
             JournalEntry.register_kind(name, **kwargs)
         assert name not in journal_module._REGISTERED_KINDS
 
+    def test_an_entry_written_with_a_registered_kind_still_reads_back_unregistered(
+        self,
+    ):
+        """The registry is process-global and **not persisted**.
+
+        Half of the caveat ``register_kind``'s docstring documents: a process
+        that never re-registered the kind still reads the record faithfully,
+        and the unknown kind is inert for membership rather than being
+        silently re-interpreted as a core closing kind.
+        """
+        JournalEntry.register_kind("merge", closing=True)
+        target = _append(statement="the original claim")
+        entry = ProvenanceJournal.append(
+            agent_id=AGENT,
+            kind="merge",
+            target=target,
+            statement="merged into the canonical claim",
+        ).entry
+
+        registered = dict(journal_module._REGISTERED_KINDS)
+        journal_module._REGISTERED_KINDS.clear()
+        try:
+            reread = JournalEntry.query.get(redis_key=entry.db_key.redis_key)
+            assert reread.kind == "merge"
+            assert reread.statement == "merged into the canonical claim"
+            assert reread.target == target.db_key.redis_key
+
+            # Inert for membership: a reader that does not know the kind must
+            # not treat it as a supersede or a retract.
+            assert "merge" not in JournalEntry.journal_kinds()
+            assert JournalEntry.kind_is_closing("merge") is False
+            assert JournalEntry.kind_is_targetless("merge") is False
+            assert _redis_keys(ProvenanceJournal.annotations_for(target)) == [
+                entry.db_key.redis_key
+            ]
+        finally:
+            journal_module._REGISTERED_KINDS.update(registered)
+
+    def test_writing_a_registered_kind_without_the_registration_raises(self):
+        """The other half: the *write* path is not forgiving.
+
+        ``transfer/import_.py`` restores records through ``instance.save()``,
+        which runs ``pre_save`` validation — so importing entries that use a
+        registered kind into a process that has not re-registered it fails
+        with ``ValueError`` and classifies those records ``ERRORED``. This is
+        the behaviour the docstring's caveat exists for; pinning it here keeps
+        the doc from drifting away from the code.
+        """
+        JournalEntry.register_kind("merge", closing=True)
+        target = _append(statement="the original claim")
+        values = {
+            "agent_id": AGENT,
+            "kind": "merge",
+            "target": target.db_key.redis_key,
+            "statement": "merged into the canonical claim",
+        }
+        # Sanity: with the registration in place the same construction saves.
+        JournalEntry(**values).save()
+
+        registered = dict(journal_module._REGISTERED_KINDS)
+        journal_module._REGISTERED_KINDS.clear()
+        try:
+            # A fresh key, exactly as a restore into an empty destination
+            # keyspace would be, so the append-only gate is not what refuses.
+            restored = JournalEntry(**values)
+            assert not POPOTO_REDIS_DB.exists(restored.db_key.redis_key)
+            with pytest.raises(ValueError, match="kind must be one of"):
+                restored.save()
+            assert not POPOTO_REDIS_DB.exists(restored.db_key.redis_key)
+        finally:
+            journal_module._REGISTERED_KINDS.update(registered)
+
     def test_re_registering_the_same_kind_differently_is_refused(self):
         """Reclassifying a kind would reclassify every entry already stored
         under it, so it is refused; an identical re-registration is a no-op."""
@@ -1620,6 +1743,63 @@ class TestEntryModelGuard:
         assert "does not inherit Field attributes" in message
         assert "register_kind" in message
         assert set(scan_keys("*")) == before
+        # The message names the whole missing set, not one canary field.
+        for field in journal_module._REQUIRED_ENTRY_FIELDS:
+            assert repr(field) in message
+
+    def test_a_partial_field_set_is_rejected_naming_every_missing_field(self):
+        """The round-2 review's false negative: a *partial* subclass.
+
+        ``PartiallyDeclaredEntry`` re-declares ``entry_id``/``agent_id``/
+        ``statement``, so a guard that checked a single ``statement`` canary
+        passed it and let the journal persist 3 of 12 fields — no
+        ``verbatim``, no ``kind``, no ``target``, no validity interval. The
+        guard checks the full required set, and the error has to name every
+        field actually missing (and none of the ones that are present, or the
+        message sends the caller after the wrong thing).
+        """
+        assert "statement" in PartiallyDeclaredEntry._meta.fields
+
+        before = set(scan_keys("*"))
+        with pytest.raises(TypeError) as excinfo:
+            PartiallyDeclaredJournal.append(
+                agent_id=AGENT, statement="would lose nine fields"
+            )
+
+        message = str(excinfo.value)
+        assert "PartiallyDeclaredEntry" in message
+        assert "not a usable journal entry model" in message
+        for field in ("verbatim", "kind", "target", "validity"):
+            assert repr(field) in message
+        for present in ("agent_id", "statement"):
+            assert repr(present) not in message
+        assert set(scan_keys("*")) == before
+
+    def test_the_partial_subclass_is_refused_by_every_mutating_method(self):
+        target = _append()
+        before = set(scan_keys("*"))
+        for call in (
+            lambda: PartiallyDeclaredJournal.confirm(target, agent_id=AGENT),
+            lambda: PartiallyDeclaredJournal.supersede(target, agent_id=AGENT),
+            lambda: PartiallyDeclaredJournal.retract(target, agent_id=AGENT),
+        ):
+            with pytest.raises(TypeError, match="not a usable journal entry model"):
+                call()
+        assert _interval(target)[1] == float("inf")
+        assert set(scan_keys("*")) == before
+
+    def test_the_reference_model_is_exempt_and_still_writes(self):
+        """``JournalEntry`` is the reference shape, so it skips the check —
+        and the full-set guard must not have made the ordinary path unusable.
+        """
+        assert journal_module._REQUIRED_ENTRY_FIELDS <= set(JournalEntry._meta.fields)
+        journal_module._require_journal_shape(JournalEntry)
+
+        entry = _append(statement="the reference model still writes")
+        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert entry.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
 
     def test_the_guard_covers_every_mutating_method(self):
         target = _append()

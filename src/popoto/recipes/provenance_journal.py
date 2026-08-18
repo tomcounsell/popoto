@@ -356,6 +356,19 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
         ``kind`` a reader does not recognize is **inert for membership** --
         never silently treated as a ``supersede`` or a ``retract``.
 
+        .. important::
+
+           The registry is process-global and is **not persisted**. *Reading*
+           an entry with an unregistered kind is fine -- it reads back with its
+           stored ``kind`` and is inert for membership, per the reader rule.
+           But *writing* one is not: ``transfer/import_.py`` restores records
+           through ``instance.save()``, which runs ``pre_save`` validation, so
+           importing entries that use a registered kind into a process that has
+           not re-registered it fails with ``ValueError`` and classifies those
+           records ``ERRORED``. **A restoring or importing process must call
+           the same** ``register_kind`` **calls before importing.** (Found in
+           PR #589 review.)
+
         Args:
             name: The new kind. Must be a non-empty string outside
                 :attr:`Defaults.JOURNAL_KINDS`, which is frozen because
@@ -934,6 +947,20 @@ class ProvenanceJournal:
                     f"annotate-and-close atomicity guarantee. Use "
                     f"popoto.get_redis().pipeline() (transactional by default)."
                 )
+            # A WATCHing pipeline executes immediately rather than queueing,
+            # so Model.save() fails part-way through and leaves an entry hash
+            # with no indexes and no validity interval. On an append-only
+            # model that orphan is permanent -- only hard_delete can remove
+            # it -- so this is refused here rather than discovered at write
+            # time. (Pre-existing ORM behavior: a plain Model.save() against a
+            # watching pipeline fails identically. Found in PR #589 review.)
+            if getattr(pipeline, "watching", False):
+                raise ValueError(
+                    f"{model.__name__}: a WATCHing pipeline executes "
+                    f"immediately instead of queueing, which would leave a "
+                    f"permanent orphan record on an append-only model. "
+                    f"Call UNWATCH, or use a fresh pipeline."
+                )
 
         # ---- End of pre-flight. From here on, commands are issued.
 
@@ -1037,10 +1064,26 @@ class ProvenanceJournal:
         )
 
 
-#: A field every journal entry model must declare. Used as the canary in
-#: :func:`_require_journal_shape`, because it is the field a caller is most
-#: obviously trying to store when they reach for the journal at all.
-_REQUIRED_ENTRY_FIELD = "statement"
+#: Every field a journal entry model must declare. Checked in full by
+#: :func:`_require_journal_shape`.
+#:
+#: This was a single canary (``"statement"``) until PR #589's second review
+#: round, which showed the canary had a false negative that reproduced the
+#: original blocker in narrowed form: a subclass that re-declared only
+#: ``entry_id``/``agent_id``/``statement`` passed the guard and then silently
+#: persisted 3 of 12 fields -- no ``verbatim``, no ``kind``, no ``target``, and
+#: no validity interval at all. A partial field set is exactly as lossy as an
+#: empty one, so the guard checks the whole set.
+_REQUIRED_ENTRY_FIELDS = frozenset(
+    {
+        "agent_id",
+        "statement",
+        "verbatim",
+        "kind",
+        "target",
+        "validity",
+    }
+)
 
 
 def _require_journal_shape(model: Any) -> None:
@@ -1063,13 +1106,15 @@ def _require_journal_shape(model: Any) -> None:
     if model is JournalEntry:
         return
     fields = getattr(getattr(model, "_meta", None), "fields", {}) or {}
-    if _REQUIRED_ENTRY_FIELD in fields:
+    missing = sorted(_REQUIRED_ENTRY_FIELDS - set(fields))
+    if not missing:
         return
     model_name = getattr(model, "__name__", repr(model))
     raise TypeError(
         f"{model_name} is not a usable journal entry "
-        f"model: it declares no {_REQUIRED_ENTRY_FIELD!r} field, so every "
-        f"record it writes would persist nothing. If it subclasses "
+        f"model: it declares no {', '.join(repr(m) for m in missing)} "
+        f"field(s), so records it writes would silently lose them. If it "
+        f"subclasses "
         f"JournalEntry, that is the cause: Popoto's ModelBase metaclass does "
         f"not inherit Field attributes from a base model class, so a "
         f"JournalEntry subclass has an EMPTY field set. Do not subclass "
