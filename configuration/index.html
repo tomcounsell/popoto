@@ -1181,6 +1181,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/provenance-journal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -3923,6 +3951,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td><code>POPOTO_NEVER_RECORD_DISABLE</code></td>
 <td>unset (falsy)</td>
 <td>Kill switch for the never-record firewall (<code>NeverRecordMixin</code>). The firewall is default-on: unset, it blocks credential- and secret-shaped content on <code>save()</code> for any model that carries the mixin. A truthy value disables the check globally, restoring pre-firewall behavior with no model code change. See <a href="../fields/#neverrecordmixin">NeverRecordMixin</a>.</td>
+</tr>
+<tr>
+<td><code>POPOTO_JOURNAL_COUPLING_DISABLE</code></td>
+<td>unset (falsy)</td>
+<td>Kill switch for the provenance journal's validity coupling. Read at import time. Default-on: unset, a <code>supersede()</code> or <code>retract()</code> appends the annotation <em>and</em> closes the target's validity interval in one transaction. A truthy value keeps the annotation append but stops the interval close, so the journal still records what was said while membership stops changing. Degraded mode is observable without a Redis read via <code>AnnotationResult.coupling_enabled</code> and <code>target_closed</code>. See <a href="../features/provenance-journal/#the-kill-switch-popoto_journal_coupling_disable">Provenance Journal</a>.</td>
 </tr>
 </tbody>
 </table>

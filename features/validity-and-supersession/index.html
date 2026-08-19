@@ -18,7 +18,7 @@
         <link rel="prev" href="../observation-protocol/">
       
       
-        <link rel="next" href="../prediction-ledger/">
+        <link rel="next" href="../provenance-journal/">
       
       
         
@@ -1401,6 +1401,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../provenance-journal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3530,6 +3558,12 @@ loudly if the gate is ever added — update this entry then.
 </ul>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
+<li><a href="../provenance-journal/">Provenance Journal</a> — this feature's first real
+  consumer: <code>JournalEntry</code> composes <code>ValidityField</code> for its membership axis,
+  calls <code>execute_supersede</code> directly on the annotate-and-close write path
+  (never <code>SupersessionProtocol</code>, which no-ops against a same-pipeline
+  successor), and uses <code>chain()</code> for provenance display only, never for
+  membership</li>
 <li><a href="../observation-protocol/">ObservationProtocol</a> — the outcome vocabulary
   that reports contradiction; <code>_apply_contradicted</code> writes provenance through
   this protocol when the model has a <code>ValidityField</code></li>

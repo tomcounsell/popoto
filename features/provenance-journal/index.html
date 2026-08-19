@@ -1,0 +1,3862 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://popoto.io/features/provenance-journal/">
+      
+      
+        <link rel="prev" href="../validity-and-supersession/">
+      
+      
+        <link rel="next" href="../prediction-ledger/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Provenance Journal - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#provenance-journal" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Provenance Journal
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Add Memory to Your Agent
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../harness-integration/" class="md-tabs__link">
+          
+  
+  
+  Add Memory to Your Harness
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Understand & Tune
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../benchmarks/results/" class="md-tabs__link">
+          
+  
+  
+  Benchmarks & Method
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Redis ORM
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../style-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Agent
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Agent
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SubconsciousMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/query-blind-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query-Blind Retrieval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../llm-memory-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Memory Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Harness
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Harness
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../harness-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/harness-claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/harness-codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Codex
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/harness-hermes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hermes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/harness-openclaw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenClaw
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understand & Tune
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Understand & Tune
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Primitives
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Primitives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-append-only-why-one-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why append-only, why one model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-field-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The field set
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The field set">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#captured_at-deliberately-not-ingested_at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        captured_at, deliberately not ingested_at
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filtervalidityt-is-a-trap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        filter(validity=t) is a trap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-annotation-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The four annotation kinds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The four annotation kinds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-extension-seam-register_kind-and-the-reader-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The extension seam: register_kind, and the reader rule
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-not-subclass-journalentry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not subclass JournalEntry
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-provenancejournal-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ProvenanceJournal API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-one-transaction-annotate-and-close-sequence-stated-precisely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The one-transaction annotate-and-close sequence, stated precisely
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationship-to-validityfield-two-different-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationship to ValidityField: two different questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-append-only-boundary-stated-honestly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The append-only boundary, stated honestly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-composing-neverrecordmixin-and-its-coverage-gap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy: composing NeverRecordMixin, and its coverage gap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-kill-switch-popoto_journal_coupling_disable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The kill switch: POPOTO_JOURNAL_COUPLING_DISABLE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#growth-and-the-hard_delete-retention-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Growth and the hard_delete retention seam
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gotchas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gotchas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/trajectory-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TrajectoryMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/rag-chatbot-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAG Chatbot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory-telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MemoryLifecycle and more
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tuning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parametric-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parametric Sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks & Method
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks & Method
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/locomo_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/locomo_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/rlt_redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT (Redis)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/csr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSR Regression Gate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Method and How-To
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis ORM
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Redis ORM
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../content-and-embedding-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content & Embeddings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/export-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export & Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../field-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Custom Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-append-only-why-one-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why append-only, why one model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-field-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The field set
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The field set">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#captured_at-deliberately-not-ingested_at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        captured_at, deliberately not ingested_at
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filtervalidityt-is-a-trap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        filter(validity=t) is a trap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-annotation-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The four annotation kinds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The four annotation kinds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-extension-seam-register_kind-and-the-reader-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The extension seam: register_kind, and the reader rule
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-not-subclass-journalentry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not subclass JournalEntry
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-provenancejournal-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ProvenanceJournal API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-one-transaction-annotate-and-close-sequence-stated-precisely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The one-transaction annotate-and-close sequence, stated precisely
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationship-to-validityfield-two-different-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationship to ValidityField: two different questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-append-only-boundary-stated-honestly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The append-only boundary, stated honestly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-composing-neverrecordmixin-and-its-coverage-gap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy: composing NeverRecordMixin, and its coverage gap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-kill-switch-popoto_journal_coupling_disable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The kill switch: POPOTO_JOURNAL_COUPLING_DISABLE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#growth-and-the-hard_delete-retention-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Growth and the hard_delete retention seam
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gotchas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gotchas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="provenance-journal">Provenance Journal<a class="headerlink" href="#provenance-journal" title="Permanent link">&para;</a></h1>
+<p>An append-only record of exactly who said what, when, in what words — with
+corrections stored as new entries pointing at the ones they correct, never as
+edits.</p>
+<p>An agent is told, in a Slack thread, "Tom said the launch slipped to the
+30th." Two turns later Tom himself says "actually the 30th is wrong, it's the
+27th." Stored as an ordinary mutable memory row, the second statement
+overwrites the first: the original words are gone, nobody recorded <em>who</em> said
+either one, and there is no way to ask what the agent believed last Tuesday.
+<code>JournalEntry</code> and <code>ProvenanceJournal</code> are the substrate that fixes that: every
+capture is immutable, every correction is a new entry, and the live belief set
+is a query over <a href="../validity-and-supersession/"><code>ValidityField</code></a>'s indexes, not
+a chain walk.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProvenanceJournal</span><span class="p">,</span> <span class="n">JournalEntry</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">first</span> <span class="o">=</span> <span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">speaker</span><span class="o">=</span><span class="s2">"tom"</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">turn_id</span><span class="o">=</span><span class="s2">"t-41"</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">verbatim</span><span class="o">=</span><span class="s2">"the launch slipped to the 30th"</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">statement</span><span class="o">=</span><span class="s2">"Launch date is the 30th"</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s2">"launch"</span><span class="p">],</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span><span class="o">.</span><span class="n">entry</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">supersede</span><span class="p">(</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">first</span><span class="p">,</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">speaker</span><span class="o">=</span><span class="s2">"tom"</span><span class="p">,</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">turn_id</span><span class="o">=</span><span class="s2">"t-43"</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">verbatim</span><span class="o">=</span><span class="s2">"actually the 30th is wrong, it's the 27th"</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">statement</span><span class="o">=</span><span class="s2">"Launch date is the 27th"</span><span class="p">,</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="p">)</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="n">JournalEntry</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__current</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># the correction only</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">annotations_for</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>            <span class="c1"># the correction, again</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>                      <span class="c1"># [first, correction]</span>
+</code></pre></div>
+<p>Ran against a scratch Redis DB (<code>REDIS_URL=redis://localhost:6379/12</code>, set
+before <code>import popoto</code>): <code>filter(validity__current=True)</code> returns only the
+correction's <code>entry_id</code>; <code>annotations_for(first)</code> returns the correction
+tagged <code>kind="supersede"</code>; <code>chain(first)</code> returns <code>[first, correction]</code> oldest
+first. Re-saving <code>first</code> raises <code>AppendOnlyViolation</code>.</p>
+<h2 id="why-append-only-why-one-model">Why append-only, why one model<a class="headerlink" href="#why-append-only-why-one-model" title="Permanent link">&para;</a></h2>
+<p>Two design choices carry the whole feature, and the plan (<code>docs/plans/provenance_journal_m1.md</code>,
+issue <a href="https://github.com/tomcounsell/popoto/issues/560">#560</a>) treats both as decisions with a
+stated cost rather than free wins.</p>
+<p><strong>Corrections are new entries, not mutations.</strong> Nothing in <code>models/base.py</code>
+otherwise forbids re-saving or deleting a record — the only immutability
+precedent before this feature was <code>KeyMutationError</code>, which guards <em>key</em>
+mutation, not <em>value</em> mutation. <code>AppendOnlyMixin</code> closes that gap for any model
+that wants write-once semantics; <code>JournalEntry</code> is its first consumer, not its
+only possible one.</p>
+<p><strong>One record type, not two.</strong> The issue left open whether annotations should
+be a separate model from captures. Popoto ships one: every row is a
+<code>JournalEntry</code>, and <code>kind</code> + <code>target</code> distinguish a capture from an
+annotation. The reasons: annotations must themselves be annotatable (a
+retraction of a mistaken retraction, a confirmation of a supersession, which a
+separate annotation model turns into a second self-referential pointer type);
+<code>ValidityField</code>'s chain hashes are keyed by Redis key and are type-agnostic,
+so one model keeps <code>chain()</code> a straight walk; and the belief-sheet view reads
+<code>validity__current</code> over one keyspace instead of unioning two. The cost, paid
+explicitly rather than hidden: <code>kind</code>/<code>target</code> consistency is a <strong>runtime</strong>
+validation (in <code>JournalEntry.pre_save</code> and again in <code>ProvenanceJournal</code>'s
+pre-flight), not a type-system guarantee.</p>
+<h2 id="the-field-set">The field set<a class="headerlink" href="#the-field-set" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>entry_id</code></td>
+<td><code>AutoKeyField</code></td>
+<td>Immutable UUID identity, assigned at <code>__init__</code> — so the record's Redis key is concrete before save, which is what lets the append-only guard check the right key and makes two independent appends unable to collide</td>
+</tr>
+<tr>
+<td><code>agent_id</code></td>
+<td><code>KeyField</code></td>
+<td>Partition key, mirroring <code>DefaultMemory</code>. Required non-null by <code>ProvenanceJournal.append()</code>: a <code>None</code> renders the literal string <code>"None"</code> into the record key</td>
+</tr>
+<tr>
+<td><code>captured_at</code></td>
+<td><code>FloatField</code></td>
+<td>Wall-clock capture time of the source turn</td>
+</tr>
+<tr>
+<td><code>turn_id</code></td>
+<td><code>IndexedField(str)</code></td>
+<td>"Everything from turn T" in one query</td>
+</tr>
+<tr>
+<td><code>speaker</code></td>
+<td><code>IndexedField(str)</code></td>
+<td>"Everything attributed to S" in one query. Attribution, not authentication</td>
+</tr>
+<tr>
+<td><code>verbatim</code></td>
+<td><code>StringField</code></td>
+<td>The exact source span. Privacy-sensitive — the reason <code>NeverRecordMixin</code> is mandatory rather than optional</td>
+</tr>
+<tr>
+<td><code>statement</code></td>
+<td><code>StringField</code></td>
+<td>The atomic natural-language claim distilled from the span</td>
+</tr>
+<tr>
+<td><code>subjects</code></td>
+<td><code>TagField</code></td>
+<td>Multi-value: one entry can concern several people or topics. Convention over schema, explicitly <strong>not</strong> a security boundary, inheriting <code>TagField</code>'s framing verbatim</td>
+</tr>
+<tr>
+<td><code>stated</code></td>
+<td><code>BooleanField</code></td>
+<td>Stated (<code>True</code>) vs inferred (<code>False</code>); feeds downstream conflict-precedence resolution</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>IndexedField(str)</code></td>
+<td><code>assert</code> / <code>confirm</code> / <code>supersede</code> / <code>retract</code>, validated against the model's kind vocabulary. Indexed so "every retraction" is one query</td>
+</tr>
+<tr>
+<td><code>target</code></td>
+<td><code>IndexedField(str, null=True)</code></td>
+<td>The annotated entry's Redis key. A plain indexed scalar, not a <code>Relationship</code> — the target is already addressed by Redis key, and <code>Relationship</code>'s lazy-load machinery plus its heavier save buys nothing here</td>
+</tr>
+<tr>
+<td><code>validity</code></td>
+<td><code>ValidityField</code></td>
+<td>The <code>valid_from</code> / <code>invalid_at</code> / <code>ingested_at</code> axes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="captured_at-deliberately-not-ingested_at"><code>captured_at</code>, deliberately not <code>ingested_at</code><a class="headerlink" href="#captured_at-deliberately-not-ingested_at" title="Permanent link">&para;</a></h3>
+<p><code>ValidityField.on_save</code> hardcodes the <strong>save clock</strong> into its own
+<code>$ValidityF:{Model}:validity:ingested_at</code> ZSET and ignores any model field
+entirely — there is no hook that lets a model supply its own ingest time. If
+<code>JournalEntry</code> also had a field named <code>ingested_at</code>, the two would silently
+disagree: the model field would carry the caller's notion of "when this was
+ingested" and the validity ZSET would carry the save clock, and a downstream
+reader would get a different answer depending on which one it read, with no
+error to signal the split. Naming the model field <code>captured_at</code> instead makes
+the two axes impossible to confuse: <code>captured_at</code> is always the wall-clock
+time of the <em>source turn</em> (settable, arbitrary, part of the record); the
+validity ingest axis is always the save clock (fixed, per-write, part of
+<code>ValidityField</code>'s own bookkeeping).</p>
+<h3 id="filtervalidityt-is-a-trap"><code>filter(validity=t)</code> is a trap<a class="headerlink" href="#filtervalidityt-is-a-trap" title="Permanent link">&para;</a></h3>
+<p><code>validity</code> is a legal field name — <code>validity__current</code> and <code>validity__as_of</code>
+are query-param suffixes derived from it, not a name collision — but
+<code>ValidityField.filter_query</code> only handles those two suffixed forms. A bare
+<code>filter(validity=t)</code> matches neither and silently returns an empty result.
+Verified:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">JournalEntry</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="go">[]</span>
+</code></pre></div>
+<p>Use <code>filter(validity__current=True)</code> or <code>filter(validity__as_of=t)</code>. <code>target</code>,
+<code>kind</code>, <code>speaker</code>, and <code>turn_id</code> collide with nothing — the only reserved field
+names in Popoto are <code>limit</code>, <code>order_by</code>, and <code>values</code>.</p>
+<h2 id="the-four-annotation-kinds">The four annotation kinds<a class="headerlink" href="#the-four-annotation-kinds" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Carries <code>target</code></th>
+<th>Closes the target's interval</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>assert</code></td>
+<td>No — an original capture</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>confirm</code></td>
+<td>Yes</td>
+<td>No — corroboration only</td>
+</tr>
+<tr>
+<td><code>supersede</code></td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>retract</code></td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p><code>confirm</code> is evidence, not a membership change: the target keeps its open
+interval, and downstream readers use the annotation count as corroboration.
+<code>supersede</code> and <code>retract</code> are mechanically identical — both append an
+annotation and close the target's interval in the same transaction — and
+differ only in semantics: a supersession replaces a claim with a better one,
+a retraction withdraws it with no replacement.</p>
+<h3 id="the-extension-seam-register_kind-and-the-reader-rule">The extension seam: <code>register_kind</code>, and the reader rule<a class="headerlink" href="#the-extension-seam-register_kind-and-the-reader-rule" title="Permanent link">&para;</a></h3>
+<p>The core vocabulary — <code>Defaults.JOURNAL_KINDS = ("assert", "confirm",
+"supersede", "retract")</code> — is a frozen tuple, not a tunable: changing it would
+reclassify already-stored entries. Downstream modules that need more kinds (a
+merge/equivalence kind, a queue-able kind, an exposure kind) register them
+instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">JournalEntry</span><span class="o">.</span><span class="n">register_kind</span><span class="p">(</span><span class="s2">"merge"</span><span class="p">,</span> <span class="n">closing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">claim</span> <span class="o">=</span> <span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span> <span class="n">statement</span><span class="o">=</span><span class="s2">"Launch date is the 30th"</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span><span class="o">.</span><span class="n">entry</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">kind</span><span class="o">=</span><span class="s2">"merge"</span><span class="p">,</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">target</span><span class="o">=</span><span class="n">claim</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">statement</span><span class="o">=</span><span class="s2">"Folded into the canonical launch-date claim"</span><span class="p">,</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">)</span>   <span class="c1"># -&gt; target_closed=True: appends the annotation AND closes claim's</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="c1">#    interval, exactly like a supersede</span>
+</code></pre></div>
+<p><code>register_kind</code> is a <strong>registration call, not a model subclass</strong> — see
+<a href="#do-not-subclass-journalentry">Do not subclass <code>JournalEntry</code></a> for why a
+subclass seam cannot work in this ORM. Registration is process-global and
+purely additive: it can never remove or reclassify a core kind.</p>
+<p>The two flags are the point of the call, not decoration. They record the kind's
+<em>behavior</em>, which a bare vocabulary list cannot:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+<th>Core kinds with it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>targetless=True</code></td>
+<td>An original capture that carries no <code>target</code></td>
+<td><code>assert</code></td>
+</tr>
+<tr>
+<td><code>closing=True</code></td>
+<td>An entry of this kind closes its target's validity interval</td>
+<td><code>supersede</code>, <code>retract</code></td>
+</tr>
+</tbody>
+</table>
+<p>Defaults are <code>targetless=False, closing=False</code>: target required, membership
+untouched — the <code>confirm</code> shape. <code>register_kind</code> raises <code>ValueError</code> on an
+empty name, on a core kind (<code>Defaults.JOURNAL_KINDS</code> is frozen), on
+<code>targetless</code> and <code>closing</code> together (a kind with no target has nothing to
+close), and on re-registering an existing name under <em>different</em> flags, since
+that would reclassify entries already stored under it. Re-registering with the
+same flags is a no-op.</p>
+<p>The reader rule this seam is built around: <strong>an entry whose <code>kind</code> a reader
+does not recognize is inert for membership.</strong> A reader that only knows the
+core four must treat a <code>merge</code>-kind entry as "not a supersede, not a retract"
+and leave the target's membership alone — never silently promote an unknown
+kind to <code>supersede</code>/<code>retract</code> behavior. This is what lets the vocabulary grow
+across modules without every existing reader needing a simultaneous upgrade.</p>
+<h3 id="do-not-subclass-journalentry">Do not subclass <code>JournalEntry</code><a class="headerlink" href="#do-not-subclass-journalentry" title="Permanent link">&para;</a></h3>
+<p>Popoto's <code>ModelBase</code> metaclass does <strong>not</strong> inherit <code>Field</code> attributes from a
+base model class. A <code>JournalEntry</code> subclass therefore has an <em>empty</em> field set
+and would persist nothing at all:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">SubEntry</span><span class="p">(</span><span class="n">JournalEntry</span><span class="p">):</span> <span class="k">pass</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">JournalEntry</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="go">['agent_id', 'captured_at', 'entry_id', 'kind', 'speaker', 'stated',</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="go"> 'statement', 'subjects', 'target', 'turn_id', 'validity', 'verbatim']</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">SubEntry</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="go">[]</span>
+</code></pre></div>
+<p>This is an ORM-level limitation, not a journal one, and it applies to every
+Popoto model — it is recorded here because the journal is the module whose
+extension story it changes. <code>ProvenanceJournal</code> refuses such a model rather
+than filling a keyspace with empty records:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">SubJournal</span><span class="p">(</span><span class="n">ProvenanceJournal</span><span class="p">):</span> <span class="n">entry_model</span> <span class="o">=</span> <span class="n">SubEntry</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">SubJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span> <span class="n">statement</span><span class="o">=</span><span class="s2">"would be lost"</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="gt">Traceback (most recent call last):</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="o">...</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="gr">TypeError</span>: <span class="n">SubEntry is not a usable journal entry model: it declares no</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">'statement' field, so every record it writes would persist nothing. ...</span>
+</code></pre></div>
+<p>To extend the annotation vocabulary, call <code>JournalEntry.register_kind()</code>. For a
+separate keyspace or a different field set (an <code>EmbeddingField</code>, say), declare
+your own <code>Model</code> with the same mixins and the same fields and point a
+<code>ProvenanceJournal</code> subclass at it.</p>
+<h2 id="the-provenancejournal-api">The <code>ProvenanceJournal</code> API<a class="headerlink" href="#the-provenancejournal-api" title="Permanent link">&para;</a></h2>
+<p><code>ProvenanceJournal</code> is a stateless façade — every method is a <code>classmethod</code>,
+there is no instance state — and it is the <strong>only supported</strong> read and write
+API.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>append(*, agent_id, statement=, verbatim=, speaker=, turn_id=, subjects=, stated=, captured_at=, at=, ...)</code></td>
+<td>Appends a <code>kind="assert"</code> capture. Never changes another entry's membership</td>
+</tr>
+<tr>
+<td><code>confirm(target, *, agent_id, ...)</code></td>
+<td>Appends a <code>kind="confirm"</code> annotation. Membership is unaffected</td>
+</tr>
+<tr>
+<td><code>supersede(target, *, agent_id, ...)</code></td>
+<td>Appends a <code>kind="supersede"</code> annotation and closes the target's validity interval, in one transaction</td>
+</tr>
+<tr>
+<td><code>retract(target, *, agent_id, ...)</code></td>
+<td>Appends a <code>kind="retract"</code> annotation and closes the target's validity interval, in one transaction</td>
+</tr>
+<tr>
+<td><code>annotations_for(entry)</code></td>
+<td>Every entry annotating <code>entry</code>, in one <code>filter(target=...)</code> call</td>
+</tr>
+<tr>
+<td><code>chain(entry)</code></td>
+<td>The supersession chain through <code>entry</code>, oldest first — a display/replay read, walking <code>ValidityField</code>'s chain hashes, <strong>not</strong> the membership query</td>
+</tr>
+</tbody>
+</table>
+<p>Every mutating method returns an <code>AnnotationResult(entry, target_closed,
+coupling_enabled, pipeline, close_index)</code> — a typed result readable without
+touching Redis, so a caller never has to issue a read just to find out whether
+an annotation actually changed membership.</p>
+<p><code>target_closed</code> is <code>Optional[bool]</code>, and which of the three values you get
+depends on who owns the pipeline:</p>
+<ul>
+<li><strong>The journal owns it</strong> (no <code>pipeline=</code> argument): a real <code>bool</code>, read from
+  the supersede script's own reply. <code>False</code> for <code>append</code>/<code>confirm</code> (neither
+  changes membership), <code>False</code> when the
+  <a href="#the-kill-switch-popoto_journal_coupling_disable">validity coupling switch</a>
+  is off, and <code>False</code> when the target was <em>already</em> closed by a concurrent
+  annotation — which is the honest answer, since this call closed nothing
+  (both annotations are real provenance, one close applies).</li>
+<li><strong>The caller supplied one</strong>: <code>None</code> — <em>unknown until you execute</em>. Nothing
+  has run, so no truthful <code>bool</code> exists. A re-close of an already-closed
+  target queues exactly like a first close and applies nothing, so reporting
+  <code>True</code> for a queued close would be affirmatively wrong. Read the real
+  outcome from your own <code>execute()</code>:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">supersede</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>                                     <span class="n">statement</span><span class="o">=</span><span class="s2">"..."</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">target_closed</span> <span class="ow">is</span> <span class="kc">None</span>          <span class="c1"># nothing has executed yet</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">results</span> <span class="o">=</span> <span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">closed</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="n">result</span><span class="o">.</span><span class="n">close_index</span><span class="p">])</span>   <span class="c1"># the real answer</span>
+</code></pre></div>
+<p><code>close_index</code> is the index of the queued interval-close command in the
+caller's pipeline. It is <code>None</code> whenever no close was queued — always so on
+the journal-owned path, where the pipeline has already executed and
+<code>target_closed</code> carries the answer directly.</p>
+<p>Every method also raises before writing anything on: a firewall-blocked
+value (<code>JournalBlockedError</code>), an out-of-vocabulary <code>kind</code> or an inconsistent
+<code>kind</code>/<code>target</code> pairing, a missing <code>agent_id</code>, a nonexistent or unsaved
+target, a cross-agent target, a backdated <code>at</code>, or a non-transactional
+caller-supplied pipeline (<code>ValueError</code> in each of those cases). See the
+docstrings on each method for the exact raise conditions.</p>
+<h2 id="the-one-transaction-annotate-and-close-sequence-stated-precisely">The one-transaction annotate-and-close sequence, stated precisely<a class="headerlink" href="#the-one-transaction-annotate-and-close-sequence-stated-precisely" title="Permanent link">&para;</a></h2>
+<p><code>supersede()</code> and <code>retract()</code> queue two things into a single Redis
+<code>MULTI</code>/<code>EXEC</code>: the annotation's <code>save()</code>, and <code>ValidityField.execute_supersede(
+..., mode="invalidate", old_member=&lt;target key&gt;, new_member=&lt;annotation key&gt;)</code>.
+The write path calls <code>execute_supersede</code> directly and never routes through
+<code>SupersessionProtocol</code> — <code>SupersessionProtocol.invalidate</code> resolves its member
+keys with <code>POPOTO_REDIS_DB.exists(...)</code>, and inside a pipeline the successor's
+<code>HSET</code> is only <em>queued</em>, not executed, so <code>EXISTS</code> returns 0 and the call
+silently takes its "unsaved successor → no-op" branch: no invalidate script
+runs, the target stays open, and nothing signals the failure. <code>execute_supersede</code>
+has no such existence check, so it is the correct seam for a write that has
+not committed yet.</p>
+<p><strong>The property that holds:</strong> no interleaving reader observes the annotation
+without the close. Between the transaction opening and <code>EXEC</code>, no other
+client can see the annotation entry (it isn't written yet) or a closed target
+with no annotation (the invalidate script hasn't run yet); when <code>EXEC</code>
+returns, both are true together.</p>
+<p><strong>The property that does not hold, and is not claimed: rollback.</strong> Redis
+<code>MULTI</code>/<code>EXEC</code> does not roll back sibling commands when one command errors at
+execute time — this is documented behavior, and it is the same rationale the
+ORM's own eager-EVAL design (issue #476) already depends on. A command-level
+error inside <code>EXEC</code> can therefore leave the annotation appended with the
+target still open. <code>ProvenanceJournal</code> narrows the window that produces such
+an error — its pre-flight validates the target exists, belongs to the same
+agent, and that the requested instant is not before the target's stored
+<code>valid_from</code>, all <em>before</em> anything is queued — but it does not close it to
+zero. The residual is a documented, tested boundary, not an impossibility
+claim.</p>
+<h2 id="relationship-to-validityfield-two-different-questions">Relationship to <code>ValidityField</code>: two different questions<a class="headerlink" href="#relationship-to-validityfield-two-different-questions" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Membership</strong> — "is this claim part of the current belief set?" — comes
+  entirely from <code>JournalEntry.query.filter(validity__current=True)</code>, which
+  reads <code>ValidityField</code>'s interval indexes. No chain walk is involved.</li>
+<li><strong>Chains</strong> — <code>ProvenanceJournal.chain(entry)</code> — are for provenance display
+  and replay verification only: "show me the sequence of corrections that led
+  here" or "reconstruct what was believed at time <em>t</em>". A chain walk never
+  decides membership.</li>
+</ul>
+<p>This split is why <code>annotations_for()</code> and <code>chain()</code> cost different numbers of
+Redis round trips for the same question asked two ways, and why the
+membership query stays O(1) index reads regardless of how deep a chain has
+grown.</p>
+<h2 id="the-append-only-boundary-stated-honestly">The append-only boundary, stated honestly<a class="headerlink" href="#the-append-only-boundary-stated-honestly" title="Permanent link">&para;</a></h2>
+<p><strong>Immutability here is an ORM-layer contract, not a storage guarantee.</strong> It
+holds against every Python write path in <code>src/popoto/models/base.py</code> —
+<code>save</code>, <code>create</code>, <code>get_or_create</code>, <code>update_or_create</code>, both bulk-save sites,
+<code>delete</code>, and <code>delete_all()</code> (which routes through <code>instance.delete()</code> per
+instance, so the guard fires there too). Verified directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">first</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="gt">Traceback (most recent call last):</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="o">...</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="gr">popoto.exceptions.AppendOnlyViolation</span>: <span class="n">JournalEntry is append-only: a record</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="x">already exists at JournalEntry:agent/-1:c220f21ce4f44bcaadcfc8b31656d2ab. ...</span>
+</code></pre></div>
+<p>It does <strong>not</strong> hold against a raw Redis client, and the repo's own migration
+cookbook (<code>src/popoto/models/migrations.py:277-295</code>) teaches a <code>delete()</code> +
+re-<code>hset()</code> recipe for renaming a field — a pattern that bypasses the guard
+by construction, because it never goes through <code>Model.save()</code>. Redis and
+Valkey have no per-key write-once mode; <code>SETNX</code>/<code>HSETNX</code> are the only atomic
+create-if-absent primitives, and neither covers a multi-field <code>HSET</code> plus the
+index writes a Popoto model performs on save. Closing that gap at the storage
+layer would mean an <code>HSETNX</code>-based write path duplicating <code>Model.save()</code>'s
+index handling — a deliberate rabbit hole the implementation does not chase.</p>
+<p>Two TOCTOU shapes follow directly from "the guard is an <code>EXISTS</code>-then-<code>save</code>
+sequence read outside any pipeline," and neither is claimed as closed:</p>
+<ol>
+<li><strong>Cross-process concurrent first-save.</strong> Two writers save the same Redis
+   key at the same time. Both <code>EXISTS</code> calls can return <code>0</code> before either
+   <code>HSET</code> lands, so both saves proceed and the second silently overwrites the
+   first — the exact violation the guard exists to prevent. Narrowed
+   structurally rather than locked: <code>entry_id</code> is an <code>AutoKeyField</code> (UUID), so
+   two independent <code>ProvenanceJournal.append()</code> calls cannot produce the same
+   key by construction. The window is only reachable when a caller supplies
+   an explicit, colliding key — a programming error the guard still catches
+   in every non-concurrent case.</li>
+<li><strong>Two appends of the same key queued into one pipeline.</strong> No concurrency
+   required, and deterministically reproducible: the guard's <code>EXISTS</code> runs
+   immediately against <code>POPOTO_REDIS_DB</code>, and it has no way to see a command
+   that is queued on a pipeline but not yet executed. Two <code>save(pipeline=pipe)</code>
+   calls on the same key both pass the <code>EXISTS</code> check, both get queued, and
+   <code>EXEC</code> applies the second <code>HSET</code> over the first.</li>
+</ol>
+<p><code>save(migrate_key=True)</code> and a set <code>obsolete_redis_key</code> are refused
+unconditionally, independent of the <code>EXISTS</code> check — a key migration would
+otherwise <code>DELETE</code> the record's previous key after writing the new one,
+destroying the entry through a supported public kwarg that the <code>EXISTS</code> guard
+cannot see coming (the new key doesn't exist yet, so the guard would pass).</p>
+<h2 id="privacy-composing-neverrecordmixin-and-its-coverage-gap">Privacy: composing <code>NeverRecordMixin</code>, and its coverage gap<a class="headerlink" href="#privacy-composing-neverrecordmixin-and-its-coverage-gap" title="Permanent link">&para;</a></h2>
+<p><code>JournalEntry</code> stores <code>verbatim</code> human speech, which is precisely the surface
+<a href="../never-record-firewall/">the never-record firewall</a> exists to protect, so
+<code>JournalEntry</code> composes <code>NeverRecordMixin</code> directly rather than leaving it
+optional. Verified — a capture whose content matches a credential pattern
+raises rather than persisting anything:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span> <span class="n">statement</span><span class="o">=</span><span class="s2">"my key is sk-ant-api03-..."</span><span class="p">)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="gt">Traceback (most recent call last):</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="o">...</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="gr">popoto.exceptions.JournalBlockedError</span>: <span class="n">never-record: credential_prefix (vendor_token); nothing was written</span>
+</code></pre></div>
+<p><strong><code>subjects</code> is outside the firewall's scan surface, and this is a real,
+documented gap — not an oversight papered over.</strong> <code>NeverRecordMixin</code>'s
+<code>_never_record_scan_values</code> yields only values where <code>isinstance(value, str)</code>
+is true; a <code>TagField</code> value like <code>subjects</code> is a <strong>list</strong>, so it is never
+scanned by the mixin at all, no matter what names or identifiers a caller puts
+into it. <code>ProvenanceJournal.append()</code> (and every annotation method) closes
+that gap itself, ahead of the mixin, by calling <code>scan_never_record()</code> on each
+subject tag explicitly, as part of its own pre-flight — before any command is
+issued or queued. This is not a formality: <code>Model.save()</code> returns the
+<em>pipeline itself</em> when the firewall fires inside pipeline mode, which is
+indistinguishable from a successful queue, so a naive annotate-and-close that
+relied on the mixin alone could close a target's interval against an
+annotation the firewall actually refused to write.</p>
+<p><strong><code>target</code> is deliberately <em>excluded</em> from the scan surface, because it is a
+machine-generated pointer rather than content.</strong> <code>target</code> holds a Redis key
+Popoto itself rendered — <code>JournalEntry:&lt;agent_id&gt;:&lt;uuid4 hex&gt;</code> — and scanning
+it for payment cards is a category error with a measured cost: a uuid4 hex
+sometimes contains a 13–19 digit run that passes the <strong>Luhn</strong> checksum, so the
+firewall flagged the annotation as <code>payment_card</code>/<code>luhn</code> at a rate of roughly
+1 target key in 250.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">scan_never_record</span><span class="p">(</span><span class="s2">"JournalEntry:agent/-under/-test:8ef1fc6db384458286216656bfb2cf04"</span><span class="p">)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># NeverRecordVerdict(blocked=True, reason='payment_card', detector='luhn')</span>
+</code></pre></div>
+<p>Because that block lands at a <code>save()</code> gate that <em>returns</em> instead of raising,
+the effect was a silently dropped annotation whose target's interval got closed
+anyway. The narrowing is exactly one field — <code>verbatim</code>, <code>statement</code>,
+<code>speaker</code>, <code>turn_id</code>, <code>kind</code>, <code>agent_id</code> and <code>subjects</code> are all still scanned,
+and the firewall is not weakened for anything a human or a model ever wrote.</p>
+<p>The pre-flight derives its scanned values from the <em>same method</em> the mixin uses
+(<code>_never_record_scan_values</code>) rather than a parallel list, so the two cannot
+drift apart and let the mixin block something the pre-flight passed. If a
+<code>save()</code> in the annotate-and-close path ever does return falsy, the journal
+raises <code>RuntimeError</code> rather than proceeding to close the target.</p>
+<p><strong>A blocked capture leaves only a content-free tombstone, and that is the
+whole signal.</strong> A capture the firewall drops never reaches the journal at
+all: it leaves a random id and a reason code in the <code>$NR:</code> keyspace (see
+<a href="../never-record-firewall/#auditing-drops">Never-Record Firewall</a>), which is
+not part of the journal and is returned by no journal query. There is no
+journal-side record of <em>what</em> was blocked, only that <em>something</em> was — the
+only signal visible from inside the journal is a gap in <code>turn_id</code> coverage
+for a conversation that otherwise has none.</p>
+<h2 id="the-kill-switch-popoto_journal_coupling_disable">The kill switch: <code>POPOTO_JOURNAL_COUPLING_DISABLE</code><a class="headerlink" href="#the-kill-switch-popoto_journal_coupling_disable" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">JOURNAL_VALIDITY_COUPLING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># or set the env var before import</span>
+</code></pre></div>
+<p><code>POPOTO_JOURNAL_COUPLING_DISABLE</code>, read at import time (mirroring
+<code>_read_never_record_switch</code>'s "phrased as a disable, so default-on holds when
+unset" convention), turns off only the <em>validity coupling</em> — not the
+append-only invariant, which has no kill switch by design (disabling
+immutability would silently convert the journal into a mutable table while
+every downstream consumer keeps assuming immutability; this was raised and
+left as a deliberate open question in the plan rather than resolved with a
+switch).</p>
+<p>With the coupling disabled, <code>supersede()</code> and <code>retract()</code> still append their
+annotation entries and still write <code>target</code> — the provenance record is
+unaffected — but they do <strong>not</strong> close the target's validity interval.
+Membership degrades to "everything ever appended," which is the same
+behavior the journal would have with no validity coupling at all. The
+degraded mode is observable without reading Redis:
+<code>AnnotationResult.target_closed</code> is <code>False</code> and <code>AnnotationResult
+.coupling_enabled</code> is <code>False</code>. The first uncoupled <code>supersede</code>/<code>retract</code> call
+in a process also logs a warn-once message.</p>
+<h2 id="growth-and-the-hard_delete-retention-seam">Growth and the <code>hard_delete</code> retention seam<a class="headerlink" href="#growth-and-the-hard_delete-retention-seam" title="Permanent link">&para;</a></h2>
+<p>Append-only plus never-delete means the keyspace only grows — this is a
+documented characteristic of the design, not a bug: bytes per entry times
+append rate, unbounded, with no built-in retention policy. That is
+acceptable at moderate scale and a real operational concern for a long-lived
+production agent generating an entry per captured fact.</p>
+<p><code>AppendOnlyMixin.hard_delete(instance)</code> is the one deliberate, greppable hole
+in the append-only contract, reserved for retention and erasure — never for
+test teardown (the pytest plugin already flushes the test database before
+every test) and never for correcting a mistaken capture (append a <code>retract</code>
+instead). It exists specifically because <code>POPOTO_NEVER_RECORD_DISABLE=1</code> is a
+supported deployment action, and with the firewall off, verbatim human
+speech — including credentials, if the firewall is disabled — lands in a
+keyspace whose only removal path is this classmethod.</p>
+<p><code>hard_delete</code> sweeps <strong>the erased record's own derived state</strong>, not just its
+hash — this matters because a sweep that only deleted the hash would leave
+orphaned index and chain entries pointing at nothing, exactly the
+corrupted-index shape the ORM's query layer has to treat as
+readable-but-skippable elsewhere:</p>
+<ol>
+<li>The record hash, the class Set, and every <code>$IndexedF:</code>/<code>$TagF:</code> index Set,
+   via <code>Model.delete()</code> itself (reached past the mixin's own delete-refusing
+   override), so field <code>on_delete</code> hooks do the cleanup rather than a second,
+   drifting copy of them.</li>
+<li>For each <code>ValidityField</code> on the model: the three interval ZSETs, the
+   record's own entry in both chain hashes, and any <code>{prefix}:open:*</code> pointer
+   still naming it.</li>
+<li>The <em>value</em> side of both chain hashes — the case step 1 does not cover.
+   <code>ValidityField.on_delete</code> removes the record as a chain hash <em>field</em>, but a
+   neighbor's link may still name the erased record as a <em>value</em> (<code>chain:fwd</code>
+   holding <code>old_entry -&gt; erased_entry</code>). Left behind, that is a dangling link
+   into a record that no longer exists.</li>
+</ol>
+<p>Verified: after <code>hard_delete()</code> on the correction entry from the example
+above, <code>annotations_for(first)</code> (a <code>filter(target=...)</code> read) returns no
+results, and the erased entry's Redis key appears in no <code>$*</code>-prefixed key's
+<em>contents</em>.</p>
+<p><strong>Two things survive, and the scope is "the erased record's own derived
+state", not "every trace of it anywhere".</strong> Neither carries the erased
+record's <code>verbatim</code> or <code>statement</code> content, so an erasure motivated by
+removing content achieves that — but an erasure motivated by removing every
+occurrence of the record's <em>key</em> does not:</p>
+<ol>
+<li><strong>An index key whose NAME embeds the erased record's Redis key.</strong> An
+   annotation that targeted the erased entry owns a
+   <code>$IndexF:JournalEntry:target:&lt;escaped erased key&gt;</code> Set — observed intact
+   after the sweep as
+   <code>$IndexF:JournalEntry:target:JournalEntry{&amp;#58;}agent///-1{&amp;#58;}c1077a2e…</code>.
+   That Set belongs to the <em>annotating</em> record, not the erased one, so the
+   sweep does not touch it and the erased key survives, escaped, inside its
+   name. Erase the annotations too if that matters.</li>
+<li><strong><code>stream:journal</code> entries.</strong> Every journal mutation is <code>XADD</code>ed to the
+   event stream carrying the record's <code>pk</code> and its <code>target</code> metadata field,
+   retained up to <code>_stream_max_length</code> (10,000 entries) regardless of
+   <code>hard_delete</code>. Trim or delete the stream separately if required.</li>
+</ol>
+<h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>filter(validity=t)</code> silently returns nothing.</strong> <code>ValidityField.filter_query</code>
+  only handles the <code>__current</code> and <code>__as_of</code> suffixes; a bare exact-value
+  filter on the field name matches neither and returns an empty result with
+  no error. Use <code>filter(validity__current=True)</code> or <code>filter(validity__as_of=t)</code>.</li>
+<li><strong><code>on_conflict="overwrite"</code> is unsupported on append-only models.</strong>
+  <code>AppendOnlyMixin</code> declares <code>roundtrip_policy = "rebuild"</code>. The transfer
+  import path calls <code>instance.save()</code> for every record, so any collision on
+  an append-only model raises <code>AppendOnlyViolation</code> and the record is
+  classified <code>ERRORED</code> rather than overwritten. <code>"skip"</code> is the supported
+  conflict mode for re-importing into a journal that already has entries.</li>
+<li><strong><code>agent_id</code> must be non-null.</strong> <code>agent_id</code> is a <code>KeyField</code>; a <code>None</code> value
+  would render the literal string <code>"None"</code> into the record's Redis key rather
+  than raising at construction, so <code>ProvenanceJournal.append()</code> (and every
+  annotation method) checks for it explicitly and raises <code>ValueError</code> before
+  writing anything.</li>
+<li><strong>No <code>EmbeddingField</code>.</strong> Deliberate, mirroring <code>DefaultMemory</code>: an embedding
+  field pulls an optional extra (an API key or a local Ollama), and
+  similarity search over the journal was not part of this feature's scope.
+  Adding one means declaring your own model with the journal field set plus
+  the embedding field — <strong>not</strong> subclassing <code>JournalEntry</code>, which loses every
+  field (see <a href="#do-not-subclass-journalentry">Do not subclass <code>JournalEntry</code></a>).</li>
+<li><strong><code>target_closed</code> is <code>None</code>, not <code>False</code>, on a caller-supplied pipeline.</strong>
+  Nothing has executed at that point, so the journal reports "unknown" rather
+  than guessing. Read <code>results[close_index]</code> after your own <code>execute()</code>.</li>
+</ul>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../validity-and-supersession/">ValidityField and SupersessionProtocol</a> — the
+  membership and chain mechanism this feature is the journal's first real
+  consumer of</li>
+<li><a href="../never-record-firewall/">Never-Record Firewall</a> — the privacy gate
+  <code>JournalEntry</code> composes, and the <code>subjects</code>/<code>TagField</code> coverage gap this
+  page's <code>append()</code> closes explicitly</li>
+<li><a href="../agent-memory/">Agent Memory</a> — the primitive map this feature sits
+  alongside</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/open_in_new_tab.js"></script>
+      
+    
+  </body>
+</html>

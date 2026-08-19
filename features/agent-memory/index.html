@@ -1300,6 +1300,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../provenance-journal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -3026,6 +3054,11 @@ cannot do unaided is decide what belongs there:</p>
 <td>Write-side vocabulary for "this claim replaces what was previously believed"</td>
 <td><a href="../validity-and-supersession/">page</a></td>
 </tr>
+<tr>
+<td>AppendOnlyMixin</td>
+<td>Write-once records: no in-place mutation, no delete, corrections are new records</td>
+<td><a href="../provenance-journal/">page</a></td>
+</tr>
 </tbody>
 </table>
 <h2 id="the-layers-composed-on-top">The layers composed on top<a class="headerlink" href="#the-layers-composed-on-top" title="Permanent link">&para;</a></h2>
@@ -3054,6 +3087,11 @@ counted separately, never summed into the primitive count.</p>
 <td>SubconsciousMemory</td>
 <td>Wraps a chat loop: inject before the model call, extract after, report outcomes</td>
 <td><a href="../../guides/subconscious-memory-recipe/">recipe</a></td>
+</tr>
+<tr>
+<td>ProvenanceJournal</td>
+<td>Append-only attributed entries — speaker, turn, verbatim span — with confirm/supersede/retract annotations</td>
+<td><a href="../provenance-journal/">page</a></td>
 </tr>
 <tr>
 <td>MemoryLifecycle</td>

@@ -1173,6 +1173,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../features/provenance-journal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -2755,6 +2783,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#popoto.exceptions.AppendOnlyViolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AppendOnlyViolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.exceptions.JournalBlockedError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JournalBlockedError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#popoto.exceptions.SkipSaveException" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2865,13 +2915,13 @@
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-6">6</a></span>
-<span class="normal"><a href="#__codelineno-0-7">7</a></span>
-<span class="normal"><a href="#__codelineno-0-8">8</a></span>
-<span class="normal"><a href="#__codelineno-0-9">9</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-6" name="__codelineno-0-6"></a><span class="k">class</span><span class="w"> </span><span class="nc">ModelException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="w">    </span><span class="sd">"""Base exception for all Popoto ORM model-related errors."""</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9"></a>    <span class="k">pass</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-11">11</a></span>
+<span class="normal"><a href="#__codelineno-0-12">12</a></span>
+<span class="normal"><a href="#__codelineno-0-13">13</a></span>
+<span class="normal"><a href="#__codelineno-0-14">14</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-11" name="__codelineno-0-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">ModelException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12"></a><span class="w">    </span><span class="sd">"""Base exception for all Popoto ORM model-related errors."""</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2907,13 +2957,13 @@
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-12">12</a></span>
-<span class="normal"><a href="#__codelineno-0-13">13</a></span>
-<span class="normal"><a href="#__codelineno-0-14">14</a></span>
-<span class="normal"><a href="#__codelineno-0-15">15</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-12" name="__codelineno-0-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">QueryException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="w">    </span><span class="sd">"""Raised when a query is malformed or produces an unexpected result."""</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15"></a>    <span class="k">pass</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-17">17</a></span>
+<span class="normal"><a href="#__codelineno-0-18">18</a></span>
+<span class="normal"><a href="#__codelineno-0-19">19</a></span>
+<span class="normal"><a href="#__codelineno-0-20">20</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-17" name="__codelineno-0-17"></a><span class="k">class</span><span class="w"> </span><span class="nc">QueryException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18"></a><span class="w">    </span><span class="sd">"""Raised when a query is malformed or produces an unexpected result."""</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19"></a>
+<a id="__codelineno-0-20" name="__codelineno-0-20"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2949,13 +2999,13 @@
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-18">18</a></span>
-<span class="normal"><a href="#__codelineno-0-19">19</a></span>
-<span class="normal"><a href="#__codelineno-0-20">20</a></span>
-<span class="normal"><a href="#__codelineno-0-21">21</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-18" name="__codelineno-0-18"></a><span class="k">class</span><span class="w"> </span><span class="nc">PublisherException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19"></a><span class="w">    </span><span class="sd">"""Raised when a publish operation fails."""</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20"></a>
-<a id="__codelineno-0-21" name="__codelineno-0-21"></a>    <span class="k">pass</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-23">23</a></span>
+<span class="normal"><a href="#__codelineno-0-24">24</a></span>
+<span class="normal"><a href="#__codelineno-0-25">25</a></span>
+<span class="normal"><a href="#__codelineno-0-26">26</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-23" name="__codelineno-0-23"></a><span class="k">class</span><span class="w"> </span><span class="nc">PublisherException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24"></a><span class="w">    </span><span class="sd">"""Raised when a publish operation fails."""</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25"></a>
+<a id="__codelineno-0-26" name="__codelineno-0-26"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2991,13 +3041,13 @@
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-24">24</a></span>
-<span class="normal"><a href="#__codelineno-0-25">25</a></span>
-<span class="normal"><a href="#__codelineno-0-26">26</a></span>
-<span class="normal"><a href="#__codelineno-0-27">27</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-24" name="__codelineno-0-24"></a><span class="k">class</span><span class="w"> </span><span class="nc">SubscriberException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="w">    </span><span class="sd">"""Raised when a subscriber's message handler fails."""</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26"></a>
-<a id="__codelineno-0-27" name="__codelineno-0-27"></a>    <span class="k">pass</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-29">29</a></span>
+<span class="normal"><a href="#__codelineno-0-30">30</a></span>
+<span class="normal"><a href="#__codelineno-0-31">31</a></span>
+<span class="normal"><a href="#__codelineno-0-32">32</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-29" name="__codelineno-0-29"></a><span class="k">class</span><span class="w"> </span><span class="nc">SubscriberException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30"></a><span class="w">    </span><span class="sd">"""Raised when a subscriber's message handler fails."""</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31"></a>
+<a id="__codelineno-0-32" name="__codelineno-0-32"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3046,12 +3096,7 @@ instance.save(migrate_key=True)  # Succeeds
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-30">30</a></span>
-<span class="normal"><a href="#__codelineno-0-31">31</a></span>
-<span class="normal"><a href="#__codelineno-0-32">32</a></span>
-<span class="normal"><a href="#__codelineno-0-33">33</a></span>
-<span class="normal"><a href="#__codelineno-0-34">34</a></span>
-<span class="normal"><a href="#__codelineno-0-35">35</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-35">35</a></span>
 <span class="normal"><a href="#__codelineno-0-36">36</a></span>
 <span class="normal"><a href="#__codelineno-0-37">37</a></span>
 <span class="normal"><a href="#__codelineno-0-38">38</a></span>
@@ -3066,29 +3111,239 @@ instance.save(migrate_key=True)  # Succeeds
 <span class="normal"><a href="#__codelineno-0-47">47</a></span>
 <span class="normal"><a href="#__codelineno-0-48">48</a></span>
 <span class="normal"><a href="#__codelineno-0-49">49</a></span>
-<span class="normal"><a href="#__codelineno-0-50">50</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-30" name="__codelineno-0-30"></a><span class="k">class</span><span class="w"> </span><span class="nc">KeyMutationError</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31"></a><span class="w">    </span><span class="sd">"""Raised when a KeyField value is changed after initial save.</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32"></a>
-<a id="__codelineno-0-33" name="__codelineno-0-33"></a><span class="sd">    KeyField values form the Redis storage key (identity) of a model instance.</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34"></a><span class="sd">    Changing them silently would delete the old key and create a new one,</span>
-<a id="__codelineno-0-35" name="__codelineno-0-35"></a><span class="sd">    potentially orphaning references. This exception prevents accidental</span>
-<a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="sd">    identity changes.</span>
+<span class="normal"><a href="#__codelineno-0-50">50</a></span>
+<span class="normal"><a href="#__codelineno-0-51">51</a></span>
+<span class="normal"><a href="#__codelineno-0-52">52</a></span>
+<span class="normal"><a href="#__codelineno-0-53">53</a></span>
+<span class="normal"><a href="#__codelineno-0-54">54</a></span>
+<span class="normal"><a href="#__codelineno-0-55">55</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-35" name="__codelineno-0-35"></a><span class="k">class</span><span class="w"> </span><span class="nc">KeyMutationError</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="w">    </span><span class="sd">"""Raised when a KeyField value is changed after initial save.</span>
 <a id="__codelineno-0-37" name="__codelineno-0-37"></a>
-<a id="__codelineno-0-38" name="__codelineno-0-38"></a><span class="sd">    To intentionally migrate a key, use ``save(migrate_key=True)``.</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39"></a>
-<a id="__codelineno-0-40" name="__codelineno-0-40"></a><span class="sd">    Example::</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41"></a>
-<a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="sd">        instance = MyModel.query.get(name="old_name")</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="sd">        instance.name = "new_name"</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">        instance.save()  # Raises KeyMutationError</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45"></a>
-<a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="sd">        # Intentional migration:</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">        instance.save(migrate_key=True)  # Succeeds</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    """</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a>    <span class="k">pass</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38"></a><span class="sd">    KeyField values form the Redis storage key (identity) of a model instance.</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39"></a><span class="sd">    Changing them silently would delete the old key and create a new one,</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40"></a><span class="sd">    potentially orphaning references. This exception prevents accidental</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41"></a><span class="sd">    identity changes.</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42"></a>
+<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="sd">    To intentionally migrate a key, use ``save(migrate_key=True)``.</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44"></a>
+<a id="__codelineno-0-45" name="__codelineno-0-45"></a><span class="sd">    Example::</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46"></a>
+<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">        instance = MyModel.query.get(name="old_name")</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">        instance.name = "new_name"</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">        instance.save()  # Raises KeyMutationError</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50"></a>
+<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">        # Intentional migration:</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">        instance.save(migrate_key=True)  # Succeeds</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">    """</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a>
+<a id="__codelineno-0-55" name="__codelineno-0-55"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.exceptions.AppendOnlyViolation" class="doc doc-heading">
+            <code>AppendOnlyViolation</code>
+
+
+<a href="#popoto.exceptions.AppendOnlyViolation" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="ModelException (popoto.exceptions.ModelException)" href="#popoto.exceptions.ModelException">ModelException</a></code></p>
+
+
+
+        <p>Raised by <code>AppendOnlyMixin</code> when a write would destroy a record (#560).</p>
+<p>Append-only models accept exactly one write per Redis key and no deletes.
+Every shape that would overwrite or remove an existing record raises this:
+re-saving a persisted instance, saving a fresh object whose key collides
+with a stored one, <code>delete()</code>, <code>delete_all()</code>, and
+<code>save(migrate_key=True)</code> (a key migration <code>DELETE</code>s the old key, so it
+is a destroy dressed as a save).</p>
+<p>The message names the offending Redis key and never the record's content.
+That discipline is load-bearing and mirrors <code>NeverRecordException</code>:
+exception text reaches plaintext log files, so quoting a value would leak
+it through a side channel.</p>
+<p>The documented escape hatch is <code>AppendOnlyMixin.hard_delete(instance)</code>,
+which is retention/admin-only and greppable by design.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-58">58</a></span>
+<span class="normal"><a href="#__codelineno-0-59">59</a></span>
+<span class="normal"><a href="#__codelineno-0-60">60</a></span>
+<span class="normal"><a href="#__codelineno-0-61">61</a></span>
+<span class="normal"><a href="#__codelineno-0-62">62</a></span>
+<span class="normal"><a href="#__codelineno-0-63">63</a></span>
+<span class="normal"><a href="#__codelineno-0-64">64</a></span>
+<span class="normal"><a href="#__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#__codelineno-0-67">67</a></span>
+<span class="normal"><a href="#__codelineno-0-68">68</a></span>
+<span class="normal"><a href="#__codelineno-0-69">69</a></span>
+<span class="normal"><a href="#__codelineno-0-70">70</a></span>
+<span class="normal"><a href="#__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#__codelineno-0-73">73</a></span>
+<span class="normal"><a href="#__codelineno-0-74">74</a></span>
+<span class="normal"><a href="#__codelineno-0-75">75</a></span>
+<span class="normal"><a href="#__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#__codelineno-0-77">77</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="k">class</span><span class="w"> </span><span class="nc">AppendOnlyViolation</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="w">    </span><span class="sd">"""Raised by ``AppendOnlyMixin`` when a write would destroy a record (#560).</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60"></a>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">    Append-only models accept exactly one write per Redis key and no deletes.</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    Every shape that would overwrite or remove an existing record raises this:</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    re-saving a persisted instance, saving a fresh object whose key collides</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    with a stored one, ``delete()``, ``delete_all()``, and</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    ``save(migrate_key=True)`` (a key migration ``DELETE``s the old key, so it</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    is a destroy dressed as a save).</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    The message names the offending Redis key and never the record's content.</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    That discipline is load-bearing and mirrors ``NeverRecordException``:</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    exception text reaches plaintext log files, so quoting a value would leak</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    it through a side channel.</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    The documented escape hatch is ``AppendOnlyMixin.hard_delete(instance)``,</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    which is retention/admin-only and greppable by design.</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">    """</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="k">pass</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.exceptions.JournalBlockedError" class="doc doc-heading">
+            <code>JournalBlockedError</code>
+
+
+<a href="#popoto.exceptions.JournalBlockedError" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="ModelException (popoto.exceptions.ModelException)" href="#popoto.exceptions.ModelException">ModelException</a></code></p>
+
+
+
+        <p>Raised when a provenance-journal write is refused by the firewall (#560).</p>
+<p><code>ProvenanceJournal</code> scans candidate content with
+:func:<code>popoto.privacy.never_record.scan_never_record</code> <em>before</em> it issues or
+queues a single Redis command, so a blocked capture or annotation raises
+rather than returning a sentinel. That matters most for annotations: a
+<code>Model.save()</code> blocked by the firewall returns the <em>pipeline</em> in pipeline
+mode, which is indistinguishable from success, and a caller that queued a
+supersede on top of it would close a target's validity interval against an
+annotation that was never written.</p>
+<p>Deliberately <strong>not</strong> a :class:<code>NeverRecordException</code> subclass. That class
+inherits :class:<code>SkipSaveException</code> so existing handlers silently swallow a
+filtered save; a journal caller must never silently lose a capture, so this
+error is outside that hierarchy and propagates.</p>
+<p>Carries a content-free <code>verdict</code> (reason code plus detector name) under
+the same no-quoting rule as :class:<code>NeverRecordException</code>.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-80"> 80</a></span>
+<span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
+<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
+<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
+<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
+<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
+<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
+<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
+<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
+<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
+<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
+<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
+<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
+<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
+<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
+<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
+<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
+<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#__codelineno-0-102">102</a></span>
+<span class="normal"><a href="#__codelineno-0-103">103</a></span>
+<span class="normal"><a href="#__codelineno-0-104">104</a></span>
+<span class="normal"><a href="#__codelineno-0-105">105</a></span>
+<span class="normal"><a href="#__codelineno-0-106">106</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="k">class</span><span class="w"> </span><span class="nc">JournalBlockedError</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="w">    </span><span class="sd">"""Raised when a provenance-journal write is refused by the firewall (#560).</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">    ``ProvenanceJournal`` scans candidate content with</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">    :func:`popoto.privacy.never_record.scan_never_record` *before* it issues or</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">    queues a single Redis command, so a blocked capture or annotation raises</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">    rather than returning a sentinel. That matters most for annotations: a</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    ``Model.save()`` blocked by the firewall returns the *pipeline* in pipeline</span>
+<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">    mode, which is indistinguishable from success, and a caller that queued a</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">    supersede on top of it would close a target's validity interval against an</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">    annotation that was never written.</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a>
+<a id="__codelineno-0-92" name="__codelineno-0-92"></a><span class="sd">    Deliberately **not** a :class:`NeverRecordException` subclass. That class</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">    inherits :class:`SkipSaveException` so existing handlers silently swallow a</span>
+<a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">    filtered save; a journal caller must never silently lose a capture, so this</span>
+<a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">    error is outside that hierarchy and propagates.</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a>
+<a id="__codelineno-0-97" name="__codelineno-0-97"></a><span class="sd">    Carries a content-free ``verdict`` (reason code plus detector name) under</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">    the same no-quoting rule as :class:`NeverRecordException`.</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">    """</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">verdict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">"NeverRecordVerdict"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="c1">#: The blocking ``NeverRecordVerdict``, or ``None``. Content-free.</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">verdict</span> <span class="o">=</span> <span class="n">verdict</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
 
     </div>
 
@@ -3126,25 +3381,25 @@ without error.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-53">53</a></span>
-<span class="normal"><a href="#__codelineno-0-54">54</a></span>
-<span class="normal"><a href="#__codelineno-0-55">55</a></span>
-<span class="normal"><a href="#__codelineno-0-56">56</a></span>
-<span class="normal"><a href="#__codelineno-0-57">57</a></span>
-<span class="normal"><a href="#__codelineno-0-58">58</a></span>
-<span class="normal"><a href="#__codelineno-0-59">59</a></span>
-<span class="normal"><a href="#__codelineno-0-60">60</a></span>
-<span class="normal"><a href="#__codelineno-0-61">61</a></span>
-<span class="normal"><a href="#__codelineno-0-62">62</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="k">class</span><span class="w"> </span><span class="nc">SkipSaveException</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">"""Raised by WriteFilterMixin to silently abort a save operation.</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    When a model's compute_filter_score() returns a score below the</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">    minimum threshold, this exception is raised during pre_save to</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    short-circuit persistence. The save() method catches it and returns</span>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">    without error.</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    """</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a>    <span class="k">pass</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-109">109</a></span>
+<span class="normal"><a href="#__codelineno-0-110">110</a></span>
+<span class="normal"><a href="#__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#__codelineno-0-112">112</a></span>
+<span class="normal"><a href="#__codelineno-0-113">113</a></span>
+<span class="normal"><a href="#__codelineno-0-114">114</a></span>
+<span class="normal"><a href="#__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#__codelineno-0-118">118</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="k">class</span><span class="w"> </span><span class="nc">SkipSaveException</span><span class="p">(</span><span class="n">ModelException</span><span class="p">):</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="w">    </span><span class="sd">"""Raised by WriteFilterMixin to silently abort a save operation.</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a><span class="sd">    When a model's compute_filter_score() returns a score below the</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">    minimum threshold, this exception is raised during pre_save to</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a><span class="sd">    short-circuit persistence. The save() method catches it and returns</span>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="sd">    without error.</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a><span class="sd">    """</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3190,39 +3445,39 @@ leak through a side channel the tombstone design closed.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/exceptions.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-65">65</a></span>
-<span class="normal"><a href="#__codelineno-0-66">66</a></span>
-<span class="normal"><a href="#__codelineno-0-67">67</a></span>
-<span class="normal"><a href="#__codelineno-0-68">68</a></span>
-<span class="normal"><a href="#__codelineno-0-69">69</a></span>
-<span class="normal"><a href="#__codelineno-0-70">70</a></span>
-<span class="normal"><a href="#__codelineno-0-71">71</a></span>
-<span class="normal"><a href="#__codelineno-0-72">72</a></span>
-<span class="normal"><a href="#__codelineno-0-73">73</a></span>
-<span class="normal"><a href="#__codelineno-0-74">74</a></span>
-<span class="normal"><a href="#__codelineno-0-75">75</a></span>
-<span class="normal"><a href="#__codelineno-0-76">76</a></span>
-<span class="normal"><a href="#__codelineno-0-77">77</a></span>
-<span class="normal"><a href="#__codelineno-0-78">78</a></span>
-<span class="normal"><a href="#__codelineno-0-79">79</a></span>
-<span class="normal"><a href="#__codelineno-0-80">80</a></span>
-<span class="normal"><a href="#__codelineno-0-81">81</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordException</span><span class="p">(</span><span class="n">SkipSaveException</span><span class="p">):</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="w">    </span><span class="sd">"""Raised by NeverRecordMixin when content must never be stored (#561).</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    Subclasses SkipSaveException on purpose: every existing handler that</span>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    already swallows a filtered save keeps working unchanged -- including</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    ``Model.save()``'s own catch and the broad ``except Exception`` in</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    ``SubconsciousMemory.extract_memories()`` -- while callers that need to</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    tell a privacy drop apart from a salience skip can catch this subclass.</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    The message carries only a reason code and detector name. It must never</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">    quote the matched text, an offset, or a length: exception messages reach</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    plaintext log files (``MemoryService._record_failure`` writes</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">    ``f"{type(exc).__name__}: {exc}"`` to disk), so a quoted match would</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    leak through a side channel the tombstone design closed.</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    """</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>    <span class="k">pass</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#__codelineno-0-137">137</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordException</span><span class="p">(</span><span class="n">SkipSaveException</span><span class="p">):</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="w">    </span><span class="sd">"""Raised by NeverRecordMixin when content must never be stored (#561).</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    Subclasses SkipSaveException on purpose: every existing handler that</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    already swallows a filtered save keeps working unchanged -- including</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">    ``Model.save()``'s own catch and the broad ``except Exception`` in</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    ``SubconsciousMemory.extract_memories()`` -- while callers that need to</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    tell a privacy drop apart from a salience skip can catch this subclass.</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">    The message carries only a reason code and detector name. It must never</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">    quote the matched text, an offset, or a length: exception messages reach</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">    plaintext log files (``MemoryService._record_failure`` writes</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">    ``f"{type(exc).__name__}: {exc}"`` to disk), so a quoted match would</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">    leak through a side channel the tombstone design closed.</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">    """</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a>    <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
