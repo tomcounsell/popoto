@@ -846,26 +846,26 @@ The module is otherwise greenfield: it adds two new source files, touches no exi
 changes no existing signature, and modifies no existing behavior; the only edits to existing
 source files are additive.
 
-- [ ] `tests/benchmarks/test_defaults_sync.py::test_all_defaults_covered_by_module_constants`
+- [x] `tests/benchmarks/test_defaults_sync.py::test_all_defaults_covered_by_module_constants`
   — **UPDATE**: add `JOURNAL_VALIDITY_COUPLING_ENABLED` and `JOURNAL_KINDS` to the
   `field_kwargs_and_class_attrs` exemption set **inside this test file** (`:110-135`), with a
   rationale comment matching the `VALIDITY_GATING_ENABLED` / `NEVER_RECORD_ENABLED`
   precedent.
-- [ ] `tests/benchmarks/overrides.py` (`MODULE_CONSTANTS`) — **NO CHANGE.** Registering the
+- [x] `tests/benchmarks/overrides.py` (`MODULE_CONSTANTS`) — **NO CHANGE.** Registering the
   kill switch here would create a required module-level alias that must not exist and would
   make `test_module_alias_matches_defaults` fail with `AttributeError` (`:28-36`). An earlier
   draft of this plan asserted the opposite; it was verified wrong against the suite.
-- [ ] `tests/test_transfer_roundtrip.py::test_every_model_level_mixin_has_a_policy_declared`
+- [x] `tests/test_transfer_roundtrip.py::test_every_model_level_mixin_has_a_policy_declared`
   — **UPDATE (by source change, not test change)**: `AppendOnlyMixin` lives in
   `src/popoto/fields/`, is named `*Mixin`, and references `POPOTO_REDIS_DB`, which is exactly
   the collector predicate at `:656-696`. It must declare `roundtrip_policy = "rebuild"` in
   its own `__dict__` (`:752-767`). No edit to the test file itself.
-- [ ] `tests/test_provenance_journal.py` — **CREATE**: the behavioral suite (one test file per
+- [x] `tests/test_provenance_journal.py` — **CREATE**: the behavioral suite (one test file per
   primitive, per the issue's constraints).
-- [ ] `tests/benchmarks/` — **CREATE**: the 20k append p50/p99 benchmark lives here behind a
+- [x] `tests/benchmarks/` — **CREATE**: the 20k append p50/p99 benchmark lives here behind a
   marker, not in the unit-test file. With `flushdb` running before every test, a 20k-entry
   benchmark inside the default suite would add minutes to every run.
-- [ ] `tests/test_provenance_journal.py` — **CREATE**: the new suite (one test file per
+- [x] `tests/test_provenance_journal.py` — **CREATE**: the new suite (one test file per
   primitive, per the issue's constraints).
 
 ## Rabbit Holes
@@ -1057,91 +1057,91 @@ Stated here so the omission is deliberate rather than overlooked.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Create `docs/features/provenance-journal.md` — the model, the append-only contract and
+- [x] Create `docs/features/provenance-journal.md` — the model, the append-only contract and
   its documented boundary (Race 2), the annotation kinds, the one-transaction
   annotate-and-close sequence, the relationship to `ValidityField` (membership comes from
   validity indexes; chains are for display and replay verification only), the growth
   characteristic, and the `hard_delete` retention seam.
-- [ ] Add the page to `docs/features/README.md`'s index table.
-- [ ] Add a nav entry to `mkdocs.yml` under the Agent Memory primitives group, adjacent to
+- [x] Add the page to `docs/features/README.md`'s index table.
+- [x] Add a nav entry to `mkdocs.yml` under the Agent Memory primitives group, adjacent to
   `ValidityField and Supersession` (`mkdocs.yml:49`).
-- [ ] Cross-link from `docs/features/validity-and-supersession.md` (the journal is V0's first
+- [x] Cross-link from `docs/features/validity-and-supersession.md` (the journal is V0's first
   real consumer) and from `docs/features/agent-memory.md`.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes (gated by `scripts/ci-local.sh`).
+- [x] `mkdocs build --strict` passes (gated by `scripts/ci-local.sh`).
 
 ### Inline Documentation
-- [ ] Module docstring on `provenance_journal.py` enumerating the field set and the rationale
+- [x] Module docstring on `provenance_journal.py` enumerating the field set and the rationale
   for each, in the style of `default_memory.py:19-83`, including the explicit
   "why no `EmbeddingField`" note and the subclass extension recipe.
-- [ ] Module docstring on `append_only.py` stating the ORM-layer-contract boundary and the
+- [x] Module docstring on `append_only.py` stating the ORM-layer-contract boundary and the
   TOCTOU limitation without overclaiming.
-- [ ] Docstrings on every public `ProvenanceJournal` method, each naming its raises.
-- [ ] Inline comment at the `execute_supersede` call site pointing at #588, so the next
+- [x] Docstrings on every public `ProvenanceJournal` method, each naming its raises.
+- [x] Inline comment at the `execute_supersede` call site pointing at #588, so the next
   reader does not "simplify" it back to `SupersessionProtocol`.
 
 ## Success Criteria
 
-- [ ] `JournalEntry` and `ProvenanceJournal` exported from `popoto.recipes`;
+- [x] `JournalEntry` and `ProvenanceJournal` exported from `popoto.recipes`;
   `AppendOnlyMixin`, `AppendOnlyViolation` and `JournalBlockedError` exported from `popoto` —
   all importable from a fresh interpreter
-- [ ] Re-saving an existing entry raises `AppendOnlyViolation` for all six shapes in spike-1's
+- [x] Re-saving an existing entry raises `AppendOnlyViolation` for all six shapes in spike-1's
   matrix as extended: same instance re-save, colliding fresh object, `query.get()`-then-save,
   `delete()`, `delete_all()`, and **`save(migrate_key=True)`**; plus the intra-pipeline
   duplicate append (Race 2) documented and asserted
-- [ ] Entries persist and round-trip `speaker`, `turn_id`, `verbatim`, **`statement`**,
+- [x] Entries persist and round-trip `speaker`, `turn_id`, `verbatim`, **`statement`**,
   `subjects[]`, `stated`, `kind`, `target`, `captured_at`, and the validity interval
-- [ ] `ProvenanceJournal.annotations_for(entry)` returns every annotation targeting it in one
+- [x] `ProvenanceJournal.annotations_for(entry)` returns every annotation targeting it in one
   `filter()` call — asserted by wrapping `POPOTO_REDIS_DB.smembers`/`sinter` in the
   `_CallCounter` pattern and counting index reads, not by inspection
-- [ ] After a `supersede` or `retract`, the target is absent from
+- [x] After a `supersede` or `retract`, the target is absent from
   `filter(validity__current=True)` immediately and still returned by
   `filter(validity__as_of=<before the close>)` — **with no chain walk**, asserted by
   monkeypatching `hget`/`hgetall` on `ValidityField.get_all_keys(...)["chain_fwd"|"chain_rev"]`
   and requiring zero reads
-- [ ] The annotate-and-close sequence is queued into a single `transaction=True` pipeline:
+- [x] The annotate-and-close sequence is queued into a single `transaction=True` pipeline:
   `pipeline.transaction is True`; exactly one queued EVAL with `ARGV[5] == "invalidate"` and
   `numkeys == 6`; exactly one with `ARGV[5] == "open"`; zero mutating calls outside the
   pipeline. A fault injected **before** `execute()` applies nothing. **The documented boundary
   is asserted too**: a command-level error inside `EXEC` can leave the annotation appended
   with the target open — this is tested as a known state, not claimed impossible
-- [ ] A never-record-blocked `append()` raises `JournalBlockedError` and persists nothing; a
+- [x] A never-record-blocked `append()` raises `JournalBlockedError` and persists nothing; a
   never-record-blocked `supersede()` raises, closes nothing, writes no chain link, and leaves
   `annotations_for(target)` empty
-- [ ] `chain()` returns a 3-deep supersession chain in oldest→newest order
-- [ ] Every invalid `kind`/`target` combination, every out-of-vocabulary `kind`, every
+- [x] `chain()` returns a 3-deep supersession chain in oldest→newest order
+- [x] Every invalid `kind`/`target` combination, every out-of-vocabulary `kind`, every
   cross-agent target, and every backdated `at` raises **before any command is issued**
   (asserted by call counter, not just by exception type)
-- [ ] Regression tests for both #588 findings (pipeline no-op; valid-time skew) pass against
+- [x] Regression tests for both #588 findings (pipeline no-op; valid-time skew) pass against
   M1's write path
-- [ ] Valkey-safe: no Redis-module command anywhere in the new code (core commands + reuse of
+- [x] Valkey-safe: no Redis-module command anywhere in the new code (core commands + reuse of
   V0's Lua only) — asserted by an anti-criterion grep
-- [ ] Every `ProvenanceJournal` mutating op accepts `pipeline=` and returns the pipeline
+- [x] Every `ProvenanceJournal` mutating op accepts `pipeline=` and returns the pipeline
   unexecuted when given one (asserted by `POPOTO_REDIS_DB` call count == 0 plus a non-empty
   `command_stack`), and rejects a `transaction=False` pipeline with `ValueError`
-- [ ] With `POPOTO_JOURNAL_COUPLING_DISABLE=1`, a `supersede()` issues exactly the command set
+- [x] With `POPOTO_JOURNAL_COUPLING_DISABLE=1`, a `supersede()` issues exactly the command set
   of a bare `append()` and nothing more — asserted with the `_CallCounter` pattern from
   `tests/test_validity_field.py:598-655` (the invalidate EVAL is absent; EVAL count equals the
   plain-append count; the target's `invalid_at` is unchanged at `+inf`) — and the caller can
   detect the degraded mode from `AnnotationResult.target_closed is False` **without reading
   Redis**. "Byte-identical" is explicitly not claimed: `execute_supersede` puts a clock value
   into ARGV, so two runs differ by construction, and the repo has no byte-comparison precedent
-- [ ] After `hard_delete`, `filter()` returns nothing and no `$*` key retains the record's
+- [x] After `hard_delete`, `filter()` returns nothing and no `$*` key retains the record's
   redis key (Risk 4b)
-- [ ] Append p50/p99 measured at 20k entries in `tests/benchmarks/`, reported with
+- [x] Append p50/p99 measured at 20k entries in `tests/benchmarks/`, reported with
   python/redis-py versions, including the per-append eager-EVAL count
-- [ ] Tests pass (`/do-test`), narrow scope: `tests/test_provenance_journal.py` plus
+- [x] Tests pass (`/do-test`), narrow scope: `tests/test_provenance_journal.py` plus
   `tests/test_validity_field.py`, `tests/test_transfer_roundtrip.py`, and
   `tests/benchmarks/test_defaults_sync.py`
-- [ ] mypy error delta is 0 vs the merge-base. **Baseline already measured for this plan:
+- [x] mypy error delta is 0 vs the merge-base. **Baseline already measured for this plan:
   1119 errors in 66 files (93 source files checked) at `9180680`**, using a clean detached
   sibling worktree and this worktree's venv — Python 3.12.13, redis-py 8.1.0, mypy 2.3.1,
   Redis server 8.6.2. The branch total must be 1119; **any excess is enumerated line-by-line
   in the PR body with the redis-py version measured**, per CLAUDE.md gate 5, rather than
   quietly relaxed. Two new modules that build redis pipelines are precisely the shape that
   gate warns produces version-dependent `Awaitable[T] | T` errors
-- [ ] Documentation updated (`/do-docs`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 
