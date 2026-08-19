@@ -6,6 +6,8 @@ except PackageNotFoundError:  # pragma: no cover — fallback for source-tree im
     __version__ = "0.0.0+unknown"
 
 from .exceptions import (
+    AppendOnlyViolation,
+    JournalBlockedError,
     ModelException,
     QueryException,
     PublisherException,
@@ -40,6 +42,7 @@ from .fields.shortcuts import (
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
 from .fields.write_filter import WriteFilterMixin
+from .fields.append_only import AppendOnlyMixin
 from .privacy.never_record import (
     NeverRecordMixin,
     NeverRecordVerdict,
@@ -193,8 +196,11 @@ __all__ = [
     "TagField",
     "DecayingSortedField",
     "AccessTrackerMixin",
+    "AppendOnlyMixin",
     "WriteFilterMixin",
     "EventStreamMixin",
+    "AppendOnlyViolation",
+    "JournalBlockedError",
     "SkipSaveException",
     "NeverRecordException",
     "NeverRecordMixin",

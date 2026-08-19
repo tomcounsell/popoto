@@ -29,6 +29,17 @@ def _read_legacy_datetime_key_switch() -> bool:
     return os.environ.get("POPOTO_DATETIME_KEY_LEGACY", "").strip().lower() in _TRUTHY
 
 
+def _read_journal_coupling_switch() -> bool:
+    """Read ``POPOTO_JOURNAL_COUPLING_DISABLE`` from the environment (#560).
+
+    Returns True when the provenance journal's validity coupling is ENABLED.
+    Phrased as a disable so the default-on doctrine holds when it is unset,
+    exactly like :func:`_read_never_record_switch`.
+    """
+    value = os.environ.get("POPOTO_JOURNAL_COUPLING_DISABLE", "").strip().lower()
+    return value not in _TRUTHY
+
+
 def _read_never_record_switch() -> bool:
     """Read ``POPOTO_NEVER_RECORD_DISABLE`` from the environment (#561).
 
@@ -317,6 +328,36 @@ class Defaults:
     # import (``POPOTO_NEVER_RECORD_DISABLE``); assign directly to override
     # at runtime.
     NEVER_RECORD_ENABLED = _read_never_record_switch()
+
+    # -- provenance journal (recipes/provenance_journal.py, #560) -------------
+    # Deploy-level kill switch, not a tuning constant. When True (the default),
+    # a ``supersede``/``retract`` annotation closes its target's validity
+    # interval in the same MULTI/EXEC that appends the annotation, so the
+    # target leaves ``validity__current`` membership immediately. When False,
+    # the annotation entry is still appended and still carries its ``target``,
+    # but the target's interval is left open: membership degrades to
+    # "everything ever appended", which is pre-#560 behavior. The degraded mode
+    # is observable without reading Redis --
+    # ``AnnotationResult.target_closed`` is False and
+    # ``AnnotationResult.coupling_enabled`` is False -- specifically so this
+    # switch cannot reproduce #588's silent-no-op shape. Read from the
+    # environment at import (``POPOTO_JOURNAL_COUPLING_DISABLE``) because a
+    # PyPI adopter cannot always edit model code; assign directly to override
+    # at runtime. Boolean, not swept.
+    JOURNAL_VALIDITY_COUPLING_ENABLED = _read_journal_coupling_switch()
+    # Core annotation-kind vocabulary for ``JournalEntry.kind``. Not a
+    # tunable: changing it reclassifies already-stored entries. ``assert`` is
+    # an original capture and carries no target; the other three are
+    # annotations and each names exactly one target entry. Downstream modules
+    # that need more kinds (M5 merge/equivalence, M7 queueing, M8 exposure)
+    # extend via ``JournalEntry.register_kind(name, targetless=, closing=)``,
+    # which adds to the vocabulary in place rather than editing this tuple.
+    # (Registration rather than a model subclass because Popoto's ModelBase
+    # metaclass does not inherit Field attributes, so a JournalEntry subclass
+    # has an empty field set.) Reader rule: an entry whose ``kind`` a reader
+    # does not recognize is inert for membership -- never silently treated as
+    # ``supersede`` or ``retract``.
+    JOURNAL_KINDS = ("assert", "confirm", "supersede", "retract")
 
 
 class TemporalPeriod:

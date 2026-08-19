@@ -612,18 +612,31 @@ class NeverRecordMixin:
         # inherits from. Declared for the type checker only.
         _meta: Any
 
-    def _never_record_scan_values(self) -> Iterator[str]:
-        """Yield the string field values this instance exposes to the scan.
+    def _never_record_scan_field_names(self) -> Iterator[str]:
+        """Yield the field names whose values are exposed to the scan.
 
-        Excludes key fields (see the class docstring) and any non-string
-        value. Mirrors the key-field iteration the ``KeyMutationError`` guard
-        uses in ``Model.save()``.
+        Excludes key fields (see the class docstring). Mirrors the key-field
+        iteration the ``KeyMutationError`` guard uses in ``Model.save()``.
+
+        Split out from :meth:`_never_record_scan_values` so a subclass can
+        narrow the surface by *name* without re-deriving the key-field rule --
+        see ``JournalEntry._never_record_scan_values``, which drops the
+        machine-generated ``target`` pointer.
         """
         meta = self._meta
         key_names = set(meta.key_field_names) | set(meta.auto_field_names)
         for field_name in meta.field_names:
             if field_name in key_names:
                 continue
+            yield field_name
+
+    def _never_record_scan_values(self) -> Iterator[str]:
+        """Yield the string field values this instance exposes to the scan.
+
+        Excludes key fields (see the class docstring) and any non-string
+        value.
+        """
+        for field_name in self._never_record_scan_field_names():
             value = getattr(self, field_name, None)
             if isinstance(value, str) and value.strip():
                 yield value

@@ -388,6 +388,12 @@ including `DefaultMemory`, does.
 
 ## See Also
 
+- [Provenance Journal](provenance-journal.md) — this feature's first real
+  consumer: `JournalEntry` composes `ValidityField` for its membership axis,
+  calls `execute_supersede` directly on the annotate-and-close write path
+  (never `SupersessionProtocol`, which no-ops against a same-pipeline
+  successor), and uses `chain()` for provenance display only, never for
+  membership
 - [ObservationProtocol](observation-protocol.md) — the outcome vocabulary
   that reports contradiction; `_apply_contradicted` writes provenance through
   this protocol when the model has a `ValidityField`

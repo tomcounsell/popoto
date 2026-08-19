@@ -145,6 +145,58 @@ quotes the matched text, an offset, or a length — exception messages reach
 plaintext log files, and a quoted match would leak through a side channel
 that the tombstone design closes.
 
+## What the gate scans
+
+The mixin scans the instance's **non-key `str` field values**, and only those:
+
+- **Key fields are excluded** — `KeyField` and `AutoKeyField` values are
+  rendered into the Redis key *name*, which a later drop cannot retract. The
+  scan skips them because blocking at `save()` would not unwrite a name that
+  earlier records already embedded; a key field carrying secrets is a schema
+  problem, not a save-time one.
+- **Only `str` values are scanned.** A list-valued field — a `TagField`, say —
+  is never seen by the mixin's scan, and neither are numeric or boolean
+  fields. A model whose sensitive content can land in a non-`str` field must
+  scan it itself before calling `save()`.
+
+### Narrowing the surface on one model
+
+`_never_record_scan_values()` is overridable, and the field-name iteration is
+split into `_never_record_scan_field_names()` so an override can drop specific
+fields **by name** without re-deriving the key-field rule:
+
+```python
+class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
+    _MACHINE_GENERATED_FIELDS = frozenset({"target"})
+
+    def _never_record_scan_values(self):
+        skip = self._MACHINE_GENERATED_FIELDS
+        for field_name in self._never_record_scan_field_names():
+            if field_name in skip:
+                continue
+            value = getattr(self, field_name, None)
+            if isinstance(value, str) and value.strip():
+                yield value
+```
+
+This exists for **machine-generated pointers**, not to soften the gate on
+anything a human or a model wrote. `JournalEntry.target` holds a Redis key
+Popoto itself generated (`JournalEntry:{agent_id}:{uuid4 hex}`), and scanning
+it for payment cards is a category error with a measured cost: a uuid4 hex
+sometimes contains a 13–19 digit run that passes the Luhn checksum, so the
+firewall blocked the annotation as `reason='payment_card'`,
+`detector='luhn'` — 5–8 blocked per 2000 random keys (~0.25–0.4%). Because the
+block lands at `save()` step 0, which *returns* rather than raises, the
+annotation was silently dropped.
+
+Narrowing the mixin's surface moves the obligation, it does not remove it. A
+model that excludes a field is responsible for anything the mixin can no
+longer see: `ProvenanceJournal`'s pre-flight separately scans `agent_id` (a
+`KeyField`, structurally invisible to the scan) and each `subjects` tag
+individually, then reuses `entry._never_record_scan_values()` for the rest
+rather than re-listing the fields — a hand-maintained list is what let `target`
+go unscanned in the first place.
+
 ## Auditing drops
 
 Every drop leaves a **content-free tombstone**: a random id and a reason

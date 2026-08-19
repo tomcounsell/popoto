@@ -132,6 +132,17 @@ class TestDefaultsSync:
             "NR_TOMBSTONE_LOG_MAX",
             # Deploy-level kill switch, like DATETIME_KEY_LEGACY above.
             "NEVER_RECORD_ENABLED",
+            # Provenance journal (#560) — both read directly from Defaults at
+            # call time in recipes/provenance_journal.py. No module-level alias
+            # is created for the kill switch, for the same reason as
+            # VALIDITY_GATING_ENABLED above: an alias bound at import time
+            # would defeat the whole point of a runtime-flippable deploy
+            # switch for adopters who cannot edit model code. JOURNAL_KINDS is
+            # a frozen vocabulary rather than a swept constant — changing it
+            # reclassifies stored entries, so there is no nDCG signal a sweep
+            # could read.
+            "JOURNAL_VALIDITY_COUPLING_ENABLED",
+            "JOURNAL_KINDS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

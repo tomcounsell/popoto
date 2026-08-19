@@ -24,4 +24,5 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 | [ParametricSweep](parametric-sweep.md) | Automated benchmark sweeps for tuning numeric constants | Stable |
 | [PolicyCache](policy-cache.md) | Learned action selection with crystallization and TD updates | Stable |
 | [PredictionLedger](prediction-ledger.md) | Prediction recording, resolution, and `error_summary` aggregation | Stable |
+| [Provenance Journal](provenance-journal.md) | Append-only attributed entries with confirm/supersede/retract annotations | Stable |
 | [ValidityField and SupersessionProtocol](validity-and-supersession.md) | Bitemporal validity intervals and supersession chains — validity decides membership, decay decides ordering | Stable |

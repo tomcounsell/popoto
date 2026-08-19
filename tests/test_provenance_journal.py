@@ -1,0 +1,2136 @@
+"""Provenance journal — append-only entries with annotations (#560).
+
+Runs on the pytest plugin's isolated database (DB 15 by default). The plugin's
+autouse ``_popoto_flush_db`` flushes before every test, so the only teardown
+this file owns is restoring ``Defaults`` after a kill-switch flip.
+
+Tests cover:
+- The append-only contract in all six re-save shapes from the plan's spike-1
+  matrix: same-instance re-save, colliding fresh object, ``query.get()``-then-
+  save, ``delete()``, ``delete_all()``, and ``save(migrate_key=True)`` — plus a
+  control model without the mixin proving the refusal is the mixin's doing
+- Race 2's deterministically testable shape: two saves of one key queued onto
+  one pipeline, which the ``EXISTS`` guard structurally cannot see (documented
+  boundary, asserted as a known state rather than claimed closed)
+- Full field round trip including ``statement`` and ``captured_at``, the
+  ``subjects`` tag list, the open validity interval, and the empty-content and
+  empty-``subjects`` input cases
+- ``annotations_for`` resolving in one query — asserted by counting index reads
+  with the ``_CallCounter`` pattern and showing the count does not grow with the
+  number of annotations, not by reading the implementation
+- Membership: after ``supersede``/``retract`` the target is absent from
+  ``filter(validity__current=True)`` and still returned by
+  ``filter(validity__as_of=<before the close>)``, with **zero** reads against
+  either chain HASH
+- ``chain()`` over a 3-deep supersession chain, oldest -> newest
+- ``confirm`` as evidence only: the target keeps its open interval
+- Never-record composition: a blocked ``append()`` raises and persists nothing;
+  a blocked ``supersede()`` raises, closes nothing, writes no chain link and
+  leaves ``annotations_for(target)`` empty (the war room's top blocker)
+- The ``subjects`` firewall scan the mixin itself does not do (D8), and the
+  regression that ``target`` survives the entropy detector
+- Every D7 pre-flight rejection — bad kind, inconsistent kind/target, missing
+  target, cross-agent target, backdated ``at``, non-numeric ``at``, and a
+  non-transactional pipeline — asserted to issue **zero** commands
+- Atomicity by shape, not by count: ``pipeline.transaction is True``, exactly
+  one queued EVAL with ``ARGV[5] == "invalidate"`` at ``numkeys == 6``, exactly
+  one with ``ARGV[5] == "open"``, zero mutating calls outside the pipeline
+- The documented atomicity boundary: a command-level error inside ``EXEC``
+  leaves the annotation appended with the target open. Tested as a known state;
+  rollback is not claimed
+- Both #588 regressions: ``SupersessionProtocol.invalidate`` silently no-ops for
+  a successor saved in the same pipeline, and a ``valid_from`` passed only to
+  ``execute_supersede`` is silently replaced by the save clock — pinned against
+  the raw V0 behavior and against M1's write path
+- The #588 pre-flight pin: bypassing D7 and closing with a backdated instant
+  raises ``redis.exceptions.ResponseError`` from ``pipe.execute()`` with the
+  annotation already written
+- The validity-coupling kill switch: an uncoupled ``supersede`` issues the
+  command set of a bare append and nothing more, and the degraded mode is
+  detectable from ``AnnotationResult`` without reading Redis
+- ``hard_delete``'s derived-state sweep: afterwards ``filter()`` returns nothing
+  and no ``$*`` key retains the record's Redis key
+- Race 1: an orphan index member whose hash is missing is skipped by the query
+  layer rather than raising
+- Race 3: two annotations closing one target — both entries are real
+  provenance, exactly one close applies
+"""
+
+import os
+import sys
+import time
+import uuid
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+
+import pytest
+import redis.exceptions
+from src import popoto
+from src.popoto import ValidityField
+from src.popoto.exceptions import AppendOnlyViolation, JournalBlockedError
+from src.popoto.fields.constants import Defaults, _read_journal_coupling_switch
+from src.popoto.fields.supersession import SupersessionProtocol
+from src.popoto.privacy.never_record import scan_never_record
+from src.popoto.recipes import provenance_journal as journal_module
+from src.popoto.recipes.provenance_journal import (
+    VALIDITY_FIELD_NAME,
+    JournalEntry,
+    ProvenanceJournal,
+)
+from src.popoto.redis_db import POPOTO_REDIS_DB, scan_keys
+
+AGENT = "agent-under-test"
+OTHER_AGENT = "agent-next-door"
+
+#: A representative credential for the firewall cases. Distinctive enough that
+#: a keyspace sweep for it cannot collide with unrelated fixture data.
+SECRET = "sk-ant-api03-ZZQQWWEERRTTYYUUIIOOPPAASSDDFFGG"
+
+
+# --- Test Models ---
+
+
+class MutableNote(popoto.Model):
+    """Control model without ``AppendOnlyMixin``.
+
+    Same shape as an entry, no write-once guard — so a passing re-save here is
+    the proof that the refusals in :class:`TestAppendOnlyContract` come from the
+    mixin and not from something ambient in the model layer.
+    """
+
+    note_id = popoto.AutoKeyField()
+    agent_id = popoto.KeyField()
+    statement = popoto.StringField(default="")
+
+
+class SubclassedEntry(JournalEntry):
+    """A ``JournalEntry`` subclass — which Popoto's ORM silently guts.
+
+    Defined once at module scope (re-declaring a model per test would register
+    the same model name repeatedly). It exists to pin the ORM limitation and to
+    prove :class:`ProvenanceJournal` refuses it loudly. Never write through it.
+    """
+
+
+class SubclassedJournal(ProvenanceJournal):
+    entry_model = SubclassedEntry
+
+
+class PartiallyDeclaredEntry(JournalEntry):
+    """A subclass that re-declares *some* of the journal field set.
+
+    The round-2 review's false-negative repro: a single-canary shape guard saw
+    ``statement`` here and passed the model through, after which every write
+    persisted 3 of 12 fields — no ``verbatim``, no ``kind``, no ``target`` and
+    no validity interval at all. A partial field set is exactly as lossy as an
+    empty one. Never write through it.
+    """
+
+    entry_id = popoto.AutoKeyField()
+    agent_id = popoto.KeyField()
+    statement = popoto.StringField(default="")
+
+
+class PartiallyDeclaredJournal(ProvenanceJournal):
+    entry_model = PartiallyDeclaredEntry
+
+
+# --- Fixtures and helpers ---
+
+
+@pytest.fixture(autouse=True)
+def restore_defaults():
+    """Undo kill-switch flips. The plugin's autouse flush owns the keyspace.
+
+    ``popoto.pytest_plugin`` installs a function-scoped autouse ``flushdb()``
+    (``pytest_plugin.py:234-250``), so no derived-key wipe belongs here — see
+    the plan's D6.
+    """
+    coupling = Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED
+    # ``register_kind`` writes a process-global registry, so it outlives the
+    # keyspace flush and has to be restored explicitly.
+    registered = dict(journal_module._REGISTERED_KINDS)
+    yield
+    Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED = coupling
+    journal_module._REGISTERED_KINDS.clear()
+    journal_module._REGISTERED_KINDS.update(registered)
+    journal_module._UNCOUPLED_WARNED.clear()
+
+
+def _append(**kwargs):
+    """Append one capture and return the :class:`JournalEntry`."""
+    kwargs.setdefault("agent_id", AGENT)
+    kwargs.setdefault("statement", "the launch slipped to the 30th")
+    return ProvenanceJournal.append(**kwargs).entry
+
+
+def _keys():
+    return ValidityField.get_all_keys(JournalEntry, VALIDITY_FIELD_NAME)
+
+
+def _interval(instance):
+    """Return ``(valid_from, invalid_at, ingested_at)`` for one entry."""
+    keys = _keys()
+    member = instance.db_key.redis_key
+    return (
+        POPOTO_REDIS_DB.zscore(keys["valid_from"], member),
+        POPOTO_REDIS_DB.zscore(keys["invalid_at"], member),
+        POPOTO_REDIS_DB.zscore(keys["ingested_at"], member),
+    )
+
+
+def _redis_keys(records):
+    return sorted(r.db_key.redis_key for r in records)
+
+
+def _as_str(value):
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
+MUTATING_CLIENT_METHODS = [
+    "zadd",
+    "zrem",
+    "zincrby",
+    "hset",
+    "hdel",
+    "set",
+    "delete",
+    "sadd",
+    "srem",
+    "xadd",
+    "lpush",
+    "rpush",
+]
+
+
+class _CallCounter:
+    """Count client calls by name, delegating to the real implementation.
+
+    Copied from ``tests/test_validity_field.py`` so command-level assertions in
+    this repo all read the same way.
+    """
+
+    def __init__(self, monkeypatch, names):
+        self.counts = {name: 0 for name in names}
+        for name in names:
+            monkeypatch.setattr(POPOTO_REDIS_DB, name, self._wrap(name), raising=True)
+
+    def _wrap(self, name):
+        original = getattr(POPOTO_REDIS_DB, name)
+
+        def wrapper(*args, **kwargs):
+            self.counts[name] += 1
+            return original(*args, **kwargs)
+
+        return wrapper
+
+    @property
+    def nonzero(self):
+        return {name: count for name, count in self.counts.items() if count}
+
+
+class _PipelineSpy:
+    """Capture every pipeline the code under test builds, and its command stack.
+
+    ``command_stack`` is emptied by ``execute()``, so the stack is snapshotted
+    on the way in. The spy records unexecuted pipelines too, which is what the
+    caller-supplied-pipeline cases assert against.
+    """
+
+    def __init__(self, monkeypatch):
+        self.pipelines = []
+        self.stacks = []
+        real_pipeline = POPOTO_REDIS_DB.pipeline
+        spy = self
+
+        def make_pipeline(*args, **kwargs):
+            pipe = real_pipeline(*args, **kwargs)
+            spy.pipelines.append(pipe)
+            real_execute = pipe.execute
+
+            def execute(*eargs, **ekwargs):
+                spy.stacks.append(list(pipe.command_stack))
+                return real_execute(*eargs, **ekwargs)
+
+            pipe.execute = execute
+            return pipe
+
+        monkeypatch.setattr(POPOTO_REDIS_DB, "pipeline", make_pipeline)
+
+    def snapshot(self, pipe):
+        """Record an unexecuted pipeline's stack explicitly."""
+        self.stacks.append(list(pipe.command_stack))
+
+    def evals(self, mode=None):
+        """Return every queued EVAL command, optionally filtered by ``ARGV[5]``."""
+        found = []
+        for stack in self.stacks:
+            for entry in stack:
+                args = entry[0] if isinstance(entry, tuple) else entry
+                if not args or _as_str(args[0]).upper() != "EVAL":
+                    continue
+                if mode is not None and _supersede_mode(args) != mode:
+                    continue
+                found.append(args)
+        return found
+
+    def pipeline_of(self, mode):
+        """Return the pipeline whose stack carries a supersede EVAL in ``mode``."""
+        for pipe, stack in zip(self.pipelines, self.stacks):
+            for entry in stack:
+                args = entry[0] if isinstance(entry, tuple) else entry
+                if args and _as_str(args[0]).upper() == "EVAL":
+                    if _supersede_mode(args) == mode:
+                        return pipe
+        return None
+
+
+class _CommandRecorder:
+    """Count every command the code under test issues **or queues**.
+
+    Client-level mutating calls come from :class:`_CallCounter`; queued
+    commands come from :class:`_PipelineSpy`, counting both the stacks captured
+    at ``execute()`` and whatever is still sitting on an unexecuted pipeline.
+    Counting only the first would make "zero commands" unfalsifiable, because
+    the journal routes its writes through a pipeline it owns.
+    """
+
+    def __init__(self, monkeypatch):
+        self.spy = _PipelineSpy(monkeypatch)
+        self.counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
+
+    @property
+    def queued(self):
+        executed = sum(len(stack) for stack in self.spy.stacks)
+        pending = sum(len(pipe.command_stack) for pipe in self.spy.pipelines)
+        return executed + pending
+
+    @property
+    def detail(self):
+        detail = dict(self.counter.nonzero)
+        if self.queued:
+            detail["queued"] = self.queued
+        return detail
+
+    @property
+    def total(self):
+        return sum(self.counter.counts.values()) + self.queued
+
+    @property
+    def nonzero(self):
+        """Empty exactly when nothing was issued and nothing was queued."""
+        return self.detail
+
+
+def _supersede_mode(args):
+    """Return ``ARGV[5]`` of a queued ``SUPERSEDE_LUA`` EVAL, or ``None``.
+
+    Layout: ``EVAL script numkeys KEYS[1..6] ARGV[1..7]`` -- so ``ARGV[5]`` is
+    positional index 13, and anything shorter is a different script.
+    """
+    if len(args) < 16:
+        return None
+    if str(args[2]) != "6":
+        return None
+    return _as_str(args[13])
+
+
+def _numkeys(args):
+    return int(args[2])
+
+
+# ---------------------------------------------------------------------------
+# A. The append-only contract (plan spike-1's matrix, extended)
+# ---------------------------------------------------------------------------
+
+
+class TestAppendOnlyContract:
+    def test_a_fresh_append_is_allowed_and_persists(self):
+        entry = _append()
+        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert JournalEntry.query.get(redis_key=entry.db_key.redis_key) is not None
+
+    def test_re_saving_the_same_instance_raises_append_only_violation(self):
+        entry = _append()
+        entry.statement = "a different claim"
+        with pytest.raises(AppendOnlyViolation):
+            entry.save()
+
+    def test_a_fresh_object_with_a_colliding_key_raises_append_only_violation(self):
+        """The shape a retry or a duplicate ingest takes.
+
+        Both ``_db_content`` and ``_saved_field_values`` are empty here, which
+        is exactly why the guard reads ``EXISTS`` instead.
+        """
+        entry = _append()
+        collider = JournalEntry(
+            entry_id=entry.entry_id,
+            agent_id=AGENT,
+            statement="an overwrite attempt",
+            kind="assert",
+        )
+        assert collider.db_key.redis_key == entry.db_key.redis_key
+        with pytest.raises(AppendOnlyViolation):
+            collider.save()
+
+    def test_saving_a_query_loaded_instance_raises_append_only_violation(self):
+        """``_db_content`` is empty on a query-loaded instance; ``EXISTS`` is not."""
+        entry = _append()
+        loaded = JournalEntry.query.get(redis_key=entry.db_key.redis_key)
+        assert loaded is not None
+        with pytest.raises(AppendOnlyViolation):
+            loaded.save()
+
+    def test_deleting_an_entry_raises_append_only_violation(self):
+        entry = _append()
+        with pytest.raises(AppendOnlyViolation):
+            entry.delete()
+        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+
+    def test_delete_all_raises_append_only_violation_and_keeps_the_records(self):
+        """``delete_all()`` routes through ``instance.delete()``, so the guard fires."""
+        entry = _append()
+        with pytest.raises(AppendOnlyViolation):
+            JournalEntry.delete_all()
+        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+
+    def test_save_with_migrate_key_raises_even_though_the_new_key_is_free(self):
+        """The destroy-through-a-public-kwarg shape ``EXISTS`` cannot express."""
+        entry = _append()
+        with pytest.raises(AppendOnlyViolation, match="migrate_key"):
+            entry.save(migrate_key=True)
+        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+
+    def test_mutating_a_key_field_closes_both_routes_to_a_key_migration(self):
+        """The rename route is shut whichever way it is taken.
+
+        Without ``migrate_key=True`` the ORM's own ``KeyMutationError`` fires
+        first (the mixin's ``EXISTS`` looks at the *new* key, which is free);
+        with it, ``AppendOnlyViolation`` fires before anything is written.
+        Either way the stored entry is untouched.
+        """
+        entry = _append()
+        original_key = entry.db_key.redis_key
+        entry.agent_id = "some-other-agent"
+
+        with pytest.raises(popoto.exceptions.KeyMutationError):
+            entry.save()
+        with pytest.raises(AppendOnlyViolation, match="migrate_key"):
+            entry.save(migrate_key=True)
+
+        assert POPOTO_REDIS_DB.exists(original_key)
+
+    def test_two_saves_of_one_key_on_one_pipeline_are_not_caught(self):
+        """Race 2's deterministic shape — a documented boundary, not a guarantee.
+
+        The guard's ``EXISTS`` executes immediately against ``POPOTO_REDIS_DB``
+        and cannot see a command that is queued but not yet executed, so both
+        saves pass. Asserted as a known state so the boundary cannot drift into
+        an unnoticed regression in either direction.
+        """
+        pipe = POPOTO_REDIS_DB.pipeline()
+        first = JournalEntry(agent_id=AGENT, statement="first", kind="assert")
+        first.save(pipeline=pipe)
+        second = JournalEntry(
+            entry_id=first.entry_id,
+            agent_id=AGENT,
+            statement="second",
+            kind="assert",
+        )
+        # No AppendOnlyViolation: this is the intra-pipeline TOCTOU window.
+        second.save(pipeline=pipe)
+        pipe.execute()
+
+        stored = JournalEntry.query.get(redis_key=first.db_key.redis_key)
+        assert stored is not None
+        assert stored.statement == "second"
+
+    def test_the_control_model_without_the_mixin_allows_re_saving(self):
+        note = MutableNote(agent_id=AGENT, statement="v1")
+        note.save()
+        note.statement = "v2"
+        note.save()
+        reloaded = MutableNote.query.get(redis_key=note.db_key.redis_key)
+        assert reloaded.statement == "v2"
+        assert note.delete()
+
+
+# ---------------------------------------------------------------------------
+# B. Round trip and input handling
+# ---------------------------------------------------------------------------
+
+
+class TestEntryRoundTrip:
+    def test_every_field_round_trips_including_statement_and_captured_at(self):
+        captured = time.time() - 90.0
+        instant = time.time() - 30.0
+        entry = ProvenanceJournal.append(
+            agent_id=AGENT,
+            speaker="tom",
+            turn_id="t-41",
+            verbatim="the launch slipped to the 30th",
+            statement="Launch date is the 30th",
+            subjects=["launch", "tom"],
+            stated=False,
+            captured_at=captured,
+            at=instant,
+        ).entry
+
+        loaded = JournalEntry.query.get(redis_key=entry.db_key.redis_key)
+        assert loaded.agent_id == AGENT
+        assert loaded.speaker == "tom"
+        assert loaded.turn_id == "t-41"
+        assert loaded.verbatim == "the launch slipped to the 30th"
+        assert loaded.statement == "Launch date is the 30th"
+        assert sorted(loaded.subjects) == ["launch", "tom"]
+        assert loaded.stated is False
+        assert loaded.captured_at == pytest.approx(captured)
+        assert loaded.kind == "assert"
+        assert loaded.target is None
+
+        valid_from, invalid_at, ingested_at = _interval(entry)
+        assert valid_from == pytest.approx(instant)
+        assert invalid_at == float("inf")
+        assert ingested_at is not None
+
+    def test_indexed_fields_are_queryable_in_one_filter_each(self):
+        entry = _append(speaker="tom", turn_id="t-41", subjects=["launch"])
+        _append(speaker="ada", turn_id="t-42")
+
+        assert _redis_keys(JournalEntry.query.filter(speaker="tom")) == [
+            entry.db_key.redis_key
+        ]
+        assert _redis_keys(JournalEntry.query.filter(turn_id="t-41")) == [
+            entry.db_key.redis_key
+        ]
+        assert _redis_keys(JournalEntry.query.filter(subjects__contains="launch")) == [
+            entry.db_key.redis_key
+        ]
+
+    def test_an_entry_with_no_subjects_is_accepted(self):
+        assert _append(subjects=None) is not None
+        assert _append(subjects=[]) is not None
+
+    def test_an_entry_with_neither_statement_nor_verbatim_is_refused(self):
+        with pytest.raises(ValueError, match="not a provenance record"):
+            ProvenanceJournal.append(agent_id=AGENT, statement="   ", verbatim="")
+
+    def test_a_verbatim_only_entry_is_accepted(self):
+        entry = ProvenanceJournal.append(
+            agent_id=AGENT, statement="", verbatim="the 30th"
+        ).entry
+        assert entry.verbatim == "the 30th"
+
+    def test_a_missing_agent_id_is_refused(self):
+        with pytest.raises(ValueError, match="agent_id"):
+            ProvenanceJournal.append(agent_id="", statement="anything")
+
+
+# ---------------------------------------------------------------------------
+# C. Annotations, membership, and chains
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationsAndMembership:
+    def test_annotations_for_returns_every_annotation_targeting_an_entry(self):
+        target = _append(statement="Launch date is the 30th")
+        confirmation = ProvenanceJournal.confirm(
+            target, agent_id=AGENT, statement="Ada agrees"
+        ).entry
+        unrelated = _append(statement="unrelated claim")
+
+        found = _redis_keys(ProvenanceJournal.annotations_for(target))
+        assert found == [confirmation.db_key.redis_key]
+        assert unrelated.db_key.redis_key not in found
+        assert ProvenanceJournal.annotations_for(unrelated) == []
+
+    def test_annotations_for_costs_the_same_index_reads_at_any_result_size(
+        self, monkeypatch
+    ):
+        """One query, asserted by cost rather than by reading the source.
+
+        A per-annotation lookup would make the index-read count grow with the
+        number of annotations. It does not, and it stays small.
+        """
+        target = _append(statement="Launch date is the 30th")
+        ProvenanceJournal.confirm(target, agent_id=AGENT, statement="first")
+
+        counter = _CallCounter(monkeypatch, ["smembers", "sinter", "sunion"])
+        ProvenanceJournal.annotations_for(target)
+        one_annotation = dict(counter.counts)
+        monkeypatch.undo()
+
+        for i in range(4):
+            ProvenanceJournal.confirm(target, agent_id=AGENT, statement=f"more {i}")
+        assert len(ProvenanceJournal.annotations_for(target)) == 5
+
+        counter = _CallCounter(monkeypatch, ["smembers", "sinter", "sunion"])
+        ProvenanceJournal.annotations_for(target)
+        five_annotations = dict(counter.counts)
+
+        assert five_annotations == one_annotation, (
+            "annotations_for must not scale its index reads with the result "
+            f"size: {one_annotation} -> {five_annotations}"
+        )
+        assert sum(five_annotations.values()) <= 3, five_annotations
+
+    def test_confirm_leaves_the_target_in_live_membership(self):
+        target = _append()
+        result = ProvenanceJournal.confirm(target, agent_id=AGENT, statement="agreed")
+
+        assert result.target_closed is False
+        assert _interval(target)[1] == float("inf")
+        assert target.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+    def test_supersede_removes_the_target_from_live_membership(self):
+        t0 = time.time() - 100.0
+        target = _append(at=t0, statement="Launch date is the 30th")
+        result = ProvenanceJournal.supersede(
+            target,
+            agent_id=AGENT,
+            statement="Launch date is the 27th",
+            at=t0 + 50.0,
+        )
+
+        assert result.target_closed is True
+        assert result.coupling_enabled is True
+        current = _redis_keys(JournalEntry.query.filter(validity__current=True))
+        assert target.db_key.redis_key not in current
+        assert result.entry.db_key.redis_key in current
+        assert _interval(target)[1] == pytest.approx(t0 + 50.0)
+
+    def test_retract_removes_the_target_from_live_membership(self):
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        result = ProvenanceJournal.retract(
+            target, agent_id=AGENT, statement="withdrawn", at=t0 + 50.0
+        )
+
+        assert result.target_closed is True
+        assert target.db_key.redis_key not in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+    def test_a_superseded_entry_is_still_returned_as_of_before_the_close(self):
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        ProvenanceJournal.supersede(target, agent_id=AGENT, at=t0 + 50.0)
+
+        as_of = _redis_keys(JournalEntry.query.filter(validity__as_of=t0 + 10.0))
+        assert target.db_key.redis_key in as_of
+        assert POPOTO_REDIS_DB.exists(target.db_key.redis_key)
+
+    def test_membership_queries_never_read_the_chain_hashes(self, monkeypatch):
+        """Membership comes from the interval ZSETs, with no chain walk."""
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        ProvenanceJournal.supersede(target, agent_id=AGENT, at=t0 + 50.0)
+
+        keys = _keys()
+        chain_keys = {keys["chain_fwd"], keys["chain_rev"]}
+        reads = []
+
+        def record(name, original):
+            def wrapper(key, *args, **kwargs):
+                if _as_str(key) in chain_keys:
+                    reads.append((name, _as_str(key)))
+                return original(key, *args, **kwargs)
+
+            return wrapper
+
+        for name in ("hget", "hgetall", "hkeys", "hvals", "hmget"):
+            monkeypatch.setattr(
+                POPOTO_REDIS_DB, name, record(name, getattr(POPOTO_REDIS_DB, name))
+            )
+
+        current = _redis_keys(JournalEntry.query.filter(validity__current=True))
+        as_of = _redis_keys(JournalEntry.query.filter(validity__as_of=t0 + 10.0))
+
+        assert target.db_key.redis_key not in current
+        assert target.db_key.redis_key in as_of
+        assert reads == [], f"membership read the chain hashes: {reads}"
+
+    def test_chain_returns_a_three_deep_supersession_chain_oldest_first(self):
+        t0 = time.time() - 300.0
+        first = _append(at=t0, statement="the 30th")
+        second = ProvenanceJournal.supersede(
+            first, agent_id=AGENT, statement="the 27th", at=t0 + 50.0
+        ).entry
+        third = ProvenanceJournal.supersede(
+            second, agent_id=AGENT, statement="the 28th", at=t0 + 100.0
+        ).entry
+
+        expected = [
+            first.db_key.redis_key,
+            second.db_key.redis_key,
+            third.db_key.redis_key,
+        ]
+        for anchor in (first, second, third):
+            walked = [r.db_key.redis_key for r in ProvenanceJournal.chain(anchor)]
+            assert walked == expected, f"from {anchor.db_key.redis_key}: {walked}"
+
+        current = _redis_keys(JournalEntry.query.filter(validity__current=True))
+        assert current == [third.db_key.redis_key]
+
+    def test_chain_of_an_unannotated_entry_is_just_that_entry(self):
+        entry = _append()
+        assert [r.db_key.redis_key for r in ProvenanceJournal.chain(entry)] == [
+            entry.db_key.redis_key
+        ]
+
+
+# ---------------------------------------------------------------------------
+# D. Never-record composition (plan D7/D8 — the war room's top blocker)
+# ---------------------------------------------------------------------------
+
+
+def _lossy(value):
+    """Decode a Redis reply for substring searching, tolerating msgpack bytes.
+
+    The record hash holds msgpack, which is not valid UTF-8, so the sweep
+    decodes with replacement rather than skipping those keys — a secret stored
+    inside a msgpack blob must still be found.
+    """
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _keyspace_contains(needle):
+    """True if ``needle`` appears in any key name or any value in the DB."""
+    for key in scan_keys("*"):
+        key = _lossy(key)
+        if needle in key:
+            return True
+        key_type = _lossy(POPOTO_REDIS_DB.type(key))
+        if key_type == "hash":
+            blob = POPOTO_REDIS_DB.hgetall(key)
+            for field, value in blob.items():
+                if needle in _lossy(field) or needle in _lossy(value):
+                    return True
+        elif key_type == "set":
+            if any(needle in _lossy(m) for m in POPOTO_REDIS_DB.smembers(key)):
+                return True
+        elif key_type == "zset":
+            members = POPOTO_REDIS_DB.zrange(key, 0, -1)
+            if any(needle in _lossy(m) for m in members):
+                return True
+        elif key_type == "string":
+            if needle in _lossy(POPOTO_REDIS_DB.get(key)):
+                return True
+        elif key_type == "stream":
+            entries = POPOTO_REDIS_DB.xrange(key)
+            if needle in _lossy(repr(entries)):
+                return True
+    return False
+
+
+class TestNeverRecordComposition:
+    def test_a_blocked_append_raises_and_persists_nothing(self):
+        with pytest.raises(JournalBlockedError) as excinfo:
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement=f"the key is {SECRET}", verbatim=""
+            )
+        assert SECRET not in str(excinfo.value)
+        assert JournalEntry.query.filter(agent_id=AGENT) == []
+        assert not _keyspace_contains(SECRET)
+
+    def test_a_blocked_verbatim_span_raises_and_persists_nothing(self):
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement="a claim", verbatim=f"he said {SECRET}"
+            )
+        assert JournalEntry.query.filter(agent_id=AGENT) == []
+        assert not _keyspace_contains(SECRET)
+
+    def test_a_blocked_subject_tag_raises_even_though_the_mixin_never_scans_lists(self):
+        """D8: ``_never_record_scan_values`` yields only ``str``, so a
+        ``TagField`` list is outside the mixin's scan surface. ``append()``
+        closes that gap itself."""
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement="a claim", subjects=["launch", SECRET]
+            )
+        assert JournalEntry.query.filter(agent_id=AGENT) == []
+        assert not _keyspace_contains(SECRET)
+
+    def test_a_blocked_agent_id_raises_and_never_reaches_a_key_name(self):
+        """``agent_id`` is rendered into the record's Redis key NAME, which is
+        the one place ``hard_delete`` cannot scrub retroactively — an index key
+        whose *name* embeds a record key survives the sweep. So it is scanned
+        in the pre-flight rather than left to the mixin (which scans field
+        *values*, after the key already exists)."""
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.append(agent_id=SECRET, statement="a claim")
+        assert not _keyspace_contains(SECRET)
+
+    def test_the_mixin_alone_still_does_not_scan_tag_lists(self):
+        """Pin the residual mixin hole so it cannot drift silently.
+
+        Constructing the entry directly bypasses the façade's explicit tag
+        scan, and the mixin does not catch it. Documented behavior, asserted
+        so a future change to ``_never_record_scan_values`` is a deliberate
+        one rather than a surprise.
+        """
+        entry = JournalEntry(
+            agent_id=AGENT, statement="a claim", subjects=[SECRET], kind="assert"
+        )
+        entry.save()
+        stored = JournalEntry.query.get(redis_key=entry.db_key.redis_key)
+        assert stored is not None
+        assert SECRET in stored.subjects
+
+    def test_a_blocked_supersede_closes_nothing_and_leaves_no_annotation(self):
+        """The plan's highest-severity failure path.
+
+        ``Model.save()`` returns the *pipeline* when the firewall fires in
+        pipeline mode, which is indistinguishable from success — so a naive
+        implementation would commit the invalidate EVAL against an annotation
+        that was never written: a membership change with zero provenance.
+        """
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.supersede(
+                target,
+                agent_id=AGENT,
+                statement=f"the real value is {SECRET}",
+                at=t0 + 50.0,
+            )
+
+        assert _interval(target)[1] == float("inf")
+        assert target.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+        assert ProvenanceJournal.annotations_for(target) == []
+        keys = _keys()
+        assert POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key) is None
+        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert not _keyspace_contains(SECRET)
+
+    def test_a_blocked_retract_closes_nothing(self):
+        target = _append()
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.retract(
+                target, agent_id=AGENT, statement=f"because {SECRET}"
+            )
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+
+    def test_a_blocked_annotation_issues_or_queues_no_command(self, monkeypatch):
+        target = _append()
+        recorder = _CommandRecorder(monkeypatch)
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement=f"leak {SECRET}"
+            )
+        assert recorder.total == 0, recorder.detail
+
+    def test_a_target_carrying_annotation_survives_the_entropy_detector(self):
+        """Regression: ``target`` is a full Redis key.
+
+        It clears the entropy detector only because it contains ``:``, which is
+        outside the detector's charset. If a future single-segment key rendering
+        changed that, every annotation would start being firewall-blocked.
+        """
+        target = _append()
+        target_key = target.db_key.redis_key
+        assert ":" in target_key
+
+        result = ProvenanceJournal.confirm(target_key, agent_id=AGENT, statement="yes")
+        assert result.entry.target == target_key
+        assert _redis_keys(JournalEntry.query.filter(target=target_key)) == [
+            result.entry.db_key.redis_key
+        ]
+
+
+# A target key whose uuid4 hex contains a Luhn-passing digit run. Not
+# hand-crafted — this exact value came out of a random sample and is the
+# verified reproduction of the CI failure fixed in PR #589 round 3:
+#
+#   scan_never_record("JournalEntry:agent/-under/-test:8ef1fc...cf04")
+#   -> NeverRecordVerdict(blocked=True, reason='payment_card', detector='luhn')
+#
+# ``agent/-under/-test`` is Popoto's escaped rendering of AGENT, so building an
+# entry with this entry_id under AGENT reproduces the key byte for byte.
+LUHN_TRIPPING_ENTRY_ID = "8ef1fc6db384458286216656bfb2cf04"
+LUHN_TRIPPING_TARGET_KEY = f"JournalEntry:agent/-under/-test:{LUHN_TRIPPING_ENTRY_ID}"
+
+
+class TestMachineGeneratedTargetIsNotScanned:
+    """``target`` holds a Redis key Popoto generated, not user content.
+
+    Scanning it for payment cards is a category error, and a measurable one:
+    roughly 1 target key in 250 contains a 13-19 digit run that passes the Luhn
+    checksum. The block landed at ``Model.save()`` step 0, which *returns*
+    instead of raising, so the annotation was silently dropped while the
+    invalidate EVAL still closed the target — a membership change with zero
+    provenance, and ``target_closed=True`` for an entry that does not exist.
+    That is the war-room's top blocker resurfacing through a different door.
+    """
+
+    def test_the_verified_luhn_tripping_key_is_still_blocked_as_raw_content(self):
+        """Pin the trigger itself, so this suite fails loudly if the detector
+        changes and these tests start passing for the wrong reason."""
+        verdict = scan_never_record(LUHN_TRIPPING_TARGET_KEY)
+        assert verdict.blocked is True
+        assert verdict.reason == "payment_card"
+        assert verdict.detector == "luhn"
+
+    def test_target_is_absent_from_the_scan_surface(self):
+        entry = JournalEntry(
+            agent_id=AGENT,
+            kind="confirm",
+            target=LUHN_TRIPPING_TARGET_KEY,
+            statement="a claim",
+        )
+        assert LUHN_TRIPPING_TARGET_KEY not in set(entry._never_record_scan_values())
+
+    def test_every_genuine_content_field_is_still_scanned(self):
+        """The narrowing is exactly one machine-generated pointer. If a future
+        edit widened it to a field a human or a model wrote, that is a privacy
+        regression, not a flake fix."""
+        entry = JournalEntry(
+            agent_id=AGENT,
+            kind="confirm",
+            target=LUHN_TRIPPING_TARGET_KEY,
+            statement="the statement",
+            verbatim="the verbatim",
+            speaker="the speaker",
+            turn_id="the-turn",
+        )
+        scanned = set(entry._never_record_scan_values())
+        for value in (
+            "the statement",
+            "the verbatim",
+            "the speaker",
+            "the-turn",
+        ):
+            assert value in scanned
+
+    def test_a_luhn_tripping_target_key_round_trips_and_closes_normally(self):
+        """The CI failure, deterministically. Before the fix this raised
+        nothing and wrote nothing — ``supersede`` returned
+        ``target_closed=True`` for an annotation that was never saved."""
+        t0 = time.time() - 100.0
+        target = JournalEntry(
+            agent_id=AGENT,
+            entry_id=LUHN_TRIPPING_ENTRY_ID,
+            kind="assert",
+            statement="the launch slipped to the 30th",
+            validity=t0,
+        )
+        target.save()
+        assert target.db_key.redis_key == LUHN_TRIPPING_TARGET_KEY
+
+        result = ProvenanceJournal.supersede(
+            LUHN_TRIPPING_TARGET_KEY,
+            agent_id=AGENT,
+            statement="it slipped to the 31st",
+            at=t0 + 50.0,
+        )
+
+        # The annotation exists — the whole point.
+        assert result.entry.target == LUHN_TRIPPING_TARGET_KEY
+        stored = JournalEntry.query.get(redis_key=result.entry.db_key.redis_key)
+        assert stored is not None
+        assert stored.statement == "it slipped to the 31st"
+
+        # ...and target_closed is a claim about a record that really is there.
+        assert result.target_closed is True
+        assert _interval(target)[1] == t0 + 50.0
+        assert ProvenanceJournal.annotations_for(LUHN_TRIPPING_TARGET_KEY) == [stored]
+
+    def test_no_synthetic_target_key_is_ever_firewall_blocked(self):
+        """Property-style sweep over the real key rendering.
+
+        A single round-trip proves nothing at a ~0.4% rate, so assert the
+        invariant across a few thousand keys instead: a machine-generated
+        target pointer must never reach a blocking verdict through the scan
+        surface, whatever uuid4 hands back.
+        """
+        offenders = []
+        for _ in range(4000):
+            entry = JournalEntry(
+                agent_id=AGENT,
+                kind="confirm",
+                target=f"JournalEntry:agent/-under/-test:{uuid.uuid4().hex}",
+                statement="a claim",
+            )
+            for value in entry._never_record_scan_values():
+                verdict = scan_never_record(value)
+                if verdict.blocked:
+                    offenders.append((value, verdict.reason, verdict.detector))
+        assert offenders == [], offenders[:5]
+
+    def test_a_luhn_tripping_key_survives_a_full_hard_delete_cycle(self):
+        """The CI test that actually failed, pinned deterministically.
+
+        ``hard_delete`` of a target must leave the annotation standing; the
+        intermittent failure was the annotation never having been written.
+        """
+        t0 = time.time() - 100.0
+        target = JournalEntry(
+            agent_id=AGENT,
+            entry_id=LUHN_TRIPPING_ENTRY_ID,
+            kind="assert",
+            statement="the launch slipped to the 30th",
+            validity=t0,
+        )
+        target.save()
+        annotation = ProvenanceJournal.supersede(
+            LUHN_TRIPPING_TARGET_KEY,
+            agent_id=AGENT,
+            statement="it slipped to the 31st",
+            at=t0 + 50.0,
+        ).entry
+
+        assert JournalEntry.hard_delete(target) is True
+
+        survivor = JournalEntry.query.get(redis_key=annotation.db_key.redis_key)
+        assert survivor is not None
+        assert survivor.statement == "it slipped to the 31st"
+
+
+class TestPreFlightScansExactlyWhatTheMixinScans:
+    """The structural half of the fix.
+
+    The defect was not only that ``target`` got scanned; it was that the
+    pre-flight scanned a *different* value set than the mixin would, so the
+    mixin could block something the pre-flight passed — and ``Model.save()``
+    signals that block by returning, not raising. Two sets that can drift are
+    two chances to reach the silent path. One set cannot drift.
+    """
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            pytest.param({"statement": f"key {SECRET}"}, id="statement"),
+            pytest.param({"verbatim": f"he said {SECRET}"}, id="verbatim"),
+            pytest.param({"speaker": SECRET}, id="speaker"),
+            pytest.param({"turn_id": SECRET}, id="turn_id"),
+            pytest.param({"subjects": ["launch", SECRET]}, id="subjects"),
+            pytest.param({"agent_id": SECRET}, id="agent_id"),
+        ],
+    )
+    def test_every_mixin_scanned_field_raises_in_preflight_never_silently(self, kwargs):
+        """Whichever field carries it, the block must arrive as a raised
+        ``JournalBlockedError`` from the pre-flight — never as a ``save()``
+        that returned falsy while the close went ahead."""
+        target = _append()
+        call = {"agent_id": AGENT, "statement": "a correction"}
+        call.update(kwargs)
+
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.supersede(target, **call)
+
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+        keys = _keys()
+        assert POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key) is None
+        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert not _keyspace_contains(SECRET)
+
+    def test_the_preflight_scans_a_superset_of_the_mixin_surface(self, monkeypatch):
+        """Derived from the same method, asserted rather than trusted.
+
+        Captures the values the pre-flight actually scanned during a real call
+        and checks they cover everything the resulting entry exposes to the
+        mixin. If they ever fail to, the mixin can block what the pre-flight
+        passed, and the silent-drop path is reachable again.
+        """
+        target = _append()
+        scanned = []
+        real = journal_module._scan_or_block
+
+        def spy(*values):
+            scanned.extend(values)
+            return real(*values)
+
+        monkeypatch.setattr(journal_module, "_scan_or_block", spy)
+        result = ProvenanceJournal.supersede(
+            target,
+            agent_id=AGENT,
+            statement="a correction",
+            verbatim="he said it slipped",
+            speaker="ada",
+            turn_id="t-41",
+            subjects=["launch", "dates"],
+        )
+
+        mixin_surface = set(result.entry._never_record_scan_values())
+        assert mixin_surface  # guard against a vacuous pass
+        assert mixin_surface <= set(scanned)
+        # ...plus the two the mixin structurally cannot reach.
+        assert AGENT in set(scanned)
+        assert {"launch", "dates"} <= set(scanned)
+
+    def test_a_save_that_returns_falsy_raises_instead_of_closing_the_target(
+        self, monkeypatch
+    ):
+        """The defensive backstop.
+
+        ``Model.save()`` has several early-return gates that signal refusal by
+        returning rather than raising. Any of them reaching this code path
+        means an annotation was not written — and queueing the interval close
+        anyway is exactly the zero-provenance membership change this module
+        exists to prevent. Simulated by forcing the falsy return, because the
+        pre-flight now makes the real firewall gate unreachable.
+        """
+        target = _append()
+        monkeypatch.setattr(JournalEntry, "save", lambda self, **kw: False)
+
+        with pytest.raises(RuntimeError, match="annotation was not written"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction"
+            )
+
+        assert _interval(target)[1] == float("inf")
+        assert target.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+
+# ---------------------------------------------------------------------------
+# E. D7 pre-flight — every rejection issues zero commands
+# ---------------------------------------------------------------------------
+
+
+class TestPreFlightValidation:
+    """Each case asserts by call counter, not just by exception type.
+
+    "Raises" is not the property that matters here; "raises before anything was
+    written" is. A rejection that has already queued or issued a command is the
+    exact failure shape D7 exists to prevent.
+
+    ``_counted`` deliberately counts *queued* commands as well as issued ones.
+    The journal owns its pipeline, so a client-level counter alone would read
+    zero even for a fully successful write — an assertion that could never
+    fail. ``test_the_zero_command_harness_is_live`` is the positive control
+    that keeps this honest.
+    """
+
+    def _counted(self, monkeypatch):
+        return _CommandRecorder(monkeypatch)
+
+    def test_the_zero_command_harness_is_live(self, monkeypatch):
+        """Positive control: the recorder counts a write that does happen."""
+        recorder = self._counted(monkeypatch)
+        _append(statement="a claim that is written")
+        assert recorder.total > 0, recorder.detail
+
+    def test_an_out_of_vocabulary_kind_is_refused_before_any_command(self, monkeypatch):
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="kind must be one of"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement="a claim", kind="annihilate"
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_an_assert_entry_carrying_a_target_is_refused_before_any_command(
+        self, monkeypatch
+    ):
+        target = _append()
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="must not carry a target"):
+            ProvenanceJournal.append(
+                agent_id=AGENT,
+                statement="a claim",
+                kind="assert",
+                target=target,
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_an_annotation_without_a_target_is_refused_before_any_command(
+        self, monkeypatch
+    ):
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="must name a target"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement="a claim", kind="supersede", target=None
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_a_nonexistent_target_key_is_refused_before_any_command(self, monkeypatch):
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="does not exist"):
+            ProvenanceJournal.supersede(
+                "JournalEntry:no-such-entry", agent_id=AGENT, statement="a claim"
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_an_unsaved_target_instance_is_refused_before_any_command(
+        self, monkeypatch
+    ):
+        unsaved = JournalEntry(agent_id=AGENT, statement="never saved", kind="assert")
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="does not exist"):
+            ProvenanceJournal.supersede(
+                unsaved, agent_id=AGENT, statement="a correction"
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_a_cross_agent_target_is_refused_before_any_command(self, monkeypatch):
+        """``target`` is a full Redis key that can name another agent's
+        partition, so a cross-agent close is refused rather than performed."""
+        theirs = _append(agent_id=OTHER_AGENT, statement="their claim")
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="cross-agent"):
+            ProvenanceJournal.supersede(
+                theirs, agent_id=AGENT, statement="my correction"
+            )
+        assert counter.nonzero == {}, counter.nonzero
+        assert _interval(theirs)[1] == float("inf")
+
+    def test_a_backdated_instant_is_refused_before_any_command(self, monkeypatch):
+        t0 = time.time()
+        target = _append(at=t0)
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="precedes"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", at=t0 - 60.0
+            )
+        assert counter.nonzero == {}, counter.nonzero
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+
+    def test_a_non_numeric_instant_is_refused_before_any_command(self, monkeypatch):
+        target = _append()
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="epoch seconds"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", at="yesterday"
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_a_non_finite_instant_is_refused_before_any_command(self, monkeypatch):
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="finite"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement="a claim", at=float("inf")
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_a_non_transactional_pipeline_is_refused_before_any_command(
+        self, monkeypatch
+    ):
+        """``pipeline(transaction=False)`` is legal and would silently void the
+        annotate-and-close atomicity guarantee."""
+        target = _append()
+        pipe = POPOTO_REDIS_DB.pipeline(transaction=False)
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="transaction=False"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", pipeline=pipe
+            )
+        assert counter.nonzero == {}, counter.nonzero
+        assert list(pipe.command_stack) == []
+
+    def test_a_watching_pipeline_is_refused_before_any_command(self, monkeypatch):
+        """A WATCHing pipeline executes immediately instead of queueing.
+
+        Before this pre-flight the call reached ``Model.save()``, which wrote
+        the entry hash and then died with ``AttributeError: 'int' object has
+        no attribute 'sadd'`` — leaving a hash with no indexes and no validity
+        interval. On an append-only model that orphan is permanent, so the
+        refusal has to be a ``ValueError`` raised before any write, not an
+        ``AttributeError`` raised half-way through one.
+        """
+        target = _append()
+        before = set(scan_keys("*"))
+        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe.watch("some:key")
+        assert pipe.watching is True
+        counter = self._counted(monkeypatch)
+        try:
+            with pytest.raises(ValueError, match="WATCHing pipeline"):
+                ProvenanceJournal.supersede(
+                    target, agent_id=AGENT, statement="a correction", pipeline=pipe
+                )
+            assert counter.nonzero == {}, counter.nonzero
+            assert list(pipe.command_stack) == []
+        finally:
+            # A live WATCH is connection state, not keyspace state, so the
+            # plugin's flush cannot clear it. Leaking one would silently make
+            # a later test's pipeline execute immediately too.
+            pipe.reset()
+        assert set(scan_keys("*")) == before
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+
+    def test_a_watching_pipeline_in_multi_is_accepted_and_the_close_applies(self):
+        """``watch()`` + ``multi()`` is the standard redis-py optimistic-lock
+        pattern and must be accepted.
+
+        After ``multi()`` redis-py sets ``explicit_transaction = True`` and
+        commands queue normally, so the annotate-and-close applies atomically
+        at ``execute()``. The refusal was keyed on ``watching`` alone, which
+        over-refused: a bare ``Plain(name="x").save(pipeline=p)`` succeeds on
+        such a pipeline, so the journal was strictly less capable than a bare
+        Popoto model. (Round-3 review of PR #589.)
+        """
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        pipe = POPOTO_REDIS_DB.pipeline()
+        try:
+            pipe.watch(target.db_key.redis_key)
+            pipe.multi()
+            assert pipe.watching is True
+            assert pipe.explicit_transaction is True
+
+            result = ProvenanceJournal.supersede(
+                target,
+                agent_id=AGENT,
+                statement="a correction",
+                at=t0 + 50.0,
+                pipeline=pipe,
+            )
+            # Queued, not applied: nothing has executed yet.
+            assert result.target_closed is None
+            assert _interval(target)[1] == float("inf")
+
+            results = pipe.execute()
+        finally:
+            pipe.reset()
+
+        assert bool(results[result.close_index]) is True
+        assert _interval(target)[1] == t0 + 50.0
+        stored = JournalEntry.query.get(redis_key=result.entry.db_key.redis_key)
+        assert stored is not None
+        assert stored.statement == "a correction"
+
+    def test_the_watch_refusal_recommends_multi_and_never_unwatch(self):
+        """UNWATCH would silently discard the caller's optimistic lock, so the
+        remediation must not suggest it."""
+        target = _append()
+        pipe = POPOTO_REDIS_DB.pipeline()
+        try:
+            pipe.watch("some:key")
+            with pytest.raises(ValueError) as excinfo:
+                ProvenanceJournal.supersede(
+                    target, agent_id=AGENT, statement="a correction", pipeline=pipe
+                )
+        finally:
+            pipe.reset()
+        message = str(excinfo.value)
+        assert "multi()" in message
+        assert "Do NOT call UNWATCH" in message
+
+    def test_a_non_pipeline_object_is_refused_before_any_command(self, monkeypatch):
+        target = _append()
+        counter = self._counted(monkeypatch)
+        with pytest.raises(ValueError, match="must be a redis Pipeline"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", pipeline=object()
+            )
+        assert counter.nonzero == {}, counter.nonzero
+
+    def test_pre_save_validates_kind_for_a_directly_constructed_entry(self):
+        """Defence in depth behind the façade's pre-flight."""
+        entry = JournalEntry(agent_id=AGENT, statement="a claim", kind="annihilate")
+        with pytest.raises(ValueError, match="kind must be one of"):
+            entry.save()
+
+
+# ---------------------------------------------------------------------------
+# F. Atomicity, fault injection, and the #588 regressions
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationAtomicity:
+    """Shape assertions, never a literal total command count.
+
+    A real ``JournalEntry`` queues the hash write, the class SADD, four indexed
+    field EVALs, the tag commands, the validity ``open`` EVAL, the XADD, and the
+    ``invalidate`` EVAL. That total is brittle to any field-set change, so the
+    assertions below pin the properties that actually matter.
+    """
+
+    def test_the_annotate_and_close_sequence_is_one_transactional_pipeline(
+        self, monkeypatch
+    ):
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+
+        spy = _PipelineSpy(monkeypatch)
+        counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
+        result = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
+        )
+
+        invalidates = spy.evals(mode="invalidate")
+        opens = spy.evals(mode="open")
+        assert len(invalidates) == 1, f"expected one invalidate EVAL, got {invalidates}"
+        assert len(opens) == 1, f"expected one open EVAL, got {len(opens)}"
+        assert _numkeys(invalidates[0]) == 6
+
+        # ARGV[1] is the new member, ARGV[7] the old — both must be non-empty
+        # or the close is aimed at nothing.
+        assert _as_str(invalidates[0][9]) == result.entry.db_key.redis_key
+        assert _as_str(invalidates[0][15]) == target.db_key.redis_key
+
+        pipe = spy.pipeline_of("invalidate")
+        assert pipe is not None
+        assert pipe.transaction is True
+
+        assert (
+            counter.nonzero == {}
+        ), f"mutating calls were issued outside the pipeline: {counter.nonzero}"
+        assert result.target_closed is True
+
+    def test_a_caller_supplied_pipeline_is_returned_unexecuted(self, monkeypatch):
+        """A fault before ``execute()`` applies nothing."""
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
+        result = ProvenanceJournal.supersede(
+            target,
+            agent_id=AGENT,
+            statement="a correction",
+            at=t0 + 50.0,
+            pipeline=pipe,
+        )
+
+        assert result.pipeline is pipe
+        assert len(pipe.command_stack) > 0
+        assert counter.nonzero == {}, counter.nonzero
+
+        # Nothing applied: the annotation is absent and the target is open.
+        assert not POPOTO_REDIS_DB.exists(result.entry.db_key.redis_key)
+        assert _interval(target)[1] == float("inf")
+
+        spy_stack = list(pipe.command_stack)
+        modes = [_supersede_mode(entry[0]) for entry in spy_stack]
+        assert modes.count("invalidate") == 1
+        assert modes.count("open") == 1
+
+    def test_a_command_error_inside_exec_leaves_the_annotation_with_the_target_open(
+        self,
+    ):
+        """The documented atomicity BOUNDARY, asserted as a known state.
+
+        Redis ``MULTI``/``EXEC`` does not roll back sibling commands when one
+        command errors at execute time. The property M1 claims is "no
+        interleaving reader observes the annotation without the close" — not
+        rollback. Bypassing D7's pre-flight to force a script error inside EXEC
+        produces exactly the residual state the plan documents.
+        """
+        t0 = time.time()
+        target = _append(at=t0)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        annotation = JournalEntry(
+            agent_id=AGENT,
+            statement="a backdated correction",
+            kind="supersede",
+            target=target.db_key.redis_key,
+            validity=t0 - 60.0,
+        )
+        annotation.save(pipeline=pipe)
+        ValidityField.execute_supersede(
+            JournalEntry,
+            VALIDITY_FIELD_NAME,
+            new_member=annotation.db_key.redis_key,
+            mode="invalidate",
+            now=t0 - 60.0,
+            close_at=t0 - 60.0,
+            old_member=target.db_key.redis_key,
+            pipeline=pipe,
+        )
+        with pytest.raises(redis.exceptions.ResponseError):
+            pipe.execute()
+
+        # The annotation landed; the target did not close. Not a rollback.
+        assert POPOTO_REDIS_DB.exists(annotation.db_key.redis_key)
+        assert _interval(target)[1] == float("inf")
+
+    def test_bypassing_the_pre_flight_surfaces_a_raw_response_error(self):
+        """#588 pin: the reason D7 step 4 exists cannot be refactored away.
+
+        ``execute_supersede`` remaps ``CLOSE_BEFORE_START`` to ``ValueError``
+        only on the non-pipeline branch, and its client-side pre-check compares
+        ``close_at`` against the *caller-supplied* ``valid_from`` — which M1
+        sets to the same instant, so it never fires. Without M1's pre-read of
+        the target's *stored* ``valid_from``, a genuine backdate surfaces here:
+        a raw ``ResponseError`` out of ``pipe.execute()``, with the annotation
+        already written.
+        """
+        t0 = time.time()
+        target = _append(at=t0)
+        backdated = t0 - 60.0
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        annotation = JournalEntry(
+            agent_id=AGENT,
+            statement="a backdated correction",
+            kind="supersede",
+            target=target.db_key.redis_key,
+            validity=backdated,
+        )
+        annotation.save(pipeline=pipe)
+        # The same instant for both, exactly as M1's write path passes them --
+        # which is why the client-side pre-check does not fire.
+        ValidityField.execute_supersede(
+            JournalEntry,
+            VALIDITY_FIELD_NAME,
+            new_member=annotation.db_key.redis_key,
+            mode="invalidate",
+            now=backdated,
+            valid_from=backdated,
+            ingested_at=backdated,
+            close_at=backdated,
+            old_member=target.db_key.redis_key,
+            pipeline=pipe,
+        )
+        with pytest.raises(redis.exceptions.ResponseError):
+            pipe.execute()
+        assert POPOTO_REDIS_DB.exists(annotation.db_key.redis_key)
+
+        # And M1's own path refuses the same call before writing anything.
+        with pytest.raises(ValueError, match="precedes"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", at=backdated
+            )
+
+    def test_supersession_protocol_silently_no_ops_for_a_pipelined_successor(self):
+        """#588 finding 1, pinned against raw V0 and against M1's write path.
+
+        ``SupersessionProtocol`` resolves member keys through
+        ``POPOTO_REDIS_DB.exists(...)``. The successor's HSET is only *queued*,
+        so ``EXISTS`` returns 0, the call takes its "unsaved successor -> no-op"
+        branch, and returns ``None`` — indistinguishable from its normal
+        pipeline-mode return. That is why M1 calls ``execute_supersede``
+        directly.
+        """
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        successor = JournalEntry(
+            agent_id=AGENT, statement="a correction", kind="assert", validity=t0 + 50.0
+        )
+        successor.save(pipeline=pipe)
+        SupersessionProtocol.invalidate(target, superseded_by=successor, pipeline=pipe)
+        stack = list(pipe.command_stack)
+        pipe.execute()
+
+        modes = [_supersede_mode(entry[0]) for entry in stack]
+        assert "invalidate" not in modes, "V0 silently queued nothing (#588)"
+        assert _interval(target)[1] == float("inf")
+        keys = _keys()
+        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
+
+        # M1's write path closes the same target, in one transaction.
+        second_target = _append(at=t0)
+        ProvenanceJournal.supersede(second_target, agent_id=AGENT, at=t0 + 50.0)
+        assert _interval(second_target)[1] == pytest.approx(t0 + 50.0)
+        assert (
+            _as_str(
+                POPOTO_REDIS_DB.hget(keys["chain_fwd"], second_target.db_key.redis_key)
+            )
+            != "None"
+        )
+
+    def test_valid_time_is_taken_from_construction_not_from_the_supersede_argv(self):
+        """#588 finding 2: ``ZADD NX`` makes the script's ``valid_from`` a no-op.
+
+        The successor's own ``open`` EVAL runs earlier in the pipeline, so a
+        ``valid_from`` passed only to ``execute_supersede`` is silently replaced
+        by the save clock. M1 sets the instant at construction instead, and the
+        stored value must be exact — not merely close.
+        """
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        requested = t0 + 50.0
+
+        result = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="a correction", at=requested
+        )
+        stored_valid_from, _, _ = _interval(result.entry)
+        assert stored_valid_from == requested
+
+        # The raw shape M1 routes around: pass the instant ONLY to the script.
+        raw_target = _append(at=t0)
+        pipe = POPOTO_REDIS_DB.pipeline()
+        raw_successor = JournalEntry(
+            agent_id=AGENT, statement="raw correction", kind="assert"
+        )
+        raw_successor.save(pipeline=pipe)
+        ValidityField.execute_supersede(
+            JournalEntry,
+            VALIDITY_FIELD_NAME,
+            new_member=raw_successor.db_key.redis_key,
+            mode="invalidate",
+            now=requested,
+            valid_from=requested,
+            ingested_at=requested,
+            close_at=requested,
+            old_member=raw_target.db_key.redis_key,
+            pipeline=pipe,
+        )
+        pipe.execute()
+        raw_valid_from, _, _ = _interval(raw_successor)
+        assert raw_valid_from != requested, (
+            "V0's ZADD NX skew is gone -- #588's second finding may be fixed; "
+            "re-check M1's construction-time valid_from workaround"
+        )
+
+    def test_an_xadd_failure_inside_the_pipeline_aborts_the_whole_annotation(
+        self, monkeypatch
+    ):
+        """``EventStreamMixin`` re-raises in pipeline mode, so a stream failure
+        must take the annotation down with it rather than committing half."""
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+
+        real_pipeline = POPOTO_REDIS_DB.pipeline
+
+        def make_pipeline(*args, **kwargs):
+            pipe = real_pipeline(*args, **kwargs)
+
+            def exploding_xadd(*xargs, **xkwargs):
+                raise RuntimeError("injected XADD failure")
+
+            pipe.xadd = exploding_xadd
+            return pipe
+
+        monkeypatch.setattr(POPOTO_REDIS_DB, "pipeline", make_pipeline)
+        with pytest.raises(RuntimeError, match="injected XADD failure"):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
+            )
+        monkeypatch.undo()
+
+        assert _interval(target)[1] == float("inf")
+        assert ProvenanceJournal.annotations_for(target) == []
+
+
+# ---------------------------------------------------------------------------
+# G. The validity-coupling kill switch
+# ---------------------------------------------------------------------------
+
+
+class TestCouplingKillSwitch:
+    def test_the_env_var_is_read_as_a_disable_so_default_on_holds(self, monkeypatch):
+        monkeypatch.delenv("POPOTO_JOURNAL_COUPLING_DISABLE", raising=False)
+        assert _read_journal_coupling_switch() is True
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            monkeypatch.setenv("POPOTO_JOURNAL_COUPLING_DISABLE", value)
+            assert _read_journal_coupling_switch() is False, value
+
+    def test_an_uncoupled_supersede_issues_the_command_set_of_a_bare_append(
+        self, monkeypatch
+    ):
+        """Not "byte-identical" — a clock value enters ARGV, so two runs differ
+        by construction. The assertable property is the command *set*: the
+        invalidate EVAL is absent and the EVAL count matches a plain append."""
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+
+        baseline_spy = _PipelineSpy(monkeypatch)
+        _append(at=t0 + 10.0, statement="a plain append")
+        baseline_evals = len(baseline_spy.evals())
+        monkeypatch.undo()
+        assert baseline_evals > 0, "the EVAL comparison would be vacuous"
+
+        Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED = False
+        spy = _PipelineSpy(monkeypatch)
+        result = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
+        )
+
+        assert spy.evals(mode="invalidate") == []
+        assert len(spy.evals()) == baseline_evals
+        assert len(spy.evals(mode="open")) == 1
+        assert result.target_closed is False
+        assert _interval(target)[1] == float("inf")
+
+    def test_the_degraded_mode_is_detectable_without_reading_redis(self):
+        target = _append()
+        Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED = False
+        result = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="a correction"
+        )
+        assert result.target_closed is False
+        assert result.coupling_enabled is False
+        assert result.entry.target == target.db_key.redis_key
+
+    def test_an_uncoupled_supersede_still_appends_and_still_records_the_target(self):
+        target = _append()
+        Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED = False
+        result = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="a correction"
+        )
+        assert _redis_keys(ProvenanceJournal.annotations_for(target)) == [
+            result.entry.db_key.redis_key
+        ]
+        # Membership degrades to "everything ever appended" -- pre-M1 behavior.
+        assert target.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+    def test_the_uncoupled_warning_is_emitted_once_per_process(self, caplog):
+        Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED = False
+        first = _append()
+        second = _append()
+        with caplog.at_level("WARNING", logger="POPOTO.ProvenanceJournal"):
+            ProvenanceJournal.supersede(first, agent_id=AGENT, statement="one")
+            ProvenanceJournal.supersede(second, agent_id=AGENT, statement="two")
+        warnings = [r for r in caplog.records if "COUPLING_DISABLE" in r.getMessage()]
+        assert len(warnings) == 1
+
+
+# ---------------------------------------------------------------------------
+# H. Retention escape hatch, and the two remaining race shapes
+# ---------------------------------------------------------------------------
+
+
+def _derived_keys_naming(member):
+    """Return every ``$*`` key still holding ``member`` anywhere."""
+    holders = []
+    for key in scan_keys("$*"):
+        key = _as_str(key)
+        key_type = _as_str(POPOTO_REDIS_DB.type(key))
+        if key_type == "set":
+            values = [_as_str(m) for m in POPOTO_REDIS_DB.smembers(key)]
+        elif key_type == "zset":
+            values = [_as_str(m) for m in POPOTO_REDIS_DB.zrange(key, 0, -1)]
+        elif key_type == "hash":
+            blob = POPOTO_REDIS_DB.hgetall(key)
+            values = [_as_str(f) for f in blob] + [_as_str(v) for v in blob.values()]
+        elif key_type == "string":
+            values = [_as_str(POPOTO_REDIS_DB.get(key))]
+        else:
+            values = []
+        if any(member in value for value in values) or member in key:
+            holders.append(key)
+    return holders
+
+
+class TestHardDelete:
+    def test_hard_delete_removes_the_record_and_every_derived_trace(self):
+        t0 = time.time() - 100.0
+        target = _append(
+            at=t0, speaker="tom", turn_id="t-41", subjects=["launch", "tom"]
+        )
+        annotation = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
+        ).entry
+        member = target.db_key.redis_key
+
+        assert JournalEntry.hard_delete(target) is True
+
+        assert not POPOTO_REDIS_DB.exists(member)
+        assert JournalEntry.query.filter(agent_id=AGENT, speaker="tom") == []
+        assert JournalEntry.query.filter(turn_id="t-41") == []
+        assert JournalEntry.query.filter(subjects__contains="launch") == []
+        assert _derived_keys_naming(member) == []
+        # The annotation itself survives -- only the erased record is swept.
+        assert POPOTO_REDIS_DB.exists(annotation.db_key.redis_key)
+
+    def test_hard_delete_clears_the_value_side_of_the_chain_hashes(self):
+        t0 = time.time() - 100.0
+        first = _append(at=t0)
+        second = ProvenanceJournal.supersede(
+            first, agent_id=AGENT, statement="a correction", at=t0 + 50.0
+        ).entry
+        member = second.db_key.redis_key
+
+        JournalEntry.hard_delete(second)
+        keys = _keys()
+        fwd = POPOTO_REDIS_DB.hgetall(keys["chain_fwd"])
+        assert all(_as_str(v) != member for v in fwd.values())
+        assert _derived_keys_naming(member) == []
+
+
+class TestOrphanIndexRead:
+    def test_an_index_member_with_no_hash_is_skipped_rather_than_raising(self):
+        """Race 1: indexed-field EVALs run eagerly, ahead of the internal
+        pipeline, so a crash between the two leaves an index entry pointing at
+        a nonexistent hash. The query layer must skip it, not raise."""
+        target = _append()
+        target_key = target.db_key.redis_key
+        annotation = ProvenanceJournal.confirm(
+            target, agent_id=AGENT, statement="agreed"
+        ).entry
+
+        index_field = JournalEntry._meta.fields["target"]
+        prefix = index_field.get_special_use_field_db_key(JournalEntry, "target")
+        index_key = popoto.models.db_key.DB_key(prefix, target_key).redis_key
+        POPOTO_REDIS_DB.sadd(index_key, "JournalEntry:ghost-entry-that-never-existed")
+
+        found = _redis_keys(JournalEntry.query.filter(target=target_key))
+        assert found == [annotation.db_key.redis_key]
+
+    def test_a_fully_orphaned_index_returns_empty_rather_than_raising(self):
+        target = _append()
+        ghost_target = "JournalEntry:no-such-target"
+        index_field = JournalEntry._meta.fields["target"]
+        prefix = index_field.get_special_use_field_db_key(JournalEntry, "target")
+        index_key = popoto.models.db_key.DB_key(prefix, ghost_target).redis_key
+        POPOTO_REDIS_DB.sadd(index_key, "JournalEntry:ghost-annotation")
+
+        assert JournalEntry.query.filter(target=ghost_target) == []
+        assert POPOTO_REDIS_DB.exists(target.db_key.redis_key)
+
+
+class TestConcurrentDoubleClose:
+    def test_two_annotations_closing_one_target_apply_exactly_one_close(self):
+        """Race 3. ``SUPERSEDE_LUA``'s idempotency guard requires
+        ``invalid_at == +inf`` before closing, so the second close is a
+        server-side no-op while its entry still appends. Both annotations are
+        real provenance; exactly one close applies."""
+        t0 = time.time() - 200.0
+        target = _append(at=t0)
+
+        first = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="correction one", at=t0 + 50.0
+        )
+        second = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="correction two", at=t0 + 100.0
+        )
+
+        assert first.target_closed is True
+        assert second.target_closed is False
+
+        annotations = _redis_keys(ProvenanceJournal.annotations_for(target))
+        assert annotations == sorted(
+            [first.entry.db_key.redis_key, second.entry.db_key.redis_key]
+        )
+        assert _interval(target)[1] == pytest.approx(t0 + 50.0)
+        assert target.db_key.redis_key not in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+    def test_a_reclose_on_a_caller_pipeline_reports_unknown_not_closed(self):
+        """The caller-pipeline path must not claim a close it cannot know about.
+
+        Same state as the test above — the target is already closed — but the
+        second annotation is queued onto a *caller's* pipeline. Nothing has
+        executed, so ``target_closed`` is ``None`` (unknown), not ``True``:
+        reporting ``True`` here would be the #588 silent-no-op shape that
+        ``AnnotationResult`` exists to prevent. ``close_index`` is the seam for
+        the real answer.
+        """
+        t0 = time.time() - 200.0
+        target = _append(at=t0)
+        first = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="correction one", at=t0 + 50.0
+        )
+        assert first.target_closed is True
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        second = ProvenanceJournal.supersede(
+            target,
+            agent_id=AGENT,
+            statement="correction two",
+            at=t0 + 100.0,
+            pipeline=pipe,
+        )
+        assert second.target_closed is None
+        assert second.close_index is not None
+
+        results = pipe.execute()
+        assert not results[second.close_index]
+        # The entry itself is real provenance and did land.
+        assert POPOTO_REDIS_DB.exists(second.entry.db_key.redis_key)
+        # And the close it reported nothing about genuinely applied nothing.
+        assert _interval(target)[1] == pytest.approx(t0 + 50.0)
+
+    def test_a_caller_pipeline_append_queues_no_close_at_all(self):
+        """``close_index is None`` is the "nothing was queued to close" signal."""
+        pipe = POPOTO_REDIS_DB.pipeline()
+        result = ProvenanceJournal.append(
+            agent_id=AGENT, statement="a capture", pipeline=pipe
+        )
+        assert result.target_closed is None
+        assert result.close_index is None
+        pipe.execute()
+
+
+class TestKindRegistry:
+    """``JournalEntry.register_kind`` — the extension seam that replaces the
+    subclass seam an earlier revision advertised (see
+    :class:`TestEntryModelGuard` for why that one could never work)."""
+
+    def test_a_registered_closing_kind_round_trips_end_to_end(self):
+        """``register_kind("merge", closing=True)`` must actually close.
+
+        The behaviour the frozen module-level ``_CLOSING_KINDS`` set could not
+        express: before this, an extended kind was permanently membership-inert
+        no matter how it was declared.
+        """
+        JournalEntry.register_kind("merge", closing=True)
+        assert "merge" in JournalEntry.journal_kinds()
+
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        result = ProvenanceJournal.append(
+            agent_id=AGENT,
+            kind="merge",
+            target=target,
+            statement="merged into the canonical claim",
+            at=t0 + 50.0,
+        )
+
+        assert result.target_closed is True
+        assert result.entry.kind == "merge"
+        assert result.entry.target == target.db_key.redis_key
+        assert _interval(target)[1] == pytest.approx(t0 + 50.0)
+        assert target.db_key.redis_key not in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+        assert _redis_keys(ProvenanceJournal.annotations_for(target)) == [
+            result.entry.db_key.redis_key
+        ]
+
+    def test_a_registered_targetless_kind_round_trips_end_to_end(self):
+        """A registered ``targetless`` kind behaves like ``assert``, not like an
+        annotation: no target required, and a target is refused."""
+        JournalEntry.register_kind("observe", targetless=True)
+
+        result = ProvenanceJournal.append(
+            agent_id=AGENT, kind="observe", statement="the room went quiet"
+        )
+        assert result.entry.kind == "observe"
+        assert result.entry.target is None
+        assert result.target_closed is False
+        assert result.entry.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+        target = _append()
+        with pytest.raises(ValueError, match="must not carry a target"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, kind="observe", target=target, statement="x"
+            )
+
+    def test_a_registered_non_closing_kind_annotates_without_changing_membership(self):
+        """The default flags: target required, membership untouched."""
+        JournalEntry.register_kind("cite")
+        target = _append()
+        result = ProvenanceJournal.append(
+            agent_id=AGENT, kind="cite", target=target, statement="see also"
+        )
+        assert result.target_closed is False
+        assert _interval(target)[1] == float("inf")
+
+        with pytest.raises(ValueError, match="must name a target"):
+            ProvenanceJournal.append(agent_id=AGENT, kind="cite", statement="see also")
+
+    def test_an_unregistered_kind_is_still_refused(self):
+        with pytest.raises(ValueError, match="kind must be one of"):
+            ProvenanceJournal.append(
+                agent_id=AGENT, kind="merge", statement="not registered"
+            )
+
+    @pytest.mark.parametrize(
+        "name,kwargs,match",
+        [
+            ("supersede", {}, "core kind"),
+            ("", {}, "non-empty string"),
+            ("   ", {}, "non-empty string"),
+            ("both", {"targetless": True, "closing": True}, "exclusive"),
+        ],
+    )
+    def test_register_kind_refuses_an_illegal_registration(self, name, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            JournalEntry.register_kind(name, **kwargs)
+        assert name not in journal_module._REGISTERED_KINDS
+
+    def test_an_entry_written_with_a_registered_kind_still_reads_back_unregistered(
+        self,
+    ):
+        """The registry is process-global and **not persisted**.
+
+        Half of the caveat ``register_kind``'s docstring documents: a process
+        that never re-registered the kind still reads the record faithfully,
+        and the unknown kind is inert for membership rather than being
+        silently re-interpreted as a core closing kind.
+        """
+        JournalEntry.register_kind("merge", closing=True)
+        target = _append(statement="the original claim")
+        entry = ProvenanceJournal.append(
+            agent_id=AGENT,
+            kind="merge",
+            target=target,
+            statement="merged into the canonical claim",
+        ).entry
+
+        registered = dict(journal_module._REGISTERED_KINDS)
+        journal_module._REGISTERED_KINDS.clear()
+        try:
+            reread = JournalEntry.query.get(redis_key=entry.db_key.redis_key)
+            assert reread.kind == "merge"
+            assert reread.statement == "merged into the canonical claim"
+            assert reread.target == target.db_key.redis_key
+
+            # Inert for membership: a reader that does not know the kind must
+            # not treat it as a supersede or a retract.
+            assert "merge" not in JournalEntry.journal_kinds()
+            assert JournalEntry.kind_is_closing("merge") is False
+            assert JournalEntry.kind_is_targetless("merge") is False
+            assert _redis_keys(ProvenanceJournal.annotations_for(target)) == [
+                entry.db_key.redis_key
+            ]
+        finally:
+            journal_module._REGISTERED_KINDS.update(registered)
+
+    def test_writing_a_registered_kind_without_the_registration_raises(self):
+        """The other half: the *write* path is not forgiving.
+
+        ``transfer/import_.py`` restores records through ``instance.save()``,
+        which runs ``pre_save`` validation — so importing entries that use a
+        registered kind into a process that has not re-registered it fails
+        with ``ValueError`` and classifies those records ``ERRORED``. This is
+        the behaviour the docstring's caveat exists for; pinning it here keeps
+        the doc from drifting away from the code.
+        """
+        JournalEntry.register_kind("merge", closing=True)
+        target = _append(statement="the original claim")
+        values = {
+            "agent_id": AGENT,
+            "kind": "merge",
+            "target": target.db_key.redis_key,
+            "statement": "merged into the canonical claim",
+        }
+        # Sanity: with the registration in place the same construction saves.
+        JournalEntry(**values).save()
+
+        registered = dict(journal_module._REGISTERED_KINDS)
+        journal_module._REGISTERED_KINDS.clear()
+        try:
+            # A fresh key, exactly as a restore into an empty destination
+            # keyspace would be, so the append-only gate is not what refuses.
+            restored = JournalEntry(**values)
+            assert not POPOTO_REDIS_DB.exists(restored.db_key.redis_key)
+            with pytest.raises(ValueError, match="kind must be one of"):
+                restored.save()
+            assert not POPOTO_REDIS_DB.exists(restored.db_key.redis_key)
+        finally:
+            journal_module._REGISTERED_KINDS.update(registered)
+
+    def test_re_registering_the_same_kind_differently_is_refused(self):
+        """Reclassifying a kind would reclassify every entry already stored
+        under it, so it is refused; an identical re-registration is a no-op."""
+        JournalEntry.register_kind("merge", closing=True)
+        JournalEntry.register_kind("merge", closing=True)  # idempotent
+        with pytest.raises(ValueError, match="already registered"):
+            JournalEntry.register_kind("merge")
+
+
+class TestEntryModelGuard:
+    """A ``JournalEntry`` subclass must fail loudly, never write empty records."""
+
+    def test_a_journal_entry_subclass_loses_every_field(self):
+        """Pins the ORM limitation this guard exists for.
+
+        Popoto's ``ModelBase`` metaclass does not inherit ``Field`` attributes
+        from a base model class, so a subclass has an *empty* field set. This
+        is the fact that makes a subclass extension seam impossible, and it is
+        asserted here so a future ORM change makes this test fail loudly rather
+        than leaving a now-unnecessary guard unexplained.
+        """
+        assert "statement" in JournalEntry._meta.fields
+        assert dict(SubclassedEntry._meta.fields) == {}
+
+    def test_a_subclassed_entry_model_is_rejected_before_anything_is_written(self):
+        before = set(scan_keys("*"))
+        with pytest.raises(TypeError) as excinfo:
+            SubclassedJournal.append(agent_id=AGENT, statement="would be lost")
+
+        message = str(excinfo.value)
+        assert "SubclassedEntry" in message
+        assert "does not inherit Field attributes" in message
+        assert "register_kind" in message
+        assert set(scan_keys("*")) == before
+        # The message names the whole missing set, not one canary field.
+        for field in journal_module._REQUIRED_ENTRY_FIELDS:
+            assert repr(field) in message
+
+    def test_a_partial_field_set_is_rejected_naming_every_missing_field(self):
+        """The round-2 review's false negative: a *partial* subclass.
+
+        ``PartiallyDeclaredEntry`` re-declares ``entry_id``/``agent_id``/
+        ``statement``, so a guard that checked a single ``statement`` canary
+        passed it and let the journal persist 3 of 12 fields — no
+        ``verbatim``, no ``kind``, no ``target``, no validity interval. The
+        guard checks the full required set, and the error has to name every
+        field actually missing (and none of the ones that are present, or the
+        message sends the caller after the wrong thing).
+        """
+        assert "statement" in PartiallyDeclaredEntry._meta.fields
+
+        before = set(scan_keys("*"))
+        with pytest.raises(TypeError) as excinfo:
+            PartiallyDeclaredJournal.append(
+                agent_id=AGENT, statement="would lose nine fields"
+            )
+
+        message = str(excinfo.value)
+        assert "PartiallyDeclaredEntry" in message
+        assert "not a usable journal entry model" in message
+        for field in ("verbatim", "kind", "target", "validity"):
+            assert repr(field) in message
+        for present in ("agent_id", "statement"):
+            assert repr(present) not in message
+        assert set(scan_keys("*")) == before
+
+    def test_the_required_set_is_the_whole_field_set_the_comment_claims(self):
+        """Keep ``_REQUIRED_ENTRY_FIELDS``' docstring true.
+
+        It claimed to check "the whole set" while checking 6 of 12, so a model
+        declaring exactly those 6 passed and then silently dropped ``speaker``,
+        ``turn_id``, ``subjects``, ``stated`` and ``captured_at`` — attribution
+        and provenance-of-the-provenance. Asserted against the reference model
+        rather than restated as a literal, so adding a field to
+        :class:`JournalEntry` without adding it to the guard fails here.
+
+        ``entry_id`` is the sole exemption: it is the ``AutoKeyField``, and a
+        journal model needs *a* key field, not that particular name.
+        """
+        declared = set(JournalEntry._meta.field_names)
+        assert journal_module._REQUIRED_ENTRY_FIELDS == declared - {"entry_id"}
+
+    def test_the_partial_subclass_is_refused_by_every_mutating_method(self):
+        target = _append()
+        before = set(scan_keys("*"))
+        for call in (
+            lambda: PartiallyDeclaredJournal.confirm(target, agent_id=AGENT),
+            lambda: PartiallyDeclaredJournal.supersede(target, agent_id=AGENT),
+            lambda: PartiallyDeclaredJournal.retract(target, agent_id=AGENT),
+        ):
+            with pytest.raises(TypeError, match="not a usable journal entry model"):
+                call()
+        assert _interval(target)[1] == float("inf")
+        assert set(scan_keys("*")) == before
+
+    def test_the_reference_model_is_exempt_and_still_writes(self):
+        """``JournalEntry`` is the reference shape, so it skips the check —
+        and the full-set guard must not have made the ordinary path unusable.
+        """
+        assert journal_module._REQUIRED_ENTRY_FIELDS <= set(JournalEntry._meta.fields)
+        journal_module._require_journal_shape(JournalEntry)
+
+        entry = _append(statement="the reference model still writes")
+        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert entry.db_key.redis_key in _redis_keys(
+            JournalEntry.query.filter(validity__current=True)
+        )
+
+    def test_the_guard_covers_every_mutating_method(self):
+        target = _append()
+        for call in (
+            lambda: SubclassedJournal.confirm(target, agent_id=AGENT),
+            lambda: SubclassedJournal.supersede(target, agent_id=AGENT),
+            lambda: SubclassedJournal.retract(target, agent_id=AGENT),
+        ):
+            with pytest.raises(TypeError, match="not a usable journal entry model"):
+                call()
+        assert _interval(target)[1] == float("inf")
