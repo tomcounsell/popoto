@@ -7,7 +7,7 @@ created: 2026-08-20
 tracking: https://github.com/tomcounsell/popoto/issues/562
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-08-25T05:16:13Z
+revision_applied_at: 2026-08-25T05:37:44Z
 ---
 
 # M3 — Auditable extraction: deterministic candidate generator with a per-candidate decision log
@@ -158,20 +158,25 @@ decision and folded into the sections below; see Technical Approach and No-Gos.
    irreversible happens to it.
    - `firewall_drop`, `reject`, `withhold` have no downstream side effect, so their first
      write is already their **terminal** write — one row, one state, done.
-   - `accept` writes a **`pending`** row first (see Technical Approach → Write ordering).
-     `pending` is a non-terminal intent marker, not a fifth terminal state.
+   - `accept` **atomically claims** the candidate with a single `SET ... NX PX` op and then
+     writes a **`pending`** row (see Technical Approach → Write ordering and → Atomic assembly
+     claim). `pending` is a non-terminal intent marker, not a fifth terminal state. A runner
+     that loses the claim does **not** append — it no-ops and leaves the row to the winner.
 6. **Assembly** (trusted code): `accept`ed candidates are written to the M1 provenance journal
    via `ProvenanceJournal.append(agent_id=<agent_id>, kind='assert', verbatim=<span>,
-   statement=<span>, speaker=..., turn_id=..., subjects=...)`. `agent_id` is keyword-only and
-   **required** — a `None` renders the literal `"None"` into the record's Redis key
-   (`provenance_journal.py:562-577`). No model-generated free text enters the store; the
-   stored `statement` is the verbatim candidate span (distillation is M4's job).
+   statement=<span>, speaker=..., turn_id=..., subjects=[*topic_tags, f"cand:{candidate_id}"])`.
+   `agent_id` is keyword-only and **required** — a `None` renders the literal `"None"` into the
+   record's Redis key (`provenance_journal.py:562-577`). The `cand:` subject tag is the entry's
+   **candidate identity**, and it is what makes recovery reconciliation an identity lookup
+   rather than a text match (see Technical Approach → Candidate identity on the journal entry).
+   No model-generated free text enters the store; the stored `statement` is the verbatim
+   candidate span (distillation is M4's job).
 7. **Decision log — terminal transition**: the same `(agent_id, turn_id, candidate_id)` row is
    transitioned out of `pending` to exactly one of the four terminal states, based on what
    `append()` did: success → `accept` (recording the returned `entry_id`);
    `JournalBlockedError` → `firewall_drop`(`post_accept_journal_block`); any other exception →
-   `reject`(`assembly_failed`). The per-turn compact summary is updated from terminal states
-   only.
+   `reject`(`assembly_failed`). The atomic claim key is released (`DEL`) in the same step. The
+   per-turn compact summary is updated from terminal states only.
 8. **Output**: existing behavior preserved behind a flag/adapter. With the auditable path
    off, `extract_memories()` behaves byte-for-byte as today.
 
@@ -200,7 +205,10 @@ considered and decided, state = X, reason = Y."
   (testable, no LLM) + a narrow verdict stage (no free text), so the write path no longer
   depends on the model's free-form prose.
 - **Data ownership**: the decision log is owned by the extraction layer (like M2's tombstone
-  log), distinct from the M1 journal keyspace. The journal owns accepted entries.
+  log), distinct from the M1 journal keyspace. The journal owns accepted entries. One additional
+  extraction-owned keyspace: the ephemeral assembly-claim keys `popoto:m3:claim:{agent_id}:
+  {turn_id}:{candidate_id}`, which carry a TTL and hold no audit content — losing them costs at
+  most a re-probe, never a record.
 - **Reversibility**: high. A flag flips the default path back; the new modules are additive
   and do not alter existing keyspaces. `AppendOnlyMixin` on the journal means accepted
   entries are not retroactively modifiable (M1 contract).
@@ -258,10 +266,15 @@ response_text
   → Verdict stage (LLM, one candidate at a time, enum verdict + enum reason)
         reject  → DecisionLog[reject]                                    (TERMINAL, single write)
         withhold→ DecisionLog[withhold]                                  (TERMINAL, single write)
-        accept  → DecisionLog[pending]            <-- written BEFORE any side effect
+        accept  → ATOMIC CLAIM: SET m3:claim:{agent}:{turn}:{cand} <token> NX PX <ttl>
+                        claim lost  → no-op this runner; the winner owns the append (no second entry)
+                        claim won   ↓
+                  → DecisionLog[pending]            <-- written BEFORE any side effect
                   → dedup probe (has this candidate already been appended?)
-                  → ProvenanceJournal.append(agent_id=..., kind=assert, verbatim=span, statement=span)
-                        ok                 → DecisionLog[pending → accept]        (TERMINAL, + entry_id)
+                        JournalEntry.query.filter(turn_id=..., subjects__all=[f"cand:{cand}"])
+                  → ProvenanceJournal.append(agent_id=..., kind=assert, verbatim=span, statement=span,
+                                             subjects=[*topic_tags, f"cand:{cand}"])
+                        ok                 → DecisionLog[pending → accept]        (TERMINAL, + entry_id, claim DEL)
                         JournalBlockedError→ DecisionLog[pending → firewall_drop] (TERMINAL, reason=post_accept_journal_block)
                         any other raise    → DecisionLog[pending → reject]        (TERMINAL, reason=assembly_failed)
   → Per-turn compact summary updated from TERMINAL states only
@@ -358,23 +371,140 @@ which a candidate reaches `append()` with zero decision-log rows.
   successful `append()` and the terminal decision-log write therefore creates a **duplicate
   journal entry**, permanently, because M1 is append-only and offers no delete path. Assembly
   owns the dedup; it cannot be delegated to the journal:
+  0. **Claim the candidate atomically first** (see → Atomic assembly claim below). A runner
+     that does not win the claim performs no journal write at all, so steps 1-4 only ever
+     execute for one runner per `(agent_id, turn_id, candidate_id)` at a time.
   1. Before calling `append()`, read the decision row for `(agent_id, turn_id, candidate_id)`.
      - Terminal `accept` with an `entry_id` → **already assembled; skip entirely.**
      - Terminal non-`accept` → already decided; skip.
      - `pending` → this is a retry of an interrupted assembly. Go to step 2.
      - Absent → fresh candidate. Write `pending`, then `append()`.
-  2. **Reconcile the `pending` case before re-appending.** Query the journal for this agent's
-     entries on this `turn_id` (`turn_id` is an `IndexedField`, so this is a cheap indexed
-     read — no new journal API needed) and look for an entry whose `verbatim` equals the
-     candidate span. If one exists, the prior `append()` landed: transition the row to
-     `accept` with that `entry_id` and **do not append again**. If none exists, the prior
-     append did not land: proceed with `append()`.
-  3. The reconciliation is deterministic because `statement`/`verbatim` are byte-identical to
-     the candidate span (no normalization in v1), so the comparison is exact string equality,
-     not a fuzzy match.
+  2. **Reconcile the `pending` case before re-appending, by candidate identity.** Query the
+     journal for this agent's entries on this `turn_id` carrying this candidate's identity tag:
+     `JournalEntry.query.filter(turn_id=<turn_id>, subjects__all=[f"cand:{candidate_id}"])`
+     (`turn_id` is an `IndexedField` and `subjects` is a `TagField` whose `__all` lookup is a
+     `SINTER` over Redis Sets — both cheap indexed reads, both Valkey-safe, no new journal API
+     needed). Exactly one match → the prior `append()` landed: transition the row to `accept`
+     with that `entry_id` and **do not append again**. Zero matches → the prior append did not
+     land: proceed with `append()`. More than one match → see step 4.
+  3. **Why identity, not text.** An earlier revision matched on `turn_id` + exact `verbatim`
+     equality and argued byte-identical storage made this sound. It is not: `JournalEntry`
+     carries no candidate-identity field at all (`entry_id`/`agent_id`/`captured_at`/`turn_id`/
+     `speaker`/`verbatim`/`statement`/`subjects`/`stated`/`kind`/`target`/`validity`,
+     `provenance_journal.py:299-310`), and `verbatim` is *not* unique per candidate within a
+     turn by construction — a repeated sentence, or a sentence span whose text equals an
+     entity-lifted span, produces two candidates with identical `verbatim`. A `pending` row
+     could then reconcile onto the *other* candidate's entry and record the wrong `entry_id`,
+     breaking Success Criterion 4. That argument is **withdrawn**; the `cand:` subject tag
+     replaces it. See → Candidate identity on the journal entry.
+  4. **Ambiguity rule (defence in depth).** If the identity probe returns more than one match,
+     assembly does **not** take the first: it writes the terminal state
+     `reject`(`ambiguous_reconciliation`) with the matching `entry_id`s recorded in
+     `detail_code`, and appends nothing. With correct tagging and per-turn-unique candidate ids
+     (both guaranteed by Task 1) this is unreachable, so it is an assertion in row form — a
+     loud, queryable state instead of a silent wrong-`entry_id` write.
   A test asserts that running the auditable path twice over the same `(agent_id, turn_id)`
   produces exactly one journal entry per accepted candidate, including when the first run is
-  interrupted between `append()` and the terminal write.
+  interrupted between `append()` and the terminal write, **and** including a turn containing two
+  candidates with byte-identical text (the C2 case: each must reconcile onto its own entry).
+
+- **Atomic assembly claim — closes the TOCTOU window in the dedup probe (round-2 C1).** The
+  four-case probe above is read-then-act. Without a claim, two concurrent runners over the same
+  `(agent_id, turn_id, candidate_id)` — a duplicated delivery racing a crash-retry, both seeing
+  a surviving `pending` — can both probe, both find nothing (neither has committed `append()`
+  yet), and both append. That produces **two permanent journal entries**, and the journal cannot
+  catch it: `append()` takes no idempotency key and `AppendOnlyViolation` fires only when a
+  record's Redis key already exists, which is never true for a fresh `AutoKeyField` append
+  (`provenance_journal.py:562-620`). Race 1's `MULTI`/`EXEC` covers the record+summary write,
+  not a cross-process claim on a candidate.
+
+  **The claim is a single atomic Redis op, not a read followed by a write:**
+
+  ```
+  claim_key   = f"popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id}"
+  claim_token = uuid4().hex            # this runner's identity, for safe release
+  won = <redis>.set(claim_key, claim_token, nx=True,
+                    px=Defaults.M3_ASSEMBLY_CLAIM_TTL_MS)
+  ```
+
+  - `SET ... NX PX` is one round trip and a **core command** on both Redis and Valkey — no
+    modules, per the standing constraint.
+  - **Winner** (`won` truthy): writes the `pending` row, runs the identity probe, calls
+    `append()`, writes the terminal row, then releases the claim in the same step as the
+    terminal write. Release is token-checked — a tiny Lua `if GET == token then DEL` (Lua is
+    core, Valkey-safe) — so a runner can never delete a claim it no longer owns.
+  - **Loser** (`won` falsy): performs **no** journal write and no row transition. It no-ops and
+    returns; the winner owns this candidate's terminal state. A loser never leaves the candidate
+    row-less: either the winner writes `pending`/terminal, or the claim expires and a later run
+    re-claims and reconciles.
+  - **Chosen over `WATCH`/`MULTI` compare-and-set on the row's `state` field** (the critic's
+    other option) deliberately: `WATCH` requires a dedicated connection held across the
+    transaction plus a retry loop, which does not compose with Popoto's shared connection pool
+    and adds a failure mode of its own. `SET NX` gives the same mutual exclusion in one op with
+    no connection affinity. Both are Valkey-safe; `SET NX` is smaller.
+  - **`Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`** is a pinned in-repo magic number
+    (`popoto/fields/constants.py`), not a constructor kwarg, per the repo's magic-number rule.
+    It is a *liveness* bound, not a correctness bound: long enough that the common case never
+    expires mid-flight, finite so a crashed runner's claim cannot wedge the candidate forever.
+    Start at `30_000` ms.
+  - **Residual window, stated honestly:** if the TTL expires while the winner is still between
+    the probe and `append()`, a second runner can claim and probe. That case is now *sound
+    rather than duplicating*, because the probe is an identity lookup on the `cand:` tag: if the
+    first `append()` landed, the second runner finds exactly that entry and reconciles; if it
+    did not, appending is correct. The claim removes the common-case race; the identity tag
+    makes the residual race converge instead of duplicating. Neither mechanism alone suffices,
+    which is why both ship.
+  - Test: two runners racing the same `(agent_id, turn_id, candidate_id)` produce exactly one
+    journal entry and exactly one terminal row, and the loser appended nothing.
+
+- **Candidate identity on the journal entry — the `cand:` subject tag (round-2 C2).** Assembly
+  passes `subjects=[*topic_tags, f"cand:{candidate_id}"]` to `append()`, so every M3-written
+  entry carries the identity of the candidate that produced it. This is chosen over the critic's
+  alternative (detect >1 match and record `ambiguous_reconciliation`) because that alternative
+  only *detects* the identity failure after the fact and leaves the candidate stuck, whereas the
+  tag makes reconciliation correct by construction. The `ambiguous_reconciliation` outcome is
+  kept anyway, demoted to the unreachable-assertion role in step 4 above. Constraint checks,
+  each verified against the code rather than assumed:
+  - **Settled decision 3 is untouched.** `statement` and `verbatim` stay byte-identical to the
+    span; the tag lives in `subjects`, a different field. Accepted *content* does not change.
+  - **M1 append-only semantics are untouched.** The tag is supplied at `append()` time as part
+    of the initial write. No entry is ever mutated and no new journal API is added.
+  - **M2 firewall scan surface — checked, and it constrains the id format.**
+    `_scan_or_block(agent_id, *subject_tags, *entry._never_record_scan_values())`
+    (`provenance_journal.py:969`) scans **every subject tag**, so a badly-shaped `candidate_id`
+    would make the journal refuse M3's own writes. Measured at `f6e8525` with
+    `scan_never_record()`: `"cand:t-41:sent:0"` → clean, `"cand:t-41:ent:12"` → clean,
+    `"cand-0007"` → clean, but a 64-char hex digest → **blocked, `reason='high_entropy'`**
+    (git-SHA shapes are entropy-exempt only up to 40 chars, `never_record.py:244`). Therefore
+    `candidate_id` **must not be a hash or digest**: it is a structured, low-entropy,
+    deterministic token `{turn_id}:{generator_rule}:{ordinal}` (Task 1), and a test asserts
+    `scan_never_record(f"cand:{candidate_id}").blocked is False` for every generated candidate.
+    A content hash still lives on the *decision row*, where nothing scans it — only the tag
+    shape is constrained.
+  - **Tag semantics.** `subjects` is "convention over schema and explicitly **not** a security
+    boundary" (`provenance_journal.py:70-73`); a prefixed `cand:` tag is exactly the documented
+    convention (`agent:`, `project:`). One consequence to state: M3-written entries are never in
+    `TagField`'s untagged pool, since they always carry at least the `cand:` tag. Readers that
+    select the untagged pool will not see M3 entries; readers filtering by topic tags are
+    unaffected.
+
+- **Stale `pending` recovery is manual in v1 — position taken (round-2 N1).** Nothing sweeps,
+  expires, or alerts on a `pending` row: a turn that crashes mid-assembly and is never replayed
+  stays `pending` indefinitely. That is **deliberate for v1** and is the right trade at this
+  stage — a `pending` row is a *visible, queryable, fully-identified* unfinished write (the
+  opposite of the silent drop M3 exists to close), and the correct sweep cadence is exactly the
+  kind of number this plan refuses to guess before M9 (#568) consumes the log, in line with the
+  same reasoning used for retention. Concretely:
+  - **A TTL on decision rows is explicitly rejected** — it would delete audit evidence, which is
+    the one thing this module exists to keep.
+  - **The operator query ships as documentation, not as machinery.** The `decision_log.py`
+    docstring and the docs page carry the recovery recipe: list rows with
+    `state == 'pending'` for an agent, oldest-first by the row's write timestamp
+    (`DecisionLog.list_pending(agent_id, older_than=None) -> List[DecisionRecord]`, a thin
+    reader over the existing rows — no new keyspace), then re-invoke the auditable path for each
+    stale `(agent_id, turn_id)`, which reconciles it through the probe above.
+  - **`list_pending` is the only code this NIT adds.** A periodic age-keyed sweep, an alert
+    threshold, and any dashboard over it are named as M9/ops-runbook follow-ons, not v1.
 
 - **Auditing the measured-worse candidate shape, on purpose.** PR #510 measured heuristic
   sentence-splitting at **0.2078** judged accuracy against raw turn ingestion's **0.3636**
@@ -451,7 +581,18 @@ which a candidate reaches `append()` with zero decision-log rows.
     No-Gos; v1 does not pretend to have taken it.
   - **The demonstration is made concrete and non-trivial.** `decision_log.py` exposes
     `DecisionLog.compute_metrics(agent_id, gold_labels) -> Metrics` (precision, recall, F1,
-    plus per-`reason_code` and per-`generator_rule` breakdowns). It reads **only** decision-log
+    plus per-`reason_code` and per-`generator_rule` breakdowns). **Named consumer for each
+    breakdown dimension (round-2 N2) — neither is decoration:** per-`generator_rule` is what the
+    #510 argument's point 4 rests on (comparing candidate shapes becomes a query over rows
+    grouped by rule instead of a new bake-off). Per-`reason_code` has exactly one consumer named
+    here: **separating privacy drops from model rejects in the same metric run** — a
+    `firewall_drop`(`pre_llm_candidate_block` / `post_accept_journal_block`) is not an extraction
+    quality failure and must not be charged against the LLM's precision, whereas a
+    `reject`(`llm_unavailable`) or `reject`(`assembly_failed`) is an *infrastructure* loss that
+    must not be charged against recall either. Without the breakdown, a run whose recall dropped
+    cannot distinguish "the model got worse" from "the firewall got stricter" from "Redis was
+    flaky" — which is the M9 (#568) audit's first question. The backing test asserts the
+    breakdown separates exactly those three cases. It reads **only** decision-log
     rows and a caller-supplied gold-label mapping `{candidate_id: should_accept}` — no journal
     read, no LLM, no live Redis state beyond the log itself. The test that proves this
     (`test_precision_recall_computable_from_log_alone`) does not hand-assemble a few rows: it
@@ -475,8 +616,12 @@ which a candidate reaches `append()` with zero decision-log rows.
   candidate span," so any normalization would violate the AC. Distillation and normalization
   are M4's job. Concretely, assembly calls
   `ProvenanceJournal.append(agent_id=<agent_id>, kind='assert', verbatim=candidate.text,
-  statement=candidate.text, speaker=..., turn_id=..., subjects=...)` — the same string object
-  for both — and a test asserts `entry.statement == entry.verbatim == candidate.text`.
+  statement=candidate.text, speaker=..., turn_id=...,
+  subjects=[*topic_tags, f"cand:{candidate.candidate_id}"])` — the same string object for both
+  `verbatim` and `statement` — and a test asserts
+  `entry.statement == entry.verbatim == candidate.text`. The `cand:` tag carries candidate
+  identity (see → Candidate identity on the journal entry) and does **not** touch content, so
+  settled decision 3 is preserved exactly.
   `agent_id` is keyword-only and required (`provenance_journal.py:562-577`); it is sourced from
   the `SubconsciousMemory` instance's agent id and is never allowed to be `None`, because a
   `None` renders the literal `"None"` into the record's Redis key.
@@ -510,8 +655,16 @@ which a candidate reaches `append()` with zero decision-log rows.
   candidate) and terminal *after*.
 - [ ] Interrupted assembly — simulate a process death between a successful `append()` and the
   terminal decision-log write. Assert (a) the `pending` row survives with full candidate
-  identity, and (b) a retry reconciles it to `accept` via the `turn_id`-indexed journal probe
-  **without** creating a second journal entry.
+  identity, and (b) a retry reconciles it to `accept` via the `cand:`-tag identity probe
+  **without** creating a second journal entry. Also assert the stale claim key has expired or is
+  re-claimable, so a crashed runner cannot wedge the candidate.
+- [ ] Concurrent assembly (Race 4) — two runners over the same
+  `(agent_id, turn_id, candidate_id)`, both reaching the claim. Assert exactly one wins, exactly
+  one journal entry exists, exactly one terminal row exists, and the loser issued no `append()`.
+- [ ] Ambiguous reconciliation — force the >1-match branch (e.g. by writing two entries with the
+  same `cand:` tag out of band) and assert the row lands terminal
+  `reject`(`ambiguous_reconciliation`) with the matching `entry_id`s in `detail_code` and that
+  **no** further `append()` is issued.
 - [ ] State: no `except Exception: pass` exists in the new modules; each handler logs or
   records an observable decision.
 
@@ -547,15 +700,20 @@ without re-running in the environment you are in.
 - [ ] `tests/test_never_record_firewall.py` (**57** tests) — NO CHANGE: turn-level firewall
   semantics untouched. Re-run to confirm.
 - [ ] `tests/test_provenance_journal.py` (**101** tests) — NO CHANGE: journal API untouched; M3
-  only calls `append(kind='assert')` and reads the `turn_id` index for the assembly dedup
+  only calls `append(kind='assert')` and reads the `turn_id` index plus the `subjects` tag
+  index (`subjects__all=["cand:..."]`) for the assembly dedup
   probe. Re-run to confirm.
 - New: `tests/test_auditable_extraction.py` — candidate enumeration determinism, per-candidate
   firewall drops, enum-verdict confinement, decision-log completeness (including the
   `pending` → terminal transition and the no-surviving-`pending` assertion), post-accept
   `JournalBlockedError` → `firewall_drop`(`post_accept_journal_block`), assembly-failure →
   `reject`(`assembly_failed`), assembly retry idempotency (one journal entry per accepted
-  candidate across a re-run and across an interrupted run), offline precision/recall
-  computation from the log alone, default-path preservation.
+  candidate across a re-run and across an interrupted run), **concurrent-claim exclusivity
+  (Race 4) with the loser appending nothing**, **duplicate-text reconciliation via the
+  `cand:` identity tag**, **candidate ids passing `scan_never_record` unblocked**,
+  `list_pending` stale-row recovery, offline precision/recall computation from the log alone
+  (including the per-`reason_code` separation of privacy vs LLM vs infrastructure losses),
+  default-path preservation.
 
 ## Rabbit Holes
 
@@ -665,18 +823,44 @@ knowable *before* a second `append()` is issued.
 `AppendOnlyViolation` — which fires only when the record's Redis key already exists — is never
 triggered by a fresh append. M1 is append-only with no delete path, so a duplicate is
 permanent.
-**Mitigation:** Assembly does its own dedup, keyed by `(agent_id, turn_id, candidate_id)`,
-before every `append()`:
+**Mitigation:** Assembly claims the candidate atomically, then does its own dedup, keyed by
+`(agent_id, turn_id, candidate_id)`, before every `append()`:
+- **Atomic claim first** — `SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <token> NX
+  PX Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`. Lost claim → no-op, no journal write.
 - Terminal `accept` row present → skip (already assembled).
 - Terminal non-`accept` row present → skip (already decided).
-- `pending` row present → probe the journal on the `turn_id` `IndexedField` for an entry of
-  this agent whose `verbatim` equals the candidate span (exact equality is sound because
-  `statement`/`verbatim` are byte-identical to the span in v1). Found → transition to `accept`
-  with that `entry_id`, no re-append. Not found → the prior append never landed; append now.
+- `pending` row present → probe the journal by **candidate identity**:
+  `JournalEntry.query.filter(turn_id=..., subjects__all=[f"cand:{candidate_id}"])`. Exactly one
+  match → transition to `accept` with that `entry_id`, no re-append. Zero → the prior append
+  never landed; append now. More than one → `reject`(`ambiguous_reconciliation`), append
+  nothing.
 - No row → fresh candidate; write `pending`, then append.
 This closes the window rather than shrinking it: the worst residual outcome is a `pending` row
 that a later run reconciles, never a duplicate entry and never a zero-row candidate. See
 Technical Approach → Assembly idempotency for the full sequence.
+
+### Race 4: Two concurrent runners claim the same candidate (round-2 C1)
+**Location:** `decision_log.py`, the pre-append claim/probe step.
+**Trigger:** A duplicated delivery of the same turn racing a crash-retry, or two processes
+invoking the auditable path for the same `(agent_id, turn_id)` concurrently. Both observe a
+surviving `pending` row, both probe the journal, both find nothing (neither has committed
+`append()` yet), and both append.
+**Data prerequisite:** Exactly one runner may proceed from probe to `append()` for a given
+`(agent_id, turn_id, candidate_id)`.
+**State prerequisite:** Exactly one journal entry per accepted candidate, ever — the same
+invariant Race 3 protects, under concurrency rather than serial retry.
+**Why the read-then-act probe alone is insufficient:** it is a check followed by a separate
+write, with no mutual exclusion between them; Race 1's `MULTI`/`EXEC` covers the record+summary
+write, not a cross-process claim on a candidate; and the journal cannot catch the duplicate
+because `append()` has no idempotency key and `AppendOnlyViolation` never fires on a fresh
+`AutoKeyField` append.
+**Mitigation:** A **single atomic Redis op** — `SET <claim_key> <token> NX PX <ttl>` — gates
+entry to the probe. Exactly one runner wins; the loser writes nothing. Release is a token-checked
+Lua `if GET == token then DEL`, executed with the terminal write. Core commands and Lua only —
+Valkey-safe, no modules. The residual TTL-expiry window converges instead of duplicating because
+the probe is an identity lookup on the `cand:` tag (Race 3 / Technical Approach → Candidate
+identity). Full rationale, the rejected `WATCH`/`MULTI` alternative, and the TTL constant are in
+Technical Approach → Atomic assembly claim.
 
 No other concurrency concerns: candidate generation is pure and deterministic; assembly calls
 `ProvenanceJournal.append`, which is append-only by M1 contract.
@@ -757,6 +941,16 @@ surface exists; no MCP registration is changed.
 - [ ] Note the retention position in the decision-log module docstring: detail rows are
   unbounded in v1 by deliberate decision, the per-turn summary is a convenience index (not a
   completeness fallback), and the revisit triggers are measured growth signals, not a constant.
+- [ ] **Stale-`pending` recovery is manual in v1 (round-2 N1)** — state it in the
+  `decision_log.py` module docstring and on the docs page: no sweep, no TTL on decision rows
+  (a TTL would delete audit evidence), no age alert. Give the operator recipe verbatim —
+  `DecisionLog.list_pending(agent_id, older_than=...)` oldest-first, then re-invoke the auditable
+  path for each stale `(agent_id, turn_id)` to reconcile it — and name the follow-on owner for a
+  periodic age-keyed scan and alerting (M9 #568 or an ops runbook).
+- [ ] Document the `cand:{candidate_id}` subject-tag convention on written entries, the
+  low-entropy `candidate_id` format requirement (a digest-shaped id is blocked by the journal's
+  own firewall as `high_entropy`), and the `SET ... NX PX` assembly claim with its
+  `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` liveness bound.
 
 ## Success Criteria
 
@@ -781,7 +975,12 @@ surface exists; no MCP registration is changed.
   absent. A docs snippet shows an adopter enabling the flag and printing the metrics.
 - [ ] Exactly one journal entry exists per accepted candidate across re-runs, including a run
   interrupted between `append()` and the terminal decision-log write — proven by the assembly
-  idempotency test (Race 3).
+  idempotency test (Race 3). **Two companion assertions added in round 2:** (a) *under
+  concurrency* — two runners racing the same `(agent_id, turn_id, candidate_id)` produce exactly
+  one entry, because the claim is a single `SET ... NX PX` and the loser appends nothing
+  (Race 4); (b) *under duplicate text* — a turn containing two candidates with byte-identical
+  text reconciles each `pending` row onto its **own** entry, because reconciliation matches the
+  `cand:{candidate_id}` subject tag rather than `verbatim`.
 - [ ] Existing `SubconsciousMemory.extract_memories()` behavior is preserved behind a
   flag/adapter — proven by a default-path test asserting byte-for-byte current behavior, and
   the existing extraction (33) + subconscious-memory (15 + 27) tests staying green in the
@@ -844,6 +1043,15 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
   (reuse the heuristic split regex) + deterministic entity-lifted candidates. Pure,
   deterministic, no LLM. Empty turns produce zero candidates (the caller logs the
   `reject`(`empty_turn`) row).
+- **`candidate_id` format is load-bearing — it becomes a journal subject tag (round-2 C2).**
+  Emit `candidate_id = f"{turn_id}:{generator_rule}:{ordinal}"`: unique within a turn (two
+  candidates with byte-identical text still get different ids), deterministic, and
+  **low-entropy**. It must **not** be a hash or digest: the journal's write-time firewall scans
+  every subject tag (`_scan_or_block(agent_id, *subject_tags, ...)`,
+  `provenance_journal.py:969`), and a 64-char hex digest is measurably blocked as
+  `high_entropy`, which would make M3's own writes fail. Add a test asserting
+  `scan_never_record(f"cand:{c.candidate_id}").blocked is False` for every candidate generated
+  from a representative corpus.
 - **Do NOT add a `CandidateGenerator` pluggable-rule class** — one implementation, no second
   caller, both plausible extra rules banned by No-Gos. The single function is the surface.
 - **Do NOT add any per-turn candidate cap** (no `Defaults` constant, no truncation): a cap
@@ -861,8 +1069,8 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 - Add `Verdict` / `ReasonCode` enums in `src/popoto/extraction/verdict.py` with terminal states
   `firewall_drop | accept | reject | withhold` and the fixed reason-code vocabulary. The
   reason-code vocabulary must include `pre_llm_candidate_block`, `post_accept_journal_block`
-  (both under `firewall_drop`), `assembly_failed`, `llm_unavailable`, `empty_turn`, and
-  `accepted`.
+  (both under `firewall_drop`), `assembly_failed`, `ambiguous_reconciliation` (both under
+  `reject`), `llm_unavailable`, `empty_turn`, and `accepted`.
 - Add the non-terminal `pending` marker to the *state* enum only, clearly annotated as
   non-terminal and excluded from any terminal-state aggregation. The LLM's verdict vocabulary
   stays `accept | reject | withhold` — the model never emits `pending` or `firewall_drop`.
@@ -894,16 +1102,41 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
   `accept` / `firewall_drop`(`post_accept_journal_block`) / `reject`(`assembly_failed`) per the
   Technical Approach transition table. No code path may call `append()` before its `pending`
   row is committed.
-- **Implement the assembly dedup probe (Race 3).** Before every `append()`, read the row; on a
-  surviving `pending`, probe the journal via the `turn_id` `IndexedField` for an entry of this
-  agent whose `verbatim` equals the candidate span, and reconcile instead of re-appending.
+- **Implement the atomic assembly claim (Race 4 / round-2 C1) — this gates the probe.** Before
+  the `pending` write, take the claim with a **single Redis op**:
+  `SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <uuid4 token> NX PX
+  Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`. Add `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS = 30_000` to
+  `src/popoto/fields/constants.py` (pinned magic number, not a constructor kwarg). A runner that
+  loses the claim **returns without appending and without transitioning any row**. Release the
+  claim with a token-checked Lua `if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('DEL', KEYS[1]) end` in the same step as the terminal write. **Do NOT implement
+  this as a `GET`-then-`SET`, and do NOT use `WATCH`/`MULTI`** (rejected in Technical Approach →
+  Atomic assembly claim: it needs a dedicated connection and a retry loop). `SET NX PX`, `DEL`
+  and `EVAL` are core commands — Valkey-safe, no modules.
+- **Implement the assembly dedup probe by candidate identity (Race 3 / round-2 C2).** Before
+  every `append()`, read the row; on a surviving `pending`, probe
+  `JournalEntry.query.filter(turn_id=<turn_id>, subjects__all=[f"cand:{candidate_id}"])`.
+  Exactly one match → reconcile to `accept` with that `entry_id`, no re-append. Zero → append.
+  More than one → terminal `reject`(`ambiguous_reconciliation`) recording the matching
+  `entry_id`s in `detail_code`, append nothing. **Do NOT match on `verbatim` text** — two
+  candidates in one turn can be byte-identical, so a text match can record the wrong
+  `entry_id`.
+- Add `DecisionLog.list_pending(agent_id, older_than=None) -> List[DecisionRecord]` — the
+  operator recovery reader for stale `pending` rows (round-2 N1). A thin reader over existing
+  rows; **no TTL on decision rows** (that would delete audit evidence) and no sweep daemon in
+  v1.
 - Extend `ExtractedFact` with optional span/candidate fields (default `None`).
 - Add `SubconsciousMemory(auditable_extraction=...)` opt-in flag; default path unchanged.
 - Add trusted assembly: `accept`ed candidates → `ProvenanceJournal.append(agent_id=<agent_id>,
-  kind='assert', verbatim=<span>, statement=<span>, speaker=..., turn_id=..., subjects=...)`.
-  `agent_id` is keyword-only and required — never `None`.
+  kind='assert', verbatim=<span>, statement=<span>, speaker=..., turn_id=...,
+  subjects=[*topic_tags, f"cand:{candidate_id}"])`. `agent_id` is keyword-only and required —
+  never `None`. The `cand:` tag is **mandatory on every M3 append** — it is the identity the
+  Race 3 probe looks up; omitting it silently reintroduces the text-match unsoundness.
 - Add `DecisionLog.compute_metrics(agent_id, gold_labels) -> Metrics` (precision, recall, F1,
-  per-`reason_code` and per-`generator_rule` breakdowns) reading decision-log rows only.
+  per-`reason_code` and per-`generator_rule` breakdowns) reading decision-log rows only. The
+  per-`reason_code` dimension exists to separate privacy drops, LLM rejects, and infrastructure
+  failures in one metric run (see Technical Approach → Offline precision/recall); assert that
+  separation in the backing test.
 - Write the per-candidate record + per-turn summary update in one `MULTI`/`EXEC` (this applies
   to each write — the `pending` write and the terminal transition are separate transactions by
   design; collapsing them would defeat the ordering guarantee).
@@ -923,6 +1156,16 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
   raises → `reject`/`assembly_failed`) land terminally on the same row.
 - Verify assembly idempotency: one journal entry per accepted candidate across a re-run and
   across a run interrupted between `append()` and the terminal write.
+- Verify the **atomic claim** (Race 4): two concurrent runners over the same
+  `(agent_id, turn_id, candidate_id)` yield exactly one journal entry and one terminal row, the
+  loser appends nothing, and the claim is taken with a single `SET ... NX PX` (not a
+  `GET`-then-`SET`, not `WATCH`/`MULTI`).
+- Verify **candidate identity**: every M3 append carries `cand:{candidate_id}` in `subjects`;
+  reconciliation on a turn with two byte-identical candidate texts maps each `pending` row to
+  its own entry; `scan_never_record(f"cand:{candidate_id}")` is unblocked for every generated
+  candidate (no digest-shaped ids).
+- Verify `DecisionLog.list_pending` returns stale `pending` rows and that re-invoking the path
+  for a stale `(agent_id, turn_id)` reconciles them without a second journal entry.
 - Verify offline precision/recall computes from the decision log alone (exact numbers, plus
   the journal-absent re-computation).
 - Verify the default path is byte-for-byte unchanged (existing tests green).
@@ -956,6 +1199,9 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 | Offline metrics demonstrated | `pytest tests/test_auditable_extraction.py -k precision_recall_computable_from_log_alone -q` | exit code 0, 1 test selected |
 | No zero-row candidate: pending precedes append | `pytest tests/test_auditable_extraction.py -k "pending_written_before_append or no_pending_survives" -q` | exit code 0, 2 tests selected |
 | Assembly idempotency (Race 3) | `pytest tests/test_auditable_extraction.py -k assembly_idempoten -q` | exit code 0 |
+| Atomic claim under concurrency (Race 4) | `pytest tests/test_auditable_extraction.py -k "concurrent_claim or claim_loser_appends_nothing" -q` | exit code 0, 2 tests selected |
+| Candidate identity + duplicate-text reconciliation | `pytest tests/test_auditable_extraction.py -k "candidate_identity_tag or duplicate_text_reconcile" -q` | exit code 0, 2 tests selected |
+| Candidate ids survive the journal firewall | `pytest tests/test_auditable_extraction.py -k candidate_id_not_firewall_blocked -q` | exit code 0 |
 | Existing extraction tests unaffected | `pytest tests/test_extraction.py -x -q` | exit code 0 |
 | Existing memory tests unaffected | `pytest tests/test_subconscious_memory.py tests/test_subconscious_memory_integration.py -x -q` | exit code 0 |
 | M2 firewall tests unaffected | `pytest tests/test_never_record_firewall.py -x -q` | exit code 0 |
@@ -968,7 +1214,30 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 | Decision log is uncapped [anti-criterion] | `grep -rni "ltrim\|DECISION_LOG_MAX" src/popoto/extraction/` | match count == 0 |
 | No per-turn candidate cap [anti-criterion] | `grep -rniE "candidate_(per_turn_)?cap\|MAX_CANDIDATES" src/popoto/extraction/ src/popoto/fields/constants.py` | match count == 0 |
 | No pluggable-rule class [anti-criterion] | `grep -rn "class CandidateGenerator" src/popoto/extraction/` | match count == 0 |
-| Assembly passes required `agent_id` [anti-criterion] | `grep -rn "ProvenanceJournal.append(" src/popoto/ \| grep -v "agent_id"` | match count == 0 |
+| Assembly passes required `agent_id` [anti-criterion, multiline-aware, scoped to M3] | `perl -0777 -ne 'while (/ProvenanceJournal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 200) =~ /agent_id/ }' src/popoto/extraction/*.py` | match count == 0 |
+| Every M3 append carries a candidate identity tag [anti-criterion] | `perl -0777 -ne 'while (/ProvenanceJournal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 300) =~ /cand:/ }' src/popoto/extraction/*.py` | match count == 0 |
+| Reconciliation never matches on text [anti-criterion] | `grep -rn "verbatim ==\|verbatim=candidate.text)" src/popoto/extraction/decision_log.py` | match count == 0 |
+| Claim is a single atomic op, not read-then-act [anti-criterion] | `grep -rn "\.watch(\|pipeline().watch" src/popoto/extraction/` | match count == 0 |
+| Claim uses `SET NX PX` | `grep -rn "nx=True" src/popoto/extraction/decision_log.py` | at least 1 match, on the claim key |
+
+**Why the `agent_id` row changed shape (round-2 C3).** Round 1 added
+`grep -rn "ProvenanceJournal.append(" src/popoto/ | grep -v "agent_id"` expecting 0 matches. That
+row **could never pass**: verified at `f6e8525`, it returns **2 matches**
+(`src/popoto/recipes/provenance_journal.py:20` and `:351`) *before any M3 code exists* — both are
+correct, `agent_id`-passing calls that black wrapped across lines, so a line-oriented grep never
+sees `agent_id` on the call's own line. M3's assembly call is long enough that black will wrap it
+identically, adding a third permanent false positive. The replacement is multiline-aware
+(`perl -0777`, matching within a 200-character window after each call's open paren rather than
+parsing balanced parens) and **scoped to `src/popoto/extraction/`**, never `src/popoto/` at
+large. Measured at `f6e8525` on the current tree (`src/popoto/extraction/` = `__init__.py`,
+`claude.py`): **match count == 0**, as expected. Three controls were run to prove the check is
+not a no-op: (a) the same check over `src/popoto/recipes/provenance_journal.py` returns **0**,
+i.e. it correctly recognizes the two black-wrapped calls the old grep false-positived on;
+(b) a synthetic `ProvenanceJournal.append(\n kind=..., statement=...\n)` with no `agent_id`
+returns **1** (caught); (c) a nested-call form
+`ProvenanceJournal.append(statement=fmt(x), agent_id=a)` returns **0** (no false positive from
+the inner parenthesis). The window form was chosen over a `(.*?)\)` capture precisely because the
+non-greedy capture stops at the first inner `)` and false-positives on control (c).
 
 ## Critique Results
 
@@ -1024,13 +1293,54 @@ The plan's Test Impact counts reproduce **exactly**: `test_extraction.py` 33,
 `test_never_record_firewall.py` 57, `test_provenance_journal.py` 101,
 `test_subconscious_memory.py` 15, `test_subconscious_memory_integration.py` 27.
 
-| Severity | Critic | Finding | Implementation Note |
-|----------|--------|---------|---------------------|
-| CONCERN | Risk & Robustness | **TOCTOU in the Race 3 dedup probe.** The four-case pre-append probe is read-then-act with no atomic claim. Two concurrent runs over the same `(agent_id, turn_id, candidate_id)` — a duplicated delivery racing a crash-retry, both seeing a surviving `pending` — can both probe the journal, both find nothing (neither has committed `append()` yet), and both append, producing two permanent entries. Race 3 frames its trigger as a *serial* re-run; Race 1's `MULTI`/`EXEC` covers the record+summary write, not a cross-process claim on a candidate. | `ProvenanceJournal.append()` (`provenance_journal.py:562-620`) takes no idempotency key and `AppendOnlyViolation` fires only when a record's Redis key already exists — never true for a fresh `AutoKeyField` append — so the journal cannot catch this. The guard must live in `decision_log.py`'s pending step and be a **single atomic Redis op**, not a read followed by a write: `SET <agent_id>:<turn_id>:<candidate_id>:claiming ... NX` (short TTL), or `WATCH`/`MULTI` compare-and-set on the row's `state` field. The loser waits or no-ops. |
-| CONCERN | Risk & Robustness | **Reconciliation is identity-unsound for byte-identical spans.** The probe matches on `turn_id` + exact `verbatim` equality, but `JournalEntry` carries no candidate identity. Two candidates in one turn with identical text — a repeated sentence, or a sentence span whose text equals an entity-lifted span — are indistinguishable: a surviving `pending` row can reconcile onto the *other* candidate's entry and record the wrong `entry_id`, breaking the "exactly one journal entry per accepted candidate" invariant in Success Criterion 4. The plan's "exact string equality, not a fuzzy match" argument (Technical Approach → Assembly idempotency, point 3) assumes this case away. | `JournalEntry`'s full field set is `entry_id`/`agent_id`/`captured_at`/`turn_id`/`speaker`/`verbatim`/`statement`/`subjects`/`stated`/`kind`/`target`/`validity` (`provenance_journal.py:299-310`) — no `candidate_id`-shaped field. `verbatim = StringField(default="")` (`:304`) is the only matchable content field and is **not unique per candidate within a turn** by construction, since v1 stores spans byte-identically. Fix: fold `candidate_id` into `subjects` as a tag at `append()` time so reconciliation is an identity lookup; short of that, detect the >1-match case explicitly and record a distinct `ambiguous_reconciliation` reason code rather than silently taking the first match. |
-| CONCERN | History & Consistency + Structural check | **The `agent_id` anti-criterion can never pass.** Verification row `grep -rn "ProvenanceJournal.append(" src/popoto/ \| grep -v "agent_id"` expects match count == 0, but returns **2 matches today**, before any M3 code exists — `provenance_journal.py:20` and `:351`, both real `agent_id=`-passing calls that black wrapped across lines, so the single-line grep never sees `agent_id` on the same line. M3's own assembly call is long enough that black will wrap it identically, adding a third permanent false positive. The row added in round 1 to prove a round-1 fix cannot pass, by construction. | Verified live at `6574af1`: the grep exits 0 (non-empty) with those two hits. Replace with a multiline check scoped to the **new module only**: `perl -0777 -ne 'while (/ProvenanceJournal\.append\((.*?)\)/gs) { print "$&\n" unless $1 =~ /agent_id/ }' src/popoto/extraction/*.py` — run only after Task 3 lands, against `src/popoto/extraction/`, never `src/popoto/` at large. Or drop the grep and rely on mypy plus a constructor test, which fails build on a real omission. |
-| NIT | Risk & Robustness | **Stale `pending` recovery is manual and unsignalled.** "No `pending` row survives a completed `extract_memories()`" is proven by a test, but nothing enforces it operationally: a crashed turn reconciles only if something re-invokes the path for the same `(agent_id, turn_id)`. With no sweep, TTL, or age alert, a one-shot turn that is never replayed stays `pending` forever with no operator signal. | Note in the `decision_log.py` module docstring (already planned under Documentation → Inline Documentation) that stale-`pending` recovery is manual/opt-in in v1, and name the follow-on (M9 or an ops runbook) for a periodic age-keyed scan. |
-| NIT | Scope & Value | **Per-`reason_code` breakdown has no named consumer.** `compute_metrics`'s per-`generator_rule` dimension is load-bearing (it is the mechanism the #510 argument's point 4 relies on), but the per-`reason_code` dimension is asserted in the Success Criteria and the backing test with no stated consumer — scope slightly beyond #562's AC 3, which asks only for precision/recall. | Not a build blocker and implies no code beyond Task 3 as scoped. Either name the consumer (e.g. "separates privacy drops from LLM rejects in the offline metric") or drop the dimension from the `Metrics` shape and leave it to the builder. |
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | Risk & Robustness | **TOCTOU in the Race 3 dedup probe.** The four-case pre-append probe is read-then-act with no atomic claim. Two concurrent runs over the same `(agent_id, turn_id, candidate_id)` — a duplicated delivery racing a crash-retry, both seeing a surviving `pending` — can both probe the journal, both find nothing (neither has committed `append()` yet), and both append, producing two permanent entries. Race 3 frames its trigger as a *serial* re-run; Race 1's `MULTI`/`EXEC` covers the record+summary write, not a cross-process claim on a candidate. | **FIXED — single atomic claim op, `SET ... NX PX`.** New Technical Approach subsection **"Atomic assembly claim"** specifies the exact op: `SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <uuid4 token> NX PX Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` (30_000 ms, pinned in `fields/constants.py`), token-checked Lua release (`if GET == token then DEL`) executed with the terminal write, and the loser performing **no** journal write and **no** row transition. `WATCH`/`MULTI` CAS was considered and rejected in writing (needs a dedicated connection + retry loop; does not compose with Popoto's shared pool). All ops are core Redis/Valkey commands plus Lua — no modules. Threaded through: Assembly idempotency step 0, Data Flow step 5, the Flow diagram (`ATOMIC CLAIM` line with the claim-lost branch), Task 3 (with explicit "do NOT `GET`-then-`SET`, do NOT `WATCH`/`MULTI`"), Task 4, new **Race 4**, Failure Path Test Strategy (concurrent-assembly case), Success Criterion 4 companion (a), Verification rows *Atomic claim under concurrency* + two anti-criteria (`.watch(` == 0; `nx=True` present). Residual TTL-expiry window is stated explicitly and converges via the C2 identity probe rather than duplicating. | `ProvenanceJournal.append()` (`provenance_journal.py:562-620`) takes no idempotency key and `AppendOnlyViolation` fires only when a record's Redis key already exists — never true for a fresh `AutoKeyField` append — so the journal cannot catch this. The guard must live in `decision_log.py`'s pending step and be a **single atomic Redis op**, not a read followed by a write: `SET <agent_id>:<turn_id>:<candidate_id>:claiming ... NX` (short TTL), or `WATCH`/`MULTI` compare-and-set on the row's `state` field. The loser waits or no-ops. |
+| CONCERN | Risk & Robustness | **Reconciliation is identity-unsound for byte-identical spans.** The probe matches on `turn_id` + exact `verbatim` equality, but `JournalEntry` carries no candidate identity. Two candidates in one turn with identical text — a repeated sentence, or a sentence span whose text equals an entity-lifted span — are indistinguishable: a surviving `pending` row can reconcile onto the *other* candidate's entry and record the wrong `entry_id`, breaking the "exactly one journal entry per accepted candidate" invariant in Success Criterion 4. The plan's "exact string equality, not a fuzzy match" argument (Technical Approach → Assembly idempotency, point 3) assumes this case away. | **FIXED — fold `candidate_id` into `subjects` (fix option 1 chosen).** New Technical Approach subsection **"Candidate identity on the journal entry"**: assembly passes `subjects=[*topic_tags, f"cand:{candidate_id}"]`, and reconciliation becomes an identity lookup `JournalEntry.query.filter(turn_id=..., subjects__all=[f"cand:{candidate_id}"])` (`TagField.__all` = `SINTER`, Valkey-safe). **Why this over the `ambiguous_reconciliation` option:** detection only flags the identity failure after the fact and leaves the candidate stuck, whereas the tag makes reconciliation correct by construction; `ambiguous_reconciliation` is kept anyway, demoted to an unreachable assertion for the >1-match branch (step 4). The old "exact equality, not fuzzy match" argument is **explicitly withdrawn** in step 3. **Settled-decision checks, all verified in code:** decision 3 untouched (`statement`/`verbatim` still byte-identical; the tag is a different field); M1 append-only untouched (tag supplied at `append()` time, no mutation, no new journal API). **M2 firewall scan surface checked at `provenance_journal.py:969` — and it constrains the format:** subject tags *are* scanned, and measured at `f6e8525` a 64-char hex digest is **blocked** (`reason='high_entropy'`) while `cand:t-41:sent:0` / `cand:t-41:ent:12` / `cand-0007` are clean, so Task 1 mandates a low-entropy `{turn_id}:{generator_rule}:{ordinal}` id (**never a digest**) with a test asserting `scan_never_record(f"cand:{candidate_id}").blocked is False`. Threaded through: Data Flow step 6, the Flow diagram, Assembly content bullet, Race 3, Task 1, Task 3 ("`cand:` tag mandatory on every M3 append"; "do NOT match on `verbatim` text"), Task 4, Failure Path (interrupted + ambiguous cases), Success Criterion 4 companion (b), Test Impact, Documentation, and three Verification rows (identity-tag anti-criterion, duplicate-text reconciliation test, firewall-unblocked test). | `JournalEntry`'s full field set is `entry_id`/`agent_id`/`captured_at`/`turn_id`/`speaker`/`verbatim`/`statement`/`subjects`/`stated`/`kind`/`target`/`validity` (`provenance_journal.py:299-310`) — no `candidate_id`-shaped field. `verbatim = StringField(default="")` (`:304`) is the only matchable content field and is **not unique per candidate within a turn** by construction, since v1 stores spans byte-identically. Fix: fold `candidate_id` into `subjects` as a tag at `append()` time so reconciliation is an identity lookup; short of that, detect the >1-match case explicitly and record a distinct `ambiguous_reconciliation` reason code rather than silently taking the first match. |
+| CONCERN | History & Consistency + Structural check | **The `agent_id` anti-criterion can never pass.** Verification row `grep -rn "ProvenanceJournal.append(" src/popoto/ \| grep -v "agent_id"` expects match count == 0, but returns **2 matches today**, before any M3 code exists — `provenance_journal.py:20` and `:351`, both real `agent_id=`-passing calls that black wrapped across lines, so the single-line grep never sees `agent_id` on the same line. M3's own assembly call is long enough that black will wrap it identically, adding a third permanent false positive. The row added in round 1 to prove a round-1 fix cannot pass, by construction. | **FIXED — row replaced with a multiline-aware, M3-scoped check that was RUN at HEAD before being written down.** Confirmed the old row fails: at `f6e8525` the grep returns **2 matches** (`provenance_journal.py:20`, `:351`). Replacement: `perl -0777 -ne 'while (/ProvenanceJournal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 200) =~ /agent_id/ }' src/popoto/extraction/*.py`, expected **match count == 0** — **measured 0 at `f6e8525`**. Three controls were run to prove it is not a vacuous no-op and are recorded in a note under the Verification table: (a) the same check over `provenance_journal.py` returns **0**, correctly recognizing the two black-wrapped calls the old grep false-positived on; (b) a synthetic `append(` with no `agent_id` returns **1** (caught); (c) `append(statement=fmt(x), agent_id=a)` returns **0** (no nested-paren false positive). The 200-char-window form was chosen over a `(.*?)\)` capture *because* the non-greedy capture fails control (c). A sibling row applies the same technique to the new `cand:` identity tag. | Verified live at `6574af1`: the grep exits 0 (non-empty) with those two hits. Replace with a multiline check scoped to the **new module only**: `perl -0777 -ne 'while (/ProvenanceJournal\.append\((.*?)\)/gs) { print "$&\n" unless $1 =~ /agent_id/ }' src/popoto/extraction/*.py` — run only after Task 3 lands, against `src/popoto/extraction/`, never `src/popoto/` at large. Or drop the grep and rely on mypy plus a constructor test, which fails build on a real omission. |
+| NIT | Risk & Robustness | **Stale `pending` recovery is manual and unsignalled.** "No `pending` row survives a completed `extract_memories()`" is proven by a test, but nothing enforces it operationally: a crashed turn reconciles only if something re-invokes the path for the same `(agent_id, turn_id)`. With no sweep, TTL, or age alert, a one-shot turn that is never replayed stays `pending` forever with no operator signal. | **ADDRESSED — position taken: manual for v1, with the operator query named and one small reader shipped.** New Technical Approach bullet **"Stale `pending` recovery is manual in v1"**: no sweep daemon, no age alert, and **a TTL on decision rows is explicitly rejected** (it would delete audit evidence — the one thing the module exists to keep); the correct sweep cadence is deferred to M9 (#568) on the same "don't guess the number" reasoning as retention. What ships: `DecisionLog.list_pending(agent_id, older_than=None) -> List[DecisionRecord]` (Task 3), a thin reader over existing rows with no new keyspace, plus the recovery recipe stated verbatim in the `decision_log.py` docstring and on the docs page (list oldest-first, re-invoke the auditable path per stale `(agent_id, turn_id)`, which reconciles through the identity probe). Task 4 verifies it. Periodic scanning/alerting is named as an M9-or-ops-runbook follow-on. | Note in the `decision_log.py` module docstring (already planned under Documentation → Inline Documentation) that stale-`pending` recovery is manual/opt-in in v1, and name the follow-on (M9 or an ops runbook) for a periodic age-keyed scan. |
+| NIT | Scope & Value | **Per-`reason_code` breakdown has no named consumer.** `compute_metrics`'s per-`generator_rule` dimension is load-bearing (it is the mechanism the #510 argument's point 4 relies on), but the per-`reason_code` dimension is asserted in the Success Criteria and the backing test with no stated consumer — scope slightly beyond #562's AC 3, which asks only for precision/recall. | **ADDRESSED — consumer named, dimension kept.** Technical Approach → Offline precision/recall now names exactly one consumer for the per-`reason_code` dimension: **separating privacy drops from model rejects from infrastructure losses inside a single metric run.** A `firewall_drop`(`pre_llm_candidate_block`/`post_accept_journal_block`) is not an extraction-quality failure and must not be charged against the LLM's precision; a `reject`(`llm_unavailable`/`assembly_failed`) is an infrastructure loss and must not be charged against recall. Without it, a run whose recall dropped cannot distinguish "the model got worse" from "the firewall got stricter" from "Redis was flaky" — the M9 (#568) audit's first question. Task 3 requires the backing test to assert that three-way separation. | Not a build blocker and implies no code beyond Task 3 as scoped. Either name the consumer (e.g. "separates privacy drops from LLM rejects in the offline metric") or drop the dimension from the `Metrics` shape and leave it to the builder. |
+
+### Revision pass — round 2 (concern embedding)
+
+All 3 round-2 concerns and both nits are embedded as **implementable plan content**, not
+acknowledgement prose; every "Addressed By" cell above names the sections and tasks that
+changed. Summary of the mechanisms chosen:
+
+- **C1 (TOCTOU):** the pre-append claim is a **single atomic Redis op** —
+  `SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <uuid4 token> NX PX
+  Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` — with a token-checked Lua release. The loser appends
+  nothing. `WATCH`/`MULTI` CAS was considered and rejected in writing. Core commands + Lua only,
+  so Valkey-safe. Pinned by Race 4, Task 3, two Verification anti-criteria, and a concurrency
+  test.
+- **C2 (identity):** `candidate_id` is folded into `subjects` as a `cand:{candidate_id}` tag at
+  `append()` time, making reconciliation an identity lookup instead of a `verbatim` text match.
+  Chosen over the detect-and-flag alternative because it is correct by construction rather than
+  after the fact; `ambiguous_reconciliation` is retained as an unreachable assertion. The M2
+  firewall's tag scan (`provenance_journal.py:969`) was checked and **constrains the id format**:
+  digest-shaped ids are blocked as `high_entropy`, so `candidate_id` is a low-entropy
+  `{turn_id}:{generator_rule}:{ordinal}` token, asserted by a test.
+- **C3 (unrunnable anti-criterion):** the line-oriented grep was confirmed to return **2
+  matches** at `f6e8525` and is replaced by a multiline-aware `perl -0777` window check scoped to
+  `src/popoto/extraction/`, **measured at `f6e8525` returning 0**, with three controls (wrapped
+  real calls → 0; synthetic omission → 1; nested-paren call → 0) recorded under the Verification
+  table.
+- **N1:** manual stale-`pending` recovery for v1, TTL on decision rows explicitly rejected,
+  `DecisionLog.list_pending()` plus a documented operator recipe shipped, sweeping named as an
+  M9/ops follow-on.
+- **N2:** the per-`reason_code` dimension is kept with a named consumer (separating privacy
+  drops from LLM rejects from infrastructure losses in one metric run) and a test that asserts
+  the separation.
+
+Nothing settled was reopened: v1 candidate set is unchanged (sentence spans + pattern-lifted
+entities, windows behind M4); the decision log remains **unbounded** with no cap constant and no
+LTRIM (the claim key's TTL is a liveness bound on an ephemeral lock holding no audit content —
+decision rows themselves are never expired); `statement` remains byte-identical to `verbatim`
+(the `cand:` tag lives in `subjects`, a different field). Standing constraints hold: Valkey-safe
+(no modules), LLM emits enum verdicts/reason codes only, M2 firewall pre-LLM on every candidate,
+default `extract_memories()` byte-for-byte unchanged behind the opt-in flag, M1 append-only
+intact, and the terminal vocabulary is still exactly
+`firewall_drop | accept | reject | withhold` with `pending` non-terminal.
 
 **Explicitly upheld, not relitigated:** the three supervisor-settled decisions (v1 candidate
 set; unbounded log; byte-identical `statement`). Scope & Value independently verified the
