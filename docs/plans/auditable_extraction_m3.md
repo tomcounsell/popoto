@@ -1352,6 +1352,51 @@ plan does not promote the measured-worse shape. The revision was judged **not** 
 inflated scope: the two-phase write and Race 3 probe are unavoidable consequences of M1
 shipping `append()` with no idempotency key.
 
+### War room round 3 — 2026-08-25, baseline `79ffbde`
+
+Depth: FULL (forced by `appetite: Large`). Roster: Risk & Robustness, Scope & Value,
+History & Consistency (3/3 reported, all grounded). Verdict: **READY TO BUILD (with concerns)**
+— 0 blockers, 2 concerns, 2 nits.
+
+**Environment for every count quoted below** (repo doctrine — reproduced by the driver, not
+relayed): main checkout `/Users/valorengels/src/popoto` at `79ffbde`, venv resolving `popoto` to
+`src/popoto/__init__.py`, redis-py **7.1.1**, Redis on `localhost:6379` (PONG). Test Impact
+counts reproduce **exactly** (33 / 57 / 101 / 15 / 27). All 20 Verification-table rows were
+executed at HEAD: every anti-criterion returns its expected value, and the round-2 replacement
+`perl -0777` `agent_id` check measures **0** over `src/popoto/extraction/*.py` while correctly
+returning **0** (not a false positive) over `provenance_journal.py`, where the round-1 grep it
+replaced still returns **2**.
+
+**Round-2 fix verification — all three HOLD, checked against real APIs, not assumed:**
+- **C1 (atomic claim):** `POPOTO_REDIS_DB` is a standard `redis-py` client (`redis_db.py:143`),
+  so `.set(key, token, nx=True, px=...)` is a real call, and `EVAL` is already the established
+  Lua pattern in this codebase (`models/query.py:445,463`; `fields/existence_filter.py:430`).
+- **C2 (identity tag):** `subjects__all` resolves to `SINTER` (`tag_field.py:376,385,414`) and
+  `Query.filter_for_keys_set()` intersects per-field key sets, so a single
+  `.filter(turn_id=..., subjects__all=[...])` really does AND across an `IndexedField` and a
+  `TagField`. `DB_key` escapes colons (`models/db_key.py:86-88`), so a multi-colon
+  `cand:{turn_id}:{rule}:{ordinal}` tag value is safe as a Redis key segment.
+- **C3 (anti-criterion runnability):** re-measured above; holds.
+- **Two-phase write ordering** (the round-1 BLOCKER fix) reads consistently across Data Flow
+  5-7, the Flow diagram, Races 3/4, Task 3, Success Criterion 1 and the Verification table.
+
+**Both round-3 concerns land on the same component — the concurrency machinery — and point in
+opposite directions.** They share one resolving question: *does a concurrent or
+at-least-once-delivery caller of `extract_memories()` exist or is one committed?* Measured at
+HEAD: **no.** `grep -rn "extract_memories(" src/popoto/` yields exactly one production call
+site (`integrations/service.py:230`, synchronous, once per turn); `src/popoto/utils/
+multithreading.py` is imported nowhere in `src/popoto/`. Answer that question once and both
+concerns resolve together — the answer determines whether the claim protocol is extended
+(Concern 1) or descoped (Concern 2). Answering it in opposite directions independently would be
+incoherent.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | Risk & Robustness | **Only the `accept` path is claim-protected; conflicting terminal verdicts can clobber.** `firewall_drop`/`reject`/`withhold` write terminally with no claim, no CAS and no read-before-write guard. Race 2's mitigation narrows itself to "a re-write of the same key with the same terminal state is a no-op", which assumes a retried verdict call returns the *same* verdict — but the LLM verdict is non-deterministic (unlike the candidate generator), and Race 2's own trigger is precisely a retried call. A delivery resolving `reject` can overwrite the row of a candidate the `accept` path already appended to the journal, leaving the decision log (source of truth for `compute_metrics`) permanently disagreeing with the journal (source of truth for stored memories). | *(pending revision pass)* | In `decision_log.py`'s writer, before writing **any** terminal state (not only `accept`), read the existing row; if it is already terminal and the new state differs, do not overwrite — record a `detail_code`-annotated conflict, or route every terminal write through the same `SET NX` claim key so the first terminal write per candidate always wins. Test: two concurrent verdict calls for one candidate resolving `accept` and `reject`; assert exactly one terminal state survives and it agrees with whether a journal entry exists. |
+| CONCERN | Scope & Value | **The claim protocol is specified at command level for a trigger this codebase does not have.** Round 2 added a `SET ... NX PX` + uuid4 token protocol, a Lua release script body, `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS = 30_000`, a dedicated `popoto:m3:claim:*` keyspace, Race 4, a Task 3 "do NOT `GET`-then-`SET`, do NOT `WATCH`/`MULTI`" prescription and 2 Verification rows — all to guard "two concurrent runners" / "a duplicated delivery racing a crash-retry". Measured at HEAD, no such caller exists: one synchronous `extract_memories()` call site, no queue, no worker pool, `utils/multithreading.py` unused. Issue #562 never mentions concurrency; its four ACs are about per-candidate terminal-state completeness. | *(pending revision pass)* | Verified: `grep -rn "extract_memories(" src/popoto/` → one production call site, `integrations/service.py:230`; `grep -rln "multithreading" src/popoto/` → no importers. Either name the concrete current-or-committed concurrent/redelivery caller in the plan, or label Race 4 + the atomic-claim subsection an explicit forward-looking assumption and ship Race 3's serial-retry probe alone for v1 — removing a `Defaults` constant, a Task 3 sub-protocol and 2 Verification rows without touching any AC. Note the `cand:` identity tag (C2) must stay either way: it is what makes the residual window converge. |
+| NIT | Risk & Robustness | **`DecisionRecord` has no timestamp field, but `list_pending` is specified to sort by one.** The recovery recipe documents `list_pending(agent_id, older_than=None)` returning rows "oldest-first by the row's write timestamp", yet Task 3's enumerated field list (`agent_id`, `turn_id`, `candidate_id`, `state`, `reason_code`, `generator_rule`, span offsets, text hash, `entry_id`, `detail_code`) contains no timestamp — so `older_than` has nothing to compare and "oldest-first" has nothing to sort by. | *(pending revision pass)* | Add `written_at = FloatField(...)` to Task 3's `DecisionRecord` field list, set on every write (both the `pending` write and the terminal transition), and have `list_pending` filter/sort on it — mirroring `captured_at` on `JournalEntry` (`provenance_journal.py:301`). |
+| NIT | History & Consistency | **Citation past end of file.** `extraction/__init__.py:216-232`, cited in the round-2 revision summary as evidence that `RawTurnExtractionProvider.extract()` returns exactly one fact per turn, points past EOF — the file is **212** lines at HEAD (unchanged since round-2 baseline `6574af1`). The method is at `:188-205`. | *(pending revision pass)* | Not build-blocking — the citation lives in the historical Critique Results log, not in Technical Approach/Tasks/Verification, so no builder-facing text is affected. The underlying claim is correct (the method returns a one-element list or `[]`); only the range is wrong. Change `:216-232` → `:188-205`. |
+
 ---
 
 ## Resolved Decisions (supervisor, 2026-08-25)
