@@ -1003,6 +1003,45 @@ Two findings were resolved by *removing* something rather than adding it — the
 candidate cap (Risk 1) and the `CandidateGenerator` pluggable-rule class (Task 1) — each now
 pinned by a Verification anti-criterion so build cannot reintroduce it.
 
+### War room round 2 — 2026-08-25, baseline `6574af1`
+
+Depth: FULL (forced by `appetite: Large`). Roster: Risk & Robustness, Scope & Value,
+History & Consistency (3/3 reported, all grounded). Verdict: **READY TO BUILD (with concerns)**
+— 0 blockers, 3 concerns, 2 nits.
+
+**Round-1 fix verification:** the round-1 BLOCKER **HOLDS** (the two-phase `pending`-before-
+`append()` write genuinely closes the zero-row window; Data Flow steps 5-7, the Flow diagram,
+Success Criterion 1, Task 2, Task 3, the Failure Path Test Strategy and the Verification row
+were read against each other literally and are mutually consistent). 8 of the 9 round-1
+CONCERNs/NITs **HOLD**. One is **PARTIAL**: the assembly-idempotency fix handles the *serial*
+crash-retry it was written for but not concurrent retries or duplicate-text candidates
+(concerns 1 and 2 below).
+
+**Environment for every count quoted below** (repo doctrine — reproduced, not relayed): main
+checkout `/Users/valorengels/src/popoto` at `6574af1`, venv resolving `popoto` to
+`src/popoto/__init__.py`, redis-py **7.1.1**, Python 3.12.13, Redis on `localhost:6379` (PONG).
+The plan's Test Impact counts reproduce **exactly**: `test_extraction.py` 33,
+`test_never_record_firewall.py` 57, `test_provenance_journal.py` 101,
+`test_subconscious_memory.py` 15, `test_subconscious_memory_integration.py` 27.
+
+| Severity | Critic | Finding | Implementation Note |
+|----------|--------|---------|---------------------|
+| CONCERN | Risk & Robustness | **TOCTOU in the Race 3 dedup probe.** The four-case pre-append probe is read-then-act with no atomic claim. Two concurrent runs over the same `(agent_id, turn_id, candidate_id)` — a duplicated delivery racing a crash-retry, both seeing a surviving `pending` — can both probe the journal, both find nothing (neither has committed `append()` yet), and both append, producing two permanent entries. Race 3 frames its trigger as a *serial* re-run; Race 1's `MULTI`/`EXEC` covers the record+summary write, not a cross-process claim on a candidate. | `ProvenanceJournal.append()` (`provenance_journal.py:562-620`) takes no idempotency key and `AppendOnlyViolation` fires only when a record's Redis key already exists — never true for a fresh `AutoKeyField` append — so the journal cannot catch this. The guard must live in `decision_log.py`'s pending step and be a **single atomic Redis op**, not a read followed by a write: `SET <agent_id>:<turn_id>:<candidate_id>:claiming ... NX` (short TTL), or `WATCH`/`MULTI` compare-and-set on the row's `state` field. The loser waits or no-ops. |
+| CONCERN | Risk & Robustness | **Reconciliation is identity-unsound for byte-identical spans.** The probe matches on `turn_id` + exact `verbatim` equality, but `JournalEntry` carries no candidate identity. Two candidates in one turn with identical text — a repeated sentence, or a sentence span whose text equals an entity-lifted span — are indistinguishable: a surviving `pending` row can reconcile onto the *other* candidate's entry and record the wrong `entry_id`, breaking the "exactly one journal entry per accepted candidate" invariant in Success Criterion 4. The plan's "exact string equality, not a fuzzy match" argument (Technical Approach → Assembly idempotency, point 3) assumes this case away. | `JournalEntry`'s full field set is `entry_id`/`agent_id`/`captured_at`/`turn_id`/`speaker`/`verbatim`/`statement`/`subjects`/`stated`/`kind`/`target`/`validity` (`provenance_journal.py:299-310`) — no `candidate_id`-shaped field. `verbatim = StringField(default="")` (`:304`) is the only matchable content field and is **not unique per candidate within a turn** by construction, since v1 stores spans byte-identically. Fix: fold `candidate_id` into `subjects` as a tag at `append()` time so reconciliation is an identity lookup; short of that, detect the >1-match case explicitly and record a distinct `ambiguous_reconciliation` reason code rather than silently taking the first match. |
+| CONCERN | History & Consistency + Structural check | **The `agent_id` anti-criterion can never pass.** Verification row `grep -rn "ProvenanceJournal.append(" src/popoto/ \| grep -v "agent_id"` expects match count == 0, but returns **2 matches today**, before any M3 code exists — `provenance_journal.py:20` and `:351`, both real `agent_id=`-passing calls that black wrapped across lines, so the single-line grep never sees `agent_id` on the same line. M3's own assembly call is long enough that black will wrap it identically, adding a third permanent false positive. The row added in round 1 to prove a round-1 fix cannot pass, by construction. | Verified live at `6574af1`: the grep exits 0 (non-empty) with those two hits. Replace with a multiline check scoped to the **new module only**: `perl -0777 -ne 'while (/ProvenanceJournal\.append\((.*?)\)/gs) { print "$&\n" unless $1 =~ /agent_id/ }' src/popoto/extraction/*.py` — run only after Task 3 lands, against `src/popoto/extraction/`, never `src/popoto/` at large. Or drop the grep and rely on mypy plus a constructor test, which fails build on a real omission. |
+| NIT | Risk & Robustness | **Stale `pending` recovery is manual and unsignalled.** "No `pending` row survives a completed `extract_memories()`" is proven by a test, but nothing enforces it operationally: a crashed turn reconciles only if something re-invokes the path for the same `(agent_id, turn_id)`. With no sweep, TTL, or age alert, a one-shot turn that is never replayed stays `pending` forever with no operator signal. | Note in the `decision_log.py` module docstring (already planned under Documentation → Inline Documentation) that stale-`pending` recovery is manual/opt-in in v1, and name the follow-on (M9 or an ops runbook) for a periodic age-keyed scan. |
+| NIT | Scope & Value | **Per-`reason_code` breakdown has no named consumer.** `compute_metrics`'s per-`generator_rule` dimension is load-bearing (it is the mechanism the #510 argument's point 4 relies on), but the per-`reason_code` dimension is asserted in the Success Criteria and the backing test with no stated consumer — scope slightly beyond #562's AC 3, which asks only for precision/recall. | Not a build blocker and implies no code beyond Task 3 as scoped. Either name the consumer (e.g. "separates privacy drops from LLM rejects in the offline metric") or drop the dimension from the `Metrics` shape and leave it to the builder. |
+
+**Explicitly upheld, not relitigated:** the three supervisor-settled decisions (v1 candidate
+set; unbounded log; byte-identical `statement`). Scope & Value independently verified the
+#510 argument is **honest rather than rhetorical** — `RawTurnExtractionProvider.extract()`
+does return exactly one fact per turn (`extraction/__init__.py:216-232`), so "a raw-turn audit
+trail would have almost nothing to audit" is literally correct; and the harness default is
+verified to remain `RawTurnExtractionProvider` (`integrations/service.py:112-125`), so the
+plan does not promote the measured-worse shape. The revision was judged **not** to have
+inflated scope: the two-phase write and Race 3 probe are unavoidable consequences of M1
+shipping `append()` with no idempotency key.
+
 ---
 
 ## Resolved Decisions (supervisor, 2026-08-25)
