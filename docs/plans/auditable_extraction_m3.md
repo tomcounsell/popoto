@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-08-20
 tracking: https://github.com/tomcounsell/popoto/issues/562
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-08-25T05:16:13Z
 ---
 
 # M3 — Auditable extraction: deterministic candidate generator with a per-candidate decision log
@@ -107,9 +109,17 @@ preserves both.
   architecture). **Relevant:** M3 builds the deterministic-enumeration + verdict stage that
   replaces the current all-in-one-prompt rejection inside the model. No plan previously tried
   a per-candidate decision log.
-- **PR #510** — evaluated raw vs heuristic vs Claude extraction; chose raw as harness default
-  for accuracy. **Relevant:** context for why the candidate generator must handle raw whole-turn
-  spans, not only sentence splits.
+- **PR #510** — evaluated raw vs heuristic vs Claude extraction on the same slice and chose raw
+  turn ingestion as the harness default on judged accuracy. **The measured numbers, recorded
+  here rather than paraphrased: heuristic sentence-splitting scored 0.2078 against raw turn
+  ingestion's 0.3636** (stated verbatim in `RawTurnExtractionProvider`'s docstring,
+  `src/popoto/extraction/__init__.py:159-166`). **Relevant, and uncomfortable:** M3's v1
+  candidate shape is sentence spans — the arm #510 measured *worst*. That tension is not
+  hand-waved; it is argued explicitly in Technical Approach → "Auditing the measured-worse
+  candidate shape, on purpose." Short version: #510 measured a splitter that shipped with no
+  per-candidate visibility, and M3 builds exactly the instrument that turns that single
+  aggregate number into per-candidate, per-rule evidence — while leaving the harness default
+  on raw turn ingestion, untouched.
 
 ## Research
 
@@ -143,14 +153,26 @@ decision and folded into the sections below; see Technical Approach and No-Gos.
    returns an enum verdict (`accept | reject | withhold`) plus an enum reason code. The model
    returns the candidate's own id and a verdict — it writes **no free text**. Accepted content
    is byte-identical to the verbatim candidate span.
-5. **Decision log** (new, `decision_log.py`): every candidate is written once, keyed by
-   `(agent_id, turn_id, candidate_id)`, with terminal state + reason code; a per-turn compact
-   summary is written in the same pass.
-6. **Assembly** (trusted code): `accept`ed candidates are written to the M1 provenance
-   journal via `ProvenanceJournal.append(kind='assert', verbatim=<span>, statement=<span>,
-   speaker=..., turn_id=..., subjects=...)`. No model-generated free text enters the store;
-   the stored `statement` is the verbatim candidate span (distillation is M4's job).
-7. **Output**: existing behavior preserved behind a flag/adapter. With the auditable path
+5. **Decision log — first write, always before any side effect** (new, `decision_log.py`):
+   every candidate gets a row keyed by `(agent_id, turn_id, candidate_id)` *before* anything
+   irreversible happens to it.
+   - `firewall_drop`, `reject`, `withhold` have no downstream side effect, so their first
+     write is already their **terminal** write — one row, one state, done.
+   - `accept` writes a **`pending`** row first (see Technical Approach → Write ordering).
+     `pending` is a non-terminal intent marker, not a fifth terminal state.
+6. **Assembly** (trusted code): `accept`ed candidates are written to the M1 provenance journal
+   via `ProvenanceJournal.append(agent_id=<agent_id>, kind='assert', verbatim=<span>,
+   statement=<span>, speaker=..., turn_id=..., subjects=...)`. `agent_id` is keyword-only and
+   **required** — a `None` renders the literal `"None"` into the record's Redis key
+   (`provenance_journal.py:562-577`). No model-generated free text enters the store; the
+   stored `statement` is the verbatim candidate span (distillation is M4's job).
+7. **Decision log — terminal transition**: the same `(agent_id, turn_id, candidate_id)` row is
+   transitioned out of `pending` to exactly one of the four terminal states, based on what
+   `append()` did: success → `accept` (recording the returned `entry_id`);
+   `JournalBlockedError` → `firewall_drop`(`post_accept_journal_block`); any other exception →
+   `reject`(`assembly_failed`). The per-turn compact summary is updated from terminal states
+   only.
+8. **Output**: existing behavior preserved behind a flag/adapter. With the auditable path
    off, `extract_memories()` behaves byte-for-byte as today.
 
 ## Why Previous Fixes Failed
@@ -214,8 +236,11 @@ The two shipped dependencies are already on `main`; this plan only needs them im
   the pipeline decides on.
 - **Candidate generator** — pure, deterministic, LLM-free enumeration. Given `(turn_id,
   text)`, yields the complete v1 candidate set. Empty turns are represented, not skipped.
-- **Decision record** — the persisted per-candidate terminal verdict: candidate identity,
-  terminal state (`firewall_drop | accept | reject | withhold`), and an enum reason code.
+- **Decision record** — the persisted per-candidate row: candidate identity, state, and an
+  enum reason code. Its **terminal** state is always one of the four in #562's acceptance
+  criteria — `firewall_drop | accept | reject | withhold`. It may transiently hold the
+  non-terminal marker `pending` between the accept verdict and the journal write; a `pending`
+  row is a *visible unfinished write*, which is the opposite of a silent drop.
 - **Decision log** — the write-side audit store: a complete, **unbounded** per-candidate detail
   row set, plus a per-turn compact summary that serves as a cheap query index over it. Offline
   precision/recall are computable from the detail rows alone.
@@ -229,21 +254,35 @@ The two shipped dependencies are already on `main`; this plan only needs them im
 ```
 response_text
   → Candidate generator  (deterministic; enumerates sentences + entities)
-  → M2 firewall (scan_never_record per span) ──blocked──> DecisionLog[firewall_drop]  (not sent to LLM)
+  → M2 firewall (scan_never_record per span) ──blocked──> DecisionLog[firewall_drop]  (TERMINAL; not sent to LLM)
   → Verdict stage (LLM, one candidate at a time, enum verdict + enum reason)
-        accept  → Assembly → ProvenanceJournal.append(kind=assert, verbatim=span)  → DecisionLog[accept]
-        reject  → DecisionLog[reject]
-        withhold→ DecisionLog[withhold]
-  → Per-turn compact summary written
+        reject  → DecisionLog[reject]                                    (TERMINAL, single write)
+        withhold→ DecisionLog[withhold]                                  (TERMINAL, single write)
+        accept  → DecisionLog[pending]            <-- written BEFORE any side effect
+                  → dedup probe (has this candidate already been appended?)
+                  → ProvenanceJournal.append(agent_id=..., kind=assert, verbatim=span, statement=span)
+                        ok                 → DecisionLog[pending → accept]        (TERMINAL, + entry_id)
+                        JournalBlockedError→ DecisionLog[pending → firewall_drop] (TERMINAL, reason=post_accept_journal_block)
+                        any other raise    → DecisionLog[pending → reject]        (TERMINAL, reason=assembly_failed)
+  → Per-turn compact summary updated from TERMINAL states only
   → SubconsciousMemory.extract_memories() returns (behind the opt-in flag)
 ```
+
+Read the diagram against Data Flow steps 5-7: they now describe the same ordering. The
+decision log is written **first** on every path; for `accept` that first write is the
+non-terminal `pending` row, and the terminal write follows assembly. There is no path on
+which a candidate reaches `append()` with zero decision-log rows.
 
 ### Technical Approach
 
 - **Module layout** (all under `src/popoto/extraction/`, following the provider conventions):
-  - `candidates.py` — `Candidate` dataclass (`text`, `turn_id`, `start`, `end`,
-    `generator_rule`), `generate_candidates(turn_id, text) -> List[Candidate]`, and
-    `CandidateGenerator` with pluggable rules. Sentence splits reuse the heuristic's
+  - `candidates.py` — `Candidate` dataclass (`text`, `turn_id`, `candidate_id`, `start`,
+    `end`, `generator_rule`) and the single function
+    `generate_candidates(turn_id, text) -> List[Candidate]`. **No `CandidateGenerator`
+    pluggable-rule class**: both plausible second rules are banned by this plan's own No-Gos
+    (LLM-driven generation; multi-sentence/cross-turn windows), so a rule-registry abstraction
+    would have exactly one implementation and no caller. Adding a rule later is a change to
+    one pure function, not a plugin-point migration. Sentence splits reuse the heuristic's
     `_split_sentences` regex; entity lifting is deterministic (noun-phrase/entity regex, not
     an LLM — a named-entity lift stays deterministic so the candidate set is exhaustive and
     reproducible).
@@ -254,9 +293,120 @@ response_text
     `ExtractedFact` intact and backward compatible.
 - **ExtractFact extension**: add optional fields (`span_start`, `span_end`, `turn_id`,
   `candidate_id`, `generator_rule`) all defaulting to `None` so existing provider outputs and
-  existing tests (`tests/test_extraction.py`, 26 tests) pass unmodified. The auditable path
+  existing tests (`tests/test_extraction.py`, 33 tests — see Test Impact for the measurement
+  environment) pass unmodified. The auditable path
   constructs facts from accepted candidates, carrying these fields through to the decision
   log.
+- **Write ordering: the decision log is written before every irreversible side effect.**
+  This is the module's central invariant, and getting it backwards would reintroduce the exact
+  silent-drop class M3 exists to close. The rule, stated once and implemented once:
+
+  > **A candidate never reaches a side effect that has no decision-log row already describing
+  > it.**
+
+  Concretely, per candidate:
+
+  1. `firewall_drop` / `reject` / `withhold` produce **no** downstream side effect. One write,
+     directly terminal.
+  2. `accept` is the only two-phase path:
+     - **Phase 1 — `pending`.** Write the row keyed `(agent_id, turn_id, candidate_id)` with
+       `state='pending'`, the accept verdict, the reason code, the span offsets and a hash of
+       `candidate.text`. This write is committed (not pipelined with the append) *before*
+       `ProvenanceJournal.append()` is called.
+     - **Phase 2 — terminal transition.** Call `append()`, then transition the **same row**
+       (never a second row) to exactly one terminal state:
+
+       | `append()` outcome | Terminal state | Reason code | Notes |
+       |---|---|---|---|
+       | returns `AnnotationResult` | `accept` | `accepted` | records the entry's `entry_id` on the row |
+       | raises `JournalBlockedError` | `firewall_drop` | `post_accept_journal_block` | privacy refusal, see below |
+       | raises `ValueError` / `TypeError` / `AppendOnlyViolation` / connection error | `reject` | `assembly_failed` | plus the exception class name in an enum-safe `detail_code` field |
+
+  **How this still satisfies Success Criterion 1 and #562's four-state AC.** The AC's
+  vocabulary is a **terminal** vocabulary and it is unchanged: every candidate ends in exactly
+  one of `firewall_drop | accept | reject | withhold`. `pending` is not a fifth terminal state
+  — it is a non-terminal marker on the same row, overwritten in place by the terminal write.
+  Success Criterion 1 is therefore restated as "exactly one **terminal** state per candidate,"
+  with a companion criterion that no `pending` row survives a completed `extract_memories()`
+  call. A `pending` row that *does* survive means the process died mid-assembly: that is a
+  visible, queryable, recoverable incident with the candidate's full identity on it — which is
+  precisely the outcome the blocker asked for, and the opposite of a candidate that vanished
+  with zero rows.
+
+- **Post-accept journal firewall block — mapped onto `firewall_drop`, deliberately.**
+  `ProvenanceJournal` runs its *own* never-record scan at write time over values M3's
+  per-candidate `scan_never_record(candidate.text)` never sees: `agent_id`, `subject_tags`, and
+  `entry._never_record_scan_values()` (`provenance_journal.py:969`; `append()` documents
+  "Nothing is issued or queued" on this raise, `:610-611`). So an LLM-accepted candidate can
+  still be refused at assembly. It maps to **`firewall_drop`**, not to a new fifth state,
+  because the *semantics are identical to the pre-LLM drop*: content was refused by the
+  never-record firewall and nothing was stored. The four-state AC vocabulary stays intact.
+  The two are distinguished by **reason code**, never by state:
+  - `firewall_drop` + `pre_llm_candidate_block` — M3's per-candidate span scan; the LLM never
+    saw the text.
+  - `firewall_drop` + `post_accept_journal_block` — M1's write-time scan over agent/tag/entry
+    values; the LLM did see the span and accepted it, and the journal refused the write.
+  Every *other* assembly failure is `reject`(`assembly_failed`) — so `firewall_drop` continues
+  to mean exactly one thing (privacy refusal) and never becomes a dumping ground for generic
+  write errors. Offline analysis that wants "how often did privacy block us *after* the model
+  had already said yes" reads one reason code.
+
+- **Assembly idempotency (closes the Race 2 gap — `append()` has no idempotency key).**
+  `ProvenanceJournal.append()` takes no per-call idempotency key and `JournalEntry.entry_id`
+  is an `AutoKeyField`, so `AppendOnlyViolation` fires only when a record's Redis key already
+  exists — which is never true for a fresh append. A naive retry after a crash between a
+  successful `append()` and the terminal decision-log write therefore creates a **duplicate
+  journal entry**, permanently, because M1 is append-only and offers no delete path. Assembly
+  owns the dedup; it cannot be delegated to the journal:
+  1. Before calling `append()`, read the decision row for `(agent_id, turn_id, candidate_id)`.
+     - Terminal `accept` with an `entry_id` → **already assembled; skip entirely.**
+     - Terminal non-`accept` → already decided; skip.
+     - `pending` → this is a retry of an interrupted assembly. Go to step 2.
+     - Absent → fresh candidate. Write `pending`, then `append()`.
+  2. **Reconcile the `pending` case before re-appending.** Query the journal for this agent's
+     entries on this `turn_id` (`turn_id` is an `IndexedField`, so this is a cheap indexed
+     read — no new journal API needed) and look for an entry whose `verbatim` equals the
+     candidate span. If one exists, the prior `append()` landed: transition the row to
+     `accept` with that `entry_id` and **do not append again**. If none exists, the prior
+     append did not land: proceed with `append()`.
+  3. The reconciliation is deterministic because `statement`/`verbatim` are byte-identical to
+     the candidate span (no normalization in v1), so the comparison is exact string equality,
+     not a fuzzy match.
+  A test asserts that running the auditable path twice over the same `(agent_id, turn_id)`
+  produces exactly one journal entry per accepted candidate, including when the first run is
+  interrupted between `append()` and the terminal write.
+
+- **Auditing the measured-worse candidate shape, on purpose.** PR #510 measured heuristic
+  sentence-splitting at **0.2078** judged accuracy against raw turn ingestion's **0.3636**
+  (`src/popoto/extraction/__init__.py:159-166`), and v1's candidate set is sentence spans plus
+  pattern-lifted entities — the arm that lost. That is a real tension and the plan does not
+  pretend otherwise. Why it is still the right v1 investment:
+  1. **The 0.2078 was measured blind.** It is a single aggregate number over a splitter that
+     shipped with *no per-candidate record of what was considered and dropped*. It establishes
+     that sentence-splitting **as shipped** underperforms; it cannot say *which* spans, *which*
+     generator rule, or *which* rejection reason drove the loss, because that data was never
+     recorded. M3 is the instrument that produces it.
+  2. **A raw-turn audit trail would have almost nothing to audit.** One candidate per turn
+     yields one accept/reject row per turn — an audit log that records the same aggregate #510
+     already has, at per-candidate granularity of exactly one. The decision log only pays for
+     itself when there is more than one candidate to discriminate between; sentence spans are
+     the smallest shape that makes "which part of this turn was worth keeping" a question the
+     log can answer.
+  3. **M3 does not promote the worse shape into production.** The harness default stays
+     `RawTurnExtractionProvider`; the auditable path is default-off and this plan explicitly
+     No-Gos switching the harness (see No-Gos). Nothing that users get today moves onto the
+     0.2078 path because of this module.
+  4. **It makes the shape choice correctable with evidence instead of another blind bake-off.**
+     Adding a raw-turn candidate rule, or bounded windows behind M4, is a change to one pure
+     function (`generate_candidates`) plus a `generator_rule` tag on each row. Once the log
+     exists, comparing shapes is a query over rows grouped by `generator_rule` — not a new
+     experiment harness. Choosing the shape *first* and the instrument *second* is how #510's
+     number ended up unactionable.
+  The supervisor-settled v1 candidate set is unchanged by this argument (sentence spans +
+  pattern-lifted entities; windows behind M4). What changes is that the plan now carries the
+  #510 number and the justification in the open, rather than citing #510 for the opposite
+  conclusion.
+
 - **Decision-log retention (resolves open question b — no cap in v1):**
   - **Per-candidate detail rows ship UNBOUNDED.** Keyed `(agent_id, turn_id, candidate_id)`
     with the terminal state and reason code, written in the same pass and **never trimmed**.
@@ -291,6 +441,30 @@ response_text
     favor of the detail rows.
   - **Valkey-safe**: a `HashField`/`SortedSetField`-backed structure, or a plain model with
     the standard indexes — no Redis modules.
+- **Offline precision/recall — what "computable offline" concretely means here, and how v1
+  demonstrates it for real.** The critique is fair that a `grep` proving the flag exists is not
+  a demonstration, and that with harness wiring No-Go'd nothing outside tests drives the
+  pipeline in v1. Two honest halves:
+  - **What ships is a capability, and the plan says so.** Success Criterion 3 is reworded from
+    a claim about realized measurement to a claim about a working, exercised computation. The
+    realization step (opting real traffic in) is the named follow-on already recorded in
+    No-Gos; v1 does not pretend to have taken it.
+  - **The demonstration is made concrete and non-trivial.** `decision_log.py` exposes
+    `DecisionLog.compute_metrics(agent_id, gold_labels) -> Metrics` (precision, recall, F1,
+    plus per-`reason_code` and per-`generator_rule` breakdowns). It reads **only** decision-log
+    rows and a caller-supplied gold-label mapping `{candidate_id: should_accept}` — no journal
+    read, no LLM, no live Redis state beyond the log itself. The test that proves this
+    (`test_precision_recall_computable_from_log_alone`) does not hand-assemble a few rows: it
+    runs the full auditable path over a **multi-turn fixture transcript** with a stubbed
+    verdict provider whose accept/reject pattern is fixed, hand-labels the expected candidate
+    set, and asserts **exact numeric** precision/recall/F1 values plus the per-rule breakdown.
+    A second assertion pins the isolation property — the computation is re-run against a
+    process with the journal keyspace flushed and produces identical numbers, proving the log
+    alone suffices. A dedicated Verification row runs this test by name.
+  - The docs page (see Documentation) carries a runnable snippet that enables
+    `auditable_extraction`, runs a turn, and prints the metrics, so an adopter can realize the
+    benefit without waiting for the harness wiring decision.
+
 - **Enum verdicts only** — the LLM writes only `{candidate_id, verdict, reason_code}`. The
   assembly stage never reads free text from the model; accepted content is the verbatim span.
   `withhold` is a terminal logged state and never triggers an automatic user interaction.
@@ -299,8 +473,13 @@ response_text
   punctuation stripping, not casing changes. This is not a judgment call: issue #562's own
   acceptance criteria require that "accepted memory content is byte-identical to a verbatim
   candidate span," so any normalization would violate the AC. Distillation and normalization
-  are M4's job. Concretely, assembly passes the same string object to both `verbatim=` and
-  `statement=`, and a test asserts `entry.statement == entry.verbatim == candidate.text`.
+  are M4's job. Concretely, assembly calls
+  `ProvenanceJournal.append(agent_id=<agent_id>, kind='assert', verbatim=candidate.text,
+  statement=candidate.text, speaker=..., turn_id=..., subjects=...)` — the same string object
+  for both — and a test asserts `entry.statement == entry.verbatim == candidate.text`.
+  `agent_id` is keyword-only and required (`provenance_journal.py:562-577`); it is sourced from
+  the `SubconsciousMemory` instance's agent id and is never allowed to be `None`, because a
+  `None` renders the literal `"None"` into the record's Redis key.
 - **Behavior preservation (acceptance criterion 4):** `SubconsciousMemory` gains an opt-in
   `auditable_extraction: Optional[AuditableExtractionConfig] = None` constructor arg. When
   `None` (default), `extract_memories()` runs the exact current path — provider →
@@ -323,7 +502,16 @@ response_text
   a `reject` with reason `llm_unavailable` when the client raises.
 - [ ] `src/popoto/recipes/subconscious_memory.py:431-432` save-loop `except Exception` — in
   the auditable path, a journal-write exception must surface as a logged terminal state (or a
-  loud raise), never a silent `logger.warning`. Add a test for the assembly-write failure path.
+  loud raise), never a silent `logger.warning`. Add tests for the assembly-write failure path
+  covering **both** branches of the Phase-2 transition table: `JournalBlockedError` →
+  `firewall_drop`(`post_accept_journal_block`), and `ValueError`/`AppendOnlyViolation`/
+  connection error → `reject`(`assembly_failed`). Both must assert the row was `pending`
+  *before* `append()` was invoked (so the failure could never have produced a zero-row
+  candidate) and terminal *after*.
+- [ ] Interrupted assembly — simulate a process death between a successful `append()` and the
+  terminal decision-log write. Assert (a) the `pending` row survives with full candidate
+  identity, and (b) a retry reconciles it to `accept` via the `turn_id`-indexed journal probe
+  **without** creating a second journal entry.
 - [ ] State: no `except Exception: pass` exists in the new modules; each handler logs or
   records an observable decision.
 
@@ -341,17 +529,33 @@ response_text
 
 ## Test Impact
 
-- [ ] `tests/test_extraction.py` (26 tests) — NO CHANGE required: `ExtractedFact` new fields
+**Baseline measurement environment (per repo doctrine — state the environment alongside any
+count):** counts below were re-measured at plan-revision time via
+`python -m pytest <file> --collect-only -q` in the **main checkout**
+`/Users/valorengels/src/popoto` (not a worktree), at commit `f1eb5e0`, venv `.venv` resolving
+`popoto` to `/Users/valorengels/src/popoto/src/popoto/__init__.py`, **redis-py 7.1.1**,
+Redis/Valkey on `localhost:6379`. The critique's numbers (33 / 57 / 101 at `76d649a`) reproduce
+exactly; the plan's original 33 → *26*, 57 → *31*, 101 → *93* figures were stale and are
+corrected here. Re-measure before quoting these; do not trust either the old or the new number
+without re-running in the environment you are in.
+
+- [ ] `tests/test_extraction.py` (**33** tests) — NO CHANGE required: `ExtractedFact` new fields
   default to `None`. Re-run to confirm green.
-- [ ] `tests/test_subconscious_memory.py`, `tests/test_subconscious_memory_integration.py` —
-  NO CHANGE: default path behavior is preserved byte-for-byte. Re-run to confirm.
-- [ ] `tests/test_never_record_firewall.py` (31 tests) — NO CHANGE: turn-level firewall
+- [ ] `tests/test_subconscious_memory.py` (**15**),
+  `tests/test_subconscious_memory_integration.py` (**27**) — NO CHANGE: default path behavior
+  is preserved byte-for-byte. Re-run to confirm.
+- [ ] `tests/test_never_record_firewall.py` (**57** tests) — NO CHANGE: turn-level firewall
   semantics untouched. Re-run to confirm.
-- [ ] `tests/test_provenance_journal.py` (93 tests) — NO CHANGE: journal API untouched; M3
-  only calls `append(kind='assert')`. Re-run to confirm.
+- [ ] `tests/test_provenance_journal.py` (**101** tests) — NO CHANGE: journal API untouched; M3
+  only calls `append(kind='assert')` and reads the `turn_id` index for the assembly dedup
+  probe. Re-run to confirm.
 - New: `tests/test_auditable_extraction.py` — candidate enumeration determinism, per-candidate
-  firewall drops, enum-verdict confinement, decision-log completeness, offline
-  precision/recall computation, default-path preservation.
+  firewall drops, enum-verdict confinement, decision-log completeness (including the
+  `pending` → terminal transition and the no-surviving-`pending` assertion), post-accept
+  `JournalBlockedError` → `firewall_drop`(`post_accept_journal_block`), assembly-failure →
+  `reject`(`assembly_failed`), assembly retry idempotency (one journal entry per accepted
+  candidate across a re-run and across an interrupted run), offline precision/recall
+  computation from the log alone, default-path preservation.
 
 ## Rabbit Holes
 
@@ -379,14 +583,24 @@ turn (roughly O(sentences + entities)), increasing latency and token cost on the
 **Mitigation:** The path is behind a flag, so non-auditable users are unaffected. The verdict
 stage is per-candidate but stateless and can pipeline; v1 optimizes for correctness and the
 decision log exposes the true candidate volume so the follow-on window module can size from
-data. `Defaults` gains a tunable per-turn candidate cap (pinned in-repo, not user-facing).
+data.
+**Explicitly NOT mitigated by a candidate cap.** An earlier draft of this risk promised
+"`Defaults` gains a tunable per-turn candidate cap." That sentence is **deleted**, not
+deferred: no task implemented it, no Verification row checked it, and — decisively — a cap
+directly contradicts Success Criterion 1 ("every generated candidate appears in the decision
+log with exactly one terminal state") and the exhaustive-enumeration goal the whole module
+rests on. A capped-out candidate would be a candidate that was generated and then silently
+dropped, i.e. the exact defect M3 exists to eliminate, reintroduced as a performance
+optimization. The mitigation rests on default-off alone. A Verification anti-criterion pins
+the absence of a cap so it cannot creep back in during build.
 
 ### Risk 2: Backward-compat regression on the default path
 **Impact:** If the flag plumbing leaks into the default path, existing
 `extract_memories()` behavior changes silently for current users — a hard acceptance-criteria
 violation.
 **Mitigation:** The flag defaults to `None` and the default branch is the unmodified existing
-code path (extractor → save loop). The existing 26 + integration tests assert byte-for-byte
+code path (extractor → save loop). The existing 33 extraction + 15/27 subconscious-memory tests
+(counts and environment recorded in Test Impact) assert byte-for-byte
 behavior; the plan keeps them green and adds a dedicated default-path-preservation test.
 
 ### Risk 3: Firewall regression
@@ -433,6 +647,36 @@ landed.
 candidate_id)`; the writer is idempotent — a re-write of the same key with the same terminal
 state is a no-op, and the per-turn summary is updated by the terminal state only. No
 automatic user interaction on `withhold`, so no external side-effect is double-fired.
+**Scope limit, stated explicitly:** this covers the *decision-log* write only. The verdict call
+itself is side-effect-free (the model writes nothing to the store), so a duplicated verdict
+costs tokens, not correctness. The *assembly* write is a different problem and is handled by
+Race 3 — do not read Race 2 as covering it.
+
+### Race 3: Assembly retry duplicates a journal entry
+**Location:** the assembly step in `decision_log.py` / the `SubconsciousMemory` auditable path.
+**Trigger:** The process dies (or the connection drops) after `ProvenanceJournal.append()`
+commits but before the `pending → accept` terminal write lands. The pipeline is re-run for the
+same `(agent_id, turn_id)`.
+**Data prerequisite:** Whether a journal entry already exists for this candidate must be
+knowable *before* a second `append()` is issued.
+**State prerequisite:** Exactly one journal entry per accepted candidate, ever.
+**Why the journal cannot solve this itself:** `append()` accepts no idempotency key
+(`provenance_journal.py:562-577`) and `JournalEntry.entry_id` is an `AutoKeyField`, so
+`AppendOnlyViolation` — which fires only when the record's Redis key already exists — is never
+triggered by a fresh append. M1 is append-only with no delete path, so a duplicate is
+permanent.
+**Mitigation:** Assembly does its own dedup, keyed by `(agent_id, turn_id, candidate_id)`,
+before every `append()`:
+- Terminal `accept` row present → skip (already assembled).
+- Terminal non-`accept` row present → skip (already decided).
+- `pending` row present → probe the journal on the `turn_id` `IndexedField` for an entry of
+  this agent whose `verbatim` equals the candidate span (exact equality is sound because
+  `statement`/`verbatim` are byte-identical to the span in v1). Found → transition to `accept`
+  with that `entry_id`, no re-append. Not found → the prior append never landed; append now.
+- No row → fresh candidate; write `pending`, then append.
+This closes the window rather than shrinking it: the worst residual outcome is a `pending` row
+that a later run reconciles, never a duplicate entry and never a zero-row candidate. See
+Technical Approach → Assembly idempotency for the full sequence.
 
 No other concurrency concerns: candidate generation is pure and deterministic; assembly calls
 `ProvenanceJournal.append`, which is append-only by M1 contract.
@@ -461,6 +705,14 @@ No other concurrency concerns: candidate generation is pure and deterministic; a
 - **Capping or trimming the decision log** — no `Defaults` cap constant and no LTRIM for the
   per-candidate detail log in v1. Retention is deferred to M9 (#568) and will be designed
   against measured growth. This resolves open question (b).
+- **Capping the per-turn candidate count** — no `Defaults` candidate cap, no truncation of the
+  generated candidate set. A cap would silently drop generated candidates and contradict
+  Success Criterion 1 and the exhaustive-enumeration goal. Verdict-call cost is managed by the
+  path being default-off (see Risk 1).
+- **Adding a fifth terminal state** — the terminal vocabulary stays exactly
+  `firewall_drop | accept | reject | withhold` per #562's acceptance criteria. `pending` is a
+  non-terminal intent marker on the same row, and post-accept journal refusals are
+  disambiguated by reason code, not by a new state.
 - **Normalizing or distilling accepted content** — `statement` is byte-identical to the
   verbatim span. Any normalization, canonicalization, or distillation is M4's scope, and doing
   it here would violate #562's own acceptance criteria. This resolves open question (c).
@@ -483,7 +735,15 @@ surface exists; no MCP registration is changed.
 
 ### Feature Documentation
 - [ ] Create `docs/features/auditable-extraction.md` describing the candidate generator, the
-  four terminal states, the enum-verdict contract, and the retention policy.
+  four terminal states, the non-terminal `pending` marker and the write-ordering guarantee it
+  provides, the two `firewall_drop` reason codes (pre-LLM vs post-accept journal block), the
+  enum-verdict contract, and the retention policy.
+- [ ] Include a runnable snippet that enables `auditable_extraction`, runs a turn, and prints
+  `DecisionLog.compute_metrics(...)` — so an adopter can realize the measurement benefit
+  without waiting on the harness-wiring follow-on.
+- [ ] Record the #510 numbers (heuristic 0.2078 vs raw 0.3636) and the "audit the shape to make
+  it correctable" rationale on the page, so readers are not surprised that the audited v1 shape
+  is not the harness default.
 - [ ] Add entry to `docs/features/README.md` index table.
 
 ### External Documentation Site
@@ -501,16 +761,31 @@ surface exists; no MCP registration is changed.
 ## Success Criteria
 
 - [ ] For any input turn, every generated candidate appears in the decision log with exactly
-  one terminal state (`firewall_drop | accept | reject | withhold`) and a reason code — proven
-  by a test that constructs a turn, runs the auditable path, and asserts log completeness.
+  one **terminal** state (`firewall_drop | accept | reject | withhold`) and a reason code —
+  proven by a test that constructs a turn, runs the auditable path, and asserts log
+  completeness. **Companion assertion (the blocker fix):** after `extract_memories()` returns,
+  **no row is left in the non-terminal `pending` state**, and every `accept` row carries a
+  journal `entry_id`. `pending` is not a fifth terminal state — it is an intent marker written
+  *before* assembly, so no candidate can ever reach `append()` with zero decision-log rows.
+  A separate test asserts the `pending` row exists at the moment `append()` is entered.
 - [ ] The LLM contributes only enum verdicts; accepted memory content is byte-identical to a
   verbatim candidate span — proven by a test asserting no free text is persisted and the
   journal `statement`/`verbatim` equals the span.
-- [ ] Precision/recall of the verdict stage is computable offline from the decision log alone
-  — demonstrated in a test that seeds the log and computes precision/recall with no other input.
+- [ ] **The offline precision/recall computation ships working and exercised** (a capability,
+  not a claim of realized production measurement — the harness is not wired in this module).
+  `DecisionLog.compute_metrics(agent_id, gold_labels)` reads decision-log rows plus a
+  gold-label mapping and nothing else — demonstrated by
+  `test_precision_recall_computable_from_log_alone`, which runs the full auditable path over a
+  multi-turn fixture transcript, asserts exact precision/recall/F1 values and the
+  per-`generator_rule` breakdown, and re-computes identical numbers with the journal keyspace
+  absent. A docs snippet shows an adopter enabling the flag and printing the metrics.
+- [ ] Exactly one journal entry exists per accepted candidate across re-runs, including a run
+  interrupted between `append()` and the terminal decision-log write — proven by the assembly
+  idempotency test (Race 3).
 - [ ] Existing `SubconsciousMemory.extract_memories()` behavior is preserved behind a
   flag/adapter — proven by a default-path test asserting byte-for-byte current behavior, and
-  the existing 26 + integration tests staying green.
+  the existing extraction (33) + subconscious-memory (15 + 27) tests staying green in the
+  environment recorded in Test Impact.
 - [ ] Valkey-safe: no Redis modules used — covered by code review and the standard test suite.
 - [ ] Tests pass (`/do-test`).
 - [ ] Documentation updated (`/do-docs`).
@@ -528,8 +803,10 @@ builds directly — it deploys team members and coordinates.
 - **Builder (verdict-log)** — Name: `verdict-builder`. Agent Type: builder. Role: verdict
   stage + decision-log model + `SubconsciousMemory` flag wiring + assembly. Resume: true.
 - **Validator (extraction)** — Name: `extraction-validator`. Agent Type: validator. Role:
-  verifies candidate determinism, enum-verdict confinement, decision-log completeness,
-  default-path preservation. Resume: true.
+  verifies candidate determinism, enum-verdict confinement, decision-log completeness
+  (including write ordering: `pending` before `append()`, no surviving `pending`), assembly
+  idempotency (Race 3), the offline metrics computation, and default-path preservation.
+  Resume: true.
 - **Documentarian** — Name: `doc-author`. Agent Type: documentarian. Role: docs page + docs
   site + inline docstrings. Resume: true.
 
@@ -538,9 +815,18 @@ builds directly — it deploys team members and coordinates.
 **Tier 1 — Core:** `builder`, `validator`, `code-reviewer`, `test-engineer`, `documentarian`.
 **Domain expertise:** this is Popoto-ORM + Redis/Valkey data-modeling and an LLM call already
 made by the project. Assign a `builder` (or `code-reviewer` for review-only) with a
-`Domain: popoto-data-modeling` line and the matching rules from
-`DOMAIN_FRAMING.md` — the project's salvaged domain signal for Redis/Valkey data modeling and
-untrusted-input handling.
+`Domain: popoto-data-modeling` line. *(An earlier draft cited a `DOMAIN_FRAMING.md` as the
+source of these rules; no such file exists anywhere in the repo — the citation was wrong and is
+removed.)* The domain rules, stated inline so there is no dangling reference:
+- **Valkey-safe only** — no Redis modules (`BF.*`, `CMS.*`, `TOPK.*`, `TS.*`); every feature
+  must run on both Redis and Valkey (`CLAUDE.md`).
+- **Untrusted input** — LLM output is untrusted; it may contribute enum verdicts and enum
+  reason codes only, never free text into the store.
+- **Magic numbers are pinned in-repo** — numeric constants live in
+  `popoto.fields.constants.Defaults`, not constructor kwargs (`CLAUDE.md`).
+- **Popoto model conventions** — public model attributes must be `Field` instances; private
+  attrs take an underscore prefix; field names start lowercase; `limit`, `order_by`, `values`
+  are reserved.
 
 ## Step by Step Tasks
 
@@ -552,10 +838,17 @@ untrusted-input handling.
 - **Assigned To**: candidate-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `Candidate` dataclass (`text`, `turn_id`, `start`, `end`, `generator_rule`) in `src/popoto/extraction/candidates.py`.
-- Add `generate_candidates(turn_id, text)` enumerating sentence spans (reuse the heuristic
-  split regex) + deterministic entity-lifted candidates. Empty turns produce zero candidates.
-- Add `CandidateGenerator` with pluggable rules; keep it pure and deterministic (no LLM).
+- Add `Candidate` dataclass (`text`, `turn_id`, `candidate_id`, `start`, `end`,
+  `generator_rule`) in `src/popoto/extraction/candidates.py`.
+- Add `generate_candidates(turn_id, text) -> List[Candidate]` enumerating sentence spans
+  (reuse the heuristic split regex) + deterministic entity-lifted candidates. Pure,
+  deterministic, no LLM. Empty turns produce zero candidates (the caller logs the
+  `reject`(`empty_turn`) row).
+- **Do NOT add a `CandidateGenerator` pluggable-rule class** — one implementation, no second
+  caller, both plausible extra rules banned by No-Gos. The single function is the surface.
+- **Do NOT add any per-turn candidate cap** (no `Defaults` constant, no truncation): a cap
+  would silently drop generated candidates and violate Success Criterion 1. Pinned by a
+  Verification anti-criterion.
 
 ### 2. Verdict stage
 - **Task ID**: build-verdict
@@ -566,7 +859,13 @@ untrusted-input handling.
 - **Agent Type**: builder
 - **Parallel**: true
 - Add `Verdict` / `ReasonCode` enums in `src/popoto/extraction/verdict.py` with terminal states
-  `firewall_drop | accept | reject | withhold` and the fixed reason-code vocabulary.
+  `firewall_drop | accept | reject | withhold` and the fixed reason-code vocabulary. The
+  reason-code vocabulary must include `pre_llm_candidate_block`, `post_accept_journal_block`
+  (both under `firewall_drop`), `assembly_failed`, `llm_unavailable`, `empty_turn`, and
+  `accepted`.
+- Add the non-terminal `pending` marker to the *state* enum only, clearly annotated as
+  non-terminal and excluded from any terminal-state aggregation. The LLM's verdict vocabulary
+  stays `accept | reject | withhold` — the model never emits `pending` or `firewall_drop`.
 - Add `llm_verdict(candidate)` returning only `{candidate_id, verdict, reason_code}`; malformed/
   empty replies map to `reject`(llm_unavailable).
 - Run `scan_never_record(candidate.text)` per candidate before the LLM; on `blocked`, log
@@ -581,14 +880,33 @@ untrusted-input handling.
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `DecisionRecord` model + `DecisionLog` writer/reader in `src/popoto/extraction/decision_log.py`.
+  The record carries: `agent_id`, `turn_id`, `candidate_id`, `state`, `reason_code`,
+  `generator_rule`, span offsets, a hash of `candidate.text`, an optional `entry_id` (set on
+  terminal `accept`), and an optional enum-safe `detail_code` (exception class name on
+  `assembly_failed`).
 - Write per-candidate detail rows **unbounded** — no LTRIM, and do **not** add a
   `Defaults` cap constant for this log. Add the per-turn compact summary hash as a
-  convenience/query index only; detail rows remain the sole source of truth.
+  convenience/query index only; detail rows remain the sole source of truth. The summary
+  aggregates **terminal states only** — `pending` rows are never counted into it.
+- **Implement the two-phase write ordering (blocker fix).** `firewall_drop`/`reject`/`withhold`
+  write once, terminally. `accept` writes a committed `pending` row **before** calling
+  `append()`, then transitions the *same* `(agent_id, turn_id, candidate_id)` row to
+  `accept` / `firewall_drop`(`post_accept_journal_block`) / `reject`(`assembly_failed`) per the
+  Technical Approach transition table. No code path may call `append()` before its `pending`
+  row is committed.
+- **Implement the assembly dedup probe (Race 3).** Before every `append()`, read the row; on a
+  surviving `pending`, probe the journal via the `turn_id` `IndexedField` for an entry of this
+  agent whose `verbatim` equals the candidate span, and reconcile instead of re-appending.
 - Extend `ExtractedFact` with optional span/candidate fields (default `None`).
 - Add `SubconsciousMemory(auditable_extraction=...)` opt-in flag; default path unchanged.
-- Add trusted assembly: `accept`ed candidates → `ProvenanceJournal.append(kind='assert',
-  verbatim=<span>, statement=<span>, speaker=..., turn_id=..., subjects=...)`.
-- Write the per-candidate record + per-turn summary in one `MULTI`/`EXEC`.
+- Add trusted assembly: `accept`ed candidates → `ProvenanceJournal.append(agent_id=<agent_id>,
+  kind='assert', verbatim=<span>, statement=<span>, speaker=..., turn_id=..., subjects=...)`.
+  `agent_id` is keyword-only and required — never `None`.
+- Add `DecisionLog.compute_metrics(agent_id, gold_labels) -> Metrics` (precision, recall, F1,
+  per-`reason_code` and per-`generator_rule` breakdowns) reading decision-log rows only.
+- Write the per-candidate record + per-turn summary update in one `MULTI`/`EXEC` (this applies
+  to each write — the `pending` write and the terminal transition are separate transactions by
+  design; collapsing them would defeat the ordering guarantee).
 
 ### 4. Validation
 - **Task ID**: validate-extraction
@@ -598,8 +916,15 @@ untrusted-input handling.
 - **Parallel**: false
 - Verify candidate enumeration is deterministic and exhaustive for representative turns.
 - Verify the LLM contributes only enum verdicts (no free text persisted).
-- Verify every candidate has exactly one terminal state + reason code in the decision log.
-- Verify offline precision/recall computes from the decision log alone.
+- Verify every candidate has exactly one terminal state + reason code in the decision log, and
+  that no `pending` row survives a completed run.
+- Verify the `pending` row is committed before `append()` is entered, and that both assembly
+  failure branches (`JournalBlockedError` → `firewall_drop`/`post_accept_journal_block`; other
+  raises → `reject`/`assembly_failed`) land terminally on the same row.
+- Verify assembly idempotency: one journal entry per accepted candidate across a re-run and
+  across a run interrupted between `append()` and the terminal write.
+- Verify offline precision/recall computes from the decision log alone (exact numbers, plus
+  the journal-absent re-computation).
 - Verify the default path is byte-for-byte unchanged (existing tests green).
 - Run the gates: `pytest tests/test_auditable_extraction.py -x -q`, `mypy src/`,
   `mkdocs build --strict`.
@@ -628,6 +953,9 @@ untrusted-input handling.
 | Check | Command | Expected |
 |-------|---------|----------|
 | New auditable tests pass | `pytest tests/test_auditable_extraction.py -x -q` | exit code 0 |
+| Offline metrics demonstrated | `pytest tests/test_auditable_extraction.py -k precision_recall_computable_from_log_alone -q` | exit code 0, 1 test selected |
+| No zero-row candidate: pending precedes append | `pytest tests/test_auditable_extraction.py -k "pending_written_before_append or no_pending_survives" -q` | exit code 0, 2 tests selected |
+| Assembly idempotency (Race 3) | `pytest tests/test_auditable_extraction.py -k assembly_idempoten -q` | exit code 0 |
 | Existing extraction tests unaffected | `pytest tests/test_extraction.py -x -q` | exit code 0 |
 | Existing memory tests unaffected | `pytest tests/test_subconscious_memory.py tests/test_subconscious_memory_integration.py -x -q` | exit code 0 |
 | M2 firewall tests unaffected | `pytest tests/test_never_record_firewall.py -x -q` | exit code 0 |
@@ -638,6 +966,9 @@ untrusted-input handling.
 | No free-text verdict persists [anti-criterion] | `grep -rn "write_free\|verdict_text\|free_text" src/popoto/extraction/` | match count == 0 |
 | No Redis module usage [anti-criterion] | `grep -rn "BF\.\|CMS\.\|TOPK\.\|TS\." src/popoto/extraction/` | match count == 0 |
 | Decision log is uncapped [anti-criterion] | `grep -rni "ltrim\|DECISION_LOG_MAX" src/popoto/extraction/` | match count == 0 |
+| No per-turn candidate cap [anti-criterion] | `grep -rniE "candidate_(per_turn_)?cap\|MAX_CANDIDATES" src/popoto/extraction/ src/popoto/fields/constants.py` | match count == 0 |
+| No pluggable-rule class [anti-criterion] | `grep -rn "class CandidateGenerator" src/popoto/extraction/` | match count == 0 |
+| Assembly passes required `agent_id` [anti-criterion] | `grep -rn "ProvenanceJournal.append(" src/popoto/ \| grep -v "agent_id"` | match count == 0 |
 
 ## Critique Results
 
@@ -646,16 +977,31 @@ Roster: Risk & Robustness, Scope & Value, History & Consistency. Verdict: **NEED
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| BLOCKER | History & Consistency + Risk & Robustness | Write-ordering contradiction: Data Flow lists decision log (5) before assembly (6), but the Flow diagram shows `accept → Assembly → append(...) → DecisionLog[accept]`. On the diagram's order, an `append()` raise leaves an LLM-accepted candidate with **zero** decision-log rows — a new silent-drop site on the exact root cause the plan claims to close. | | `append()` raises `JournalBlockedError` (firewall over `agent_id`/`subject_tags`/`_never_record_scan_values()`, `provenance_journal.py:969`), `ValueError` (missing `agent_id`, empty content, backdated `at`, non-transactional pipeline), `TypeError`, `AppendOnlyViolation` — `provenance_journal.py:561-618`. Fix: write a `pending` row *before* `append()`, transition to `accept` or `assembly_failed` after; reconcile the diagram to the numbered list. |
-| CONCERN | Risk & Robustness | The journal runs its **own** firewall scan over `agent_id`, `subject_tags` and all entry values — fields M3's per-candidate `scan_never_record(candidate.text)` never checks. A candidate can pass verdict `accept` then have assembly raise `JournalBlockedError`, a state the fixed four-state enum has no slot for. | | `_scan_or_block(agent_id, *subject_tags, *entry._never_record_scan_values())` at `provenance_journal.py:969`; `Raises: JournalBlockedError ... Nothing is issued or queued` at `:610-611`. Add a fifth terminal state (`post_accept_block`) or map the exception onto an existing state explicitly in Technical Approach. |
-| CONCERN | Risk & Robustness | Race 2's idempotency claim covers only the decision-log write, not assembly. `append()` takes no idempotency key, so a crash between a successful `append()` and the `DecisionLog[accept]` write lets a retry create a **duplicate journal entry**. | | `append()` signature (`provenance_journal.py:562-577`) has no per-call idempotency key; `AppendOnlyViolation` fires only if the record's Redis key already exists, which is never true for a fresh append. Assembly must do its own dedup check keyed by `(agent_id, turn_id, candidate_id)` before calling `append()`. |
-| CONCERN | Scope & Value | The candidate generator's span basis is the heuristic `_split_sentences` regex, but PR #510 measured sentence-splitting at **0.2078** judged accuracy against raw turn ingestion's **0.3636** — which is why `RawTurnExtractionProvider` is the harness default. M3 spends a Large appetite auditing the measured-worst candidate shape. | | `src/popoto/extraction/__init__.py:159-166` states the measurement verbatim. Either add a raw-turn candidate rule (one candidate = whole turn span) as a first-class v1 rule, or state in the plan why the audited shape should diverge from the harness's measured-best strategy. Note the plan's own Prior Art cites #510 for the opposite conclusion. |
-| CONCERN | Scope & Value | The stated payoff ("precision and recall become computable offline") needs real traffic, but the flag defaults to `None` and a No-Go defers harness wiring. In v1 nothing exercises the pipeline outside tests, so the benefit is unrealized pending an unscoped follow-on. | | The only Verification row for this surface is `grep -n "auditable_extraction" src/popoto/recipes/subconscious_memory.py` — it proves the flag exists, not that anything ever sets it non-`None`. Either scope a minimal opt-in traffic slice, or reframe Success Criteria as shipping a capability rather than a realized measurement. |
-| CONCERN | History & Consistency | Risk 1's mitigation asserts "`Defaults` gains a tunable per-turn candidate cap," but no task, Technical Approach bullet, or Verification row implements or checks it. The cap also contradicts Success Criterion 1 ("every generated candidate appears in the decision log") and the "exhaustive enumeration" goal. | | Either add `Defaults.CANDIDATE_PER_TURN_CAP` to Step 1 (`candidates.py`) plus a Verification anti-criterion mirroring the existing `grep -rni "ltrim\|DECISION_LOG_MAX"` row **and** state how capped-out candidates are logged, or delete the sentence from Risk 1 and rest the mitigation on default-off alone. |
-| CONCERN | Scope & Value | `CandidateGenerator` with "pluggable rules" is an abstraction for a single use case: the plan's own No-Gos ban both plausible second rules (LLM-driven generation; multi-sentence/cross-turn windows). | | Cut the `CandidateGenerator` class from Step 1 and the `candidates.py` module-layout bullet; the already-specified `generate_candidates(turn_id, text) -> List[Candidate]` satisfies every Success Criterion and every named test. |
-| CONCERN | Structural check | Test Impact counts are stale: plan claims 26 / 31 / 93 for `test_extraction.py` / `test_never_record_firewall.py` / `test_provenance_journal.py`; actual collection at `76d649a` is **33 / 57 / 101**. Success Criterion 4 cites "the existing 26 + integration tests." | | `pytest <file> --collect-only -q` at `76d649a`. Correct all four call sites (Test Impact ×3, Success Criteria ×1) so "stays green" is verified against the real baseline. |
-| CONCERN | Structural check | The assembly call is written as `ProvenanceJournal.append(kind='assert', verbatim=<span>, statement=<span>, speaker=..., turn_id=..., subjects=...)` in both Data Flow step 6 and Task 3, omitting the **required keyword-only `agent_id`**. | | `append()` is `*`-keyword-only with `agent_id: str` required and no default (`provenance_journal.py:562-577`); the docstring notes a `None` "would render the literal `"None"` into the record's Redis key." Add `agent_id=self.agent_id` to both call sites in the plan text. |
-| NIT | Structural check | Team Orchestration cites `DOMAIN_FRAMING.md` ("the project's salvaged domain signal") as an existing document; no such file exists anywhere in the repo. | | |
+| BLOCKER | History & Consistency + Risk & Robustness | Write-ordering contradiction: Data Flow lists decision log (5) before assembly (6), but the Flow diagram shows `accept → Assembly → append(...) → DecisionLog[accept]`. On the diagram's order, an `append()` raise leaves an LLM-accepted candidate with **zero** decision-log rows — a new silent-drop site on the exact root cause the plan claims to close. | **FIXED.** Technical Approach → **"Write ordering: the decision log is written before every irreversible side effect"** (new subsection with the transition table); Data Flow steps 5-7 rewritten (log-`pending` → assemble → terminal transition); Flow diagram rewritten to match, with an explicit "read the diagram against Data Flow steps 5-7" reconciliation note; Success Criterion 1 restated as "exactly one **terminal** state" plus a companion no-surviving-`pending` criterion; Task 3 gains an implement-the-two-phase-ordering bullet; Failure Path Test Strategy gains both failure branches; Verification gains a `pending_written_before_append or no_pending_survives` row. `pending` is explicitly non-terminal, so #562's four-state terminal vocabulary is unchanged. | `append()` raises `JournalBlockedError` (firewall over `agent_id`/`subject_tags`/`_never_record_scan_values()`, `provenance_journal.py:969`), `ValueError` (missing `agent_id`, empty content, backdated `at`, non-transactional pipeline), `TypeError`, `AppendOnlyViolation` — `provenance_journal.py:561-618`. Fix: write a `pending` row *before* `append()`, transition to `accept` or `assembly_failed` after; reconcile the diagram to the numbered list. |
+| CONCERN | Risk & Robustness | The journal runs its **own** firewall scan over `agent_id`, `subject_tags` and all entry values — fields M3's per-candidate `scan_never_record(candidate.text)` never checks. A candidate can pass verdict `accept` then have assembly raise `JournalBlockedError`, a state the fixed four-state enum has no slot for. | **FIXED.** Technical Approach → **"Post-accept journal firewall block — mapped onto `firewall_drop`, deliberately"**: no fifth state is added; `JournalBlockedError` maps to `firewall_drop` because the semantics are identical (never-record refusal, nothing stored), and the two are distinguished by reason code — `pre_llm_candidate_block` vs `post_accept_journal_block`. Every *other* assembly failure maps to `reject`(`assembly_failed`), so `firewall_drop` never becomes a generic error bucket. Reason codes enumerated in Task 2; both branches tested per Failure Path Test Strategy. | `_scan_or_block(agent_id, *subject_tags, *entry._never_record_scan_values())` at `provenance_journal.py:969`; `Raises: JournalBlockedError ... Nothing is issued or queued` at `:610-611`. Add a fifth terminal state (`post_accept_block`) or map the exception onto an existing state explicitly in Technical Approach. |
+| CONCERN | Risk & Robustness | Race 2's idempotency claim covers only the decision-log write, not assembly. `append()` takes no idempotency key, so a crash between a successful `append()` and the `DecisionLog[accept]` write lets a retry create a **duplicate journal entry**. | **FIXED — position taken: assembly owns dedup, the journal cannot.** New **Race 3: Assembly retry duplicates a journal entry** (Race Conditions), plus Technical Approach → **"Assembly idempotency"** with the four-case pre-append probe and the `turn_id`-`IndexedField` reconciliation for a surviving `pending` row (exact `verbatim` equality is sound because v1 stores the span byte-identically). Race 2 now carries an explicit scope limit saying it does *not* cover assembly. Task 3 gains the dedup-probe bullet; new Success Criterion + Verification row + interrupted-run test in Failure Path Test Strategy. | `append()` signature (`provenance_journal.py:562-577`) has no per-call idempotency key; `AppendOnlyViolation` fires only if the record's Redis key already exists, which is never true for a fresh append. Assembly must do its own dedup check keyed by `(agent_id, turn_id, candidate_id)` before calling `append()`. |
+| CONCERN | Scope & Value | The candidate generator's span basis is the heuristic `_split_sentences` regex, but PR #510 measured sentence-splitting at **0.2078** judged accuracy against raw turn ingestion's **0.3636** — which is why `RawTurnExtractionProvider` is the harness default. M3 spends a Large appetite auditing the measured-worst candidate shape. | **ADDRESSED, decision unchanged (supervisor-settled: v1 = sentence spans + pattern-lifted entities).** Prior Art's #510 entry now records the measured numbers verbatim (0.2078 vs 0.3636, with the `__init__.py:159-166` citation) instead of citing #510 for the opposite conclusion. Technical Approach → **"Auditing the measured-worse candidate shape, on purpose"** argues the tension head-on in four points: (1) 0.2078 was measured blind — one aggregate over a splitter with no per-candidate record, so it cannot say *which* spans lost; (2) a raw-turn audit trail has one candidate per turn and therefore nothing to discriminate — sentence spans are the smallest shape that makes the log informative; (3) M3 does not promote the worse shape — the harness default stays `RawTurnExtractionProvider` and the path is default-off; (4) shape becomes correctable by query over `generator_rule` rather than another blind bake-off. Docs page must carry the same numbers. | `src/popoto/extraction/__init__.py:159-166` states the measurement verbatim. Either add a raw-turn candidate rule (one candidate = whole turn span) as a first-class v1 rule, or state in the plan why the audited shape should diverge from the harness's measured-best strategy. Note the plan's own Prior Art cites #510 for the opposite conclusion. |
+| CONCERN | Scope & Value | The stated payoff ("precision and recall become computable offline") needs real traffic, but the flag defaults to `None` and a No-Go defers harness wiring. In v1 nothing exercises the pipeline outside tests, so the benefit is unrealized pending an unscoped follow-on. | **FIXED — both halves of the critic's "either/or" taken.** *Reframed:* Success Criterion 3 now claims a working, exercised **capability**, not realized production measurement, and names the realization step (harness wiring, already in No-Gos). *Made real:* Technical Approach → **"Offline precision/recall — what 'computable offline' concretely means here"** specifies `DecisionLog.compute_metrics(agent_id, gold_labels)` reading log rows only, demonstrated by `test_precision_recall_computable_from_log_alone` over a **multi-turn fixture transcript** asserting exact precision/recall/F1 and the per-`generator_rule` breakdown, plus a re-computation with the journal keyspace absent to pin the isolation property. Added as a Task 3 bullet, a Task 4 validation bullet, a named Verification row (replacing the flag-existence grep as the evidence for this criterion), and a runnable docs snippet so an adopter can opt in today. | The only Verification row for this surface is `grep -n "auditable_extraction" src/popoto/recipes/subconscious_memory.py` — it proves the flag exists, not that anything ever sets it non-`None`. Either scope a minimal opt-in traffic slice, or reframe Success Criteria as shipping a capability rather than a realized measurement. |
+| CONCERN | History & Consistency | Risk 1's mitigation asserts "`Defaults` gains a tunable per-turn candidate cap," but no task, Technical Approach bullet, or Verification row implements or checks it. The cap also contradicts Success Criterion 1 ("every generated candidate appears in the decision log") and the "exhaustive enumeration" goal. | **FIXED — resolved by deleting the cap, not implementing it.** Risk 1's mitigation sentence is removed and replaced by an explicit **"Explicitly NOT mitigated by a candidate cap"** paragraph stating why: a capped-out candidate is a generated-then-silently-dropped candidate, i.e. the exact defect M3 exists to eliminate. Mitigation now rests on default-off alone. Task 1 gains a "**Do NOT add any per-turn candidate cap**" bullet, and Verification gains the anti-criterion `grep -rniE "candidate_(per_turn_)?cap\|MAX_CANDIDATES"` over `src/popoto/extraction/` and `fields/constants.py` so it cannot creep back in during build. | Either add `Defaults.CANDIDATE_PER_TURN_CAP` to Step 1 (`candidates.py`) plus a Verification anti-criterion mirroring the existing `grep -rni "ltrim\|DECISION_LOG_MAX"` row **and** state how capped-out candidates are logged, or delete the sentence from Risk 1 and rest the mitigation on default-off alone. |
+| CONCERN | Scope & Value | `CandidateGenerator` with "pluggable rules" is an abstraction for a single use case: the plan's own No-Gos ban both plausible second rules (LLM-driven generation; multi-sentence/cross-turn windows). | **FIXED — cut as recommended.** The `CandidateGenerator` pluggable-rule class is removed from the `candidates.py` module-layout bullet in Technical Approach and from Task 1, with the reasoning recorded inline (one implementation, no second caller, both plausible extra rules banned by this plan's own No-Gos; adding a rule later is a change to one pure function). `generate_candidates(turn_id, text) -> List[Candidate]` is the whole surface. Verification gains the anti-criterion `grep -rn "class CandidateGenerator" src/popoto/extraction/` == 0. | Cut the `CandidateGenerator` class from Step 1 and the `candidates.py` module-layout bullet; the already-specified `generate_candidates(turn_id, text) -> List[Candidate]` satisfies every Success Criterion and every named test. |
+| CONCERN | Structural check | Test Impact counts are stale: plan claims 26 / 31 / 93 for `test_extraction.py` / `test_never_record_firewall.py` / `test_provenance_journal.py`; actual collection at `76d649a` is **33 / 57 / 101**. Success Criterion 4 cites "the existing 26 + integration tests." | **FIXED — re-measured, not copied.** Per repo doctrine ("reproduce a subagent's metric before relaying it"), counts were re-run rather than trusting either the plan's or the critique's number: `python -m pytest <file> --collect-only -q` in the **main checkout** at `f1eb5e0`, venv `.venv` resolving `popoto` to `/Users/valorengels/src/popoto/src/popoto/__init__.py`, **redis-py 7.1.1**, Redis on `localhost:6379` → **33 / 57 / 101** (+ `test_subconscious_memory.py` **15**, `test_subconscious_memory_integration.py` **27**). The critique's figures reproduce exactly. Corrected at all four call sites (Test Impact ×3 → now ×4 with the subconscious files counted, Success Criteria ×1) and in the Technical Approach `ExtractedFact` bullet. Test Impact now opens with the measurement environment and a "re-measure before quoting" instruction. | `pytest <file> --collect-only -q` at `76d649a`. Correct all four call sites (Test Impact ×3, Success Criteria ×1) so "stays green" is verified against the real baseline. |
+| CONCERN | Structural check | The assembly call is written as `ProvenanceJournal.append(kind='assert', verbatim=<span>, statement=<span>, speaker=..., turn_id=..., subjects=...)` in both Data Flow step 6 and Task 3, omitting the **required keyword-only `agent_id`**. | **FIXED.** `agent_id=<agent_id>` added to every assembly call site in the plan text: Data Flow step 6, the Flow diagram, Technical Approach → Assembly content, and Task 3 — each noting that `agent_id` is keyword-only, required, and never `None` (a `None` renders the literal `"None"` into the record's Redis key). Verification gains the anti-criterion `grep -rn "ProvenanceJournal.append(" src/popoto/ \| grep -v "agent_id"` == 0. | `append()` is `*`-keyword-only with `agent_id: str` required and no default (`provenance_journal.py:562-577`); the docstring notes a `None` "would render the literal `"None"` into the record's Redis key." Add `agent_id=self.agent_id` to both call sites in the plan text. |
+| NIT | Structural check | Team Orchestration cites `DOMAIN_FRAMING.md` ("the project's salvaged domain signal") as an existing document; no such file exists anywhere in the repo. | **FIXED.** Confirmed absent (`find . -name "DOMAIN_FRAMING*"` → no results). The citation is removed from Team Orchestration → Available Agent Types and replaced by the four domain rules stated inline (Valkey-safe/no Redis modules; LLM output untrusted — enums only; magic numbers pinned in `Defaults`; Popoto model conventions), each sourced from `CLAUDE.md` rather than a nonexistent file. | Verified absent at plan-revision time; no file was created to satisfy the reference — the reference was wrong, so it was deleted. |
+
+### Revision pass — 2026-08-25T05:16:13Z
+
+All 10 findings addressed above; every "Addressed By" cell points at the specific section or
+task that changed. The three supervisor-settled decisions were **not** reopened: v1 candidate
+set stays sentence spans + pattern-lifted entities (windows behind M4), the decision log stays
+**unbounded** with no cap constant and no LTRIM, and `statement` stays byte-identical to
+`verbatim`. The existing constraints are likewise preserved: Valkey-safe (no Redis modules),
+LLM writes only enum verdicts and enum reason codes, M2 firewall runs pre-LLM on every
+candidate, and the default `extract_memories()` path is unchanged byte-for-byte behind the
+opt-in flag.
+
+Two findings were resolved by *removing* something rather than adding it — the per-turn
+candidate cap (Risk 1) and the `CandidateGenerator` pluggable-rule class (Task 1) — each now
+pinned by a Verification anti-criterion so build cannot reintroduce it.
 
 ---
 
