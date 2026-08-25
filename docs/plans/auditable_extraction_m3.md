@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Large
 owner: Valor Engels
@@ -71,8 +71,10 @@ become computable offline from the decision log alone — "audit by construction
   Assembly target now exists. `ProvenanceJournal.append(...)` and `JournalEntry` are live.
 - #561 (M2 never-record firewall) — **closed/merged as PR #587 (`337b3f0`)** since filing.
   `scan_never_record(text) -> NeverRecordVerdict` (`src/popoto/privacy/never_record.py:417`)
-  is the reusable per-candidate firewall primitive; the capped-LTRIM tombstone-log precedent
-  (`Defaults.NR_TOMBSTONE_LOG_MAX = 1000`) informs this plan's retention position.
+  is the reusable per-candidate firewall primitive. M2 also ships a capped-LTRIM tombstone log
+  (`Defaults.NR_TOMBSTONE_LOG_MAX = 1000`) — noted here only as context for what exists in the
+  codebase. **It is explicitly not M3's design**: the M3 decision log ships unbounded in v1
+  (see Technical Approach → Decision-log retention).
 
 **Commits on main since issue was filed (touching referenced files):**
 - `67965a1` (#589, M1) — added `src/popoto/recipes/provenance_journal.py`; added the journal
@@ -112,18 +114,17 @@ preserves both.
 ## Research
 
 No relevant external findings — the feature is purely internal (Popoto ORM + Redis/Valkey +
-an LLM call the project already makes). The decision-log and retention patterns follow the
-codebase's own established M2 precedent (`scan_never_record`, capped LTRIM audit log) rather
-than an external library.
+an LLM call the project already makes). The per-candidate firewall reuses the codebase's own
+M2 primitive (`scan_never_record`); no external library informs the decision-log design.
 
 ## Spike Results
 
 No spikes were required. All architectural assumptions were resolved by direct code reads of
 the two shipped dependency modules (M1 `ProvenanceJournal.append`, M2 `scan_never_record`) and
-the three silent-drop sites. The two open questions the issue flagged — candidate span type
-(a) and log retention (b) — are design decisions resolved below from the recon evidence
-(recall gap vs candidate-space explosion; unbounded-growth concern), not verifiable
-assumptions needing a prototype.
+the three silent-drop sites. The three open questions raised at draft time — candidate span
+type (a), decision-log retention (b), and assembly content (c) — were design/judgment calls,
+not verifiable assumptions needing a prototype. All three are now resolved by supervisor
+decision and folded into the sections below; see Technical Approach and No-Gos.
 
 ## Data Flow
 
@@ -189,8 +190,8 @@ considered and decided, state = X, reason = Y."
 **Team:** Solo dev, PM, code reviewer
 
 **Interactions:**
-- PM check-ins: 2 (scope alignment on candidate-set boundary and retention policy; the two
-  open questions resolved here)
+- PM check-ins: 2 (scope alignment on candidate-set boundary, retention policy, and assembly
+  content — all three settled; see Resolved Decisions)
 - Review rounds: 2 (design review on the decision-log model and the enum-verdict contract;
   code review on the assembly path)
 
@@ -215,8 +216,9 @@ The two shipped dependencies are already on `main`; this plan only needs them im
   text)`, yields the complete v1 candidate set. Empty turns are represented, not skipped.
 - **Decision record** — the persisted per-candidate terminal verdict: candidate identity,
   terminal state (`firewall_drop | accept | reject | withhold`), and an enum reason code.
-- **Decision log** — the write-side audit store: per-candidate detail rows (bounded) plus a
-  per-turn compact summary (durable). Offline precision/recall are computable from it.
+- **Decision log** — the write-side audit store: a complete, **unbounded** per-candidate detail
+  row set, plus a per-turn compact summary that serves as a cheap query index over it. Offline
+  precision/recall are computable from the detail rows alone.
 - **Verdict stage** — per-candidate LLM call returning only enum verdict + enum reason code;
   never free text.
 - **Assembly adapter** — trusted code that maps `accept`ed candidates onto
@@ -255,24 +257,50 @@ response_text
   existing tests (`tests/test_extraction.py`, 26 tests) pass unmodified. The auditable path
   constructs facts from accepted candidates, carrying these fields through to the decision
   log.
-- **Decision-log model (retention position, resolves open question b):**
-  - **Per-candidate detail rows** — keyed `(agent_id, turn_id, candidate_id)` with the
-    terminal state and reason code, written in the same pass. Bounded by a capped LPUSH/LTRIM
-    window matching M2's `Defaults.NR_TOMBSTONE_LOG_MAX = 1000` precedent
-    (`Defaults.NR_DECISION_LOG_MAX`, new constant pinned in `fields/constants.py`). This keeps
-    the recent window fully deep-dive-able without unbounded per-candidate growth.
-  - **Per-turn compact summary** — one small hash per `(agent_id, turn_id)` holding the
-    terminal-state counts and reason-code distribution for that turn. This is the durable,
-    queryable artifact: it preserves the "exactly one terminal state per candidate" invariant
-    as an aggregate even after detail rows age out, so precision/recall remain computable for
-    all turns offline. This is what resolves the recon's "unbounded per-candidate logs
-    eventually trade away completeness" concern: the summary carries the completeness forward
-    compactly while the detail window is bounded.
+- **Decision-log retention (resolves open question b — no cap in v1):**
+  - **Per-candidate detail rows ship UNBOUNDED.** Keyed `(agent_id, turn_id, candidate_id)`
+    with the terminal state and reason code, written in the same pass and **never trimmed**.
+    v1 introduces **no `Defaults` cap constant** for this log and performs **no LTRIM**.
+  - **Why no cap:** the correct retention horizon cannot be known until M9 (the seeded audit
+    harness, #568) actually consumes this log. v1 deliberately declines to guess a number.
+    Shipping the full corpus means M9 reasons over complete data, and any later trimming policy
+    is designed against **measured** growth rather than a guessed constant.
+  - **The tradeoff this accepts, stated plainly:** an unbounded key set in a *central shared
+    Redis* at the project's 20k-memory scale. Candidates are per-sentence-plus-entity, so the
+    row count grows roughly `O(turns x candidates_per_turn)` — materially faster than the
+    journal itself. This is a knowingly accepted, temporary cost of getting M9 a real corpus.
+  - **Explicit trigger for revisiting:** growth must be *measured*, not assumed. Report
+    decision-log key count and total memory footprint (`redis-cli --bigkeys` / `MEMORY USAGE`
+    over the decision-log keyspace) at M9 planning time, and again whenever a benchmark run
+    exercises the auditable path at scale. **Signals that force the revisit before M9:** (a)
+    the decision-log keyspace exceeds the M1 journal's footprint by more than ~10x on any real
+    agent, (b) measured growth projects past a few hundred MB at the 20k-memory target, or
+    (c) decision-log writes show up as a latency cost on the write path. Any one of these
+    re-opens retention as a design item with real numbers in hand — which is the entire point
+    of not guessing now.
+  - **Per-turn compact summary — kept, on convenience/query-cost grounds only.** With full
+    per-candidate detail retained, the summary is **a convenience index, not a completeness
+    fallback**; the earlier justification (that it carries completeness forward after detail
+    rows age out) no longer applies and is withdrawn — nothing ages out. It is kept for one
+    reason: computing per-turn terminal-state counts otherwise requires scanning every
+    candidate row for that turn, and both the offline precision/recall computation and the
+    growth measurement above want a cheap per-turn rollup. One small hash per
+    `(agent_id, turn_id)` holding terminal-state counts and reason-code distribution makes
+    those O(1) per turn at O(turns) storage. **Correctness never depends on it**: the detail
+    rows remain the sole source of truth, and any summary/detail disagreement is resolved in
+    favor of the detail rows.
   - **Valkey-safe**: a `HashField`/`SortedSetField`-backed structure, or a plain model with
     the standard indexes — no Redis modules.
 - **Enum verdicts only** — the LLM writes only `{candidate_id, verdict, reason_code}`. The
   assembly stage never reads free text from the model; accepted content is the verbatim span.
   `withhold` is a terminal logged state and never triggers an automatic user interaction.
+- **Assembly content (resolves open question c): `statement` stays BYTE-IDENTICAL to the
+  verbatim span.** No light deterministic normalization in v1 — not whitespace collapsing, not
+  punctuation stripping, not casing changes. This is not a judgment call: issue #562's own
+  acceptance criteria require that "accepted memory content is byte-identical to a verbatim
+  candidate span," so any normalization would violate the AC. Distillation and normalization
+  are M4's job. Concretely, assembly passes the same string object to both `verbatim=` and
+  `statement=`, and a test asserts `entry.statement == entry.verbatim == candidate.text`.
 - **Behavior preservation (acceptance criterion 4):** `SubconsciousMemory` gains an opt-in
   `auditable_extraction: Optional[AuditableExtractionConfig] = None` constructor arg. When
   `None` (default), `extract_memories()` runs the exact current path — provider →
@@ -338,8 +366,10 @@ response_text
   (regex/heuristic) pass; anything semantic belongs in the verdict stage.
 - **Building a full reconciliation/consolidation engine on top of the decision log** — out of
   scope; M3 only *produces* the log and computes precision/recall from it.
-- **Retroactive trimming UI / operational dashboards** — the decision log is a write-side
-  audit store; building a dashboard around it belongs to M9 (seeded audit), not this module.
+- **Designing a trimming/retention policy now** — v1 ships the detail log unbounded on purpose
+  (see Technical Approach). Inventing a cap constant here would be a guess that destroys the
+  corpus M9 (#568) needs to pick a real number. Retroactive trimming UI and operational
+  dashboards over the log likewise belong to M9, not this module.
 
 ## Risks
 
@@ -367,11 +397,18 @@ is an *additional* gate that only ever adds `firewall_drop` decisions. A test as
 secret confined to one sentence drops only that candidate and does not leak to the LLM or the
 journal.
 
-### Risk 4: Decision-log growth on a busy agent
-**Impact:** Even with the capped detail window, the durable per-turn summaries accumulate.
-**Mitigation:** The summary is one small hash per `(agent_id, turn_id)` — O(turns), far
-smaller than per-candidate. Retention is bounded by turn granularity; a pruning task can be
-added later without changing the log's schema or the offline computation.
+### Risk 4: Unbounded decision-log growth on a busy agent [ACCEPTED, NOT MITIGATED]
+**Impact:** v1 ships the per-candidate detail log with **no cap and no trimming**, in a central
+shared Redis. On a busy agent the keyspace grows `O(turns x candidates_per_turn)` — faster than
+the M1 journal — and at the project's 20k-memory scale this is a real, ongoing storage cost.
+**Disposition:** This risk is **knowingly accepted**, not mitigated. The alternative (a guessed
+cap constant) would destroy exactly the corpus M9 (#568) needs to decide the real horizon.
+**What stands in for mitigation:** measurement plus named revisit triggers — decision-log key
+count and `MEMORY USAGE` reported at M9 planning time and after any at-scale benchmark run,
+with revisit forced if the decision-log footprint exceeds ~10x the journal's, projects past a
+few hundred MB at the 20k target, or shows up as write-path latency (see Technical Approach →
+Decision-log retention). The path is also default-off, so only opted-in deployments pay it.
+A trimming policy, when designed, is additive: it changes no schema and no offline computation.
 
 ## Race Conditions
 
@@ -421,6 +458,12 @@ No other concurrency concerns: candidate generation is pure and deterministic; a
   non-deterministic and break exhaustive enumeration. Entity lifting stays deterministic.
 - **Retroactive modification of journal entries** — the M1 journal is append-only by
   contract; M3 does not add an edit path.
+- **Capping or trimming the decision log** — no `Defaults` cap constant and no LTRIM for the
+  per-candidate detail log in v1. Retention is deferred to M9 (#568) and will be designed
+  against measured growth. This resolves open question (b).
+- **Normalizing or distilling accepted content** — `statement` is byte-identical to the
+  verbatim span. Any normalization, canonicalization, or distillation is M4's scope, and doing
+  it here would violate #562's own acceptance criteria. This resolves open question (c).
 
 ## Update System
 
@@ -451,8 +494,9 @@ surface exists; no MCP registration is changed.
 ### Inline Documentation
 - [ ] Docstrings on the new `candidates.py`, `verdict.py`, `decision_log.py` modules and the
   `SubconsciousMemory.auditable_extraction` flag.
-- [ ] Note the retention position (bounded detail window + durable per-turn summary) in the
-  decision-log module docstring.
+- [ ] Note the retention position in the decision-log module docstring: detail rows are
+  unbounded in v1 by deliberate decision, the per-turn summary is a convenience index (not a
+  completeness fallback), and the revisit triggers are measured growth signals, not a constant.
 
 ## Success Criteria
 
@@ -537,8 +581,9 @@ untrusted-input handling.
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `DecisionRecord` model + `DecisionLog` writer/reader in `src/popoto/extraction/decision_log.py`.
-- Implement the two-tier retention: capped per-candidate detail window (LTRIM, new
-  `Defaults.NR_DECISION_LOG_MAX`) + durable per-turn compact summary hash.
+- Write per-candidate detail rows **unbounded** — no LTRIM, and do **not** add a
+  `Defaults` cap constant for this log. Add the per-turn compact summary hash as a
+  convenience/query index only; detail rows remain the sole source of truth.
 - Extend `ExtractedFact` with optional span/candidate fields (default `None`).
 - Add `SubconsciousMemory(auditable_extraction=...)` opt-in flag; default path unchanged.
 - Add trusted assembly: `accept`ed candidates → `ProvenanceJournal.append(kind='assert',
@@ -592,6 +637,7 @@ untrusted-input handling.
 | Opt-in surface present | `grep -n "auditable_extraction" src/popoto/recipes/subconscious_memory.py` | output contains `auditable_extraction` |
 | No free-text verdict persists [anti-criterion] | `grep -rn "write_free\|verdict_text\|free_text" src/popoto/extraction/` | match count == 0 |
 | No Redis module usage [anti-criterion] | `grep -rn "BF\.\|CMS\.\|TOPK\.\|TS\." src/popoto/extraction/` | match count == 0 |
+| Decision log is uncapped [anti-criterion] | `grep -rni "ltrim\|DECISION_LOG_MAX" src/popoto/extraction/` | match count == 0 |
 
 ## Critique Results
 
@@ -602,21 +648,24 @@ untrusted-input handling.
 
 ---
 
-## Open Questions
+## Resolved Decisions (supervisor, 2026-08-25)
 
-1. **Candidate span type (open question a).** Resolution proposed: sentence-level spans +
-   pattern-lifted entities only for v1; bounded multi-sentence (and cross-turn) windows are
-   deferred to a follow-on module sequenced behind M4 reference resolution, because the v1
-   decision log already makes recall measurable and a window pass can then be data-driven.
-   Does the supervisor accept this deferral, or must v1 include bounded within-turn
-   adjacent-sentence windows?
+The three questions raised at draft time are settled; each is folded into the sections above.
 
-2. **Decision-log retention/trimming (open question b).** Resolution proposed: two-tier —
-   capped per-candidate detail window (matching M2's `NR_TOMBSTONE_LOG_MAX = 1000` LTRIM
-   precedent) plus a durable per-turn compact summary that preserves the exactly-one-terminal-
-   state invariant as an aggregate. Does the supervisor accept this retention split, or should
-   the per-candidate detail log be unbounded for a longer audit horizon?
-
-3. **Assembly content.** The plan writes `statement = verbatim span` for accepted candidates
-   (distillation is M4's job). Should v1 instead attempt a light deterministic normalization of
-   the span into the `statement` field, or keep `statement` byte-identical to `verbatim`?
+1. **Candidate span type (a) — deferral accepted.** v1 = sentence-level spans + pattern-lifted
+   entities only. Bounded multi-sentence and cross-turn windows go to a follow-on module
+   sequenced behind M4 reference resolution. Rationale: the v1 decision log is precisely what
+   makes recall measurable, so a later window pass can be data-driven instead of speculative.
+   (See Rabbit Holes and No-Gos.)
+2. **Decision-log retention (b) — no cap in v1.** This reverses the draft's two-tier capped
+   design: the per-candidate detail log ships unbounded, with no new `Defaults` constant and no
+   LTRIM. Rationale: the correct retention horizon cannot be known until M9 (#568) consumes the
+   log, so v1 declines to guess; M9 gets a full corpus and a trimming policy is designed later
+   against measured growth. The accepted tradeoff (an unbounded key set in a central shared
+   Redis at 20k-memory scale) and the named revisit triggers are stated in Technical Approach →
+   Decision-log retention and Risk 4. M2's `NR_TOMBSTONE_LOG_MAX = 1000` is context only, not
+   M3's design. The per-turn summary is retained explicitly as a convenience/query index, not
+   as a completeness fallback.
+3. **Assembly content (c) — `statement` stays byte-identical to the verbatim span.** No
+   normalization in v1. This was settled by #562's own acceptance criteria, not a judgment
+   call; distillation is M4's job. (See Technical Approach and No-Gos.)
