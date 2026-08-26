@@ -1,19 +1,33 @@
 """Tests for the M3 auditable-extraction pipeline (issue #562).
 
-Organized one class per pipeline stage so later tasks can extend this file
-without colliding:
-
-    TestCandidateGeneration -- src/popoto/extraction/candidates.py (Task 1)
-
-See ``docs/plans/auditable_extraction_m3.md``.
+Covers the deterministic candidate generator, the enum-confined verdict
+stage, and the per-candidate decision log. See
+``docs/plans/auditable_extraction_m3.md``.
 """
+
+import enum
+import json
+from dataclasses import fields as dataclass_fields
 
 import pytest
 
+from popoto.extraction.verdict import (
+    LLM_REASON_CODES,
+    LLM_VERDICTS,
+    TERMINAL_VERDICTS,
+    ReasonCode,
+    Verdict,
+    VerdictResult,
+    llm_verdict,
+)
+from popoto.extraction import verdict as verdict_mod
 from popoto.extraction import HeuristicExtractionProvider
 from popoto.extraction.candidates import Candidate, generate_candidates
 from popoto.privacy.never_record import scan_never_record
 
+# A representative corpus for the candidate generator: multi-sentence prose,
+# a repeated sentence, named entities, acronyms, punctuation variety, and
+# turn id shapes the harness actually produces.
 CANDIDATE_CORPUS = [
     (
         "turn-001",
@@ -28,6 +42,270 @@ CANDIDATE_CORPUS = [
     ("t1", "Short."),
     ("turn_with_underscores", "No entities here, just lowercase prose."),
 ]
+
+
+def make_candidate(text: str, candidate_id: str = "t-1:sent:0") -> Candidate:
+    return Candidate(
+        text=text,
+        turn_id="t-1",
+        candidate_id=candidate_id,
+        start=0,
+        end=len(text),
+        generator_rule="sent",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fake Anthropic client -- the same injection seam tests/test_extraction.py
+# uses for ClaudeExtractionProvider (no network, no API key). Records every
+# call so a test can assert the LLM was, or was not, invoked.
+# ---------------------------------------------------------------------------
+
+
+class FakeTextBlock:
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class FakeResponse:
+    def __init__(self, text):
+        self.content = [] if text is None else [FakeTextBlock(text)]
+
+
+class FakeMessages:
+    def __init__(self, response_text=None, raise_exc=None):
+        self.response_text = response_text
+        self.raise_exc = raise_exc
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.raise_exc is not None:
+            raise self.raise_exc
+        return FakeResponse(self.response_text)
+
+
+class FakeClient:
+    def __init__(self, response_text=None, raise_exc=None):
+        self.messages = FakeMessages(response_text=response_text, raise_exc=raise_exc)
+
+    @property
+    def calls(self):
+        return self.messages.calls
+
+
+def _reply(candidate_id, verdict, reason_code, **extra):
+    """Build a raw JSON reply the way a well-behaved model would."""
+    payload = {
+        "candidate_id": candidate_id,
+        "verdict": verdict,
+        "reason_code": reason_code,
+    }
+    payload.update(extra)
+    return json.dumps(payload)
+
+
+class TestVerdictVocabulary:
+    """The state/reason vocabularies are load-bearing for decision_log.py."""
+
+    def test_four_terminal_states_present(self):
+        assert {v.value for v in TERMINAL_VERDICTS} == {
+            "firewall_drop",
+            "accept",
+            "reject",
+            "withhold",
+        }
+
+    def test_pending_is_non_terminal(self):
+        assert Verdict.PENDING.value == "pending"
+        assert Verdict.PENDING not in TERMINAL_VERDICTS
+        assert Verdict.PENDING.is_terminal is False
+        assert all(v.is_terminal for v in TERMINAL_VERDICTS)
+
+    def test_llm_vocabulary_excludes_pending_and_firewall_drop(self):
+        assert {v.value for v in LLM_VERDICTS} == {
+            "accept",
+            "reject",
+            "withhold",
+        }
+        assert Verdict.PENDING not in LLM_VERDICTS
+        assert Verdict.FIREWALL_DROP not in LLM_VERDICTS
+
+    def test_reason_code_vocabulary(self):
+        assert {r.value for r in ReasonCode} >= {
+            "pre_llm_candidate_block",
+            "post_accept_journal_block",
+            "assembly_failed",
+            "ambiguous_reconciliation",
+            "llm_unavailable",
+            "empty_turn",
+            "accepted",
+        }
+
+    def test_trusted_only_reason_codes_are_not_offered_to_the_llm(self):
+        offered = set().union(*LLM_REASON_CODES.values())
+        for trusted_only in (
+            ReasonCode.PRE_LLM_CANDIDATE_BLOCK,
+            ReasonCode.POST_ACCEPT_JOURNAL_BLOCK,
+            ReasonCode.ASSEMBLY_FAILED,
+            ReasonCode.AMBIGUOUS_RECONCILIATION,
+            ReasonCode.LLM_UNAVAILABLE,
+            ReasonCode.EMPTY_TURN,
+        ):
+            assert trusted_only not in offered
+
+    def test_llm_reason_codes_are_keyed_by_the_llm_verdict_vocabulary(self):
+        assert set(LLM_REASON_CODES) == set(LLM_VERDICTS)
+
+
+class TestVerdictStage:
+    """``llm_verdict`` — per-candidate firewall, then one enum-only call."""
+
+    def test_firewall_blocked_candidate_is_dropped_without_llm_call(self):
+        client = FakeClient(response_text=_reply("t-1:sent:0", "accept", "accepted"))
+        candidate = make_candidate("my aws_secret_access_key = wJalrXUtnFEMI3xK7MDENG")
+
+        result = llm_verdict(candidate, client=client)
+
+        assert result.verdict is Verdict.FIREWALL_DROP
+        assert result.reason_code is ReasonCode.PRE_LLM_CANDIDATE_BLOCK
+        assert result.candidate_id == candidate.candidate_id
+        assert client.calls == [], "the LLM must never see blocked candidate text"
+
+    @pytest.mark.parametrize(
+        "verdict_value,reason_value,expected_verdict,expected_reason",
+        [
+            ("accept", "accepted", Verdict.ACCEPT, ReasonCode.ACCEPTED),
+            ("reject", "not_a_fact", Verdict.REJECT, ReasonCode.NOT_A_FACT),
+            (
+                "reject",
+                "not_memorable",
+                Verdict.REJECT,
+                ReasonCode.NOT_MEMORABLE,
+            ),
+            (
+                "withhold",
+                "low_confidence",
+                Verdict.WITHHOLD,
+                ReasonCode.LOW_CONFIDENCE,
+            ),
+            (
+                "withhold",
+                "needs_confirmation",
+                Verdict.WITHHOLD,
+                ReasonCode.NEEDS_CONFIRMATION,
+            ),
+        ],
+    )
+    def test_wellformed_reply_parses(
+        self, verdict_value, reason_value, expected_verdict, expected_reason
+    ):
+        candidate = make_candidate("Paris is the capital of France.")
+        client = FakeClient(
+            response_text=_reply(candidate.candidate_id, verdict_value, reason_value)
+        )
+
+        result = llm_verdict(candidate, client=client)
+
+        assert result.verdict is expected_verdict
+        assert result.reason_code is expected_reason
+        assert result.candidate_id == candidate.candidate_id
+        assert len(client.calls) == 1
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            None,  # no text block in the response at all
+            "",
+            "   ",
+            "not json at all",
+            "[]",
+            "{}",
+            '{"verdict": "accept"}',  # missing reason_code
+            '{"reason_code": "accepted"}',  # missing verdict
+            '{"verdict": "maybe", "reason_code": "accepted"}',  # unknown verdict
+            '{"verdict": "pending", "reason_code": "accepted"}',  # not LLM vocab
+            '{"verdict": "firewall_drop", "reason_code": "accepted"}',
+            '{"verdict": "accept", "reason_code": "vibes"}',  # unknown reason
+            '{"verdict": "accept", "reason_code": "assembly_failed"}',  # not LLM's
+            '{"verdict": "accept", "reason_code": "not_a_fact"}',  # bad pairing
+            '{"verdict": "reject", "reason_code": "accepted"}',  # bad pairing
+            '{"verdict": 3, "reason_code": 4}',
+            '{"candidate_id": "someone-else", "verdict": "accept",'
+            ' "reason_code": "accepted"}',
+        ],
+        ids=lambda r: repr(r)[:44],
+    )
+    def test_malformed_or_empty_reply_maps_to_reject_llm_unavailable(self, reply):
+        candidate = make_candidate("Paris is the capital of France.")
+        client = FakeClient(response_text=reply)
+
+        result = llm_verdict(candidate, client=client)
+
+        assert result.verdict is Verdict.REJECT
+        assert result.reason_code is ReasonCode.LLM_UNAVAILABLE
+        assert result.candidate_id == candidate.candidate_id
+
+    def test_api_exception_maps_to_reject_llm_unavailable(self):
+        candidate = make_candidate("Paris is the capital of France.")
+        client = FakeClient(raise_exc=RuntimeError("api exploded"))
+
+        result = llm_verdict(candidate, client=client)
+
+        assert result.verdict is Verdict.REJECT
+        assert result.reason_code is ReasonCode.LLM_UNAVAILABLE
+
+    def test_blank_candidate_text_is_rejected_without_an_llm_call(self):
+        client = FakeClient(response_text=_reply("t-1:sent:0", "accept", "accepted"))
+
+        result = llm_verdict(make_candidate("   "), client=client)
+
+        assert result.verdict is Verdict.REJECT
+        assert result.reason_code is ReasonCode.EMPTY_TURN
+        assert client.calls == []
+
+    def test_missing_client_maps_to_reject_llm_unavailable(self, monkeypatch):
+        monkeypatch.setattr(verdict_mod, "anthropic_module", None)
+        monkeypatch.setattr(verdict_mod, "_anthropic_available", False)
+        candidate = make_candidate("Paris is the capital of France.")
+
+        result = llm_verdict(candidate)
+
+        assert result.verdict is Verdict.REJECT
+        assert result.reason_code is ReasonCode.LLM_UNAVAILABLE
+
+    def test_result_carries_only_enums_and_the_trusted_candidate_id(self):
+        """No model-authored free text can reach the store via VerdictResult."""
+        candidate = make_candidate("Paris is the capital of France.")
+        client = FakeClient(
+            response_text=_reply(
+                candidate.candidate_id,
+                "reject",
+                "not_a_fact",
+                explanation="free text the model tried to smuggle through",
+            )
+        )
+
+        result = llm_verdict(candidate, client=client)
+
+        names = {f.name for f in dataclass_fields(result)}
+        assert names == {"candidate_id", "verdict", "reason_code"}
+        assert isinstance(result.verdict, enum.Enum)
+        assert isinstance(result.reason_code, enum.Enum)
+        # The only string on the object is the id trusted code generated.
+        assert result.candidate_id == candidate.candidate_id
+        assert "smuggle" not in repr(result)
+
+    def test_result_is_frozen(self):
+        result = VerdictResult(
+            candidate_id="t-1:sent:0",
+            verdict=Verdict.ACCEPT,
+            reason_code=ReasonCode.ACCEPTED,
+        )
+        with pytest.raises(Exception):
+            result.verdict = Verdict.REJECT  # type: ignore[misc]
+
 
 class TestCandidateGeneration:
     """Task 1: deterministic, exhaustive, LLM-free candidate enumeration."""
@@ -63,9 +341,7 @@ class TestCandidateGeneration:
         )
         candidates = generate_candidates("turn-001", text)
 
-        sentences = [
-            c.text for c in candidates if c.generator_rule == "sentence"
-        ]
+        sentences = [c.text for c in candidates if c.generator_rule == "sentence"]
         # Exhaustive: byte-identical to the heuristic provider's own split,
         # with no min-length filter applied (rejection is the caller's job).
         assert sentences == HeuristicExtractionProvider._split_sentences(text)
@@ -114,9 +390,7 @@ class TestCandidateGeneration:
         text = "Alice deployed the service. Alice deployed the service."
         candidates = generate_candidates("turn-001", text)
 
-        duplicates = [
-            c for c in candidates if c.text == "Alice deployed the service."
-        ]
+        duplicates = [c for c in candidates if c.text == "Alice deployed the service."]
         assert len(duplicates) == 2
         assert duplicates[0].candidate_id != duplicates[1].candidate_id
 
@@ -129,9 +403,7 @@ class TestCandidateGeneration:
             assert ordinal.isdigit()
 
     @pytest.mark.parametrize("turn_id,text", CANDIDATE_CORPUS)
-    def test_candidate_id_survives_the_never_record_firewall(
-        self, turn_id, text
-    ):
+    def test_candidate_id_survives_the_never_record_firewall(self, turn_id, text):
         # The journal scans every subject tag at write time, so a
         # high-entropy (hash/digest) candidate_id would make M3's own writes
         # fail as `high_entropy`. Pins the low-entropy id format.
