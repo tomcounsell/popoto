@@ -293,6 +293,30 @@ A periodic age-keyed sweep, an alert threshold, or a dashboard over stale
 ([#568](https://github.com/tomcounsell/popoto/issues/568)) or an ops
 runbook, not this module.
 
+## Wiring into SubconsciousMemory
+
+`auditable_extraction=AuditableExtractionConfig(verdict_provider=..., journal=...)`
+is a constructor argument on `SubconsciousMemory`, mutually exclusive with
+`extraction_provider=` (the two pipelines don't compose). `journal` is
+required — `AuditableExtractionConfig(journal=None)` (the field's own
+default) raises `ValueError` **eagerly, at `SubconsciousMemory.__init__`**,
+not on the first `extract_memories()` call: there is no journal to assemble
+accepted candidates into, so a misconfiguration fails loud at construction
+time rather than on whichever turn happens to produce the first `accept`.
+
+`extract_memories(response_text, turn_id=None)` gained the `turn_id` keyword
+for this path. It keys every candidate id, decision-log row, and journal
+entry for the turn. Omit it and a fresh low-entropy id is generated per call
+(`f"turn-{<epoch-ms>}"`); pass your own to correlate the decision log back
+to an external turn/session id.
+
+`importance=` (see [Tuning Magic Numbers](../guides/tuning-magic-numbers.md#subconsciousmemory-tier-4))
+applies to the **default path only**. On the auditable path it is accepted
+but silently ignored — every accepted candidate is assembled with
+`importance=None`, because the whole point of this path is a decision log
+that scores extraction quality itself; a caller-supplied importance opinion
+would just be another unaudited number layered on top.
+
 ## Quickstart
 
 ```python

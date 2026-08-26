@@ -61,6 +61,7 @@ counted separately, never summed into the primitive count.
 | Hybrid Retrieval | Fuses keyword, vector, and graph signals via weighted Reciprocal Rank Fusion | [page](hybrid-retrieval.md) |
 | SubconsciousMemory | Wraps a chat loop: inject before the model call, extract after, report outcomes | [recipe](../guides/subconscious-memory-recipe.md) |
 | ProvenanceJournal | Append-only attributed entries — speaker, turn, verbatim span — with confirm/supersede/retract annotations | [page](provenance-journal.md) |
+| Auditable Extraction | Opt-in candidate/verdict/decision-log pipeline: every candidate gets a logged terminal verdict, precision/recall computable offline | [page](auditable-extraction.md) |
 | MemoryLifecycle | Episodic-to-semantic promotion, confidence-aware forgetting, restorable tombstones | [recipe](../recipes.md#memorylifecycle) |
 | PolicyCache | Reinforcement-learning-style action selection over crystallized state-action-outcome patterns | [page](policy-cache.md) |
 | StreamConsumer | Consumer-group framework for background processing of the mutation stream | [recipe](../recipes.md#streamconsumer) |
