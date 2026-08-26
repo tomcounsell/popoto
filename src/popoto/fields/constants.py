@@ -359,6 +359,18 @@ class Defaults:
     # ``supersede`` or ``retract``.
     JOURNAL_KINDS = ("assert", "confirm", "supersede", "retract")
 
+    # -- auditable extraction (extraction/decision_log.py, #562) --------------
+    # Lifetime of the assembly claim one runner takes on a candidate before
+    # writing to the provenance journal, in milliseconds. A **liveness** bound,
+    # not a correctness one: long enough that the common case never expires
+    # mid-flight, finite so a crashed runner's claim cannot wedge a candidate
+    # forever. Correctness under a claim that does expire mid-flight comes from
+    # the identity probe on the ``cand:`` subject tag, which makes the residual
+    # race converge on the existing entry instead of duplicating it. Pinned
+    # in-repo rather than exposed on ``AuditableExtractionConfig``, per the
+    # magic-number rule.
+    M3_ASSEMBLY_CLAIM_TTL_MS = 30_000
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.

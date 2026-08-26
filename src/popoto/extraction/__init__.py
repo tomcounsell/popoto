@@ -52,12 +52,27 @@ class ExtractedFact:
         confidence: Provider's opinion on how certain this fact is, in
             [0.0, 1.0]. ``None`` means "no opinion; leave the model's
             ConfidenceField at its default initial value".
+        span_start: Start offset of the source span in the turn text.
+        span_end: End offset of the source span in the turn text.
+        turn_id: The turn this fact was extracted from.
+        candidate_id: Identity of the candidate this fact was assembled
+            from, matching the ``cand:`` subject tag on its journal entry.
+        generator_rule: Which deterministic rule produced the candidate.
+
+    The last five are populated only by the auditable extraction path
+    (#562) and default to ``None`` everywhere else, so existing provider
+    outputs and existing callers are unaffected.
     """
 
     text: str
     entities: List[str] = field(default_factory=list)
     importance: Optional[float] = None
     confidence: Optional[float] = None
+    span_start: Optional[int] = None
+    span_end: Optional[int] = None
+    turn_id: Optional[str] = None
+    candidate_id: Optional[str] = None
+    generator_rule: Optional[str] = None
 
 
 class AbstractExtractionProvider(ABC):
@@ -209,4 +224,45 @@ __all__ = [
     "AbstractExtractionProvider",
     "HeuristicExtractionProvider",
     "RawTurnExtractionProvider",
+    # Auditable extraction (#562). Imported lazily by name below so that
+    # `import popoto.extraction` stays free of the optional anthropic
+    # probe in verdict.py.
+    "Candidate",
+    "generate_candidates",
+    "Verdict",
+    "ReasonCode",
+    "VerdictResult",
+    "llm_verdict",
+    "DecisionRecord",
+    "DecisionLog",
+    "Metrics",
+    "AuditableExtractionConfig",
 ]
+
+
+def __getattr__(name):
+    """Lazily re-export the auditable-extraction surface (PEP 562).
+
+    Kept lazy rather than imported at module scope for one reason:
+    ``verdict.py`` probes for the optional ``anthropic`` package at import
+    time, and this module's contract (see the module docstring) is that
+    ``import popoto.extraction`` never reaches for an optional dependency.
+    """
+    if name in ("Candidate", "generate_candidates"):
+        from . import candidates
+
+        return getattr(candidates, name)
+    if name in ("Verdict", "ReasonCode", "VerdictResult", "llm_verdict"):
+        from . import verdict
+
+        return getattr(verdict, name)
+    if name in (
+        "DecisionRecord",
+        "DecisionLog",
+        "Metrics",
+        "AuditableExtractionConfig",
+    ):
+        from . import decision_log
+
+        return getattr(decision_log, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

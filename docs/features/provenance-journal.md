@@ -563,5 +563,9 @@ occurrence of the record's *key* does not:
 - [Never-Record Firewall](never-record-firewall.md) — the privacy gate
   `JournalEntry` composes, and the `subjects`/`TagField` coverage gap this
   page's `append()` closes explicitly
+- [Auditable Extraction](auditable-extraction.md) — the opt-in candidate
+  pipeline whose `accept`ed candidates are the ones calling `append()` here,
+  each carrying a `cand:{candidate_id}` subject tag for identity
+  reconciliation
 - [Agent Memory](agent-memory.md) — the primitive map this feature sits
   alongside

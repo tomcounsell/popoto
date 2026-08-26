@@ -191,10 +191,34 @@ These recipe-layer constants control the SubconsciousMemory pipeline (extraction
 | `DEFAULT_EXTRACTION_MIN_LENGTH` | 10 | `subconscious_memory.py` | Minimum character length for a sentence to be saved as a memory |
 | `max_items` | 10 | Constructor arg | Maximum memory records injected per turn |
 | `max_tokens` | 4000 | Constructor arg | Token budget for injected context (enforced; see [Token Budget Semantics](../features/context-assembler.md#token-budget-semantics)) |
-| `default importance` | 0.5 | `extract_memories()` arg | Importance score assigned to newly extracted memories |
+| `default importance` | 0.5 | `extract_memories()` arg | Importance score assigned to newly extracted memories on the **default path only**. Ignored entirely when `auditable_extraction=` is set — see [Auditable Extraction](../features/auditable-extraction.md) |
 | `score_weights` | (user-provided) | Constructor arg | Weight dict for ContextAssembler composite scoring |
 
 Tier 4 also re-evaluates `_wf_min_threshold`, `_wf_priority_threshold`, and `initial_confidence` at the recipe layer to detect emergent interaction effects that field-level sweeps (Tiers 1-3) cannot observe.
+
+### Auditable Extraction (M3)
+
+Source: `src/popoto/fields/constants.py`, consumed by `src/popoto/extraction/decision_log.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `M3_ASSEMBLY_CLAIM_TTL_MS` | 30,000 | Not swept (liveness bound, not a quality knob) | Not swept (structural) |
+
+`M3_ASSEMBLY_CLAIM_TTL_MS` bounds the `SET NX PX` assembly claim
+(`popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id}`) that closes a TOCTOU
+window between the candidate-identity probe and the journal append — see
+[Auditable Extraction](../features/auditable-extraction.md#the-atomic-assembly-claim).
+It has no effect on extraction precision/recall, so it does not participate
+in the Tier 1-4 quality sweeps below; it only bounds how long a crashed
+runner can hold a candidate before a retry is free to claim it instead.
+
+The decision log's detail rows themselves are **unbounded** — there is no
+retention/cap constant for them, deliberately (see
+[Retention policy](../features/auditable-extraction.md#retention-policy)).
+Do not add one here without a corresponding decision recorded in the M3
+plan; the right horizon isn't knowable until the M9 follow-on
+([#568](https://github.com/tomcounsell/popoto/issues/568)) consumes the log
+at scale.
 
 ## Cliff Effects
 

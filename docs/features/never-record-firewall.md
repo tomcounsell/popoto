@@ -248,6 +248,15 @@ The turn-level gate applies regardless of which `model_class` you configured,
 so this half of the guarantee does not depend on anyone remembering to add
 the mixin.
 
+Passing `auditable_extraction=` (see [Auditable Extraction](auditable-extraction.md))
+adds a **second**, per-candidate scan on top of this turn-level one: every
+candidate span is scanned again, individually, before the LLM verdict call
+ever sees it. A turn-level block still produces one `firewall_drop` row
+(`turn_level_block`); a per-candidate block produces its own
+(`pre_llm_candidate_block`). Both reason codes map to the same `state`, but
+the auditable path is the only one that logs either as a queryable row
+instead of a `logger.warning`.
+
 `last_extraction_privacy_dropped` reports whether the last call returned
 empty because of a drop rather than a failure. `MemoryService.capture()`
 reads it so a deliberate drop is not written to the harness failure log — an
@@ -303,3 +312,6 @@ verdict.detector   # 'vendor_token'
 - [Agent Memory](agent-memory.md)
 - [Harness Integration](harness-integration.md) — the write path this protects
 - [Memory Telemetry](memory-telemetry.md) — the read-path privacy default
+- [Auditable Extraction](auditable-extraction.md) — the opt-in path that
+  scans every candidate through this firewall a second time, individually,
+  and logs a queryable row for each of the two `firewall_drop` reason codes

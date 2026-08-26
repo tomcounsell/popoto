@@ -419,6 +419,13 @@ sm = SubconsciousMemory(
 )
 ```
 
+To measure precision/recall on your own corpus instead of trusting the
+LoCoMo numbers above, swap in `auditable_extraction=` (a separate opt-in
+path, not a fourth provider): every candidate gets a logged terminal
+verdict, and `DecisionLog.compute_metrics()` computes precision/recall/F1
+from that log alone, no separate eval harness required. See
+[Auditable Extraction](../features/auditable-extraction.md).
+
 ## Import cheat sheet
 
 All imports come from the top-level `popoto` package:

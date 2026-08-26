@@ -230,6 +230,18 @@ Both `confidence_field` and `co_occurrence_field` are inert with the default `He
 
 For a fully custom extraction source (not implementing the provider interface), you can still subclass `SubconsciousMemory` and override `extract_memories()` directly -- see [Extensibility](#extensibility) below.
 
+#### Opt-in: auditable extraction
+
+Every provider above can still drop a candidate silently -- a too-short
+sentence, a malformed model reply, a failed save -- with nothing recorded
+beyond a log line. Pass `auditable_extraction=AuditableExtractionConfig(...)`
+instead of (not in addition to) `extraction_provider` to opt into a
+different pipeline: deterministic candidate enumeration, one enum-only LLM
+verdict per candidate, and a decision log where every candidate ends in
+exactly one of `firewall_drop | accept | reject | withhold`. Off by default
+-- see [Auditable Extraction](../features/auditable-extraction.md) for the
+full design and a runnable quickstart.
+
 ### Outcome: `report_outcomes(assembly_result, outcome)`
 
 Reports how the agent used the injected memories via `ObservationProtocol.on_context_used()`. Outcomes strengthen or weaken memories for future retrieval:
@@ -322,6 +334,7 @@ The default implementation uses the last user message as the query cue. For more
 - [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
 - [Query-Blind Retrieval](query-blind-retrieval.md) -- when composite ranking is right, and when it costs you the answer
 - [LLM Memory Extraction](../features/llm-memory-extraction.md) -- pluggable extraction providers, entities, importance/confidence opinions
+- [Auditable Extraction](../features/auditable-extraction.md) -- opt-in candidate/verdict/decision-log path with offline precision/recall
 - [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
 - [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection
 - [Trajectory Memory Recipe](trajectory-memory-recipe.md) -- fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"

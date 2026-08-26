@@ -53,10 +53,11 @@ Example:
 
 import itertools
 import logging
+import time
 
 from .context_assembler import AssemblyResult, ContextAssembler
 from .default_memory import DefaultMemory
-from ..extraction import HeuristicExtractionProvider
+from ..extraction import ExtractedFact, HeuristicExtractionProvider
 from ..fields.confidence_field import ConfidenceField
 from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
@@ -198,6 +199,7 @@ class SubconsciousMemory:
         confidence_field=None,
         co_occurrence_field=None,
         output_format=DEFAULT_OUTPUT_FORMAT,
+        auditable_extraction=None,
     ):
         if agent_id is None:
             raise ValueError(
@@ -257,6 +259,35 @@ class SubconsciousMemory:
         # keep a privacy drop out of their failure channel -- see
         # MemoryService.capture().
         self._last_extraction_privacy_dropped = False
+
+        # Auditable extraction (#562), opt-in and default-off. When None,
+        # extract_memories() runs the exact path it always has. When an
+        # AuditableExtractionConfig is supplied, the candidate / verdict /
+        # decision-log / assembly path runs instead.
+        self._auditable = auditable_extraction
+        self._decision_log = None
+        if auditable_extraction is not None:
+            if auditable_extraction.journal is None:
+                raise ValueError(
+                    "AuditableExtractionConfig.journal is required — the "
+                    "auditable path has no journal to assemble accepted "
+                    "candidates into. Pass journal=ProvenanceJournal (or a "
+                    "subclass)."
+                )
+
+            from ..extraction.decision_log import DecisionLog
+
+            self._decision_log = DecisionLog()
+
+    @property
+    def decision_log(self):
+        """The :class:`DecisionLog` backing the auditable path, or ``None``.
+
+        ``None`` whenever ``auditable_extraction`` was not supplied, which
+        is how a caller tells the default path from the auditable one
+        without reaching into a private attribute.
+        """
+        return self._decision_log
 
     @property
     def last_extraction_privacy_dropped(self) -> bool:
@@ -341,7 +372,7 @@ class SubconsciousMemory:
 
         return messages, result
 
-    def extract_memories(self, response_text, importance=0.5):
+    def extract_memories(self, response_text, importance=0.5, turn_id=None):
         """Post-turn: extract facts from LLM response and save as Memory records.
 
         Delegates to ``self._extractor`` (an ``AbstractExtractionProvider``,
@@ -375,15 +406,34 @@ class SubconsciousMemory:
             importance: Fallback importance score used for any extracted
                 fact that has no importance opinion of its own (i.e.
                 ``ExtractedFact.importance is None``). Float between 0.0
-                and 1.0. Default 0.5.
+                and 1.0. Default 0.5. Applies to the **default path only**
+                (against ``model_class``). Ignored entirely when
+                ``auditable_extraction`` is set: accepted facts on the
+                auditable path always carry ``importance=None`` --
+                distillation/scoring of accepted candidates is M4's job,
+                not M3's.
+            turn_id: Identifies the turn on the **auditable path only**
+                (#562), where it keys the decision log and the journal
+                entries. Ignored entirely when ``auditable_extraction`` is
+                None. Defaults to a fresh low-entropy id; pass a stable one
+                if you want a crashed run to be replayable, since
+                reconciliation is keyed by ``(agent_id, turn_id,
+                candidate_id)``.
 
         Returns:
             List of saved model instances. Empty list if response_text
             is empty or contains no extractable facts.
+
+            **On the auditable path the return type differs**: a list of
+            ``ExtractedFact`` carrying span/candidate provenance, because
+            accepted content goes to the provenance journal rather than to
+            ``model_class``. Nothing about the default path changes.
         """
         self._last_extraction_privacy_dropped = False
 
         if not response_text or not response_text.strip():
+            if self._auditable is not None:
+                self._log_empty_turn(turn_id)
             return []
 
         # Never-record firewall, turn level (#561). Runs before the extractor
@@ -399,7 +449,12 @@ class SubconsciousMemory:
             if verdict.blocked:
                 write_tombstone(self.model_class.__name__, verdict)
                 self._last_extraction_privacy_dropped = True
+                if self._auditable is not None:
+                    self._log_turn_firewall_block(turn_id)
                 return []
+
+        if self._auditable is not None:
+            return self._extract_memories_auditable(response_text, turn_id)
 
         facts = self._extractor.extract(response_text)
         saved = []
@@ -435,6 +490,184 @@ class SubconsciousMemory:
             self._last_extraction_privacy_dropped = True
 
         return saved
+
+    # ------------------------------------------------------------------
+    # Auditable extraction path (#562), opt-in via auditable_extraction=
+    # ------------------------------------------------------------------
+
+    def _new_turn_id(self):
+        """A fresh, deliberately low-entropy turn id.
+
+        Low-entropy because ``turn_id`` becomes part of every
+        ``candidate_id``, which in turn becomes a ``cand:`` subject tag on
+        the journal entry -- and the journal's write-time firewall scans
+        every subject tag. A uuid4 hex would be blocked as ``high_entropy``
+        and would make M3's own writes fail.
+        """
+        return f"turn-{int(time.time() * 1000)}"
+
+    def _log_empty_turn(self, turn_id):
+        """Record the one ``reject``(``empty_turn``) row for a blank turn.
+
+        An empty turn produces a logged decision rather than a silent
+        ``[]`` -- that silence is the defect this module exists to close.
+        The row needs a candidate to hang on, so one is synthesized with an
+        ``empty`` generator rule; it is a real row with real identity, not
+        a placeholder that later reads have to special-case.
+        """
+        from ..extraction.candidates import Candidate
+        from ..extraction.verdict import ReasonCode, Verdict
+
+        # Only ever called when self._auditable is not None, which is
+        # exactly when self._decision_log was constructed (see __init__).
+        assert self._decision_log is not None
+        turn_id = turn_id or self._new_turn_id()
+        self._decision_log.write_terminal(
+            self.agent_id,
+            Candidate(
+                text="",
+                turn_id=turn_id,
+                candidate_id=f"{turn_id}:empty:0",
+                start=0,
+                end=0,
+                generator_rule="empty",
+            ),
+            Verdict.REJECT,
+            ReasonCode.EMPTY_TURN,
+        )
+
+    def _log_turn_firewall_block(self, turn_id):
+        """Record the one ``firewall_drop``(``turn_level_block``) row for a
+        turn voided by the turn-level (M2) never-record scan.
+
+        Mirrors :meth:`_log_empty_turn`'s pattern: the turn-level firewall
+        fires *before* any candidate is generated, so there is nothing for
+        the per-candidate M3 path to log against, and without this the
+        turn would leave zero decision-log rows -- breaking the invariant
+        that every candidate (here, the whole voided turn) terminates in
+        exactly one logged state. Distinct from the per-candidate
+        ``firewall_drop``/``pre_llm_candidate_block`` row written when a
+        single candidate's span is blocked after candidates already exist.
+        """
+        from ..extraction.candidates import Candidate
+        from ..extraction.verdict import ReasonCode, Verdict
+
+        # Only ever called when self._auditable is not None, which is
+        # exactly when self._decision_log was constructed (see __init__).
+        assert self._decision_log is not None
+        turn_id = turn_id or self._new_turn_id()
+        self._decision_log.write_terminal(
+            self.agent_id,
+            Candidate(
+                text="",
+                turn_id=turn_id,
+                candidate_id=f"{turn_id}:turn_firewall:0",
+                start=0,
+                end=0,
+                generator_rule="turn",
+            ),
+            Verdict.FIREWALL_DROP,
+            ReasonCode.TURN_LEVEL_BLOCK,
+        )
+
+    def _verdict_for(self, candidate):
+        """Ask the configured verdict provider about one candidate.
+
+        Accepts either a plain callable or an object exposing
+        ``llm_verdict``; the module-level :func:`llm_verdict` is the
+        default. A provider that raises is an infrastructure loss, not a
+        model rejection, so it maps to ``reject``(``llm_unavailable``)
+        rather than propagating and aborting the whole turn -- one flaky
+        candidate must not cost the audit trail of the others.
+        """
+        from ..extraction.verdict import (
+            ReasonCode,
+            Verdict,
+            VerdictResult,
+            llm_verdict,
+        )
+
+        provider = self._auditable.verdict_provider or llm_verdict
+        call = getattr(provider, "llm_verdict", provider)
+        try:
+            return call(candidate)
+        except Exception as e:
+            logger.warning(
+                "auditable extraction: verdict provider failed for %s: %s",
+                candidate.candidate_id,
+                e,
+            )
+            return VerdictResult(
+                candidate_id=candidate.candidate_id,
+                verdict=Verdict.REJECT,
+                reason_code=ReasonCode.LLM_UNAVAILABLE,
+            )
+
+    def _extract_memories_auditable(self, response_text, turn_id=None):
+        """Deterministic enumeration -> enum verdict -> log -> assembly.
+
+        Every candidate the generator produces terminates in exactly one
+        logged terminal state, and every terminal write routes through the
+        decision log's guarded helper -- there is no path here that writes
+        a row any other way.
+
+        Returns:
+            The accepted facts, carrying span/candidate provenance.
+        """
+        from ..extraction.candidates import generate_candidates
+        from ..extraction.verdict import Verdict
+
+        # Only ever called when self._auditable is not None, which is
+        # exactly when self._decision_log was constructed (see __init__).
+        assert self._decision_log is not None
+        turn_id = turn_id or self._new_turn_id()
+        log = self._decision_log
+        journal = self._auditable.journal
+
+        candidates = generate_candidates(turn_id, response_text)
+        if not candidates:
+            self._log_empty_turn(turn_id)
+            return []
+
+        accepted = []
+        for candidate in candidates:
+            result = self._verdict_for(candidate)
+
+            if result.verdict is not Verdict.ACCEPT:
+                # firewall_drop, reject and withhold have no downstream
+                # side effect, so this single guarded write is terminal.
+                log.write_terminal(
+                    self.agent_id,
+                    candidate,
+                    result.verdict,
+                    result.reason_code,
+                )
+                continue
+
+            entry_id = log.assemble(self.agent_id, candidate, journal)
+            if entry_id is None:
+                # A terminal row already records why (blocked, failed,
+                # ambiguous) or another runner owns this candidate.
+                continue
+
+            accepted.append(
+                ExtractedFact(
+                    text=candidate.text,
+                    importance=None,
+                    confidence=None,
+                    span_start=candidate.start,
+                    span_end=candidate.end,
+                    turn_id=candidate.turn_id,
+                    candidate_id=candidate.candidate_id,
+                    generator_rule=candidate.generator_rule,
+                )
+            )
+
+        if not accepted:
+            summary = log.turn_summary(self.agent_id, turn_id)
+            if summary.get(f"state:{Verdict.FIREWALL_DROP.value}"):
+                self._last_extraction_privacy_dropped = True
+        return accepted
 
     def _seed_associations(self, instance, fact):
         """Link co-mentioned entities in ``self.co_occurrence_field``.

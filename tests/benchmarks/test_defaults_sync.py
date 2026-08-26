@@ -143,6 +143,16 @@ class TestDefaultsSync:
             # could read.
             "JOURNAL_VALIDITY_COUPLING_ENABLED",
             "JOURNAL_KINDS",
+            # Auditable extraction (#562) — the assembly claim's liveness
+            # bound (SET ... NX PX <ttl>), read directly from Defaults at
+            # claim time in extraction/decision_log.py; no module-level alias
+            # exists, so it is not in MODULE_CONSTANTS. Deliberately NOT
+            # sweepable, for the same reason as the never-record thresholds
+            # above: it is a liveness bound, not a correctness bound and not a
+            # retrieval-quality dial, so there is no nDCG signal a sweep could
+            # read for it. Correctness under a claim that expires mid-flight
+            # comes from the cand:-tag identity probe, not from this number.
+            "M3_ASSEMBLY_CLAIM_TTL_MS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

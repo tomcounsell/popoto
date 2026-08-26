@@ -1094,52 +1094,56 @@ surface exists; no MCP registration is changed.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Create `docs/features/auditable-extraction.md` describing the candidate generator, the
+- [x] Create `docs/features/auditable-extraction.md` describing the candidate generator, the
   four terminal states, the non-terminal `pending` marker and the write-ordering guarantee it
   provides, the two `firewall_drop` reason codes (pre-LLM vs post-accept journal block), the
   enum-verdict contract, and the retention policy.
-- [ ] Include a runnable snippet that enables `auditable_extraction`, runs a turn, and prints
+- [x] Include a runnable snippet that enables `auditable_extraction`, runs a turn, and prints
   `DecisionLog.compute_metrics(...)` — so an adopter can realize the measurement benefit
-  without waiting on the harness-wiring follow-on.
-- [ ] Record the #510 numbers (heuristic 0.2078 vs raw 0.3636) and the "audit the shape to make
+  without waiting on the harness-wiring follow-on. Verified via
+  `REDIS_URL=redis://localhost:6379/15 PYTHONPATH="$(pwd)/src:$PYTHONPATH" python <snippet>.py`
+  before committing; output pasted into the doc.
+- [x] Record the #510 numbers (heuristic 0.2078 vs raw 0.3636) and the "audit the shape to make
   it correctable" rationale on the page, so readers are not surprised that the audited v1 shape
   is not the harness default.
-- [ ] Add entry to `docs/features/README.md` index table.
+- [x] Add entry to `docs/features/README.md` index table.
 
 ### External Documentation Site
-- [ ] Update the extraction/memory page on the mkdocs site (`docs/`) to describe the opt-in
-  auditable path.
-- [ ] Verify docs build passes (`mkdocs build --strict`).
+- [x] Update the extraction/memory page on the mkdocs site (`docs/`) to describe the opt-in
+  auditable path. Added a section to `docs/features/llm-memory-extraction.md` and
+  `docs/guides/subconscious-memory-recipe.md`, plus a nav entry in `mkdocs.yml`.
+- [x] Verify docs build passes (`mkdocs build --strict`). Exit code 0; only pre-existing,
+  unrelated warnings (Material-for-MkDocs deprecation notice, unmapped benchmark artifacts).
 
 ### Inline Documentation
-- [ ] Docstrings on the new `candidates.py`, `verdict.py`, `decision_log.py` modules and the
+- [x] Docstrings on the new `candidates.py`, `verdict.py`, `decision_log.py` modules and the
   `SubconsciousMemory.auditable_extraction` flag.
-- [ ] Note the retention position in the decision-log module docstring: detail rows are
+- [x] Note the retention position in the decision-log module docstring: detail rows are
   unbounded in v1 by deliberate decision, the per-turn summary is a convenience index (not a
   completeness fallback), and the revisit triggers are measured growth signals, not a constant.
-- [ ] **Stale-`pending` recovery is manual in v1 (round-2 N1)** — state it in the
+- [x] **Stale-`pending` recovery is manual in v1 (round-2 N1)** — state it in the
   `decision_log.py` module docstring and on the docs page: no sweep, no TTL on decision rows
   (a TTL would delete audit evidence), no age alert. Give the operator recipe verbatim —
   `DecisionLog.list_pending(agent_id, older_than=...)` oldest-first, then re-invoke the auditable
   path for each stale `(agent_id, turn_id)` to reconcile it — and name the follow-on owner for a
   periodic age-keyed scan and alerting (M9 #568 or an ops runbook).
-- [ ] **Document the terminal-write conflict guard (round-3 C1 / round-4 C1)** in the
+- [x] **Document the terminal-write conflict guard (round-3 C1 / round-4 C1)** in the
   `decision_log.py` module docstring: a non-`accept` terminal write is refused against a row
   already terminal `accept` with an `entry_id`, and the refusal surfaces as
   `detail_code = 'terminal_conflict_refused'`. State why: the LLM verdict is non-deterministic,
   so a retried verdict must never be able to split the decision log from the journal. State the
   mechanism too — a single conditional Lua script run via `EVAL`, which every terminal write goes
   through; there is no unconditional fast path.
-- [ ] **Document `DecisionRecord`'s composite key (round-4 C3)** in the model's docstring:
+- [x] **Document `DecisionRecord`'s composite key (round-4 C3)** in the model's docstring:
   `agent_id` + `turn_id` + `candidate_id` are all `KeyField`s so re-saving transitions the row in
   place; `AutoKeyField` is forbidden here (unlike `JournalEntry`); KeyFields join alphabetically,
   so the Redis key is `DecisionRecord:agent_id:candidate_id:turn_id`; and colons inside
   `candidate_id` render escaped in the key.
-- [ ] Document `detail_code` as a **free-form diagnostic string** (`StringField(default="")`),
+- [x] Document `detail_code` as a **free-form diagnostic string** (`StringField(default="")`),
   distinct from the `state`/`reason_code` enums, and written only by trusted code.
-- [ ] Document `DecisionRecord.written_at` — stamped on both the `pending` write and the
+- [x] Document `DecisionRecord.written_at` — stamped on both the `pending` write and the
   terminal transition, and the field `list_pending(agent_id, older_than=...)` sorts on.
-- [ ] Document the `cand:{candidate_id}` subject-tag convention on written entries, the
+- [x] Document the `cand:{candidate_id}` subject-tag convention on written entries, the
   low-entropy `candidate_id` format requirement (a digest-shaped id is blocked by the journal's
   own firewall as `high_entropy`), and the `SET ... NX PX` assembly claim with its
   `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` liveness bound.
