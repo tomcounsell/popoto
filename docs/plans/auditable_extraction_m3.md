@@ -1497,7 +1497,7 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 | Terminal-write conflict guard (round-3 C1 / round-4 C1) | `pytest tests/test_auditable_extraction.py -k "terminal_conflict_refused or conflicting_terminal_verdicts" -q` | exit code 0, at least 1 test selected |
 | Guard is a conditional Lua script, not MULTI/EXEC or SET NX | `grep -rn "eval\|register_script" src/popoto/extraction/decision_log.py` | at least 1 match, on the terminal-write guard script |
 | `DecisionRecord` row is updated in place, not duplicated (round-4 C3) | `pytest tests/test_auditable_extraction.py -k "decision_record_in_place or single_row_per_candidate" -q` | exit code 0, at least 1 test selected |
-| `DecisionRecord` never uses `AutoKeyField` [anti-criterion] | `grep -n "AutoKeyField" src/popoto/extraction/decision_log.py` | match count == 0 |
+| `DecisionRecord` never uses `AutoKeyField` [anti-criterion, code-only] | `grep -nE "^\s*\w+\s*=\s*AutoKeyField\(" src/popoto/extraction/decision_log.py` | match count == 0 |
 | `DecisionRecord` keys on the full tuple [anti-criterion] | `grep -c "= KeyField(" src/popoto/extraction/decision_log.py` | count == 3 (`agent_id`, `turn_id`, `candidate_id`) |
 | `written_at` stamped + `list_pending` ordering (round-3 N3) | `pytest tests/test_auditable_extraction.py -k "written_at or list_pending_oldest_first" -q` | exit code 0, at least 1 test selected |
 | Candidate identity + duplicate-text reconciliation | `pytest tests/test_auditable_extraction.py -k "candidate_identity_tag or duplicate_text_reconcile" -q` | exit code 0, 2 tests selected |
@@ -1511,11 +1511,11 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 | Opt-in surface present | `grep -n "auditable_extraction" src/popoto/recipes/subconscious_memory.py` | output contains `auditable_extraction` |
 | No free-text verdict persists [anti-criterion] | `grep -rn "write_free\|verdict_text\|free_text" src/popoto/extraction/` | match count == 0 |
 | No Redis module usage [anti-criterion] | `grep -rn "BF\.\|CMS\.\|TOPK\.\|TS\." src/popoto/extraction/` | match count == 0 |
-| Decision log is uncapped [anti-criterion] | `grep -rni "ltrim\|DECISION_LOG_MAX" src/popoto/extraction/` | match count == 0 |
+| Decision log is uncapped [anti-criterion, code-only] | `grep -rn "\.ltrim(\|DECISION_LOG_MAX" src/popoto/extraction/` | match count == 0 |
 | No per-turn candidate cap [anti-criterion] | `grep -rniE "candidate_(per_turn_)?cap\|MAX_CANDIDATES" src/popoto/extraction/ src/popoto/fields/constants.py` | match count == 0 |
 | No pluggable-rule class [anti-criterion] | `grep -rn "class CandidateGenerator" src/popoto/extraction/` | match count == 0 |
-| Assembly passes required `agent_id` [anti-criterion, multiline-aware, scoped to M3] | `perl -0777 -ne 'while (/ProvenanceJournal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 200) =~ /agent_id/ }' src/popoto/extraction/*.py` | match count == 0 |
-| Every M3 append carries a candidate identity tag [anti-criterion] | `perl -0777 -ne 'while (/ProvenanceJournal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 300) =~ /cand:/ }' src/popoto/extraction/*.py` | match count == 0 |
+| Assembly passes required `agent_id` [anti-criterion, multiline-aware, scoped to M3, real call shape] | `perl -0777 -ne 'while (/journal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 200) =~ /agent_id/ }' src/popoto/extraction/*.py` | match count == 0 |
+| Every M3 append carries a candidate identity tag [anti-criterion, real call shape] | `perl -0777 -ne 'while (/journal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 300) =~ /cand:/ }' src/popoto/extraction/*.py` | match count == 0 |
 | Reconciliation never matches on text [anti-criterion] | `grep -rn "verbatim ==\|verbatim=candidate.text)" src/popoto/extraction/decision_log.py` | match count == 0 |
 | Claim is a single atomic op, not read-then-act [anti-criterion] | `grep -rn "\.watch(\|pipeline().watch" src/popoto/extraction/` | match count == 0 |
 | Claim uses `SET NX PX` | `grep -rn "nx=True" src/popoto/extraction/decision_log.py` | at least 1 match, on the claim key |
@@ -1538,6 +1538,61 @@ returns **1** (caught); (c) a nested-call form
 `ProvenanceJournal.append(statement=fmt(x), agent_id=a)` returns **0** (no false positive from
 the inner parenthesis). The window form was chosen over a `(.*?)\)` capture precisely because the
 non-greedy capture stops at the first inner `)` and false-positives on control (c).
+
+**Round-5 correction (PR #591 review, tech-debt 1) — anchor pattern was the class name, not the
+real call shape.** The four checks above (`AutoKeyField`, `ltrim|DECISION_LOG_MAX`, and both
+`ProvenanceJournal\.append` perl checks) were **simultaneously failing and inert** as originally
+written: they matched module-docstring prose, not code, so they returned nonzero (reporting a
+false "FAIL") while never being capable of catching a real regression (a genuine violation would
+also just add more prose-shaped matches, or in the append checks' case, could never match at all
+— the real call site is the **instance** call `journal.append(...)` at `decision_log.py:755`,
+never the literal string `ProvenanceJournal.append`). All four rows above are corrected to
+code-only anchors (`^\s*\w+\s*=\s*AutoKeyField\(`, `\.ltrim\(\|DECISION_LOG_MAX`, and
+`journal\.append\s*\(` in place of `ProvenanceJournal\.append\s*\(`).
+
+Re-run at `6586bff` in `.worktrees/auditable_extraction_m3` (the corrected commands and their
+real output, green-state):
+
+```
+$ grep -nE "^\s*\w+\s*=\s*AutoKeyField\(" src/popoto/extraction/decision_log.py
+(no output, exit 1)                                                    # match count == 0 ✅
+
+$ grep -rn "\.ltrim(\|DECISION_LOG_MAX" src/popoto/extraction/
+(no output, exit 1)                                                    # match count == 0 ✅
+
+$ perl -0777 -ne 'while (/journal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 200) =~ /agent_id/ }' src/popoto/extraction/*.py
+(no output)                                                            # match count == 0 ✅
+
+$ perl -0777 -ne 'while (/journal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 300) =~ /cand:/ }' src/popoto/extraction/*.py
+(no output)                                                            # match count == 0 ✅
+```
+
+Red-state proof, one deliberate break per check, each reverted immediately after (not committed):
+
+```
+$ # AutoKeyField: add "    rogue_field = AutoKeyField()" after the real agent_id = KeyField() line
+$ grep -nE "^\s*\w+\s*=\s*AutoKeyField\(" src/popoto/extraction/decision_log.py
+179:    rogue_field = AutoKeyField()                                    # FAILS as required ✅
+
+$ # ltrim: insert "self._redis.ltrim(SUMMARY_KEY_PREFIX, 0, 999)" before the journal.append( call
+$ grep -rn "\.ltrim(\|DECISION_LOG_MAX" src/popoto/extraction/
+src/popoto/extraction/decision_log.py:755:            self._redis.ltrim(SUMMARY_KEY_PREFIX, 0, 999)   # FAILS ✅
+
+$ # agent_id: drop agent_id=agent_id from the real journal.append(...) call
+$ perl -0777 -ne 'while (/journal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 200) =~ /agent_id/ }' src/popoto/extraction/*.py
+MISSING                                                                 # FAILS as required ✅
+
+$ # cand: drop the f"cand:{candidate.candidate_id}" tag from subjects=[...] in the same call
+$ perl -0777 -ne 'while (/journal\.append\s*\(/g) { print "MISSING\n" unless substr($_, pos($_), 300) =~ /cand:/ }' src/popoto/extraction/*.py
+MISSING                                                                 # FAILS as required ✅
+```
+
+The properties themselves were never in doubt — `test_candidate_identity_tag_on_assembled_entries`
+asserts both `agent_id` and the `cand:` tag against the real call at `decision_log.py:755` — this
+correction repairs the **grep safety net** so it can independently catch a future regression, not
+the underlying behavior. The `= KeyField(` count-== 3 row was already code-only (it only matches
+an actual field assignment, never the module docstring's double-backtick prose) and needed no
+change.
 
 ## Critique Results
 
