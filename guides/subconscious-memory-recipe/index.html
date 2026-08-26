@@ -740,6 +740,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Post-turn: extract_memories(response_text, importance)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#opt-in-auditable-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opt-in: auditable extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1444,6 +1461,34 @@
     
   
     Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/auditable-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auditable Extraction
   
 
     
@@ -3093,6 +3138,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Post-turn: extract_memories(response_text, importance)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#opt-in-auditable-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opt-in: auditable extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3385,6 +3447,16 @@ it there.</p>
 </ul>
 <p>Both <code>confidence_field</code> and <code>co_occurrence_field</code> are inert with the default <code>HeuristicExtractionProvider</code>, since it never populates <code>entities</code> or <code>confidence</code> on the facts it emits -- they only do work once an entity/confidence-emitting provider (like <code>ClaudeExtractionProvider</code>) is configured.</p>
 <p>For a fully custom extraction source (not implementing the provider interface), you can still subclass <code>SubconsciousMemory</code> and override <code>extract_memories()</code> directly -- see <a href="#extensibility">Extensibility</a> below.</p>
+<h4 id="opt-in-auditable-extraction">Opt-in: auditable extraction<a class="headerlink" href="#opt-in-auditable-extraction" title="Permanent link">&para;</a></h4>
+<p>Every provider above can still drop a candidate silently -- a too-short
+sentence, a malformed model reply, a failed save -- with nothing recorded
+beyond a log line. Pass <code>auditable_extraction=AuditableExtractionConfig(...)</code>
+instead of (not in addition to) <code>extraction_provider</code> to opt into a
+different pipeline: deterministic candidate enumeration, one enum-only LLM
+verdict per candidate, and a decision log where every candidate ends in
+exactly one of <code>firewall_drop | accept | reject | withhold</code>. Off by default
+-- see <a href="../../features/auditable-extraction/">Auditable Extraction</a> for the
+full design and a runnable quickstart.</p>
 <h3 id="outcome-report_outcomesassembly_result-outcome">Outcome: <code>report_outcomes(assembly_result, outcome)</code><a class="headerlink" href="#outcome-report_outcomesassembly_result-outcome" title="Permanent link">&para;</a></h3>
 <p>Reports how the agent used the injected memories via <code>ObservationProtocol.on_context_used()</code>. Outcomes strengthen or weaken memories for future retrieval:</p>
 <ul>
@@ -3517,6 +3589,7 @@ it there.</p>
 <li><a href="../agent-memory-quickstart/">Agent Memory Quickstart</a> -- progressive adoption guide</li>
 <li><a href="../query-blind-retrieval/">Query-Blind Retrieval</a> -- when composite ranking is right, and when it costs you the answer</li>
 <li><a href="../../features/llm-memory-extraction/">LLM Memory Extraction</a> -- pluggable extraction providers, entities, importance/confidence opinions</li>
+<li><a href="../../features/auditable-extraction/">Auditable Extraction</a> -- opt-in candidate/verdict/decision-log path with offline precision/recall</li>
 <li><a href="../../features/context-assembler/">ContextAssembler</a> -- retrieval-to-injection bridge</li>
 <li><a href="../policy-cache-recipe/">PolicyCache Recipe</a> -- RL-style learned action selection</li>
 <li><a href="../trajectory-memory-recipe/">Trajectory Memory Recipe</a> -- fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"</li>

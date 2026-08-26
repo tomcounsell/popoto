@@ -1217,6 +1217,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../auditable-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auditable Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -3346,6 +3374,14 @@ level, before the extraction provider is invoked. Two consequences:</p>
 <p>The turn-level gate applies regardless of which <code>model_class</code> you configured,
 so this half of the guarantee does not depend on anyone remembering to add
 the mixin.</p>
+<p>Passing <code>auditable_extraction=</code> (see <a href="../auditable-extraction/">Auditable Extraction</a>)
+adds a <strong>second</strong>, per-candidate scan on top of this turn-level one: every
+candidate span is scanned again, individually, before the LLM verdict call
+ever sees it. A turn-level block still produces one <code>firewall_drop</code> row
+(<code>turn_level_block</code>); a per-candidate block produces its own
+(<code>pre_llm_candidate_block</code>). Both reason codes map to the same <code>state</code>, but
+the auditable path is the only one that logs either as a queryable row
+instead of a <code>logger.warning</code>.</p>
 <p><code>last_extraction_privacy_dropped</code> reports whether the last call returned
 empty because of a drop rather than a failure. <code>MemoryService.capture()</code>
 reads it so a deliberate drop is not written to the harness failure log — an
@@ -3418,6 +3454,9 @@ a pipeline before anything is constructed.</p>
 <li><a href="../agent-memory/">Agent Memory</a></li>
 <li><a href="../harness-integration/">Harness Integration</a> — the write path this protects</li>
 <li><a href="../memory-telemetry/">Memory Telemetry</a> — the read-path privacy default</li>
+<li><a href="../auditable-extraction/">Auditable Extraction</a> — the opt-in path that
+  scans every candidate through this firewall a second time, individually,
+  and logs a queryable row for each of the two <code>firewall_drop</code> reason codes</li>
 </ul>
 
 

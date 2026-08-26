@@ -1215,6 +1215,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/auditable-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auditable Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -1887,6 +1915,17 @@
     <span class="md-ellipsis">
       
         SubconsciousMemory (Tier 4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auditable-extraction-m3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auditable Extraction (M3)
       
     </span>
   </a>
@@ -3204,6 +3243,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#auditable-extraction-m3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auditable Extraction (M3)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3808,7 +3858,7 @@ it is a capacity bound rather than a quality parameter.</p>
 <td><code>default importance</code></td>
 <td>0.5</td>
 <td><code>extract_memories()</code> arg</td>
-<td>Importance score assigned to newly extracted memories</td>
+<td>Importance score assigned to newly extracted memories on the <strong>default path only</strong>. Ignored entirely when <code>auditable_extraction=</code> is set — see <a href="../../features/auditable-extraction/">Auditable Extraction</a></td>
 </tr>
 <tr>
 <td><code>score_weights</code></td>
@@ -3819,6 +3869,40 @@ it is a capacity bound rather than a quality parameter.</p>
 </tbody>
 </table>
 <p>Tier 4 also re-evaluates <code>_wf_min_threshold</code>, <code>_wf_priority_threshold</code>, and <code>initial_confidence</code> at the recipe layer to detect emergent interaction effects that field-level sweeps (Tiers 1-3) cannot observe.</p>
+<h3 id="auditable-extraction-m3">Auditable Extraction (M3)<a class="headerlink" href="#auditable-extraction-m3" title="Permanent link">&para;</a></h3>
+<p>Source: <code>src/popoto/fields/constants.py</code>, consumed by <code>src/popoto/extraction/decision_log.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>Optimal Range</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>M3_ASSEMBLY_CLAIM_TTL_MS</code></td>
+<td>30,000</td>
+<td>Not swept (liveness bound, not a quality knob)</td>
+<td>Not swept (structural)</td>
+</tr>
+</tbody>
+</table>
+<p><code>M3_ASSEMBLY_CLAIM_TTL_MS</code> bounds the <code>SET NX PX</code> assembly claim
+(<code>popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id}</code>) that closes a TOCTOU
+window between the candidate-identity probe and the journal append — see
+<a href="../../features/auditable-extraction/#the-atomic-assembly-claim">Auditable Extraction</a>.
+It has no effect on extraction precision/recall, so it does not participate
+in the Tier 1-4 quality sweeps below; it only bounds how long a crashed
+runner can hold a candidate before a retry is free to claim it instead.</p>
+<p>The decision log's detail rows themselves are <strong>unbounded</strong> — there is no
+retention/cap constant for them, deliberately (see
+<a href="../../features/auditable-extraction/#retention-policy">Retention policy</a>).
+Do not add one here without a corresponding decision recorded in the M3
+plan; the right horizon isn't knowable until the M9 follow-on
+(<a href="https://github.com/tomcounsell/popoto/issues/568">#568</a>) consumes the log
+at scale.</p>
 <h2 id="cliff-effects">Cliff Effects<a class="headerlink" href="#cliff-effects" title="Permanent link">&para;</a></h2>
 <p>Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):</p>
 <p><strong><code>ACTED_CYCLE_STRENGTHEN_FACTOR</code></strong>: Values below 1.0 cause a 23% drop in nDCG@5 for the temporal scheduling scenario. When the strengthen factor is &lt; 1.0, acted outcomes actually weaken cycle amplitude instead of strengthening it, causing the system to suppress recurring tasks that should be reinforced.</p>

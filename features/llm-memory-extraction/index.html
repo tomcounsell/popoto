@@ -826,6 +826,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#opt-in-auditable-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opt-In: Auditable Extraction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#evaluation-extraction-lost-to-raw-ingestion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1405,6 +1416,34 @@
     
   
     Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auditable-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auditable Extraction
   
 
     
@@ -3084,6 +3123,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#opt-in-auditable-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opt-In: Auditable Extraction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#evaluation-extraction-lost-to-raw-ingestion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3329,6 +3379,29 @@ information loss the provider exists to avoid.</p>
 <a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
 <a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>                         <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span> <span class="n">extraction_provider</span><span class="o">=</span><span class="n">MyProvider</span><span class="p">())</span>
 </code></pre></div>
+<h2 id="opt-in-auditable-extraction">Opt-In: Auditable Extraction<a class="headerlink" href="#opt-in-auditable-extraction" title="Permanent link">&para;</a></h2>
+<p>Every provider above shares one property: a dropped candidate is invisible.
+A too-short sentence, a malformed model reply, a failed save — each just
+vanishes, with at most a <code>logger.warning</code>. There's no way to compute
+precision or recall after the fact because there's no enumerated record of
+what was considered.</p>
+<p><code>SubconsciousMemory</code>'s <code>auditable_extraction=</code> constructor argument opts
+into a different pipeline: deterministic candidate enumeration, one
+enum-only LLM verdict per candidate, and a per-candidate decision log where
+every candidate ends in exactly one of <code>firewall_drop | accept | reject |
+withhold</code>. It's a separate opt-in path, not a fourth provider — it replaces
+the provider abstraction above with its own candidate/verdict/decision-log
+stages, is off by default, and leaves every provider on this page and the
+default <code>SubconsciousMemory</code> behavior untouched.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">auditable_extraction</span><span class="o">=</span><span class="n">AuditableExtractionConfig</span><span class="p">(</span><span class="n">journal</span><span class="o">=</span><span class="n">ProvenanceJournal</span><span class="p">),</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">)</span>
+</code></pre></div>
+<p>See <a href="../auditable-extraction/">Auditable Extraction</a> for the candidate
+generator, the four terminal states, the two <code>firewall_drop</code> reason codes,
+the retention policy, and a runnable quickstart that prints
+<code>DecisionLog.compute_metrics(...)</code>.</p>
 <h2 id="evaluation-extraction-lost-to-raw-ingestion">Evaluation: extraction lost to raw ingestion<a class="headerlink" href="#evaluation-extraction-lost-to-raw-ingestion" title="Permanent link">&para;</a></h2>
 <p>Extraction has been measured against plain turn ingestion on the judged-answer
 harness, and it lost on every arm. Keep it off unless you have a reason from
@@ -3407,6 +3480,7 @@ is too long or too noisy to retrieve directly. Those are the cases worth
 testing on your own data before ruling extraction out.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
+<li><a href="../auditable-extraction/">Auditable Extraction</a> -- the opt-in candidate/verdict/decision-log path, with offline precision/recall</li>
 <li><a href="../../guides/subconscious-memory-recipe/">SubconsciousMemory Recipe</a> -- the recipe that consumes extraction providers</li>
 <li><a href="../confidence-field/">ConfidenceField</a> -- update formula and blending behavior</li>
 <li><a href="../co-occurrence-field/">CoOccurrenceField</a> -- association graph seeded from co-mentioned entities</li>

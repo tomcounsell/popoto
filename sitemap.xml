@@ -105,6 +105,10 @@
          <lastmod>2026-08-26</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/auditable-extraction/</loc>
+         <lastmod>2026-08-26</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/co-occurrence-field/</loc>
          <lastmod>2026-08-26</lastmod>
     </url>
@@ -269,7 +273,19 @@
          <lastmod>2026-08-26</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/extraction/candidates/</loc>
+         <lastmod>2026-08-26</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/extraction/claude/</loc>
+         <lastmod>2026-08-26</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/extraction/decision_log/</loc>
+         <lastmod>2026-08-26</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/extraction/verdict/</loc>
          <lastmod>2026-08-26</lastmod>
     </url>
     <url>

@@ -1386,6 +1386,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/auditable-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auditable Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -3410,6 +3438,12 @@ turn on:</p>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">ClaudeExtractionProvider</span><span class="p">(),</span>  <span class="c1"># requires popoto[anthropic]</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">)</span>
 </code></pre></div>
+<p>To measure precision/recall on your own corpus instead of trusting the
+LoCoMo numbers above, swap in <code>auditable_extraction=</code> (a separate opt-in
+path, not a fourth provider): every candidate gets a logged terminal
+verdict, and <code>DecisionLog.compute_metrics()</code> computes precision/recall/F1
+from that log alone, no separate eval harness required. See
+<a href="../../features/auditable-extraction/">Auditable Extraction</a>.</p>
 <h2 id="import-cheat-sheet">Import cheat sheet<a class="headerlink" href="#import-cheat-sheet" title="Permanent link">&para;</a></h2>
 <p>All imports come from the top-level <code>popoto</code> package:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Models and fields</span>
