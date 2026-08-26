@@ -502,7 +502,7 @@ class TestCandidateGeneration:
             assert ordinal.isdigit()
 
     @pytest.mark.parametrize("turn_id,text", CANDIDATE_CORPUS)
-    def test_candidate_id_survives_the_never_record_firewall(self, turn_id, text):
+    def test_candidate_id_not_firewall_blocked(self, turn_id, text):
         # The journal scans every subject tag at write time, so a
         # high-entropy (hash/digest) candidate_id would make M3's own writes
         # fail as `high_entropy`. Pins the low-entropy id format.
@@ -534,7 +534,7 @@ class TestDecisionLogCore:
 
     # -- keying ----------------------------------------------------------
 
-    def test_composite_key_transitions_one_row_in_place(self):
+    def test_single_row_per_candidate_transitions_in_place(self):
         """THE test that pins the design: one row, not one row per save.
 
         An AutoKeyField on DecisionRecord would mint a second row here and
@@ -893,7 +893,7 @@ class TestAssemblyWiring:
 
     # -- Race 4: the atomic claim ----------------------------------------
 
-    def test_second_runner_loses_the_claim(self):
+    def test_claim_loser_appends_nothing(self):
         log = DecisionLog()
         args = ("agent-claim", "t-90", "t-90:sentence:0")
 
@@ -925,7 +925,7 @@ class TestAssemblyWiring:
 
         assert 0 < ttl_ms <= Defaults.M3_ASSEMBLY_CLAIM_TTL_MS
 
-    def test_racing_runners_produce_exactly_one_entry_and_one_row(self):
+    def test_concurrent_claim_racing_runners_produce_exactly_one_entry(self):
         journal = _FakeJournal()
         candidate = self._candidate()
         results = []
@@ -961,7 +961,9 @@ class TestAssemblyWiring:
 
     # -- Race 3: reconciliation across an interrupted run -----------------
 
-    def test_interrupted_run_reconciles_without_a_second_append(self):
+    def test_assembly_idempotency_interrupted_run_reconciles_without_a_second_append(
+        self,
+    ):
         """The pending row survived; the entry landed. Reconcile, don't append."""
         journal = _FakeJournal()
         candidate = self._candidate()
@@ -988,7 +990,7 @@ class TestAssemblyWiring:
         assert row.state == Verdict.ACCEPT.value
         assert row.entry_id == entry_id
 
-    def test_rerunning_a_completed_candidate_appends_nothing(self):
+    def test_assembly_idempotency_rerunning_a_completed_candidate_appends_nothing(self):
         journal = _FakeJournal()
         candidate = self._candidate()
         log = DecisionLog()
@@ -999,7 +1001,7 @@ class TestAssemblyWiring:
         assert first == second
         assert len(journal.appends) == 1
 
-    def test_byte_identical_candidates_reconcile_onto_their_own_entries(self):
+    def test_duplicate_text_reconcile_onto_own_entries(self):
         """Reconciliation is by cand: tag, never by verbatim text."""
         journal = _FakeJournal()
         text = "Alice deployed the service."
@@ -1087,7 +1089,7 @@ class TestAssemblyWiring:
         assert row.reason_code == ReasonCode.ASSEMBLY_FAILED.value
         assert row.detail_code == type(exc).__name__
 
-    def test_pending_row_is_committed_before_append_is_entered(self):
+    def test_pending_written_before_append(self):
         """Ordering: no candidate reaches append() with zero rows."""
         candidate = self._candidate()
         seen = {}
@@ -1103,7 +1105,7 @@ class TestAssemblyWiring:
         assert seen["row"] is not None, "append() ran with no decision-log row"
         assert seen["row"].state == Verdict.PENDING.value
 
-    def test_assembly_stores_the_span_byte_identically_with_the_cand_tag(self):
+    def test_candidate_identity_tag_on_assembled_entries(self):
         journal = _FakeJournal()
         candidate = self._candidate(text="  Alice   deployed the SERVICE.  ")
         DecisionLog().assemble("agent-bytes", candidate, journal)
@@ -1115,7 +1117,7 @@ class TestAssemblyWiring:
         assert call["agent_id"] == "agent-bytes"
         assert call["kind"] == "assert"
 
-    def test_terminal_conflict_guard_survives_a_retried_reject(self):
+    def test_terminal_conflict_refused_survives_a_retried_reject(self):
         journal = _FakeJournal()
         candidate = self._candidate()
         log = DecisionLog()
@@ -1164,7 +1166,7 @@ class TestAssemblyWiring:
             "t-90:sentence:5": True,
         }
 
-    def test_compute_metrics_from_the_log(self):
+    def test_precision_recall_computable_from_log_alone(self):
         gold = self._seed_metrics_corpus("agent-metrics")
 
         metrics = DecisionLog().compute_metrics("agent-metrics", gold)
@@ -1242,7 +1244,9 @@ class TestSubconsciousMemoryWiring:
 
         assert first == second
 
-    def test_auditable_path_logs_every_candidate_terminally(self):
+    def test_auditable_path_logs_every_candidate_terminally_and_no_pending_survives(
+        self,
+    ):
         journal = _FakeJournal()
         memory = SubconsciousMemory(
             agent_id="agent-auditable",
