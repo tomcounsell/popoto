@@ -139,6 +139,13 @@ class ReasonCode(str, enum.Enum):
       and must not charge it against the model's recall.
     - ``EMPTY_TURN`` -- there was nothing to decide (blank turn, or a
       candidate whose span is whitespace). Pairs with ``REJECT``.
+    - ``TURN_LEVEL_BLOCK`` -- the turn-level (M2) never-record scan voided
+      the *whole* turn before any candidate was generated. Pairs with
+      ``FIREWALL_DROP``, but is distinct from
+      ``PRE_LLM_CANDIDATE_BLOCK``: that code means a per-candidate span was
+      blocked by the M3 scan after candidates existed and the LLM never saw
+      *that* one; this code means M2's turn-level scan fired first and no
+      candidates were ever generated for this turn at all.
     """
 
     # --- trusted code only -------------------------------------------
@@ -148,6 +155,7 @@ class ReasonCode(str, enum.Enum):
     AMBIGUOUS_RECONCILIATION = "ambiguous_reconciliation"
     LLM_UNAVAILABLE = "llm_unavailable"
     EMPTY_TURN = "empty_turn"
+    TURN_LEVEL_BLOCK = "turn_level_block"
 
     # --- the model may emit these ------------------------------------
     ACCEPTED = "accepted"

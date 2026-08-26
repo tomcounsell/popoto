@@ -377,7 +377,13 @@ class DecisionLog:
         }
         return [
             DB_key(
-                KeyField.get_special_use_field_db_key(DecisionRecord, field_name),
+                # DecisionRecord (the class) is accepted here at runtime;
+                # get_special_use_field_db_key's signature is typed for a
+                # Model instance because most callers hold one, but this is
+                # an ORM-descriptor false positive, not a real type error.
+                KeyField.get_special_use_field_db_key(
+                    DecisionRecord, field_name  # type: ignore[arg-type]
+                ),
                 value,
             ).redis_key
             for field_name, value in values.items()
@@ -517,7 +523,10 @@ class DecisionLog:
             6,
             self.row_key(agent_id, candidate.turn_id, candidate.candidate_id),
             self.summary_key(agent_id, candidate.turn_id),
-            DecisionRecord._meta.db_class_set_key.redis_key,
+            # _meta is a real classvar Popoto attaches to every Model
+            # subclass; mypy's Model stub doesn't declare it as a ClassVar,
+            # hence the false attr-defined here.
+            DecisionRecord._meta.db_class_set_key.redis_key,  # type: ignore[attr-defined]
             *self.key_field_index_keys(
                 agent_id, candidate.turn_id, candidate.candidate_id
             ),
@@ -664,7 +673,10 @@ class DecisionLog:
 
             if existing is not None and existing.is_terminal:
                 if existing.state == Verdict.ACCEPT.value and existing.entry_id:
-                    return existing.entry_id
+                    # StringField subclasses str at runtime; mypy sees the
+                    # descriptor type declared on the class, not the plain
+                    # str an instance actually holds.
+                    return existing.entry_id  # type: ignore[return-value]
                 return None
 
             if existing is not None and existing.state == Verdict.PENDING.value:
@@ -818,7 +830,10 @@ class DecisionLog:
         escaping are derived, not assumed. Mirrors
         ``KeyFieldMixin.filter_query``'s pattern construction.
         """
-        meta = DecisionRecord._meta
+        # _meta is a real classvar Popoto attaches to every Model subclass;
+        # mypy's Model stub doesn't declare it as a ClassVar, hence the
+        # false attr-defined here.
+        meta = DecisionRecord._meta  # type: ignore[attr-defined]
         position = meta.get_db_key_index_position("agent_id")
         pattern = meta.db_class_key.redis_key + ":"
         pattern += "*:" * (position - 1)
@@ -833,7 +848,10 @@ class DecisionLog:
         key = self.row_key(agent_id, turn_id, candidate_id)
         if not self._redis.exists(key):
             return None
-        rows = Query.get_many_objects(DecisionRecord, {key})
+        # DecisionRecord (the class) is the correct argument here;
+        # get_many_objects' signature is typed for a Model instance because
+        # most callers hold one -- an ORM-descriptor false positive.
+        rows = Query.get_many_objects(DecisionRecord, {key})  # type: ignore[arg-type]
         return rows[0] if rows else None
 
     def list_for_agent(self, agent_id: str) -> List[DecisionRecord]:
@@ -858,7 +876,8 @@ class DecisionLog:
         keys = set(self._redis.scan_iter(match=self._agent_key_pattern(agent_id)))
         if not keys:
             return []
-        return Query.get_many_objects(DecisionRecord, keys)
+        # Same ORM-descriptor false positive as DecisionLog.get() above.
+        return Query.get_many_objects(DecisionRecord, keys)  # type: ignore[arg-type]
 
     def list_pending(
         self, agent_id: str, older_than: Optional[float] = None
@@ -937,15 +956,26 @@ class DecisionLog:
         per_generator_rule: Dict[str, Dict[str, int]] = {}
 
         for row in rows:
-            per_reason_code[row.reason_code] = (
-                per_reason_code.get(row.reason_code, 0) + 1
-            )
-            by_state = per_generator_rule.setdefault(row.generator_rule, {})
-            by_state[row.state] = by_state.get(row.state, 0) + 1
+            # row.reason_code / .generator_rule / .state / .candidate_id
+            # are all StringFields, which subclass str at runtime; mypy
+            # sees the descriptor type declared on the class rather than
+            # the plain str each instance actually holds. str(...) is a
+            # real runtime no-op here (StringField.__str__ returns self's
+            # underlying value) that also narrows the static type, so no
+            # `# type: ignore` is needed at all -- and nothing for black
+            # to reformat out from under a pinned ignore comment.
+            reason_code = str(row.reason_code)
+            generator_rule = str(row.generator_rule)
+            state = str(row.state)
+            candidate_id = str(row.candidate_id)
 
-            if row.candidate_id not in gold_labels:
+            per_reason_code[reason_code] = per_reason_code.get(reason_code, 0) + 1
+            by_state = per_generator_rule.setdefault(generator_rule, {})
+            by_state[state] = by_state.get(state, 0) + 1
+
+            if candidate_id not in gold_labels:
                 continue
-            should_accept = gold_labels[row.candidate_id]
+            should_accept = gold_labels[candidate_id]
             accepted = row.state == Verdict.ACCEPT.value
             if accepted and should_accept:
                 true_positives += 1

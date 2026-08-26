@@ -267,6 +267,14 @@ class SubconsciousMemory:
         self._auditable = auditable_extraction
         self._decision_log = None
         if auditable_extraction is not None:
+            if auditable_extraction.journal is None:
+                raise ValueError(
+                    "AuditableExtractionConfig.journal is required — the "
+                    "auditable path has no journal to assemble accepted "
+                    "candidates into. Pass journal=ProvenanceJournal (or a "
+                    "subclass)."
+                )
+
             from ..extraction.decision_log import DecisionLog
 
             self._decision_log = DecisionLog()
@@ -398,7 +406,12 @@ class SubconsciousMemory:
             importance: Fallback importance score used for any extracted
                 fact that has no importance opinion of its own (i.e.
                 ``ExtractedFact.importance is None``). Float between 0.0
-                and 1.0. Default 0.5.
+                and 1.0. Default 0.5. Applies to the **default path only**
+                (against ``model_class``). Ignored entirely when
+                ``auditable_extraction`` is set: accepted facts on the
+                auditable path always carry ``importance=None`` --
+                distillation/scoring of accepted candidates is M4's job,
+                not M3's.
             turn_id: Identifies the turn on the **auditable path only**
                 (#562), where it keys the decision log and the journal
                 entries. Ignored entirely when ``auditable_extraction`` is
@@ -436,6 +449,8 @@ class SubconsciousMemory:
             if verdict.blocked:
                 write_tombstone(self.model_class.__name__, verdict)
                 self._last_extraction_privacy_dropped = True
+                if self._auditable is not None:
+                    self._log_turn_firewall_block(turn_id)
                 return []
 
         if self._auditable is not None:
@@ -503,6 +518,9 @@ class SubconsciousMemory:
         from ..extraction.candidates import Candidate
         from ..extraction.verdict import ReasonCode, Verdict
 
+        # Only ever called when self._auditable is not None, which is
+        # exactly when self._decision_log was constructed (see __init__).
+        assert self._decision_log is not None
         turn_id = turn_id or self._new_turn_id()
         self._decision_log.write_terminal(
             self.agent_id,
@@ -516,6 +534,40 @@ class SubconsciousMemory:
             ),
             Verdict.REJECT,
             ReasonCode.EMPTY_TURN,
+        )
+
+    def _log_turn_firewall_block(self, turn_id):
+        """Record the one ``firewall_drop``(``turn_level_block``) row for a
+        turn voided by the turn-level (M2) never-record scan.
+
+        Mirrors :meth:`_log_empty_turn`'s pattern: the turn-level firewall
+        fires *before* any candidate is generated, so there is nothing for
+        the per-candidate M3 path to log against, and without this the
+        turn would leave zero decision-log rows -- breaking the invariant
+        that every candidate (here, the whole voided turn) terminates in
+        exactly one logged state. Distinct from the per-candidate
+        ``firewall_drop``/``pre_llm_candidate_block`` row written when a
+        single candidate's span is blocked after candidates already exist.
+        """
+        from ..extraction.candidates import Candidate
+        from ..extraction.verdict import ReasonCode, Verdict
+
+        # Only ever called when self._auditable is not None, which is
+        # exactly when self._decision_log was constructed (see __init__).
+        assert self._decision_log is not None
+        turn_id = turn_id or self._new_turn_id()
+        self._decision_log.write_terminal(
+            self.agent_id,
+            Candidate(
+                text="",
+                turn_id=turn_id,
+                candidate_id=f"{turn_id}:turn_firewall:0",
+                start=0,
+                end=0,
+                generator_rule="turn",
+            ),
+            Verdict.FIREWALL_DROP,
+            ReasonCode.TURN_LEVEL_BLOCK,
         )
 
     def _verdict_for(self, candidate):
@@ -565,6 +617,9 @@ class SubconsciousMemory:
         from ..extraction.candidates import generate_candidates
         from ..extraction.verdict import Verdict
 
+        # Only ever called when self._auditable is not None, which is
+        # exactly when self._decision_log was constructed (see __init__).
+        assert self._decision_log is not None
         turn_id = turn_id or self._new_turn_id()
         log = self._decision_log
         journal = self._auditable.journal

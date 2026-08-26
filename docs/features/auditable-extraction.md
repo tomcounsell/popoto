@@ -120,6 +120,34 @@ generic bucket for write errors, so it keeps meaning exactly one thing
 An offline query for "how often did privacy block content the model had
 already agreed to store" is one `reason_code` filter.
 
+## A third: the turn-level firewall block
+
+The two reason codes above both pair with a *candidate* that exists. But
+`extract_memories()` runs one more never-record check before candidates are
+even generated: the **turn-level (M2) scan** over the whole `response_text`
+(`popoto.privacy.never_record.scan_never_record`), inherited unchanged from
+the non-auditable path (#561). An off-the-record marker anywhere in the turn
+voids the *entire* turn — including facts that would have come from adjacent,
+unrelated sentences — so it has to run before candidate generation, not
+per-candidate.
+
+On the auditable path, a turn-level block still produces exactly one
+decision-log row rather than zero: `firewall_drop` /
+**`turn_level_block`**, on a synthesized candidate
+(`candidate_id=f"{turn_id}:turn_firewall:0"`, `generator_rule="turn"`), the
+same pattern `_log_empty_turn` uses for a blank turn. `extract_memories()`
+still returns `[]` and `last_extraction_privacy_dropped` is still set `True`
+— nothing about the caller-visible return changes — but the decision log no
+longer has a silent gap for the turn.
+
+`turn_level_block` is a distinct reason code from `pre_llm_candidate_block`
+on purpose: `pre_llm_candidate_block` means *candidates existed and M3's
+per-candidate scan blocked one of their spans*; `turn_level_block` means
+*M2's turn-level scan fired first and no candidates were ever generated for
+this turn at all*. Both pair with the `firewall_drop` state, but only the
+reason code tells you which scan — and which stage of the pipeline — did
+the blocking.
+
 ## The enum-verdict contract
 
 The LLM contributes exactly `{candidate_id, verdict, reason_code}` — three

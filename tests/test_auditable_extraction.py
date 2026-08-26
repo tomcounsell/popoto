@@ -1219,6 +1219,23 @@ class TestAssemblyWiring:
 class TestSubconsciousMemoryWiring:
     """The opt-in flag. The default path must not move a byte."""
 
+    def test_auditable_config_without_journal_raises_loudly(self):
+        """journal=None must fail fast at construction, not silently drop.
+
+        Regression for TD2: previously an omitted journal reached
+        journal.append() inside _append_and_transition, raised
+        AttributeError, was swallowed by the broad except Exception there,
+        and got written as reject/assembly_failed -- indistinguishable from
+        "the model rejected everything". Construction must refuse instead.
+        """
+        with pytest.raises(ValueError, match="journal"):
+            SubconsciousMemory(
+                agent_id="agent-no-journal",
+                auditable_extraction=AuditableExtractionConfig(
+                    verdict_provider=_StubVerdict(accept_all=True)
+                ),
+            )
+
     def test_default_path_is_unchanged(self):
         """auditable_extraction defaults to None and nothing else changes."""
         memory = SubconsciousMemory(agent_id="agent-default")
@@ -1302,6 +1319,11 @@ class TestSubconsciousMemoryWiring:
         assert result == []
         assert journal.appends == [], "a voided turn must never reach the journal"
         assert memory.last_extraction_privacy_dropped is True
+
+        rows = DecisionLog().list_for_agent("agent-turnfw")
+        assert len(rows) == 1, "the voided turn must still log exactly one row"
+        assert rows[0].state == Verdict.FIREWALL_DROP.value
+        assert rows[0].reason_code == ReasonCode.TURN_LEVEL_BLOCK.value
 
     def test_a_raising_verdict_provider_does_not_lose_the_candidate(self):
         class Exploding:
