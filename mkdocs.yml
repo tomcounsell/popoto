@@ -48,6 +48,7 @@ nav:
                 - ObservationProtocol: 'features/observation-protocol.md'
                 - ValidityField and Supersession: 'features/validity-and-supersession.md'
                 - Provenance Journal: 'features/provenance-journal.md'
+                - Auditable Extraction: 'features/auditable-extraction.md'
                 - PredictionLedger: 'features/prediction-ledger.md'
                 - Composite Score Query: 'features/composite-score-query.md'
                 - PolicyCache: 'features/policy-cache.md'

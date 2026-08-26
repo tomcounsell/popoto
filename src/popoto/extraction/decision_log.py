@@ -159,7 +159,13 @@ class DecisionRecord(Model):
         span_end: Candidate span end offset in the turn text.
         text_hash: SHA-256 of the candidate text. A digest is safe *here*
             because nothing scans a decision row; the ``cand:`` journal
-            subject tag is the thing that must stay low-entropy.
+            subject tag is the thing that must stay low-entropy -- a
+            digest-shaped ``candidate_id`` would be blocked by the
+            journal's own write-time firewall as ``high_entropy``
+            (``popoto.privacy.never_record``), which is why
+            :func:`~popoto.extraction.candidates.generate_candidates`
+            mints ``candidate_id`` as ``{turn_id}:{generator_rule}:{ordinal}``
+            rather than a hash.
         entry_id: The journal entry id, set on a terminal ``accept``.
             Empty on every other state.
         detail_code: Free-form diagnostic string, written only by trusted

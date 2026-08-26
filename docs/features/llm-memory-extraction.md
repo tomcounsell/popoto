@@ -208,6 +208,35 @@ sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1",
                          score_weights={"relevance": 1.0}, extraction_provider=MyProvider())
 ```
 
+## Opt-In: Auditable Extraction
+
+Every provider above shares one property: a dropped candidate is invisible.
+A too-short sentence, a malformed model reply, a failed save — each just
+vanishes, with at most a `logger.warning`. There's no way to compute
+precision or recall after the fact because there's no enumerated record of
+what was considered.
+
+`SubconsciousMemory`'s `auditable_extraction=` constructor argument opts
+into a different pipeline: deterministic candidate enumeration, one
+enum-only LLM verdict per candidate, and a per-candidate decision log where
+every candidate ends in exactly one of `firewall_drop | accept | reject |
+withhold`. It's a separate opt-in path, not a fourth provider — it replaces
+the provider abstraction above with its own candidate/verdict/decision-log
+stages, is off by default, and leaves every provider on this page and the
+default `SubconsciousMemory` behavior untouched.
+
+```python
+sm = SubconsciousMemory(
+    agent_id="agent-1",
+    auditable_extraction=AuditableExtractionConfig(journal=ProvenanceJournal),
+)
+```
+
+See [Auditable Extraction](auditable-extraction.md) for the candidate
+generator, the four terminal states, the two `firewall_drop` reason codes,
+the retention policy, and a runnable quickstart that prints
+`DecisionLog.compute_metrics(...)`.
+
 ## Evaluation: extraction lost to raw ingestion
 
 Extraction has been measured against plain turn ingestion on the judged-answer
@@ -254,6 +283,7 @@ testing on your own data before ruling extraction out.
 
 ## See Also
 
+- [Auditable Extraction](auditable-extraction.md) -- the opt-in candidate/verdict/decision-log path, with offline precision/recall
 - [SubconsciousMemory Recipe](../guides/subconscious-memory-recipe.md) -- the recipe that consumes extraction providers
 - [ConfidenceField](confidence-field.md) -- update formula and blending behavior
 - [CoOccurrenceField](co-occurrence-field.md) -- association graph seeded from co-mentioned entities
