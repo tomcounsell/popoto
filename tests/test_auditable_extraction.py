@@ -7,6 +7,7 @@ stage, and the per-candidate decision log. See
 
 import enum
 import json
+import time
 from dataclasses import fields as dataclass_fields
 
 import pytest
@@ -23,7 +24,9 @@ from popoto.extraction.verdict import (
 from popoto.extraction import verdict as verdict_mod
 from popoto.extraction import HeuristicExtractionProvider
 from popoto.extraction.candidates import Candidate, generate_candidates
+from popoto.extraction.decision_log import DecisionLog, DecisionRecord
 from popoto.privacy.never_record import scan_never_record
+from popoto.redis_db import POPOTO_REDIS_DB
 
 # A representative corpus for the candidate generator: multi-sentence prose,
 # a repeated sentence, named entities, acronyms, punctuation variety, and
@@ -413,3 +416,367 @@ class TestCandidateGeneration:
                 f"candidate_id {candidate.candidate_id!r} blocked as "
                 f"{verdict.reason!r}"
             )
+
+
+class TestDecisionLogCore:
+    """Task 3a: composite-key rows, the guarded terminal write, recovery."""
+
+    def _candidate(self, ordinal=0, text="Alice deployed the service."):
+        return Candidate(
+            text=text,
+            turn_id="t-41",
+            candidate_id=f"t-41:sentence:{ordinal}",
+            start=0,
+            end=len(text),
+            generator_rule="sentence",
+        )
+
+    def _rows_for(self, agent_id, turn_id, candidate_id):
+        """Count raw Redis rows for one composite key, bypassing the ORM."""
+        key = DecisionLog.row_key(agent_id, turn_id, candidate_id)
+        return POPOTO_REDIS_DB.keys(f"{key}*")
+
+    # -- keying ----------------------------------------------------------
+
+    def test_composite_key_transitions_one_row_in_place(self):
+        """THE test that pins the design: one row, not one row per save.
+
+        An AutoKeyField on DecisionRecord would mint a second row here and
+        break every idempotency guarantee in the module at once.
+        """
+        log = DecisionLog()
+        candidate = self._candidate()
+
+        log.write_pending("agent-key", candidate)
+        assert len(self._rows_for("agent-key", "t-41", candidate.candidate_id)) == 1
+
+        log.write_terminal(
+            "agent-key",
+            candidate,
+            Verdict.ACCEPT,
+            ReasonCode.ACCEPTED,
+            entry_id="entry-1",
+        )
+
+        rows = self._rows_for("agent-key", "t-41", candidate.candidate_id)
+        assert len(rows) == 1, f"expected exactly one Redis row, got {rows}"
+
+        stored = log.get("agent-key", "t-41", candidate.candidate_id)
+        assert stored.state == Verdict.ACCEPT.value
+        assert stored.entry_id == "entry-1"
+        assert stored.is_terminal is True
+
+        # And the ORM agrees there is one row, not two.
+        matching = [
+            row
+            for row in log.list_for_agent("agent-key")
+            if row.candidate_id == candidate.candidate_id
+        ]
+        assert len(matching) == 1
+
+    def test_key_field_names_are_declared_not_auto(self):
+        assert DecisionRecord._meta.key_field_names == {
+            "agent_id",
+            "turn_id",
+            "candidate_id",
+        }
+        assert "_auto_key" not in DecisionRecord._meta.fields
+        assert DecisionRecord._meta.auto_field_names == set()
+
+    def test_redis_key_joins_key_fields_alphabetically(self):
+        # Not declaration order: candidate_id lands in the middle.
+        key = DecisionLog.row_key("agent-1", "t-41", "t-41:sentence:0")
+        assert key.startswith("DecisionRecord:agent/-1:")
+        assert key.endswith(":t/-41")
+        # Colons inside a value are escaped, which is correct -- the raw
+        # candidate_id must not add key segments.
+        assert key.count(":") == 3
+
+    # -- written_at ------------------------------------------------------
+
+    def test_written_at_is_stamped_on_both_writes(self):
+        log = DecisionLog()
+        candidate = self._candidate()
+        before = time.time()
+
+        log.write_pending("agent-ts", candidate)
+        pending_at = log.get("agent-ts", "t-41", candidate.candidate_id).written_at
+        assert pending_at is not None and pending_at >= before
+
+        time.sleep(0.01)
+        log.write_terminal(
+            "agent-ts",
+            candidate,
+            Verdict.ACCEPT,
+            ReasonCode.ACCEPTED,
+            entry_id="entry-1",
+        )
+        terminal_at = log.get("agent-ts", "t-41", candidate.candidate_id).written_at
+
+        assert terminal_at is not None
+        assert terminal_at > pending_at, "the terminal write must restamp written_at"
+
+    # -- list_pending ----------------------------------------------------
+
+    def test_list_pending_returns_stale_rows_oldest_first(self):
+        log = DecisionLog()
+        for ordinal in range(3):
+            log.write_pending("agent-stale", self._candidate(ordinal))
+            time.sleep(0.01)
+
+        # A terminal row must not appear in list_pending.
+        decided = self._candidate(9)
+        log.write_terminal(
+            "agent-stale", decided, Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+
+        rows = log.list_pending("agent-stale")
+
+        assert [row.candidate_id for row in rows] == [
+            "t-41:sentence:0",
+            "t-41:sentence:1",
+            "t-41:sentence:2",
+        ]
+        stamps = [row.written_at for row in rows]
+        assert stamps == sorted(stamps)
+
+    def test_list_pending_older_than_filters_by_written_at(self):
+        log = DecisionLog()
+        log.write_pending("agent-older", self._candidate(0))
+        time.sleep(0.01)
+        cutoff = time.time()
+        time.sleep(0.01)
+        log.write_pending("agent-older", self._candidate(1))
+
+        rows = log.list_pending("agent-older", older_than=cutoff)
+
+        assert [row.candidate_id for row in rows] == ["t-41:sentence:0"]
+
+    def test_list_pending_is_scoped_to_one_agent(self):
+        log = DecisionLog()
+        log.write_pending("agent-a", self._candidate(0))
+        log.write_pending("agent-b", self._candidate(1))
+
+        assert [r.candidate_id for r in log.list_pending("agent-a")] == [
+            "t-41:sentence:0"
+        ]
+        assert [r.candidate_id for r in log.list_pending("agent-b")] == [
+            "t-41:sentence:1"
+        ]
+
+    # -- detail_code -----------------------------------------------------
+
+    def test_detail_code_is_a_free_form_string_not_an_enum(self):
+        log = DecisionLog()
+        candidate = self._candidate()
+
+        # An exception class name -- the assembly_failed payload shape.
+        log.write_terminal(
+            "agent-detail",
+            candidate,
+            Verdict.REJECT,
+            ReasonCode.ASSEMBLY_FAILED,
+            detail_code="ConnectionError",
+        )
+        row = log.get("agent-detail", "t-41", candidate.candidate_id)
+        assert row.detail_code == "ConnectionError"
+        assert not isinstance(row.detail_code, enum.Enum)
+        assert "ConnectionError" not in {r.value for r in ReasonCode}
+
+        # A comma-joined entry_id list -- the ambiguous_reconciliation shape.
+        other = self._candidate(1)
+        log.write_terminal(
+            "agent-detail",
+            other,
+            Verdict.REJECT,
+            ReasonCode.AMBIGUOUS_RECONCILIATION,
+            detail_code=",".join(["entry-1", "entry-2"]),
+        )
+        assert (
+            log.get("agent-detail", "t-41", other.candidate_id).detail_code
+            == "entry-1,entry-2"
+        )
+
+    def test_detail_code_defaults_to_empty(self):
+        log = DecisionLog()
+        candidate = self._candidate()
+        log.write_terminal(
+            "agent-detail-empty", candidate, Verdict.WITHHOLD, ReasonCode.LOW_CONFIDENCE
+        )
+        assert (
+            log.get("agent-detail-empty", "t-41", candidate.candidate_id).detail_code
+            == ""
+        )
+
+    # -- the guarded terminal write --------------------------------------
+
+    @pytest.mark.parametrize(
+        "state,reason",
+        [
+            (Verdict.FIREWALL_DROP, ReasonCode.PRE_LLM_CANDIDATE_BLOCK),
+            (Verdict.REJECT, ReasonCode.NOT_A_FACT),
+            (Verdict.WITHHOLD, ReasonCode.LOW_CONFIDENCE),
+        ],
+    )
+    def test_fresh_candidate_terminal_write_succeeds(self, state, reason):
+        """No prior row to conflict with -- the guard lets it through."""
+        log = DecisionLog()
+        agent = f"agent-fresh-{state.value}"
+        candidate = self._candidate()
+
+        assert log.write_terminal(agent, candidate, state, reason) is True
+
+        row = log.get(agent, "t-41", candidate.candidate_id)
+        assert row.state == state.value
+        assert row.reason_code == reason.value
+        assert row.detail_code == ""
+        assert row.written_at is not None
+        # A row the script created from scratch is still queryable.
+        assert len(self._rows_for(agent, "t-41", candidate.candidate_id)) == 1
+
+    def test_lua_created_row_is_visible_to_the_orm_query_api(self):
+        """A row whose FIRST write is terminal must not be a ghost.
+
+        The guard script writes the row hash directly, so Popoto's
+        on_save index bookkeeping never runs for it. Without the script's
+        own SADDs the row would sit in Redis in full while both .all()
+        and .filter() failed to see it -- silently partial results for
+        any later caller.
+        """
+        log = DecisionLog()
+        candidate = self._candidate()
+        log.write_terminal(
+            "agent-orm", candidate, Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+
+        by_filter = list(
+            DecisionRecord.query.filter(
+                agent_id="agent-orm",
+                turn_id="t-41",
+                candidate_id=candidate.candidate_id,
+            )
+        )
+        assert len(by_filter) == 1
+        assert by_filter[0].state == Verdict.REJECT.value
+
+        assert any(row.agent_id == "agent-orm" for row in DecisionRecord.query.all())
+
+    def test_terminal_write_is_refused_against_an_assembled_accept_row(self):
+        log = DecisionLog()
+        candidate = self._candidate()
+        log.write_pending("agent-guard", candidate)
+        log.write_terminal(
+            "agent-guard",
+            candidate,
+            Verdict.ACCEPT,
+            ReasonCode.ACCEPTED,
+            entry_id="entry-77",
+        )
+
+        # A retried, non-deterministic verdict resolves reject this time.
+        refused = log.write_terminal(
+            "agent-guard", candidate, Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+
+        assert refused is False
+        row = log.get("agent-guard", "t-41", candidate.candidate_id)
+        assert row.state == Verdict.ACCEPT.value, "the accept row must stand"
+        assert row.entry_id == "entry-77"
+        assert row.reason_code == ReasonCode.ACCEPTED.value
+        assert row.detail_code == DecisionLog.CONFLICT_REFUSED
+        assert len(self._rows_for("agent-guard", "t-41", candidate.candidate_id)) == 1
+
+    def test_accept_row_without_an_entry_id_is_not_protected(self):
+        """The guard keys on an assembled row, not on the accept state alone.
+
+        An accept row with no entry_id has no journal entry behind it, so
+        there is nothing for the log to disagree with.
+        """
+        log = DecisionLog()
+        candidate = self._candidate()
+        log.write_terminal(
+            "agent-noentry", candidate, Verdict.ACCEPT, ReasonCode.ACCEPTED
+        )
+
+        assert (
+            log.write_terminal(
+                "agent-noentry", candidate, Verdict.REJECT, ReasonCode.ASSEMBLY_FAILED
+            )
+            is True
+        )
+        assert (
+            log.get("agent-noentry", "t-41", candidate.candidate_id).state
+            == Verdict.REJECT.value
+        )
+
+    def test_pending_row_is_not_protected_by_the_guard(self):
+        """pending -> terminal is the normal path and must never be refused."""
+        log = DecisionLog()
+        candidate = self._candidate()
+        log.write_pending("agent-pending", candidate)
+
+        assert (
+            log.write_terminal(
+                "agent-pending",
+                candidate,
+                Verdict.FIREWALL_DROP,
+                ReasonCode.POST_ACCEPT_JOURNAL_BLOCK,
+            )
+            is True
+        )
+        row = log.get("agent-pending", "t-41", candidate.candidate_id)
+        assert row.state == Verdict.FIREWALL_DROP.value
+        assert row.reason_code == ReasonCode.POST_ACCEPT_JOURNAL_BLOCK.value
+
+    def test_write_terminal_refuses_the_non_terminal_pending_marker(self):
+        log = DecisionLog()
+        with pytest.raises(ValueError, match="terminal"):
+            log.write_terminal(
+                "agent-x", self._candidate(), Verdict.PENDING, ReasonCode.ACCEPTED
+            )
+
+    # -- per-turn summary ------------------------------------------------
+
+    def test_summary_counts_terminal_states_only(self):
+        log = DecisionLog()
+        log.write_pending("agent-sum", self._candidate(0))  # never counted
+        log.write_terminal(
+            "agent-sum", self._candidate(1), Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+        log.write_terminal(
+            "agent-sum", self._candidate(2), Verdict.REJECT, ReasonCode.NOT_MEMORABLE
+        )
+        log.write_terminal(
+            "agent-sum",
+            self._candidate(3),
+            Verdict.FIREWALL_DROP,
+            ReasonCode.PRE_LLM_CANDIDATE_BLOCK,
+        )
+
+        summary = log.turn_summary("agent-sum", "t-41")
+
+        assert summary["state:reject"] == 2
+        assert summary["state:firewall_drop"] == 1
+        assert summary["reason:not_a_fact"] == 1
+        assert summary["reason:not_memorable"] == 1
+        assert "state:pending" not in summary
+
+    def test_summary_counts_a_transitioned_candidate_once(self):
+        log = DecisionLog()
+        candidate = self._candidate()
+        log.write_pending("agent-once", candidate)
+        log.write_terminal(
+            "agent-once",
+            candidate,
+            Verdict.ACCEPT,
+            ReasonCode.ACCEPTED,
+            entry_id="entry-1",
+        )
+        # A refused retry must not touch the counts either.
+        log.write_terminal(
+            "agent-once", candidate, Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+
+        summary = log.turn_summary("agent-once", "t-41")
+        assert summary["state:accept"] == 1
+        assert "state:reject" not in summary
