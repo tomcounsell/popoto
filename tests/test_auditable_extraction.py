@@ -7,7 +7,11 @@ stage, and the per-candidate decision log. See
 
 import enum
 import json
+import threading
 import time
+from dataclasses import dataclass
+from itertools import count
+from types import SimpleNamespace
 from dataclasses import fields as dataclass_fields
 
 import pytest
@@ -24,7 +28,15 @@ from popoto.extraction.verdict import (
 from popoto.extraction import verdict as verdict_mod
 from popoto.extraction import HeuristicExtractionProvider
 from popoto.extraction.candidates import Candidate, generate_candidates
-from popoto.extraction.decision_log import DecisionLog, DecisionRecord
+from popoto.exceptions import JournalBlockedError
+from popoto.extraction.decision_log import (
+    AuditableExtractionConfig,
+    DecisionLog,
+    DecisionRecord,
+)
+from popoto.fields.constants import Defaults
+from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+from popoto.recipes.subconscious_memory import SubconsciousMemory
 from popoto.privacy.never_record import scan_never_record
 from popoto.redis_db import POPOTO_REDIS_DB
 
@@ -107,6 +119,90 @@ def _reply(candidate_id, verdict, reason_code, **extra):
     }
     payload.update(extra)
     return json.dumps(payload)
+
+
+# ---------------------------------------------------------------------------
+# Assembly test doubles.
+#
+# _FakeJournal stands in for ProvenanceJournal: it records every append and
+# answers the cand:-tag identity probe from its own entries, so the dedup
+# logic is exercised without depending on the real journal's keyspace. The
+# probe goes through `entry_model.query.filter(...)`, which is the same
+# attribute the real façade exposes.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FakeEntry:
+    entry_id: str
+    turn_id: str
+    subjects: list
+
+
+class _FakeEntryQuery:
+    def __init__(self, journal):
+        self._journal = journal
+
+    def filter(self, turn_id=None, subjects__all=None):
+        wanted = set(subjects__all or [])
+        return [
+            entry
+            for entry in self._journal.entries
+            if entry.turn_id == turn_id and wanted.issubset(set(entry.subjects))
+        ]
+
+
+class _FakeEntryModel:
+    def __init__(self, journal):
+        self.query = _FakeEntryQuery(journal)
+
+
+class _FakeJournal:
+    """Records appends; raises on demand; answers the identity probe."""
+
+    _ids = count(1)
+
+    def __init__(self, raise_exc=None, on_append=None):
+        self.appends = []
+        self.entries = []
+        self._raise_exc = raise_exc
+        self._on_append = on_append
+        self.entry_model = _FakeEntryModel(self)
+
+    def append(self, **kwargs):
+        if self._on_append is not None:
+            self._on_append()
+        if self._raise_exc is not None:
+            raise self._raise_exc
+        entry_id = f"entry-{next(self._ids)}"
+        entry = _FakeEntry(
+            entry_id=entry_id,
+            turn_id=kwargs.get("turn_id"),
+            subjects=list(kwargs.get("subjects") or []),
+        )
+        self.entries.append(entry)
+        self.appends.append({**kwargs, "entry_id": entry_id})
+        return SimpleNamespace(entry=entry, target_closed=False)
+
+
+class _StubVerdict:
+    """A deterministic verdict provider keyed on the candidate's ordinal."""
+
+    def __init__(self, accept_ordinals=(), accept_all=False):
+        self.accept_ordinals = set(accept_ordinals)
+        self.accept_all = accept_all
+        self.calls = []
+
+    def __call__(self, candidate):
+        self.calls.append(candidate)
+        ordinal = int(candidate.candidate_id.rsplit(":", 1)[1])
+        if self.accept_all or ordinal in self.accept_ordinals:
+            return VerdictResult(
+                candidate.candidate_id, Verdict.ACCEPT, ReasonCode.ACCEPTED
+            )
+        return VerdictResult(
+            candidate.candidate_id, Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
 
 
 class TestVerdictVocabulary:
@@ -780,3 +876,544 @@ class TestDecisionLogCore:
         summary = log.turn_summary("agent-once", "t-41")
         assert summary["state:accept"] == 1
         assert "state:reject" not in summary
+
+
+class TestAssemblyWiring:
+    """Task 3b: the claim, identity reconciliation, and the opt-in flag."""
+
+    def _candidate(self, ordinal=0, text="Alice deployed the service.", turn="t-90"):
+        return Candidate(
+            text=text,
+            turn_id=turn,
+            candidate_id=f"{turn}:sentence:{ordinal}",
+            start=0,
+            end=len(text),
+            generator_rule="sentence",
+        )
+
+    # -- Race 4: the atomic claim ----------------------------------------
+
+    def test_second_runner_loses_the_claim(self):
+        log = DecisionLog()
+        args = ("agent-claim", "t-90", "t-90:sentence:0")
+
+        first = log.acquire_claim(*args)
+        second = log.acquire_claim(*args)
+
+        assert first is not None
+        assert second is None, "SET NX must admit exactly one runner"
+
+        assert log.release_claim(*args, first) is True
+        assert log.acquire_claim(*args) is not None, "released claim is re-takeable"
+
+    def test_release_is_token_checked(self):
+        log = DecisionLog()
+        args = ("agent-token", "t-90", "t-90:sentence:0")
+        log.acquire_claim(*args)
+
+        # A runner whose claim already expired must not delete the claim
+        # its successor now holds.
+        assert log.release_claim(*args, "not-my-token") is False
+        assert log.acquire_claim(*args) is None, "the real owner still holds it"
+
+    def test_claim_carries_a_finite_ttl(self):
+        log = DecisionLog()
+        args = ("agent-ttl", "t-90", "t-90:sentence:0")
+        log.acquire_claim(*args)
+
+        ttl_ms = POPOTO_REDIS_DB.pttl(DecisionLog.claim_key(*args))
+
+        assert 0 < ttl_ms <= Defaults.M3_ASSEMBLY_CLAIM_TTL_MS
+
+    def test_racing_runners_produce_exactly_one_entry_and_one_row(self):
+        journal = _FakeJournal()
+        candidate = self._candidate()
+        results = []
+        barrier = threading.Barrier(2)
+
+        def run():
+            barrier.wait()
+            results.append(DecisionLog().assemble("agent-race", candidate, journal))
+
+        threads = [threading.Thread(target=run) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(journal.appends) == 1, "the loser must append nothing"
+        # A runner that arrives after the winner released the claim reads
+        # the terminal accept row and returns the same entry_id -- that is
+        # the idempotent re-run, not a second assembly. What must never
+        # happen is two entries, or two runners reporting *different* ones.
+        reported = {r for r in results if r is not None}
+        assert len(reported) == 1
+
+        log = DecisionLog()
+        rows = [
+            row
+            for row in log.list_for_agent("agent-race")
+            if row.candidate_id == candidate.candidate_id
+        ]
+        assert len(rows) == 1
+        assert rows[0].state == Verdict.ACCEPT.value
+        assert rows[0].entry_id == journal.appends[0]["entry_id"]
+
+    # -- Race 3: reconciliation across an interrupted run -----------------
+
+    def test_interrupted_run_reconciles_without_a_second_append(self):
+        """The pending row survived; the entry landed. Reconcile, don't append."""
+        journal = _FakeJournal()
+        candidate = self._candidate()
+        log = DecisionLog()
+
+        # Simulate the crash: pending row committed, append() landed, the
+        # terminal write never ran.
+        log.write_pending("agent-interrupted", candidate)
+        entry_id = journal.append(
+            agent_id="agent-interrupted",
+            kind="assert",
+            verbatim=candidate.text,
+            statement=candidate.text,
+            speaker=None,
+            turn_id=candidate.turn_id,
+            subjects=[f"cand:{candidate.candidate_id}"],
+        ).entry.entry_id
+
+        reconciled = log.assemble("agent-interrupted", candidate, journal)
+
+        assert reconciled == entry_id
+        assert len(journal.appends) == 1, "must not re-append"
+        row = log.get("agent-interrupted", candidate.turn_id, candidate.candidate_id)
+        assert row.state == Verdict.ACCEPT.value
+        assert row.entry_id == entry_id
+
+    def test_rerunning_a_completed_candidate_appends_nothing(self):
+        journal = _FakeJournal()
+        candidate = self._candidate()
+        log = DecisionLog()
+
+        first = log.assemble("agent-rerun", candidate, journal)
+        second = log.assemble("agent-rerun", candidate, journal)
+
+        assert first == second
+        assert len(journal.appends) == 1
+
+    def test_byte_identical_candidates_reconcile_onto_their_own_entries(self):
+        """Reconciliation is by cand: tag, never by verbatim text."""
+        journal = _FakeJournal()
+        text = "Alice deployed the service."
+        first = self._candidate(0, text=text)
+        second = self._candidate(1, text=text)
+        assert first.text == second.text
+        log = DecisionLog()
+
+        entry_ids = {}
+        for candidate in (first, second):
+            log.write_pending("agent-dup", candidate)
+            entry_ids[candidate.candidate_id] = journal.append(
+                agent_id="agent-dup",
+                kind="assert",
+                verbatim=candidate.text,
+                statement=candidate.text,
+                speaker=None,
+                turn_id=candidate.turn_id,
+                subjects=[f"cand:{candidate.candidate_id}"],
+            ).entry.entry_id
+
+        for candidate in (first, second):
+            assert (
+                log.assemble("agent-dup", candidate, journal)
+                == entry_ids[candidate.candidate_id]
+            ), "a text match would have cross-wired these two"
+        assert len(journal.appends) == 2
+
+    def test_ambiguous_reconciliation_appends_nothing_and_records_entry_ids(self):
+        journal = _FakeJournal()
+        candidate = self._candidate()
+        log = DecisionLog()
+        log.write_pending("agent-ambig", candidate)
+
+        # Two entries carrying the same cand: tag, written out of band.
+        for _ in range(2):
+            journal.append(
+                agent_id="agent-ambig",
+                kind="assert",
+                verbatim=candidate.text,
+                statement=candidate.text,
+                speaker=None,
+                turn_id=candidate.turn_id,
+                subjects=[f"cand:{candidate.candidate_id}"],
+            )
+        appends_before = len(journal.appends)
+
+        assert log.assemble("agent-ambig", candidate, journal) is None
+
+        assert len(journal.appends) == appends_before, "must append nothing"
+        row = log.get("agent-ambig", candidate.turn_id, candidate.candidate_id)
+        assert row.state == Verdict.REJECT.value
+        assert row.reason_code == ReasonCode.AMBIGUOUS_RECONCILIATION.value
+        assert sorted(row.detail_code.split(",")) == sorted(
+            entry["entry_id"] for entry in journal.appends
+        )
+
+    # -- the append() transition table -----------------------------------
+
+    def test_journal_block_maps_to_firewall_drop_post_accept(self):
+        journal = _FakeJournal(raise_exc=JournalBlockedError("refused"))
+        candidate = self._candidate()
+        log = DecisionLog()
+
+        assert log.assemble("agent-blocked", candidate, journal) is None
+
+        row = log.get("agent-blocked", candidate.turn_id, candidate.candidate_id)
+        assert row.state == Verdict.FIREWALL_DROP.value
+        assert row.reason_code == ReasonCode.POST_ACCEPT_JOURNAL_BLOCK.value
+        assert row.entry_id == ""
+
+    @pytest.mark.parametrize(
+        "exc", [ValueError("bad"), TypeError("worse"), ConnectionError("flaky")]
+    )
+    def test_other_append_failures_map_to_reject_assembly_failed(self, exc):
+        journal = _FakeJournal(raise_exc=exc)
+        candidate = self._candidate()
+        agent = f"agent-fail-{type(exc).__name__}"
+        log = DecisionLog()
+
+        assert log.assemble(agent, candidate, journal) is None
+
+        row = log.get(agent, candidate.turn_id, candidate.candidate_id)
+        assert row.state == Verdict.REJECT.value
+        assert row.reason_code == ReasonCode.ASSEMBLY_FAILED.value
+        assert row.detail_code == type(exc).__name__
+
+    def test_pending_row_is_committed_before_append_is_entered(self):
+        """Ordering: no candidate reaches append() with zero rows."""
+        candidate = self._candidate()
+        seen = {}
+
+        def on_append():
+            seen["row"] = DecisionLog().get(
+                "agent-order", candidate.turn_id, candidate.candidate_id
+            )
+
+        journal = _FakeJournal(on_append=on_append)
+        DecisionLog().assemble("agent-order", candidate, journal)
+
+        assert seen["row"] is not None, "append() ran with no decision-log row"
+        assert seen["row"].state == Verdict.PENDING.value
+
+    def test_assembly_stores_the_span_byte_identically_with_the_cand_tag(self):
+        journal = _FakeJournal()
+        candidate = self._candidate(text="  Alice   deployed the SERVICE.  ")
+        DecisionLog().assemble("agent-bytes", candidate, journal)
+
+        call = journal.appends[0]
+        assert call["verbatim"] == candidate.text
+        assert call["statement"] == candidate.text
+        assert f"cand:{candidate.candidate_id}" in call["subjects"]
+        assert call["agent_id"] == "agent-bytes"
+        assert call["kind"] == "assert"
+
+    def test_terminal_conflict_guard_survives_a_retried_reject(self):
+        journal = _FakeJournal()
+        candidate = self._candidate()
+        log = DecisionLog()
+        entry_id = log.assemble("agent-conflict", candidate, journal)
+
+        refused = log.write_terminal(
+            "agent-conflict", candidate, Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+
+        assert refused is False
+        row = log.get("agent-conflict", candidate.turn_id, candidate.candidate_id)
+        assert row.state == Verdict.ACCEPT.value
+        assert row.entry_id == entry_id
+        assert row.detail_code == DecisionLog.CONFLICT_REFUSED
+        assert entry_id in {entry["entry_id"] for entry in journal.appends}
+
+    # -- offline metrics --------------------------------------------------
+
+    def _seed_metrics_corpus(self, agent_id):
+        log = DecisionLog()
+        journal = _FakeJournal()
+        # 2 true positives, 1 false positive, 1 false negative, plus one
+        # privacy drop and one infrastructure loss that are gold-labelled
+        # accept -- so the breakdown has to separate them.
+        log.assemble(agent_id, self._candidate(0), journal)
+        log.assemble(agent_id, self._candidate(1), journal)
+        log.assemble(agent_id, self._candidate(2), journal)
+        log.write_terminal(
+            agent_id, self._candidate(3), Verdict.REJECT, ReasonCode.NOT_A_FACT
+        )
+        log.write_terminal(
+            agent_id,
+            self._candidate(4),
+            Verdict.FIREWALL_DROP,
+            ReasonCode.PRE_LLM_CANDIDATE_BLOCK,
+        )
+        log.write_terminal(
+            agent_id, self._candidate(5), Verdict.REJECT, ReasonCode.LLM_UNAVAILABLE
+        )
+        return {
+            "t-90:sentence:0": True,
+            "t-90:sentence:1": True,
+            "t-90:sentence:2": False,
+            "t-90:sentence:3": True,
+            "t-90:sentence:4": True,
+            "t-90:sentence:5": True,
+        }
+
+    def test_compute_metrics_from_the_log(self):
+        gold = self._seed_metrics_corpus("agent-metrics")
+
+        metrics = DecisionLog().compute_metrics("agent-metrics", gold)
+
+        assert metrics.true_positives == 2
+        assert metrics.false_positives == 1
+        assert metrics.false_negatives == 3
+        assert metrics.precision == pytest.approx(2 / 3)
+        assert metrics.recall == pytest.approx(2 / 5)
+        assert metrics.f1 == pytest.approx(0.5)
+
+    def test_metrics_breakdown_separates_privacy_model_and_infrastructure(self):
+        gold = self._seed_metrics_corpus("agent-breakdown")
+
+        metrics = DecisionLog().compute_metrics("agent-breakdown", gold)
+
+        # Three structurally different losses, distinguishable in one run.
+        assert metrics.per_reason_code["pre_llm_candidate_block"] == 1  # privacy
+        assert metrics.per_reason_code["not_a_fact"] == 1  # model reject
+        assert metrics.per_reason_code["llm_unavailable"] == 1  # infrastructure
+        assert metrics.per_generator_rule["sentence"] == {
+            "accept": 3,
+            "reject": 2,
+            "firewall_drop": 1,
+        }
+
+    def test_metrics_are_identical_with_the_journal_keyspace_absent(self):
+        gold = self._seed_metrics_corpus("agent-isolated")
+        before = DecisionLog().compute_metrics("agent-isolated", gold)
+
+        # The fake journal holds its entries in memory; drop every real
+        # journal key too, so nothing journal-shaped survives to be read.
+        for key in POPOTO_REDIS_DB.scan_iter(match="JournalEntry*"):
+            POPOTO_REDIS_DB.delete(key)
+
+        after = DecisionLog().compute_metrics("agent-isolated", gold)
+
+        assert (after.precision, after.recall, after.f1) == (
+            before.precision,
+            before.recall,
+            before.f1,
+        )
+        assert after.per_reason_code == before.per_reason_code
+
+    def test_metrics_are_defined_on_an_empty_log(self):
+        metrics = DecisionLog().compute_metrics("agent-nothing", {})
+        assert (metrics.precision, metrics.recall, metrics.f1) == (0.0, 0.0, 0.0)
+
+
+class TestSubconsciousMemoryWiring:
+    """The opt-in flag. The default path must not move a byte."""
+
+    def test_default_path_is_unchanged(self):
+        """auditable_extraction defaults to None and nothing else changes."""
+        memory = SubconsciousMemory(agent_id="agent-default")
+        assert memory.decision_log is None
+
+        saved = memory.extract_memories(
+            "Alice deployed the service. Bob reviewed the change."
+        )
+
+        assert saved, "the default path still saves model instances"
+        assert all(isinstance(item, memory.model_class) for item in saved)
+        assert DecisionLog().list_for_agent("agent-default") == []
+
+    def test_default_path_output_matches_an_unflagged_instance(self):
+        text = "Alice deployed the service. Bob reviewed the change."
+        plain = SubconsciousMemory(agent_id="agent-plain")
+        also_plain = SubconsciousMemory(
+            agent_id="agent-plain-2", auditable_extraction=None
+        )
+
+        first = [getattr(m, "content") for m in plain.extract_memories(text)]
+        second = [getattr(m, "content") for m in also_plain.extract_memories(text)]
+
+        assert first == second
+
+    def test_auditable_path_logs_every_candidate_terminally(self):
+        journal = _FakeJournal()
+        memory = SubconsciousMemory(
+            agent_id="agent-auditable",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=_StubVerdict(accept_ordinals={0}),
+                journal=journal,
+            ),
+        )
+
+        facts = memory.extract_memories(
+            "Alice deployed the service. Bob reviewed the change.",
+            turn_id="t-777",
+        )
+
+        rows = DecisionLog().list_for_agent("agent-auditable")
+        assert rows, "every candidate must be logged"
+        assert all(row.is_terminal for row in rows), "no pending row may survive"
+        assert not DecisionLog().list_pending("agent-auditable")
+
+        accepted = [r for r in rows if r.state == Verdict.ACCEPT.value]
+        assert all(row.entry_id for row in accepted)
+        assert len(facts) == len(accepted)
+        assert all(fact.candidate_id and fact.turn_id == "t-777" for fact in facts)
+
+    def test_auditable_empty_turn_logs_a_reject_row(self):
+        memory = SubconsciousMemory(
+            agent_id="agent-empty",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=_StubVerdict(), journal=_FakeJournal()
+            ),
+        )
+
+        assert memory.extract_memories("   ", turn_id="t-empty") == []
+
+        rows = DecisionLog().list_for_agent("agent-empty")
+        assert len(rows) == 1
+        assert rows[0].state == Verdict.REJECT.value
+        assert rows[0].reason_code == ReasonCode.EMPTY_TURN.value
+
+    def test_auditable_path_keeps_the_turn_level_firewall_first(self):
+        journal = _FakeJournal()
+        memory = SubconsciousMemory(
+            agent_id="agent-turnfw",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=_StubVerdict(accept_all=True), journal=journal
+            ),
+        )
+
+        result = memory.extract_memories(
+            "off the record: Alice deployed the service.", turn_id="t-fw"
+        )
+
+        assert result == []
+        assert journal.appends == [], "a voided turn must never reach the journal"
+        assert memory.last_extraction_privacy_dropped is True
+
+    def test_a_raising_verdict_provider_does_not_lose_the_candidate(self):
+        class Exploding:
+            def __call__(self, candidate):
+                raise RuntimeError("provider down")
+
+        memory = SubconsciousMemory(
+            agent_id="agent-explode",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=Exploding(), journal=_FakeJournal()
+            ),
+        )
+
+        assert memory.extract_memories("Alice deployed it.", turn_id="t-boom") == []
+
+        rows = DecisionLog().list_for_agent("agent-explode")
+        assert rows
+        assert all(row.state == Verdict.REJECT.value for row in rows)
+        assert all(row.reason_code == ReasonCode.LLM_UNAVAILABLE.value for row in rows)
+
+
+class TestAssemblyAgainstTheRealJournal:
+    """The fake journal proves the logic; this proves the integration.
+
+    Everything above exercises assembly against _FakeJournal, which would
+    happily keep passing if append()'s real signature, AnnotationResult's
+    shape, or the subjects__all identity probe drifted. These tests use the
+    real ProvenanceJournal so that drift fails here.
+    """
+
+    def _candidate(self, ordinal=0, text="Alice deployed the service.", turn="t-real"):
+        return Candidate(
+            text=text,
+            turn_id=turn,
+            candidate_id=f"{turn}:sentence:{ordinal}",
+            start=0,
+            end=len(text),
+            generator_rule="sentence",
+        )
+
+    def test_accepted_candidate_lands_in_the_real_journal(self):
+        candidate = self._candidate()
+        log = DecisionLog()
+
+        entry_id = log.assemble("agent-real", candidate, ProvenanceJournal)
+
+        assert entry_id
+        entry = JournalEntry.query.get(entry_id=entry_id)
+        assert entry.statement == entry.verbatim == candidate.text
+        assert f"cand:{candidate.candidate_id}" in entry.subjects
+        assert entry.agent_id == "agent-real"
+        assert entry.kind == "assert"
+
+        row = log.get("agent-real", candidate.turn_id, candidate.candidate_id)
+        assert row.state == Verdict.ACCEPT.value
+        assert row.entry_id == entry_id
+
+    def test_real_identity_probe_reconciles_an_interrupted_run(self):
+        candidate = self._candidate(1)
+        log = DecisionLog()
+
+        # Crash shape: pending row committed, append landed, no terminal write.
+        log.write_pending("agent-real-retry", candidate)
+        entry_id = str(
+            ProvenanceJournal.append(
+                agent_id="agent-real-retry",
+                kind="assert",
+                verbatim=candidate.text,
+                statement=candidate.text,
+                turn_id=candidate.turn_id,
+                subjects=[f"cand:{candidate.candidate_id}"],
+            ).entry.entry_id
+        )
+        before = len(list(JournalEntry.query.filter(turn_id=candidate.turn_id)))
+
+        assert (
+            log.assemble("agent-real-retry", candidate, ProvenanceJournal) == entry_id
+        )
+
+        after = list(JournalEntry.query.filter(turn_id=candidate.turn_id))
+        assert len(after) == before, "reconciliation must not append a duplicate"
+        assert (
+            log.get(
+                "agent-real-retry", candidate.turn_id, candidate.candidate_id
+            ).entry_id
+            == entry_id
+        )
+
+    def test_candidate_id_tag_is_not_blocked_by_the_journals_own_firewall(self):
+        """The journal scans every subject tag; a bad id shape fails M3's writes."""
+        for candidate in generate_candidates(
+            "t-real-fw", "Alice deployed the service. Bob reviewed it."
+        ):
+            assert (
+                DecisionLog().assemble("agent-real-fw", candidate, ProvenanceJournal)
+                is not None
+            ), f"cand:{candidate.candidate_id} was refused by the journal"
+
+    def test_end_to_end_through_subconscious_memory(self):
+        memory = SubconsciousMemory(
+            agent_id="agent-e2e",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=_StubVerdict(accept_all=True),
+                journal=ProvenanceJournal,
+            ),
+        )
+
+        facts = memory.extract_memories(
+            "Alice deployed the service. Bob reviewed the change.",
+            turn_id="t-e2e",
+        )
+
+        assert facts
+        rows = DecisionLog().list_for_agent("agent-e2e")
+        assert all(row.is_terminal for row in rows)
+        entries = list(JournalEntry.query.filter(turn_id="t-e2e"))
+        assert len(entries) == len([r for r in rows if r.state == Verdict.ACCEPT.value])
+        for fact in facts:
+            assert fact.text in {entry.statement for entry in entries}
