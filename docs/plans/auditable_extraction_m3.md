@@ -7,7 +7,7 @@ created: 2026-08-20
 tracking: https://github.com/tomcounsell/popoto/issues/562
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-08-26T03:20:38Z
+revision_applied_at: 2026-08-26T03:44:19Z
 ---
 
 # M3 — Auditable extraction: deterministic candidate generator with a per-candidate decision log
@@ -157,7 +157,11 @@ decision and folded into the sections below; see Technical Approach and No-Gos.
    every candidate gets a row keyed by `(agent_id, turn_id, candidate_id)` *before* anything
    irreversible happens to it.
    - `firewall_drop`, `reject`, `withhold` have no downstream side effect, so their first
-     write is already their **terminal** write — one row, one state, done.
+     write is also their **terminal** write. It is **not** an unconditional write: every
+     non-`accept` terminal write is **guarded** — it is a single Lua script that reads the
+     row's `state`/`entry_id` and refuses to overwrite a row already terminal `accept` with an
+     `entry_id` (see Technical Approach → Terminal-write conflict guard). One row, one terminal
+     state — but the write that produces it is conditional, never a bare `HSET`/`.save()`.
    - `accept` **atomically claims** the candidate with a single `SET ... NX PX` op and then
      writes a **`pending`** row (see Technical Approach → Write ordering and → Atomic assembly
      claim). `pending` is a non-terminal intent marker, not a fifth terminal state. A runner
@@ -262,10 +266,10 @@ The two shipped dependencies are already on `main`; this plan only needs them im
 ```
 response_text
   → Candidate generator  (deterministic; enumerates sentences + entities)
-  → M2 firewall (scan_never_record per span) ──blocked──> DecisionLog[firewall_drop]  (TERMINAL; not sent to LLM)
+  → M2 firewall (scan_never_record per span) ──blocked──> DecisionLog[firewall_drop]  (TERMINAL, GUARDED write; not sent to LLM)
   → Verdict stage (LLM, one candidate at a time, enum verdict + enum reason)
-        reject  → DecisionLog[reject]                                    (TERMINAL, single write)
-        withhold→ DecisionLog[withhold]                                  (TERMINAL, single write)
+        reject  → DecisionLog[reject]                                    (TERMINAL, GUARDED write)
+        withhold→ DecisionLog[withhold]                                  (TERMINAL, GUARDED write)
         accept  → ATOMIC CLAIM: SET m3:claim:{agent}:{turn}:{cand} <token> NX PX <ttl>
                         claim lost  → no-op this runner; the winner owns the append (no second entry)
                         claim won   ↓
@@ -280,6 +284,13 @@ response_text
   → Per-turn compact summary updated from TERMINAL states only
   → SubconsciousMemory.extract_memories() returns (behind the opt-in flag)
 ```
+
+**GUARDED write** above means exactly one thing throughout this plan: the terminal write is
+issued by the single conditional Lua script of Technical Approach → Terminal-write conflict
+guard, which refuses to overwrite a row already terminal `accept` with an `entry_id`. Every
+non-`accept` terminal write — including the pre-LLM `firewall_drop`, which cannot in practice
+conflict because no prior row exists for a fresh candidate — goes through that same helper.
+There is no "fast path" unconditional write anywhere in `decision_log.py`.
 
 Read the diagram against Data Flow steps 5-7: they now describe the same ordering. The
 decision log is written **first** on every path; for `accept` that first write is the
@@ -310,6 +321,50 @@ which a candidate reaches `append()` with zero decision-log rows.
   environment) pass unmodified. The auditable path
   constructs facts from accepted candidates, carrying these fields through to the decision
   log.
+- **`DecisionRecord` keying — composite `KeyField`, and NOT `AutoKeyField` (round-4 C3). Read
+  this before writing the model.** The entire two-phase design rests on one property: the row for
+  `(agent_id, turn_id, candidate_id)` must be retrievable and overwritable **in place** across two
+  separate transactions. Therefore:
+
+  > `agent_id`, `turn_id` and `candidate_id` are **all** `KeyField`s on `DecisionRecord`. The
+  > composite key *is* the candidate's identity, so re-saving the same tuple **transitions the
+  > existing row in place** rather than creating a second row.
+
+  - **Do NOT copy `JournalEntry` here.** The only sibling model uses
+    `entry_id = AutoKeyField()` (`src/popoto/recipes/provenance_journal.py:299`), which mints a
+    **brand-new row on every save** — correct for an append-only journal, catastrophic here. A
+    builder pattern-matching on that sibling would silently break *every* idempotency guarantee
+    in this plan at once: the `pending` → terminal transition would leave two rows, the
+    terminal-write conflict guard would read an empty row and never refuse, and `list_pending`
+    would return already-reconciled rows forever. **`AutoKeyField` is forbidden on
+    `DecisionRecord`.**
+  - **Composite `KeyField`s are supported** — multiple `KeyField`s combine into the Redis key
+    (`src/popoto/models/base.py:497-506`, `src/popoto/models/db_key.py:60`) and
+    `_meta.key_field_names` is a set (`base.py:169,234-235`).
+  - **Caveat that determines the actual key shape: KeyFields join ALPHABETICALLY, not in
+    declaration order** (`base.py:284-301`, `get_db_key_index_position`: "KeyFields are sorted
+    alphabetically in the Redis key"). So regardless of the order the fields are declared, the
+    Redis key is `DecisionRecord:agent_id:candidate_id:turn_id` — `candidate_id` in the middle.
+    Any code or test that parses the key by position, and anyone eyeballing `redis-cli KEYS`,
+    must expect that order.
+  - **Second caveat: `DB_key` escapes colons inside values** (`db_key.py:86-88`), so a
+    `candidate_id` of `t-41:sent:0` renders escaped inside the key segment. That is correct
+    behavior — do not "fix" it because it looks odd in `redis-cli`.
+  - **Test that pins it:** write the `pending` row, then transition it to a terminal state, and
+    assert **exactly one** Redis row exists for that composite key (and that its `state` is the
+    terminal one). A model that mints a row per save fails this test immediately.
+
+- **`detail_code` schema — one free-form diagnostic string, written only by trusted code
+  (round-4 C5).** `detail_code` is asked to carry three structurally different payloads: a fixed
+  literal (`terminal_conflict_refused`), a dynamic exception class name (on `assembly_failed`),
+  and a list of journal `entry_id`s (on `ambiguous_reconciliation`). Those cannot all be enum
+  values, so the "enum-safe" wording used in earlier revisions is **withdrawn**. The schema,
+  stated once: `detail_code = StringField(default="")` — the same convention `verbatim` /
+  `statement` use (`provenance_journal.py:304-305`) — **not** an enum type, and the
+  ambiguous-reconciliation case serializes as `",".join(entry_ids)`. This does not weaken the
+  LLM-writes-only-enums constraint: `state` and `reason_code` remain genuine single-value enums,
+  and `detail_code` is written exclusively by trusted assembly code, never by the model.
+
 - **Write ordering: the decision log is written before every irreversible side effect.**
   This is the module's central invariant, and getting it backwards would reintroduce the exact
   silent-drop class M3 exists to close. The rule, stated once and implemented once:
@@ -320,7 +375,10 @@ which a candidate reaches `append()` with zero decision-log rows.
   Concretely, per candidate:
 
   1. `firewall_drop` / `reject` / `withhold` produce **no** downstream side effect. One write,
-     directly terminal.
+     directly terminal — but that write is **conditional, not unconditional**: it is issued
+     through the guarded Lua helper, which reads the same row and refuses to clobber an
+     existing terminal `accept` carrying an `entry_id` (see → Terminal-write conflict guard).
+     "One write" describes the *count*, not an absence of a conflict check.
   2. `accept` is the only two-phase path:
      - **Phase 1 — `pending`.** Write the row keyed `(agent_id, turn_id, candidate_id)` with
        `state='pending'`, the accept verdict, the reason code, the span offsets and a hash of
@@ -333,7 +391,7 @@ which a candidate reaches `append()` with zero decision-log rows.
        |---|---|---|---|
        | returns `AnnotationResult` | `accept` | `accepted` | records the entry's `entry_id` on the row |
        | raises `JournalBlockedError` | `firewall_drop` | `post_accept_journal_block` | privacy refusal, see below |
-       | raises `ValueError` / `TypeError` / `AppendOnlyViolation` / connection error | `reject` | `assembly_failed` | plus the exception class name in an enum-safe `detail_code` field |
+       | raises `ValueError` / `TypeError` / `AppendOnlyViolation` / connection error | `reject` | `assembly_failed` | plus the exception class name in the free-form `detail_code` string field (see → `detail_code` schema) |
 
   **How this still satisfies Success Criterion 1 and #562's four-state AC.** The AC's
   vocabulary is a **terminal** vocabulary and it is unchanged: every candidate ends in exactly
@@ -502,21 +560,54 @@ which a candidate reaches `append()` with zero decision-log rows.
   > reads the existing `(agent_id, turn_id, candidate_id)` row; if that row is already
   > `state == 'accept'` **and** carries a non-empty `entry_id`, the write is **refused** — the
   > existing `accept` row stands unchanged, and the refusal is recorded on that same row in the
-  > enum-safe `detail_code` field as `terminal_conflict_refused`. No second row, no new state,
+  > free-form `detail_code` string field as `terminal_conflict_refused`. No second row, no new state,
   > no exception to the caller.
+
+  **Implementation shape: ONE conditional Lua script, run via `EVAL` (round-4 C1).** The two
+  mechanisms named in the round-3 revision — "inside the existing `MULTI`/`EXEC`" and "route the
+  terminal write through the `SET NX` claim key" — are **both deleted, not offered as options**,
+  because neither can implement the rule above:
+  - `MULTI`/`EXEC` queues commands blind. Nothing inside the transaction can read `state` and
+    branch on it; that needs `WATCH` (already rejected in → Atomic assembly claim, for the
+    dedicated-connection and retry-loop reasons) or Lua.
+  - The `SET NX` claim key only buys mutual exclusion on a *key*; it never inspects `state`. And
+    non-`accept` verdicts take **no claim at all** (the claim is on the `accept` path only, per
+    Task 3 and the Flow diagram), so a retried `reject` would trivially win `SET NX` on an
+    unclaimed key and write unguarded — the exact round-3 defect, reintroduced.
+
+  The replacement is a single read-and-conditionally-write Lua script, the direct companion to
+  the token-checked release script already specified in → Atomic assembly claim. It is invoked
+  for **every** terminal write of `firewall_drop` / `reject` / `withhold`, unconditionally — it
+  is never gated on whether a claim key happens to exist:
+
+  ```lua
+  -- KEYS[1] = the DecisionRecord hash for (agent_id, turn_id, candidate_id)
+  -- ARGV    = the terminal state, reason_code, written_at, and the other row fields
+  if redis.call('HGET', KEYS[1], 'state') == 'accept'
+     and (redis.call('HGET', KEYS[1], 'entry_id') or '') ~= '' then
+      redis.call('HSET', KEYS[1], 'detail_code', 'terminal_conflict_refused')
+      return 0                      -- refused; the accept row stands unchanged
+  else
+      redis.call('HSET', KEYS[1], <terminal state, reason_code, written_at, ...>)
+      return 1                      -- written
+  end
+  ```
 
   Notes that bound the scope:
   - **The assembled row always wins**, because a journal entry physically exists for it: keeping
     `accept` is the only choice that leaves the log agreeing with the journal.
-  - **Valkey-safe.** Implemented as a read-then-conditional-write *inside the existing
-    `MULTI`/`EXEC` per-candidate write* (Race 1), or by routing the terminal write through the
-    same `SET NX` claim key already specified for `accept`. Either shape is core commands only —
-    no modules. The `SET NX` route is the smaller change and is preferred, since the claim
-    machinery is already being built.
+  - **Valkey-safe.** `EVAL` plus `HGET`/`HSET` are core commands with no modules, and `EVAL` is
+    an established in-repo pattern (`src/popoto/models/query.py:445,463`;
+    `src/popoto/fields/existence_filter.py:430`), so this adds no new primitive.
+  - **Atomicity comes from the script, not from a surrounding transaction.** Redis/Valkey execute
+    a Lua script atomically, so the read and the conditional write cannot interleave. The Race 1
+    `MULTI`/`EXEC` still wraps the **record + per-turn-summary** pair; the guarded terminal write
+    is the record half of that pair and must be issued as this script rather than as a queued
+    blind `HSET`.
   - **This does not add a fifth terminal state and does not touch the AC vocabulary.** The
     conflict is recorded in `detail_code` on an existing row.
-  - **Do not expand this into a full terminal-state CAS redesign.** Non-conflicting cases keep
-    their current single-write behavior.
+  - **Do not expand this into a full terminal-state CAS redesign.** Non-conflicting cases still
+    result in exactly one write; the script simply makes that write conditional.
 
 - **Candidate identity on the journal entry — the `cand:` subject tag (round-2 C2).** Assembly
   passes `subjects=[*topic_tags, f"cand:{candidate_id}"]` to `append()`, so every M3-written
@@ -693,6 +784,14 @@ which a candidate reaches `append()` with zero decision-log rows.
   verdict / decision-log / assembly path runs instead and returns the accepted set. The
   harness (`service.py`) does **not** switch by default in this plan; switching is a follow-on
   wiring decision.
+  **`AuditableExtractionConfig`, defined here rather than left dangling (round-4 N1):** a small
+  frozen dataclass in `src/popoto/extraction/decision_log.py`, exported from
+  `popoto.extraction`, with exactly two fields in v1 —
+  `verdict_provider` (the callable/object implementing `llm_verdict(candidate)`, so tests can
+  inject a stubbed verdict provider) and `journal` (the `ProvenanceJournal` instance assembly
+  appends to). No numeric knobs: `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` stays a pinned in-repo
+  constant, not a config field, per the magic-number rule. Passing `None` (the default) is the
+  only thing the default path ever sees, and its behavior is byte-for-byte unchanged.
 - **Firewall interaction:** the existing M2 turn-level `scan_never_record(response_text)`
   voiding (`subconscious_memory.py:388-397`) stays first. Then, per candidate, M3 calls
   `scan_never_record(candidate.text)`; a `blocked` verdict logs `firewall_drop` with the
@@ -779,7 +878,9 @@ without re-running in the environment you are in.
   (Race 4) with the loser appending nothing**, **duplicate-text reconciliation via the
   `cand:` identity tag**, **candidate ids passing `scan_never_record` unblocked**,
   **terminal-write conflict refusal (a retried `reject` must not clobber an assembled `accept`
-  row)**, **`written_at` stamped on both writes with `list_pending` ordering oldest-first**,
+  row)**, **in-place composite-key transition (write `pending`, transition to terminal, assert
+  exactly ONE Redis row exists for that `(agent_id, turn_id, candidate_id)` — round-4 C3)**,
+  **`written_at` stamped on both writes with `list_pending` ordering oldest-first**,
   `list_pending` stale-row recovery, offline precision/recall computation from the log alone
   (including the per-`reason_code` separation of privacy vs LLM vs infrastructure losses),
   default-path preservation.
@@ -1022,11 +1123,20 @@ surface exists; no MCP registration is changed.
   `DecisionLog.list_pending(agent_id, older_than=...)` oldest-first, then re-invoke the auditable
   path for each stale `(agent_id, turn_id)` to reconcile it — and name the follow-on owner for a
   periodic age-keyed scan and alerting (M9 #568 or an ops runbook).
-- [ ] **Document the terminal-write conflict guard (round-3 C1)** in the `decision_log.py`
-  module docstring: a non-`accept` terminal write is refused against a row already terminal
-  `accept` with an `entry_id`, and the refusal surfaces as
+- [ ] **Document the terminal-write conflict guard (round-3 C1 / round-4 C1)** in the
+  `decision_log.py` module docstring: a non-`accept` terminal write is refused against a row
+  already terminal `accept` with an `entry_id`, and the refusal surfaces as
   `detail_code = 'terminal_conflict_refused'`. State why: the LLM verdict is non-deterministic,
-  so a retried verdict must never be able to split the decision log from the journal.
+  so a retried verdict must never be able to split the decision log from the journal. State the
+  mechanism too — a single conditional Lua script run via `EVAL`, which every terminal write goes
+  through; there is no unconditional fast path.
+- [ ] **Document `DecisionRecord`'s composite key (round-4 C3)** in the model's docstring:
+  `agent_id` + `turn_id` + `candidate_id` are all `KeyField`s so re-saving transitions the row in
+  place; `AutoKeyField` is forbidden here (unlike `JournalEntry`); KeyFields join alphabetically,
+  so the Redis key is `DecisionRecord:agent_id:candidate_id:turn_id`; and colons inside
+  `candidate_id` render escaped in the key.
+- [ ] Document `detail_code` as a **free-form diagnostic string** (`StringField(default="")`),
+  distinct from the `state`/`reason_code` enums, and written only by trusted code.
 - [ ] Document `DecisionRecord.written_at` — stamped on both the `pending` write and the
   terminal transition, and the field `list_pending(agent_id, older_than=...)` sorts on.
 - [ ] Document the `cand:{candidate_id}` subject-tag convention on written entries, the
@@ -1161,34 +1271,99 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 - Run `scan_never_record(candidate.text)` per candidate before the LLM; on `blocked`, log
   `firewall_drop` and do not call the LLM.
 
-### 3. Decision log + flag + assembly
-- **Task ID**: build-decision-log
+> **Task 3 was split into 3a and 3b (round-4 C4).** Across three revision rounds Task 3 accreted
+> roughly a dozen responsibilities inside a single `Parallel: false` task, with no boundary
+> between concurrency-control work and public-API-surface work. The split follows the boundary
+> Data Flow already draws — step 5 (the log itself) versus steps 6-7 (assembly and wiring). The
+> **same builder (`verdict-builder`) owns both task IDs**; this buys two validation checkpoints,
+> not two people. One deliberate deviation from the critique's suggested split: the **guarded
+> terminal-write helper lives in 3a**, not 3b, because it *is* the decision-log writer — putting
+> it in 3b would leave 3a shipping the bare unconditional writes the guard exists to forbid.
+
+### 3a. Decision log core
+- **Task ID**: build-decision-log-core
 - **Depends On**: build-candidate, build-verdict
-- **Validates**: tests/test_auditable_extraction.py (create); existing
-  test_subconscious_memory*.py stay green
+- **Validates**: tests/test_auditable_extraction.py (create)
 - **Assigned To**: verdict-builder
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `DecisionRecord` model + `DecisionLog` writer/reader in `src/popoto/extraction/decision_log.py`.
   The record carries: `agent_id`, `turn_id`, `candidate_id`, `state`, `reason_code`,
   `generator_rule`, span offsets, a hash of `candidate.text`, an optional `entry_id` (set on
-  terminal `accept`), an optional enum-safe `detail_code` (exception class name on
-  `assembly_failed`; `terminal_conflict_refused` on a refused conflicting terminal write), and
+  terminal `accept`), a `detail_code` (see the schema bullet below), and
   **`written_at = FloatField(...)` (round-3 N3)** — the row's write timestamp, mirroring
   `JournalEntry.captured_at` (`provenance_journal.py:301`). `written_at` is set on **every**
   write: the `pending` write and the terminal transition both stamp it. Without it
   `list_pending`'s `older_than` has nothing to compare and "oldest-first" has nothing to sort
   by.
+- **KEYING — get this right first; everything else depends on it (round-4 C3).** Declare
+  `agent_id`, `turn_id` and `candidate_id` **all** as `KeyField` on `DecisionRecord`, so the
+  composite key identifies the row and re-saving the same tuple **transitions that row in
+  place**. **Do NOT use `AutoKeyField` on this model.** Do **not** copy the sibling
+  `JournalEntry`, which uses `entry_id = AutoKeyField()`
+  (`src/popoto/recipes/provenance_journal.py:299`): that mints a **new row per save**, which is
+  right for an append-only journal and fatal here — it would silently break the `pending` →
+  terminal transition, the terminal-write conflict guard (which would read an empty row and
+  never refuse), the Race 3/4 reconciliation, and `list_pending`. Two gotchas to expect:
+  (a) composite `KeyField`s are supported (`src/popoto/models/base.py:497-506`,
+  `src/popoto/models/db_key.py:60`) but join **ALPHABETICALLY, not in declaration order**
+  (`base.py:284-301`), so the real Redis key is `DecisionRecord:agent_id:candidate_id:turn_id`;
+  (b) `DB_key` escapes colons inside values (`db_key.py:86-88`), so a `candidate_id` like
+  `t-41:sent:0` renders escaped in the key — correct, do not "fix" it.
+  **Test that pins it (required):** write the `pending` row for one
+  `(agent_id, turn_id, candidate_id)`, transition it to a terminal state, then assert **exactly
+  one** Redis row exists for that composite key and that its `state` is the terminal one.
+- **`detail_code` schema (round-4 C5):** `detail_code = StringField(default="")` — a **free-form
+  diagnostic string**, not an enum type, following the `verbatim`/`statement` convention
+  (`provenance_journal.py:304-305`). It carries three different payload shapes by design: the
+  literal `terminal_conflict_refused`, an exception class name on `assembly_failed`, and
+  `",".join(entry_ids)` on `ambiguous_reconciliation`. `state` and `reason_code` remain genuine
+  enums; `detail_code` is written only by trusted code, never by the model.
+- **Implement the guarded terminal-write helper — the ONLY way any terminal state is written
+  (round-4 C1/C2).** Every terminal write of `firewall_drop` / `reject` / `withhold` goes through
+  a single `EVAL`'d Lua script that reads the row and conditionally writes:
+  `if HGET(state)=='accept' and HGET(entry_id)~='' then HSET detail_code='terminal_conflict_refused'; return 0
+  else HSET <terminal state, reason_code, written_at, ...>; return 1 end`
+  (full script in Technical Approach → Terminal-write conflict guard). It is invoked for
+  **every** non-`accept` terminal write, including the pre-LLM M2 `firewall_drop` (which cannot
+  conflict in practice, since no prior row exists for a fresh candidate) — **do NOT add a
+  "fast path" bare `HSET` or model `.save()` for the non-conflicting case.** `EVAL` is an
+  established in-repo pattern (`models/query.py:445,463`;
+  `fields/existence_filter.py:430`); core commands plus Lua only, Valkey-safe. **Do NOT try to
+  implement this inside `MULTI`/`EXEC`** (which queues blind and cannot branch on a read) **and
+  do NOT implement it by routing the write through the `SET NX` claim key** (which never
+  inspects `state`, and which non-`accept` paths never take) — both shapes were named in an
+  earlier revision and are now explicitly deleted.
 - Write per-candidate detail rows **unbounded** — no LTRIM, and do **not** add a
   `Defaults` cap constant for this log. Add the per-turn compact summary hash as a
   convenience/query index only; detail rows remain the sole source of truth. The summary
   aggregates **terminal states only** — `pending` rows are never counted into it.
 - **Implement the two-phase write ordering (blocker fix).** `firewall_drop`/`reject`/`withhold`
-  write once, terminally. `accept` writes a committed `pending` row **before** calling
-  `append()`, then transitions the *same* `(agent_id, turn_id, candidate_id)` row to
+  write once, terminally — via the guarded helper above, never unconditionally. `accept` writes a
+  committed `pending` row **before** calling `append()`, then transitions the *same*
+  `(agent_id, turn_id, candidate_id)` row to
   `accept` / `firewall_drop`(`post_accept_journal_block`) / `reject`(`assembly_failed`) per the
   Technical Approach transition table. No code path may call `append()` before its `pending`
   row is committed.
+- Add `DecisionLog.list_pending(agent_id, older_than=None) -> List[DecisionRecord]` — the
+  operator recovery reader for stale `pending` rows (round-2 N1). A thin reader over existing
+  rows; it filters and sorts on the `written_at` field added above (round-3 N3), returning rows
+  oldest-first; **no TTL on decision rows** (that would delete audit evidence) and no sweep
+  daemon in v1.
+- Write the per-candidate record + per-turn summary update in one `MULTI`/`EXEC` (this applies
+  to each write — the `pending` write and the terminal transition are separate transactions by
+  design; collapsing them would defeat the ordering guarantee). The record half of a *terminal*
+  write is the guarded `EVAL` above, not a blind queued `HSET`; the script is atomic on its own,
+  so the transaction exists only to pair it with the summary update.
+
+### 3b. Assembly concurrency + wiring
+- **Task ID**: build-assembly-wiring
+- **Depends On**: build-decision-log-core
+- **Validates**: tests/test_auditable_extraction.py (create); existing
+  test_subconscious_memory*.py stay green
+- **Assigned To**: verdict-builder
+- **Agent Type**: builder
+- **Parallel**: false
 - **Implement the atomic assembly claim (Race 4 / round-2 C1) — this gates the probe.** Before
   the `pending` write, take the claim with a **single Redis op**:
   `SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <uuid4 token> NX PX
@@ -1208,31 +1383,24 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
   `entry_id`s in `detail_code`, append nothing. **Do NOT match on `verbatim` text** — two
   candidates in one turn can be byte-identical, so a text match can record the wrong
   `entry_id`.
-- **Implement the terminal-write conflict guard (round-3 C1) — this is a build-time defect fix,
-  not an optional hardening.** Only `accept` is claim-protected today;
-  `firewall_drop`/`reject`/`withhold` write terminally with no claim, no CAS and no
-  read-before-write, and the LLM verdict is **non-deterministic**, so a retried verdict can
-  resolve `reject` for a candidate the `accept` path already appended — permanently splitting
-  the decision log from the journal. **The guard:** before writing **any** of
-  `firewall_drop` / `reject` / `withhold`, read the existing
-  `(agent_id, turn_id, candidate_id)` row; if it is already `state == 'accept'` **with a
-  non-empty `entry_id`**, **refuse the write** — leave the `accept` row and its `entry_id`
-  untouched, and record `detail_code = 'terminal_conflict_refused'` on that same row. Never a
-  second row, never a new state, never an exception to the caller. Implement it either inside
-  the existing per-candidate `MULTI`/`EXEC` write or by routing every terminal write through the
-  same `SET NX` claim key already built for `accept` (preferred — smaller, and the machinery
-  exists). Core commands only; Valkey-safe. **Do NOT expand this into a general terminal-state
-  CAS redesign** — non-conflicting writes keep their current single-write behavior.
+- **Wire every terminal write through 3a's guarded helper — the terminal-write conflict guard
+  (round-3 C1, mechanism corrected in round-4 C1).** The rule is unchanged: a non-`accept`
+  terminal write must never overwrite a row already terminal `accept` with a non-empty
+  `entry_id`; on conflict the `accept` row and its `entry_id` stand and
+  `detail_code = 'terminal_conflict_refused'` is recorded on that same row — no second row, no
+  new state, no exception to the caller. It matters because only `accept` is claim-protected and
+  the LLM verdict is **non-deterministic**, so a retried verdict resolving `reject` would
+  otherwise permanently split the decision log from the journal. In 3b the work is to make sure
+  **no call site bypasses the helper**: the M2 pre-LLM `firewall_drop`, the verdict-stage
+  `reject`/`withhold`, the `llm_unavailable` and `empty_turn` rows, the
+  `assembly_failed` / `post_accept_journal_block` transitions and the
+  `ambiguous_reconciliation` write all route through it. **Do NOT expand this into a general
+  terminal-state CAS redesign** — non-conflicting writes still result in exactly one write.
   **Test that pins it:** two verdict resolutions for one candidate — `accept` (which appends and
   writes the terminal `accept` row with an `entry_id`) followed by a retried `reject` — assert
   exactly one terminal state survives, it is `accept`, its `entry_id` still resolves to the
   journal entry, `detail_code == 'terminal_conflict_refused'`, and the decision log agrees with
   whether a journal entry exists.
-- Add `DecisionLog.list_pending(agent_id, older_than=None) -> List[DecisionRecord]` — the
-  operator recovery reader for stale `pending` rows (round-2 N1). A thin reader over existing
-  rows; it filters and sorts on the `written_at` field added above (round-3 N3), returning rows
-  oldest-first; **no TTL on decision rows** (that would delete audit evidence) and no sweep
-  daemon in v1.
 - Extend `ExtractedFact` with optional span/candidate fields (default `None`).
 - Add `SubconsciousMemory(auditable_extraction=...)` opt-in flag; default path unchanged.
 - Add trusted assembly: `accept`ed candidates → `ProvenanceJournal.append(agent_id=<agent_id>,
@@ -1245,13 +1413,15 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
   per-`reason_code` dimension exists to separate privacy drops, LLM rejects, and infrastructure
   failures in one metric run (see Technical Approach → Offline precision/recall); assert that
   separation in the backing test.
-- Write the per-candidate record + per-turn summary update in one `MULTI`/`EXEC` (this applies
-  to each write — the `pending` write and the terminal transition are separate transactions by
-  design; collapsing them would defeat the ordering guarantee).
+- Add the `AuditableExtractionConfig` frozen dataclass (round-4 N1) in `decision_log.py`, with
+  exactly two v1 fields — `verdict_provider` and `journal` — exported from `popoto.extraction`.
+  No numeric knobs on it; `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` stays a pinned in-repo constant.
+  `auditable_extraction=None` (the default) must leave `extract_memories()` byte-for-byte
+  unchanged.
 
 ### 4. Validation
 - **Task ID**: validate-extraction
-- **Depends On**: build-candidate, build-verdict, build-decision-log
+- **Depends On**: build-candidate, build-verdict, build-decision-log-core, build-assembly-wiring
 - **Assigned To**: extraction-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -1272,11 +1442,19 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
   reconciliation on a turn with two byte-identical candidate texts maps each `pending` row to
   its own entry; `scan_never_record(f"cand:{candidate_id}")` is unblocked for every generated
   candidate (no digest-shaped ids).
-- Verify the **terminal-write conflict guard** (round-3 C1): a retried `reject` against a
-  candidate already terminal `accept` with an `entry_id` is **refused** — the `accept` row and
-  its `entry_id` survive unchanged, `detail_code == 'terminal_conflict_refused'`, exactly one
-  terminal state exists, and the decision log agrees with the journal on whether an entry
-  exists. Also verify no non-`accept` terminal write path bypasses the read/claim check.
+- Verify the **terminal-write conflict guard** (round-3 C1, round-4 C1): a retried `reject`
+  against a candidate already terminal `accept` with an `entry_id` is **refused** — the `accept`
+  row and its `entry_id` survive unchanged, `detail_code == 'terminal_conflict_refused'`, exactly
+  one terminal state exists, and the decision log agrees with the journal on whether an entry
+  exists. Also verify (a) the guard is implemented as a single conditional Lua script run via
+  `EVAL`, **not** as a blind `MULTI`/`EXEC` write and **not** by routing the write through the
+  `SET NX` claim key, and (b) **no** non-`accept` terminal write path bypasses it — no bare
+  `HSET`/`.save()` "fast path" exists for terminal states in `decision_log.py`.
+- Verify **`DecisionRecord` keying** (round-4 C3): `agent_id`, `turn_id` and `candidate_id` are
+  all `KeyField`s, no `AutoKeyField` appears on the model, and writing `pending` then
+  transitioning to a terminal state leaves **exactly one** Redis row for that composite key.
+  Confirm the observed key shape is `DecisionRecord:agent_id:candidate_id:turn_id` (alphabetical
+  KeyField ordering), not declaration order.
 - Verify `DecisionRecord.written_at` is stamped on both the `pending` write and the terminal
   transition, and that `list_pending(agent_id, older_than=...)` filters and sorts on it
   oldest-first (round-3 N3).
@@ -1316,7 +1494,11 @@ removed.)* The domain rules, stated inline so there is no dangling reference:
 | No zero-row candidate: pending precedes append | `pytest tests/test_auditable_extraction.py -k "pending_written_before_append or no_pending_survives" -q` | exit code 0, 2 tests selected |
 | Assembly idempotency (Race 3) | `pytest tests/test_auditable_extraction.py -k assembly_idempoten -q` | exit code 0 |
 | Atomic claim under concurrency (Race 4) | `pytest tests/test_auditable_extraction.py -k "concurrent_claim or claim_loser_appends_nothing" -q` | exit code 0, 2 tests selected |
-| Terminal-write conflict guard (round-3 C1) | `pytest tests/test_auditable_extraction.py -k "terminal_conflict_refused or conflicting_terminal_verdicts" -q` | exit code 0, at least 1 test selected |
+| Terminal-write conflict guard (round-3 C1 / round-4 C1) | `pytest tests/test_auditable_extraction.py -k "terminal_conflict_refused or conflicting_terminal_verdicts" -q` | exit code 0, at least 1 test selected |
+| Guard is a conditional Lua script, not MULTI/EXEC or SET NX | `grep -rn "eval\|register_script" src/popoto/extraction/decision_log.py` | at least 1 match, on the terminal-write guard script |
+| `DecisionRecord` row is updated in place, not duplicated (round-4 C3) | `pytest tests/test_auditable_extraction.py -k "decision_record_in_place or single_row_per_candidate" -q` | exit code 0, at least 1 test selected |
+| `DecisionRecord` never uses `AutoKeyField` [anti-criterion] | `grep -n "AutoKeyField" src/popoto/extraction/decision_log.py` | match count == 0 |
+| `DecisionRecord` keys on the full tuple [anti-criterion] | `grep -c "= KeyField(" src/popoto/extraction/decision_log.py` | count == 3 (`agent_id`, `turn_id`, `candidate_id`) |
 | `written_at` stamped + `list_pending` ordering (round-3 N3) | `pytest tests/test_auditable_extraction.py -k "written_at or list_pending_oldest_first" -q` | exit code 0, at least 1 test selected |
 | Candidate identity + duplicate-text reconciliation | `pytest tests/test_auditable_extraction.py -k "candidate_identity_tag or duplicate_text_reconcile" -q` | exit code 0, 2 tests selected |
 | Candidate ids survive the journal firewall | `pytest tests/test_auditable_extraction.py -k candidate_id_not_firewall_blocked -q` | exit code 0 |
@@ -1513,7 +1695,7 @@ incoherent.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| CONCERN | Risk & Robustness | **Only the `accept` path is claim-protected; conflicting terminal verdicts can clobber.** `firewall_drop`/`reject`/`withhold` write terminally with no claim, no CAS and no read-before-write guard. Race 2's mitigation narrows itself to "a re-write of the same key with the same terminal state is a no-op", which assumes a retried verdict call returns the *same* verdict — but the LLM verdict is non-deterministic (unlike the candidate generator), and Race 2's own trigger is precisely a retried call. A delivery resolving `reject` can overwrite the row of a candidate the `accept` path already appended to the journal, leaving the decision log (source of truth for `compute_metrics`) permanently disagreeing with the journal (source of truth for stored memories). | **ACCEPTED as a build-time implementation note — supervisor-settled.** This is the real residue of round 3 and the fix is a **guarded write plus a test**, not a redesign. New Technical Approach subsection **"Terminal-write conflict guard"** states the guard verbatim: before writing **any** of `firewall_drop`/`reject`/`withhold`, read the existing `(agent_id, turn_id, candidate_id)` row; if it is already `state == 'accept'` **with a non-empty `entry_id`**, **refuse the write** — the `accept` row and its `entry_id` stand unchanged and `detail_code = 'terminal_conflict_refused'` is recorded on that same row. No second row, no fifth state, no exception to the caller; the assembled row always wins because a journal entry physically exists for it. Implemented inside the existing per-candidate `MULTI`/`EXEC` or (preferred, smaller) by routing every terminal write through the `SET NX` claim key already built for `accept` — core commands only, Valkey-safe. Race 2's "same terminal state" assumption is **explicitly withdrawn** in its Mitigation (the LLM verdict is non-deterministic). Threaded through: Task 3 (dedicated implement-the-guard bullet with the pinning test), Task 4 validation bullet, Failure Path Test Strategy → *Conflicting terminal verdicts*, Test Impact, and a Verification row (`terminal_conflict_refused or conflicting_terminal_verdicts`). Explicitly bounded: **do NOT expand into a general terminal-state CAS redesign** — non-conflicting writes keep single-write behavior. | In `decision_log.py`'s writer, before writing **any** terminal state (not only `accept`), read the existing row; if it is already terminal and the new state differs, do not overwrite — record a `detail_code`-annotated conflict, or route every terminal write through the same `SET NX` claim key so the first terminal write per candidate always wins. Test: two concurrent verdict calls for one candidate resolving `accept` and `reject`; assert exactly one terminal state survives and it agrees with whether a journal entry exists. |
+| CONCERN | Risk & Robustness | **Only the `accept` path is claim-protected; conflicting terminal verdicts can clobber.** `firewall_drop`/`reject`/`withhold` write terminally with no claim, no CAS and no read-before-write guard. Race 2's mitigation narrows itself to "a re-write of the same key with the same terminal state is a no-op", which assumes a retried verdict call returns the *same* verdict — but the LLM verdict is non-deterministic (unlike the candidate generator), and Race 2's own trigger is precisely a retried call. A delivery resolving `reject` can overwrite the row of a candidate the `accept` path already appended to the journal, leaving the decision log (source of truth for `compute_metrics`) permanently disagreeing with the journal (source of truth for stored memories). | **ACCEPTED as a build-time implementation note — supervisor-settled.** This is the real residue of round 3 and the fix is a **guarded write plus a test**, not a redesign. New Technical Approach subsection **"Terminal-write conflict guard"** states the guard verbatim: before writing **any** of `firewall_drop`/`reject`/`withhold`, read the existing `(agent_id, turn_id, candidate_id)` row; if it is already `state == 'accept'` **with a non-empty `entry_id`**, **refuse the write** — the `accept` row and its `entry_id` stand unchanged and `detail_code = 'terminal_conflict_refused'` is recorded on that same row. No second row, no fifth state, no exception to the caller; the assembled row always wins because a journal entry physically exists for it. Implemented inside the existing per-candidate `MULTI`/`EXEC` or (preferred, smaller) by routing every terminal write through the `SET NX` claim key already built for `accept` — core commands only, Valkey-safe. Race 2's "same terminal state" assumption is **explicitly withdrawn** in its Mitigation (the LLM verdict is non-deterministic). Threaded through: Task 3 (dedicated implement-the-guard bullet with the pinning test), Task 4 validation bullet, Failure Path Test Strategy → *Conflicting terminal verdicts*, Test Impact, and a Verification row (`terminal_conflict_refused or conflicting_terminal_verdicts`). Explicitly bounded: **do NOT expand into a general terminal-state CAS redesign** — non-conflicting writes keep single-write behavior. **[MECHANISM SUPERSEDED by round-4 C1 — the `MULTI`/`EXEC` and `SET NX` shapes named above are deleted and replaced by ONE conditional Lua script run via `EVAL`. The guard's RULE is unchanged. Build from Technical Approach → Terminal-write conflict guard and Task 3a, not from this historical cell.]** | In `decision_log.py`'s writer, before writing **any** terminal state (not only `accept`), read the existing row; if it is already terminal and the new state differs, do not overwrite — record a `detail_code`-annotated conflict, or route every terminal write through the same `SET NX` claim key so the first terminal write per candidate always wins. Test: two concurrent verdict calls for one candidate resolving `accept` and `reject`; assert exactly one terminal state survives and it agrees with whether a journal entry exists. |
 | CONCERN | Scope & Value | **The claim protocol is specified at command level for a trigger this codebase does not have.** Round 2 added a `SET ... NX PX` + uuid4 token protocol, a Lua release script body, `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS = 30_000`, a dedicated `popoto:m3:claim:*` keyspace, Race 4, a Task 3 "do NOT `GET`-then-`SET`, do NOT `WATCH`/`MULTI`" prescription and 2 Verification rows — all to guard "two concurrent runners" / "a duplicated delivery racing a crash-retry". Measured at HEAD, no such caller exists: one synchronous `extract_memories()` call site, no queue, no worker pool, `utils/multithreading.py` unused. Issue #562 never mentions concurrency; its four ACs are about per-candidate terminal-state completeness. | **RESOLVED — supervisor-settled: KEEP the atomic claim exactly as specified. NOT descoped.** The measurement is accepted and now recorded in the plan (Technical Approach → **"Concurrency posture — measured, and settled"**): supervisor-verified at HEAD `d9d9127`, exactly **one** real `extract_memories()` call site (`integrations/service.py:230`, synchronous) and `utils/multithreading` imported **nowhere** in `src/popoto/`, so no concurrent or at-least-once caller exists today. The conclusion drawn from it is nevertheless *keep*: the protocol is already fully specified, Valkey-safe (core commands + Lua, no modules), and costs **one `SET NX` per accepted candidate** on the opt-in path — cheap insurance for the at-least-once retry that **M9 (#568)'s audit harness may introduce**, where descoping now would only mean rebuilding it. Recorded explicitly as a **deliberate acceptance of mild over-engineering against a named, expected future caller — not speculative generality**. Nothing is removed: `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`, Race 4, the Task 3 sub-protocol and both Verification rows all stay, and the claim is not optional for the builder. The `cand:` identity tag (round-2 C2) stays regardless, as the critic noted. | Verified: `grep -rn "extract_memories(" src/popoto/` → one production call site, `integrations/service.py:230`; `grep -rln "multithreading" src/popoto/` → no importers. Either name the concrete current-or-committed concurrent/redelivery caller in the plan, or label Race 4 + the atomic-claim subsection an explicit forward-looking assumption and ship Race 3's serial-retry probe alone for v1 — removing a `Defaults` constant, a Task 3 sub-protocol and 2 Verification rows without touching any AC. Note the `cand:` identity tag (C2) must stay either way: it is what makes the residual window converge. |
 | NIT | Risk & Robustness | **`DecisionRecord` has no timestamp field, but `list_pending` is specified to sort by one.** The recovery recipe documents `list_pending(agent_id, older_than=None)` returning rows "oldest-first by the row's write timestamp", yet Task 3's enumerated field list (`agent_id`, `turn_id`, `candidate_id`, `state`, `reason_code`, `generator_rule`, span offsets, text hash, `entry_id`, `detail_code`) contains no timestamp — so `older_than` has nothing to compare and "oldest-first" has nothing to sort by. | **FIXED as recommended.** Task 3's `DecisionRecord` field list now carries **`written_at = FloatField(...)`**, explicitly mirroring `JournalEntry.captured_at` (`provenance_journal.py:301`, verified at HEAD `d9d9127`), stamped on **every** write — both the `pending` write and the terminal transition. Task 3's `list_pending` bullet now states that the reader filters and sorts on `written_at`, oldest-first. Task 4 gains a validation bullet, Test Impact names the test, and a Verification row (`written_at or list_pending_oldest_first`) pins it. | Add `written_at = FloatField(...)` to Task 3's `DecisionRecord` field list, set on every write (both the `pending` write and the terminal transition), and have `list_pending` filter/sort on it — mirroring `captured_at` on `JournalEntry` (`provenance_journal.py:301`). |
 | NIT | History & Consistency | **Citation past end of file.** `extraction/__init__.py:216-232`, cited in the round-2 revision summary as evidence that `RawTurnExtractionProvider.extract()` returns exactly one fact per turn, points past EOF — the file is **212** lines at HEAD (unchanged since round-2 baseline `6574af1`). The method is at `:188-205`. | **FIXED — corrected after re-verifying at HEAD.** Re-measured at `d9d9127`: `wc -l src/popoto/extraction/__init__.py` → **212**; `RawTurnExtractionProvider` is declared at `:152` and its `extract()` runs **`:188-204`** (`return [ExtractedFact(text=content)]` at `:204`; `:205` is blank, `__all__` starts at `:207`). The round-2 revision summary's `:216-232` is replaced with **`:188-204`** in place, with a note that the range — not the claim — was wrong. The underlying claim is confirmed correct: `extract()` returns `[]` on empty/whitespace text and otherwise a **one-element** list. | Not build-blocking — the citation lives in the historical Critique Results log, not in Technical Approach/Tasks/Verification, so no builder-facing text is affected. The underlying claim is correct (the method returns a one-element list or `[]`); only the range is wrong. Change `:216-232` → `:188-205`. |
@@ -1620,14 +1802,18 @@ free text; the M2 firewall runs pre-LLM on every candidate path; the default
 `extract_memories()` behavior is preserved byte-for-byte behind the opt-in flag; M1 append-only
 intact; four TERMINAL states with `pending` non-terminal.
 
-| Severity | Critic | Finding | Build-time implementation note |
-|---|---|---|---|
-| CONCERN | Risk & Robustness | **C1 — The terminal-write conflict guard's two named implementation shapes cannot implement its own invariant.** Lines 511-515 offer the guard as a read-then-conditional-write "inside the existing `MULTI`/`EXEC` per-candidate write" **or** by "routing the terminal write through the same `SET NX` claim key". Neither performs the stated read-then-conditional-refuse. `MULTI`/`EXEC` queues commands blind — nothing can read `state` and branch on it later in the same transaction (that needs `WATCH`, already rejected in the same section, or Lua). And the `SET NX` route only buys mutual exclusion on a key; it never inspects `state`. Worse, a candidate resolving `firewall_drop`/`reject`/`withhold` never takes a claim at all — Task 3 and the Flow diagram (lines 269-272) take it only on the `accept` path — so a retried non-`accept` writer trivially wins `SET NX` on an unclaimed key and writes unguarded, which is exactly the round-3 defect. The invariant at lines 500-506 is correct; only the mechanics are wrong. | Collapse the "or" into **one** shape: take/verify the claim for mutual exclusion **and** run a single Lua script that reads the row and conditionally writes. Companion to the already-specified release script, run via `EVAL` for **every** terminal write (not gated on whether a claim key happens to exist): `if redis.call('HGET', KEYS[1],'state')=='accept' and redis.call('HGET', KEYS[1],'entry_id')~='' then <set detail_code='terminal_conflict_refused'> else <write terminal state> end`. `EVAL` is already the established Lua pattern here (`models/query.py:445,463`; `fields/existence_filter.py:430`), so this is Valkey-safe and adds no new primitive. Delete the `MULTI`/`EXEC` and bare-`SET NX` alternatives from lines 511-515 rather than leaving them as options. |
-| CONCERN | History & Consistency | **C2 — Three sections still describe non-`accept` writes as unconditional, contradicting the round-3 guard.** The guard landed late and was never back-ported into the three sections a builder reads first: Data Flow step 5 (lines 159-160) — "their first write is already their **terminal** write — one row, one state, done"; the Flow diagram (lines 267-268) — `reject`/`withhold` annotated `(TERMINAL, single write)`; Write-ordering item 1 (lines 322-323) — "One write, directly terminal." A builder implementing those literally, special-casing only `accept`, reproduces exactly the defect the guard exists to close. Task 3's own bullet (lines 1211-1220) carries the correct instruction, so the plan is self-contradictory rather than silently wrong — which is why this is a concern and not a blocker. | Amend all three statements to say the write is **conditional on a same-row conflict check against an existing terminal `accept`**, with a forward reference to → Terminal-write conflict guard. In `decision_log.py`, the writer for `firewall_drop`/`reject`/`withhold` must never be a bare `HSET` or model `.save()`; every call site — including the pre-LLM M2 `firewall_drop`, which cannot actually conflict since no prior row exists for a fresh candidate — routes through the same guarded helper. Do **not** add a "fast path" literal single write that the stale prose would suggest is still valid. |
-| CONCERN | Risk & Robustness | **C3 — `DecisionRecord`'s keying is never specified, and the whole two-phase design rests on it.** The two-phase `pending`→terminal write, the conflict guard, and Races 3/4 all require `DecisionRecord` to be retrievable and overwritable **in place** by the exact tuple `(agent_id, turn_id, candidate_id)` across two separate transactions. Task 3 enumerates the fields but never says which are `KeyField`. The only sibling model, `JournalEntry` (`provenance_journal.py:299-310`), uses one `KeyField` plus an `AutoKeyField` — which mints a brand-new row per save, the exact opposite of what `DecisionRecord` needs. A builder pattern-matching on the sibling gets this wrong and every idempotency guarantee in the plan silently evaporates. | Task 3 must declare `agent_id`, `turn_id` and `candidate_id` **all** as `KeyField`, plus a test that saving two `DecisionRecord`s with the same tuple yields **one** Redis row, not two. Composite keys are supported and verified at HEAD: multiple `KeyField`s combine into the Redis key (`models/base.py:497-506`, `models/db_key.py:60`) and `_meta.key_field_names` is a set (`base.py:169,234-235`). Two gotchas to write down: (a) KeyFields are joined **alphabetically**, not in declaration order (`base.py:284-301`), so the key segment order is `agent_id:candidate_id:turn_id`; (b) `DB_key` escapes colons inside values (`db_key.py:86-88`), so a `candidate_id` of `t-41:sent:0` renders escaped in the key — correct, and must not be "fixed" when it looks wrong in `redis-cli`. |
-| CONCERN | Scope & Value | **C4 — Task 3 has accreted roughly a dozen responsibilities across three revision rounds.** A single builder (`verdict-builder`, `Parallel: false`) now owns the `DecisionRecord` model + `written_at`, two-phase write ordering, the atomic claim with token-checked Lua release, the candidate-identity dedup probe, the terminal-write conflict guard, `list_pending`, the `ExtractedFact` extension, the `SubconsciousMemory` opt-in flag, the `ProvenanceJournal.append` wiring, and `compute_metrics` with two breakdown dimensions. Every round of hardening landed inside the task that was already largest, with no boundary between concurrency-control work and public-API-surface work. | Split into **3a. Decision log core** (`DecisionRecord` + keying + `written_at`, two-phase ordering, `list_pending`) and **3b. Assembly concurrency + wiring** (claim, dedup probe, conflict guard, opt-in flag, journal wiring, `compute_metrics`). The boundary is the one Data Flow already draws — step 5 versus steps 6-7. 3a needs only `build-candidate`/`build-verdict`; 3b adds `ProvenanceJournal.append` and sequences strictly after 3a (`Depends On: build-decision-log-core`). The same builder can own both Task IDs — this buys two validation checkpoints, not two people. |
-| CONCERN | Scope & Value | **C5 — `detail_code` is asked to carry three structurally different payloads while being called "enum-safe".** It is specified to hold a fixed literal (`terminal_conflict_refused`), a dynamic exception class name (on `assembly_failed`, line 336), and an unbounded list of journal `entry_id`s (on `ambiguous_reconciliation`) — three shapes that cannot simultaneously be enum-safe, with no stated schema. It sits on the same row as `state` and `reason_code`, which are genuine single-value enums, so the label invites a builder to type it as one. | Either drop the "enum-safe" wording and document it as a free-form diagnostic string, or split into a true enum `detail_code` plus a separate free-text `detail`. If kept as one field, type it `StringField(default="")` — the convention `verbatim`/`statement` already use (`provenance_journal.py:304-305`) — **not** an enum type, and serialize the ambiguous-reconciliation case as `",".join(entry_ids)`. State the schema explicitly in Task 3 rather than leaving it inferred from three examples scattered across the document. This does not weaken the LLM-writes-only-enums constraint: `detail_code` is written by trusted code, never by the model. |
-| NIT | History & Consistency | **N1 — `AuditableExtractionConfig` is referenced but never defined.** Technical Approach → Behavior preservation types the constructor arg `auditable_extraction: Optional[AuditableExtractionConfig] = None`, but that type name appears nowhere else — not in the module-layout bullets, not in Task 3 (which says only `SubconsciousMemory(auditable_extraction=...)` with no type), not in Key Elements. | Either drop the type name and describe the flag's shape inline, or add one bullet to Task 3 naming its fields. Either way the default path must stay byte-for-byte identical when the arg is `None`. |
+**Addressed By (revision pass, 2026-08-26).** Although this round latched the concern
+re-critique bound and no further critique follows, all six findings were folded into the plan in
+one final revision pass before BUILD. The `Addressed By` column records where.
+
+| Severity | Critic | Finding | Build-time implementation note | Addressed By |
+|---|---|---|---|---|
+| CONCERN | Risk & Robustness | **C1 — The terminal-write conflict guard's two named implementation shapes cannot implement its own invariant.** Lines 511-515 offer the guard as a read-then-conditional-write "inside the existing `MULTI`/`EXEC` per-candidate write" **or** by "routing the terminal write through the same `SET NX` claim key". Neither performs the stated read-then-conditional-refuse. `MULTI`/`EXEC` queues commands blind — nothing can read `state` and branch on it later in the same transaction (that needs `WATCH`, already rejected in the same section, or Lua). And the `SET NX` route only buys mutual exclusion on a key; it never inspects `state`. Worse, a candidate resolving `firewall_drop`/`reject`/`withhold` never takes a claim at all — Task 3 and the Flow diagram (lines 269-272) take it only on the `accept` path — so a retried non-`accept` writer trivially wins `SET NX` on an unclaimed key and writes unguarded, which is exactly the round-3 defect. The invariant at lines 500-506 is correct; only the mechanics are wrong. | Collapse the "or" into **one** shape: take/verify the claim for mutual exclusion **and** run a single Lua script that reads the row and conditionally writes. Companion to the already-specified release script, run via `EVAL` for **every** terminal write (not gated on whether a claim key happens to exist): `if redis.call('HGET', KEYS[1],'state')=='accept' and redis.call('HGET', KEYS[1],'entry_id')~='' then <set detail_code='terminal_conflict_refused'> else <write terminal state> end`. `EVAL` is already the established Lua pattern here (`models/query.py:445,463`; `fields/existence_filter.py:430`), so this is Valkey-safe and adds no new primitive. Delete the `MULTI`/`EXEC` and bare-`SET NX` alternatives from lines 511-515 rather than leaving them as options. | **FIXED.** Technical Approach → Terminal-write conflict guard now carries an "Implementation shape: ONE conditional Lua script, run via `EVAL`" block with the script inlined, and explicitly *deletes* both prior alternatives with the reason each fails. Task 3a's guarded-terminal-write bullet is the build instruction; Task 4 verifies the shape; a Verification row greps for the script. The guard's RULE is unchanged. |
+| CONCERN | History & Consistency | **C2 — Three sections still describe non-`accept` writes as unconditional, contradicting the round-3 guard.** The guard landed late and was never back-ported into the three sections a builder reads first: Data Flow step 5 (lines 159-160) — "their first write is already their **terminal** write — one row, one state, done"; the Flow diagram (lines 267-268) — `reject`/`withhold` annotated `(TERMINAL, single write)`; Write-ordering item 1 (lines 322-323) — "One write, directly terminal." A builder implementing those literally, special-casing only `accept`, reproduces exactly the defect the guard exists to close. Task 3's own bullet (lines 1211-1220) carries the correct instruction, so the plan is self-contradictory rather than silently wrong — which is why this is a concern and not a blocker. | Amend all three statements to say the write is **conditional on a same-row conflict check against an existing terminal `accept`**, with a forward reference to → Terminal-write conflict guard. In `decision_log.py`, the writer for `firewall_drop`/`reject`/`withhold` must never be a bare `HSET` or model `.save()`; every call site — including the pre-LLM M2 `firewall_drop`, which cannot actually conflict since no prior row exists for a fresh candidate — routes through the same guarded helper. Do **not** add a "fast path" literal single write that the stale prose would suggest is still valid. | **FIXED.** All three sections reconciled: Data Flow step 5 now says the non-`accept` terminal write is guarded/conditional; the Flow diagram annotates `firewall_drop`/`reject`/`withhold` as `TERMINAL, GUARDED write` with a paragraph under it defining the term; Write-ordering item 1 now says "One write" describes the *count*, not an absence of a conflict check. Task 3a forbids a bare `HSET`/`.save()` fast path and Task 3b enumerates every call site that must route through the helper. |
+| CONCERN | Risk & Robustness | **C3 — `DecisionRecord`'s keying is never specified, and the whole two-phase design rests on it.** The two-phase `pending`→terminal write, the conflict guard, and Races 3/4 all require `DecisionRecord` to be retrievable and overwritable **in place** by the exact tuple `(agent_id, turn_id, candidate_id)` across two separate transactions. Task 3 enumerates the fields but never says which are `KeyField`. The only sibling model, `JournalEntry` (`provenance_journal.py:299-310`), uses one `KeyField` plus an `AutoKeyField` — which mints a brand-new row per save, the exact opposite of what `DecisionRecord` needs. A builder pattern-matching on the sibling gets this wrong and every idempotency guarantee in the plan silently evaporates. | Task 3 must declare `agent_id`, `turn_id` and `candidate_id` **all** as `KeyField`, plus a test that saving two `DecisionRecord`s with the same tuple yields **one** Redis row, not two. Composite keys are supported and verified at HEAD: multiple `KeyField`s combine into the Redis key (`models/base.py:497-506`, `models/db_key.py:60`) and `_meta.key_field_names` is a set (`base.py:169,234-235`). Two gotchas to write down: (a) KeyFields are joined **alphabetically**, not in declaration order (`base.py:284-301`), so the key segment order is `agent_id:candidate_id:turn_id`; (b) `DB_key` escapes colons inside values (`db_key.py:86-88`), so a `candidate_id` of `t-41:sent:0` renders escaped in the key — correct, and must not be "fixed" when it looks wrong in `redis-cli`. | **FIXED — supervisor-verified at HEAD.** New Technical Approach bullet "`DecisionRecord` keying — composite `KeyField`, and NOT `AutoKeyField`" states the rule, the alphabetical-join caveat (real key: `DecisionRecord:agent_id:candidate_id:turn_id`), the colon-escaping caveat, and a one-line "do not copy `JournalEntry` here, and why". Task 3a carries it as the first build instruction with the required in-place-transition test; Task 4 verifies it; Test Impact lists the test; three Verification rows pin it (in-place test, no-`AutoKeyField` anti-criterion, three-`KeyField` count). |
+| CONCERN | Scope & Value | **C4 — Task 3 has accreted roughly a dozen responsibilities across three revision rounds.** A single builder (`verdict-builder`, `Parallel: false`) now owns the `DecisionRecord` model + `written_at`, two-phase write ordering, the atomic claim with token-checked Lua release, the candidate-identity dedup probe, the terminal-write conflict guard, `list_pending`, the `ExtractedFact` extension, the `SubconsciousMemory` opt-in flag, the `ProvenanceJournal.append` wiring, and `compute_metrics` with two breakdown dimensions. Every round of hardening landed inside the task that was already largest, with no boundary between concurrency-control work and public-API-surface work. | Split into **3a. Decision log core** (`DecisionRecord` + keying + `written_at`, two-phase ordering, `list_pending`) and **3b. Assembly concurrency + wiring** (claim, dedup probe, conflict guard, opt-in flag, journal wiring, `compute_metrics`). The boundary is the one Data Flow already draws — step 5 versus steps 6-7. 3a needs only `build-candidate`/`build-verdict`; 3b adds `ProvenanceJournal.append` and sequences strictly after 3a (`Depends On: build-decision-log-core`). The same builder can own both Task IDs — this buys two validation checkpoints, not two people. | **FIXED.** Task 3 split into **3a. Decision log core** (`build-decision-log-core`) and **3b. Assembly concurrency + wiring** (`build-assembly-wiring`, `Depends On: build-decision-log-core`), both owned by `verdict-builder`, with a note recording the split's rationale. One deliberate deviation, stated in the plan: the guarded terminal-write helper lives in 3a (it *is* the log writer) rather than 3b. Task 4's `Depends On` updated to both IDs. |
+| CONCERN | Scope & Value | **C5 — `detail_code` is asked to carry three structurally different payloads while being called "enum-safe".** It is specified to hold a fixed literal (`terminal_conflict_refused`), a dynamic exception class name (on `assembly_failed`, line 336), and an unbounded list of journal `entry_id`s (on `ambiguous_reconciliation`) — three shapes that cannot simultaneously be enum-safe, with no stated schema. It sits on the same row as `state` and `reason_code`, which are genuine single-value enums, so the label invites a builder to type it as one. | Either drop the "enum-safe" wording and document it as a free-form diagnostic string, or split into a true enum `detail_code` plus a separate free-text `detail`. If kept as one field, type it `StringField(default="")` — the convention `verbatim`/`statement` already use (`provenance_journal.py:304-305`) — **not** an enum type, and serialize the ambiguous-reconciliation case as `",".join(entry_ids)`. State the schema explicitly in Task 3 rather than leaving it inferred from three examples scattered across the document. This does not weaken the LLM-writes-only-enums constraint: `detail_code` is written by trusted code, never by the model. | **FIXED.** "enum-safe" wording withdrawn everywhere (Technical Approach transition table, the guard's rule statement, Task 3a). New Technical Approach bullet "`detail_code` schema" and a Task 3a bullet both specify `detail_code = StringField(default="")` — a free-form diagnostic string, not an enum — with `",".join(entry_ids)` for the ambiguous-reconciliation case. `state`/`reason_code` remain enums. |
+| NIT | History & Consistency | **N1 — `AuditableExtractionConfig` is referenced but never defined.** Technical Approach → Behavior preservation types the constructor arg `auditable_extraction: Optional[AuditableExtractionConfig] = None`, but that type name appears nowhere else — not in the module-layout bullets, not in Task 3 (which says only `SubconsciousMemory(auditable_extraction=...)` with no type), not in Key Elements. | Either drop the type name and describe the flag's shape inline, or add one bullet to Task 3 naming its fields. Either way the default path must stay byte-for-byte identical when the arg is `None`. | **FIXED.** `AuditableExtractionConfig` is now defined in Technical Approach → Behavior preservation as a frozen dataclass in `decision_log.py` with exactly two v1 fields (`verdict_provider`, `journal`) and no numeric knobs, and Task 3b carries a matching build bullet. `None` remains the default and the default path stays byte-for-byte unchanged. |
 
 **Structural checks: all PASS.** Required sections present and non-empty; Tasks 1-6 with no gaps;
 all 6 Task IDs resolve with no cycles and every task has a validation target; every referenced
@@ -1651,6 +1837,23 @@ the concurrency protocol. No earlier round's fix regressed.
 working-looking code that reintroduces a defect a prior round already paid to find: C1 leaves the
 guard unimplementable, C2 tells the builder to skip it, and C3 silently breaks the in-place row
 update that every idempotency guarantee depends on. C4, C5 and N1 are quality-of-life.
+
+**Revision pass applied 2026-08-26 — all six findings folded in; see the `Addressed By` column.**
+The three builder-critical items now land where a builder cannot miss them:
+1. **`DecisionRecord` keying (C3)** — Technical Approach → "`DecisionRecord` keying" bullet, the
+   first build instruction in Task 3a, a Task 4 validation bullet, a listed test in Test Impact,
+   and three Verification rows.
+2. **The guard's Lua mechanism (C1)** — Technical Approach → Terminal-write conflict guard
+   ("Implementation shape" block with the script inlined and both prior shapes deleted), Task 3a's
+   guarded-terminal-write bullet, Task 3b's no-bypass bullet, Task 4, and a Verification row.
+3. **The three contradicting sections (C2)** — Data Flow step 5, the Flow diagram (`GUARDED write`
+   plus the paragraph defining it), and Write-ordering item 1 are now consistent with the guard.
+
+**No settled decision and no standing constraint was disturbed by this pass.** v1 candidate set,
+the unbounded decision log, byte-identical `statement`, the low-entropy `cand:` identity tag, the
+`SET NX` assembly claim, and the guard's RULE all stand exactly as settled; only the guard's
+implementation mechanism changed, as directed. Valkey-safety is preserved — the new mechanism is
+`EVAL` plus `HGET`/`HSET`, core commands and Lua, no modules.
 
 **Status stays `Ready`.** Next stage: BUILD.
 
