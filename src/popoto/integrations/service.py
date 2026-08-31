@@ -8,13 +8,22 @@ schema (:class:`popoto.recipes.DefaultMemory`).
 
 Two contracts this module keeps deliberately:
 
-**It returns a context string; it never touches a message array.** The
-library recipe's ``inject_context()`` appends to ``messages[0]``, the system
-message, which invalidates a cached system prefix on every turn. On the hook
-path the harness places the returned string in the *user* turn (Claude Code
-and Codex ``additionalContext``, Hermes ``context``, OpenClaw
-``appendContext``), which preserves prompt caching. Message placement is the
-harness's decision, not this module's.
+**It returns a context string; it never touches a message array.** On the
+hook path the harness places the returned string in the *user* turn (Claude
+Code and Codex ``additionalContext``, Hermes ``context``, OpenClaw
+``appendContext``), which appends after all sealed history and so preserves
+the cached prefix. Message placement is the harness's decision, not this
+module's. The library recipe's ``inject_context()`` appends at the tail for
+the same reason; it can still be asked for the old ``position="system"``
+behavior, which invalidates a cached system prefix on every turn.
+
+**It suppresses what it already injected.** Selected keys go into a
+per-session set (:data:`INJECTED_KEY_PREFIX`) and come back as
+``assemble(exclude_keys=...)``. Injected blocks stay resident for the life of
+a session, so re-retrieving the same top-k every turn -- which topically
+similar consecutive prompts produce -- makes cumulative cache-read grow with
+the square of turn count. Declining to re-add is append-only and therefore
+free; pruning an already-sent block would cost every token behind it.
 
 **It writes through** :class:`~popoto.extraction.RawTurnExtractionProvider`
 **by default.** See :attr:`MemoryService.extractor` and issue #489.
@@ -30,7 +39,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from .config import PENDING_TTL_SECONDS, MemoryConfig, bind_connection
 
@@ -42,6 +51,12 @@ so ``doctor`` can read these while a hook writes them."""
 
 PENDING_KEY_PREFIX = "$popoto_memory:pending"
 """Redis key prefix for the read-hook-to-write-hook handoff."""
+
+INJECTED_KEY_PREFIX = "$popoto_memory:injected"
+"""Redis key prefix for the per-session set of already-injected record keys,
+read back as ``assemble(exclude_keys=...)`` so a memory surfaced once is not
+re-injected every turn. Separate from the pending FIFO, which ``feedback``
+consumes one turn at a time; suppression needs the session-wide union."""
 
 LAST_EVENT_KEY_PREFIX = "$popoto_memory:last"
 """Redis key prefix for last-success timestamps, so a silently broken
@@ -181,6 +196,7 @@ class MemoryService:
             result = self.memory.assembler.assemble(
                 query_cues={"topic": query.strip()},
                 agent_id=self.config.agent_id,
+                exclude_keys=self._injected_keys(session_id),
             )
         except Exception as exc:
             self._record_failure("assemble", exc)
@@ -199,6 +215,7 @@ class MemoryService:
 
         if session_id:
             self._push_pending(session_id, result.records)
+            self._mark_injected(session_id, result.records)
 
         return result.formatted
 
@@ -523,6 +540,65 @@ class MemoryService:
             pipe.execute()
         except Exception as exc:
             self._record_failure("pending_push", exc)
+
+    # -- per-session injection suppression -------------------------------
+
+    def _injected_key(self, session_id: str) -> str:
+        return f"{INJECTED_KEY_PREFIX}:{self.config.agent_id}:{session_id}"
+
+    def _injected_keys(self, session_id: Optional[str]) -> Optional[Set[str]]:
+        """Return the record keys already injected in this session.
+
+        Passed to ``assemble(exclude_keys=...)`` so a memory surfaced once is
+        not re-injected every turn. Injected context is appended to the model's
+        prompt and stays resident for the rest of the session, so re-adding the
+        same top-k -- which topically similar consecutive prompts produce --
+        makes cumulative cache-read grow with the square of turn count.
+        Declining to re-add is append-only, so it costs nothing against the
+        cache, unlike pruning.
+
+        Returns ``None`` (not an empty set) when there is no session to scope
+        by or the read fails, so ``assemble`` stays byte-identical to the
+        unsuppressed path rather than silently gating on partial state.
+        """
+        if not session_id:
+            return None
+        try:
+            members = self.redis.smembers(self._injected_key(session_id))
+        except Exception as exc:
+            self._record_failure("injected_read", exc)
+            return None
+        if not members:
+            return None
+        return {
+            m.decode("utf-8", errors="replace") if isinstance(m, bytes) else str(m)
+            for m in members
+        }
+
+    def _mark_injected(self, session_id: str, records: Any) -> None:
+        """Record this turn's keys so later turns suppress them.
+
+        A SET, not the pending FIFO: the FIFO is consumed by ``feedback`` and
+        must stay a per-turn queue, while suppression needs the accumulated
+        union for the whole session. Carries the same TTL so an abandoned
+        session cannot leak.
+        """
+        try:
+            keys = []
+            for record in records:
+                try:
+                    keys.append(record.db_key.redis_key)
+                except Exception:
+                    continue
+            if not keys:
+                return
+            redis_key = self._injected_key(session_id)
+            pipe = self.redis.pipeline()
+            pipe.sadd(redis_key, *keys)
+            pipe.expire(redis_key, PENDING_TTL_SECONDS)
+            pipe.execute()
+        except Exception as exc:
+            self._record_failure("injected_mark", exc)
 
     def _pop_pending(self, session_id: str) -> List[str]:
         """Pop and return the oldest unresolved turn's record keys."""

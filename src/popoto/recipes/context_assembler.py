@@ -135,6 +135,18 @@ HYBRID_CANDIDATE_MULTIPLIER = 5
 """candidate_limit = max_items * HYBRID_CANDIDATE_MULTIPLIER for per-signal
 retrieval in the hybrid pull path before RRF fusion."""
 
+EXCLUDE_HEADROOM_CAP = 200
+"""Ceiling on the extra candidates fetched to see past an ``exclude_keys``
+set. Every arm's exclusion filter runs after a bounded fetch, so suppression
+without headroom silently starves retrieval: with the default max_items=5 the
+composite arm fetches 10 candidates, and a 10-key exclusion set empties it.
+:meth:`ContextAssembler._fetch_limit` adds the exclusion count back.
+
+The cap bounds the widening. A session that has already surfaced hundreds of
+distinct memories is better served by decay than by an ever-wider ZRANGE, and
+degrading to fewer results is the right answer once nearly everything relevant
+has been said. A magic number for tuning, not user config."""
+
 EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5
 """NOT a shipped default — used only by the benchmark/report script; needs
 maintainer sign-off before becoming Defaults.CONFIDENCE_GATE_THRESHOLD or a
@@ -1421,6 +1433,7 @@ class ContextAssembler:
         # assemble() and cleared before its return, so a value can never leak
         # into a later call even if one raises partway through.
         self._assembly_as_of: float | None = None
+        self._exclude_headroom: int = 0
 
         for name, f in model_class._meta.fields.items():
             if isinstance(f, ExistenceFilter) and self._existence_filter is None:
@@ -1709,6 +1722,27 @@ class ContextAssembler:
             k.decode() if isinstance(k, bytes) else k for k in closed_list + future_list
         }
 
+    def _fetch_limit(self, base: int) -> int:
+        """Widen a candidate fetch to make room for suppressed records.
+
+        Every arm fetches a bounded candidate set (``max_items * 2``, or
+        ``max_items * HYBRID_CANDIDATE_MULTIPLIER``) and the exclusion
+        post-filter runs *after* that fetch. Without headroom, an exclusion
+        set as large as the fetch consumes the entire candidate list and the
+        arm returns nothing — so per-session suppression would turn "do not
+        repeat a memory" into "go silent after two turns", which is the
+        opposite of the intent.
+
+        Adding the exclusion count restores the invariant that the arm can
+        still surface ``base`` unsuppressed candidates. The headroom is capped
+        so a long session cannot grow an unbounded ZRANGE: past
+        ``EXCLUDE_HEADROOM_CAP`` the store is better served by decay than by
+        an ever-wider scan, and the arm degrading to fewer results is the
+        correct outcome when nearly everything relevant has already been said.
+        """
+        headroom = min(self._exclude_headroom, EXCLUDE_HEADROOM_CAP)
+        return base + headroom
+
     @staticmethod
     def _scope_by_validity(
         records: list[Any], excluded_keys: set[str] | None
@@ -1736,6 +1770,7 @@ class ContextAssembler:
         tag_match="any",
         *,
         as_of=None,
+        exclude_keys=None,
     ):
         """Execute the full retrieval pipeline.
 
@@ -1787,6 +1822,37 @@ class ContextAssembler:
                 would disable sorted-range limit pushdown — so it is applied
                 server-side in the decay/composite layers and as a
                 candidate-key post-filter here.
+            exclude_keys: Keyword-only. Iterable of record keys to drop from
+                every retrieval arm, unioned with any validity exclusions.
+                ``None`` or empty leaves behavior byte-identical.
+
+                This exists for **per-session injection suppression**, the
+                append-only way to bound what a subconscious memory layer
+                costs against a provider's prompt cache. Injected context is
+                appended to the model's prompt and stays resident for the rest
+                of the session, so re-retrieving the same top-k every turn --
+                which is what topically similar consecutive prompts produce --
+                makes cumulative cache-read grow with the square of turn count.
+                Passing the keys already injected this session declines to add
+                them again. That is strictly append-only, so it costs nothing
+                in cache terms, and it changes growth from quadratic in turns
+                to linear in *distinct* memories, bounded by store size.
+
+                Do not reach for the opposite fix. Pruning an already-injected
+                block from the prompt is a mutation of sealed history, which
+                invalidates every token behind it and costs more than leaving
+                it in place.
+
+                Suppression is not deletion: excluded records stay in the
+                store, stay retrievable on a later call that does not exclude
+                them, and are not marked as decayed, dismissed, or superseded.
+                They are also dropped from the proactive/push arm, so a
+                suppressed memory cannot re-enter by that route. Because
+                filtering happens before selection, the budget backfills with
+                the next-best candidates rather than returning short.
+
+                See the ``exclude_keys`` discussion in the Prompt Cache
+                Efficiency guide.
 
         Returns:
             AssemblyResult with records, proactive, formatted, and metadata.
@@ -1810,7 +1876,23 @@ class ContextAssembler:
         # interval at all) are kept. ``None`` means no gating; every path below
         # is then byte-identical to pre-#580.
         excluded_valid_keys = self._resolve_excluded_keys(as_of)
+
+        # Caller-supplied suppression (per-session injection dedup) rides the
+        # same exclusion seam. Union rather than replace: a record that is
+        # invalid at ``as_of`` must stay dropped whether or not the caller
+        # named it. ``None`` on both sides stays ``None`` so every arm below is
+        # byte-identical to the pre-exclude_keys behavior — an empty set is
+        # NOT the same as None here, exactly as in _resolve_excluded_keys.
+        if exclude_keys:
+            caller_excluded = {str(k) for k in exclude_keys}
+            excluded_valid_keys = (
+                caller_excluded
+                if excluded_valid_keys is None
+                else excluded_valid_keys | caller_excluded
+            )
+
         self._assembly_as_of = as_of
+        self._exclude_headroom = len(exclude_keys) if exclude_keys else 0
 
         pull_records = []
         push_records = []
@@ -2031,6 +2113,7 @@ class ContextAssembler:
                 metadata["quality"] = RetrievalQuality()
 
         self._assembly_as_of = None
+        self._exclude_headroom = 0
         return AssemblyResult(
             records=selected,
             proactive=proactive,
@@ -2159,7 +2242,7 @@ class ContextAssembler:
 
             candidates = query.composite_score(
                 indexes=self.score_weights,
-                limit=self.max_items * 2,
+                limit=self._fetch_limit(self.max_items * 2),
                 co_occurrence_boost=co_occurrence_boost,
                 as_of=self._assembly_as_of,
             )
@@ -2211,7 +2294,7 @@ class ContextAssembler:
                         query = query.filter(**filters)
                     candidates = query.composite_score(
                         indexes=self.score_weights,
-                        limit=self.max_items * 2,
+                        limit=self._fetch_limit(self.max_items * 2),
                         co_occurrence_boost=propagated,
                         as_of=self._assembly_as_of,
                     )
@@ -2250,7 +2333,7 @@ class ContextAssembler:
                 )
                 return [], []
 
-        candidate_limit = self.max_items * HYBRID_CANDIDATE_MULTIPLIER
+        candidate_limit = self._fetch_limit(self.max_items * HYBRID_CANDIDATE_MULTIPLIER)
 
         keyword_results: list = []
         vector_results: list = []
@@ -2354,7 +2437,7 @@ class ContextAssembler:
             fusion_weights["graph"] = FUSION_WEIGHT_GRAPH
             candidates = query.fuse(
                 k=RRF_K,
-                limit=self.max_items * 2,
+                limit=self._fetch_limit(self.max_items * 2),
                 weights=fusion_weights,
                 **fuse_kwargs,
             )
@@ -2382,7 +2465,7 @@ class ContextAssembler:
 
             results = query.composite_score(
                 indexes=push_weights,
-                limit=self.max_items,
+                limit=self._fetch_limit(self.max_items),
                 min_score=(
                     self.surfacing_threshold if self.surfacing_threshold > 0 else None
                 ),

@@ -122,7 +122,13 @@ class TestInjectContext:
         assert result_msgs[0]["role"] == "user"
 
     def test_inject_with_existing_memories(self, sm):
-        """Saved memories are injected into the system message."""
+        """Saved memories land at the TAIL, leaving the cached prefix intact.
+
+        A provider prompt cache is keyed on an exact token prefix, so appending
+        after all sealed history costs only the injected tokens, while writing
+        into the system message would invalidate the whole context on every
+        turn recall changes.
+        """
         SCMemory(
             agent_id="agent-1", content="We use blue-green deployments", importance=0.9
         ).save()
@@ -133,21 +139,89 @@ class TestInjectContext:
         ]
         result_msgs, assembly = sm.inject_context(messages)
 
-        # System message should now contain memory context
-        system_content = result_msgs[0]["content"]
-        assert "Relevant context:" in system_content
         assert len(assembly.records) >= 1
+        # The system message is untouched...
+        assert result_msgs[0]["content"] == "You are a helpful assistant."
+        # ...and the block rides the last (user) message.
+        assert "Relevant context:" in result_msgs[-1]["content"]
+        assert result_msgs[-1]["role"] == "user"
+        assert result_msgs[-1]["content"].startswith("What's our deployment strategy?")
+
+    def test_inject_position_system_is_opt_in(self, sm):
+        """The pre-1.9 cache-hostile placement is still reachable explicitly."""
+        SCMemory(
+            agent_id="agent-1", content="We use blue-green deployments", importance=0.9
+        ).save()
+
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What's our deployment strategy?"},
+        ]
+        result_msgs, assembly = sm.inject_context(messages, position="system")
+
+        assert len(assembly.records) >= 1
+        assert "Relevant context:" in result_msgs[0]["content"]
+
+    def test_inject_rejects_unknown_position(self, sm):
+        with pytest.raises(ValueError, match="position must be"):
+            sm.inject_context([{"role": "user", "content": "hi"}], position="middle")
+
+    def test_inject_appends_new_message_when_tail_is_not_user(self, sm):
+        """Never edit an earlier message: that is a mutation of sealed history.
+
+        When the array ends on an assistant turn, appending to the last *user*
+        message would put the write behind cached tokens. A new trailing
+        message keeps it at the true end.
+        """
+        SCMemory(agent_id="agent-1", content="A durable fact", importance=0.9).save()
+
+        messages = [
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "First answer"},
+        ]
+        result_msgs, assembly = sm.inject_context(messages)
+
+        assert len(assembly.records) >= 1
+        assert len(result_msgs) == 3
+        assert result_msgs[0]["content"] == "First question"
+        assert result_msgs[1]["content"] == "First answer"
+        assert result_msgs[-1]["role"] == "user"
+        assert "Relevant context:" in result_msgs[-1]["content"]
+
+    def test_inject_does_not_mutate_caller_messages(self, sm):
+        """Tail injection copies rather than editing the caller's dicts."""
+        SCMemory(agent_id="agent-1", content="A durable fact", importance=0.9).save()
+
+        original_user = {"role": "user", "content": "Tell me something"}
+        messages = [original_user]
+        result_msgs, _ = sm.inject_context(messages)
+
+        assert original_user["content"] == "Tell me something"
+        assert "Relevant context:" in result_msgs[-1]["content"]
+
+    def test_inject_exclude_keys_suppresses_repeat(self, sm):
+        """Suppression is what keeps resident tokens from growing every turn."""
+        SCMemory(agent_id="agent-1", content="A repeatable fact", importance=0.9).save()
+
+        messages = [{"role": "user", "content": "Tell me something"}]
+        _, first = sm.inject_context(messages)
+        assert first.records
+
+        seen = {r.db_key.redis_key for r in first.records}
+        result_msgs, second = sm.inject_context(
+            [{"role": "user", "content": "Tell me something"}], exclude_keys=seen
+        )
+        assert not seen & {r.db_key.redis_key for r in second.records}
 
     def test_inject_creates_system_message_if_absent(self, sm):
-        """If no system message exists, one is created with context."""
+        """position="system" still synthesizes a system message when absent."""
         SCMemory(agent_id="agent-1", content="Important fact", importance=0.9).save()
 
         messages = [
             {"role": "user", "content": "Tell me something"},
         ]
-        result_msgs, assembly = sm.inject_context(messages)
+        result_msgs, assembly = sm.inject_context(messages, position="system")
 
-        # A system message should be prepended
         assert result_msgs[0]["role"] == "system"
         assert "Relevant context:" in result_msgs[0]["content"]
         assert result_msgs[1]["role"] == "user"
@@ -164,7 +238,7 @@ class TestInjectContext:
 
         original_system = {"role": "system", "content": "Original."}
         messages = [original_system, {"role": "user", "content": "Hi"}]
-        result_msgs, assembly = sm.inject_context(messages)
+        result_msgs, assembly = sm.inject_context(messages, position="system")
 
         # The original dict should be untouched
         assert original_system["content"] == "Original."

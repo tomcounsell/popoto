@@ -58,6 +58,22 @@ near the top of the context and rewrite it each turn. Do not. That design
 invalidates the entire prefix on every turn where recall changes — which,
 for a working memory system, is every turn.
 
+If you build your own agent loop rather than using a harness hook,
+`SubconsciousMemory.inject_context()` follows the same rule: it appends the
+block after every existing message. When the array ends on a user message
+the block joins that message; otherwise a new trailing message carries it,
+so the write stays at the true end rather than editing a message that
+cached tokens already sit behind. Passing `position="system"` restores the
+pre-1.9 placement in the system message — available for callers who need the
+block read as system-level instruction, and priced accordingly.
+
+!!! warning "Injection shape, on any harness"
+    The payload must be nested under `hookSpecificOutput`. A bare top-level
+    `{"additionalContext": ...}` is parsed, matched against no key the harness
+    acts on, and discarded silently — exit 0, no warning, nothing injected.
+    This failure mode is invisible from the hook's side; verify by checking
+    that the model can actually quote something you injected.
+
 ### 2. The preamble is a snapshot, not a live view
 
 Files loaded into the context at session start must not be re-read
@@ -176,16 +192,27 @@ to add, not removing — so it costs nothing in cache terms, and it changes
 growth from quadratic in *turns* to linear in *distinct memories*, which is
 bounded by store size rather than session length.
 
-!!! note "Currently caller-side"
-    `ContextAssembler.assemble()` does not yet accept an exclusion set, so
-    per-session injection suppression is the integrator's job today. Track
-    the record keys you have injected this session — `MemoryService` already
-    records them per session for outcome feedback — and filter
-    `result.records` before rendering.
+Pass the keys already injected this session as `exclude_keys`:
 
-    A per-session sidecar file holding the injected keys, passed into
-    retrieval as an exclusion set, is the pattern that works today. Adding a
-    first-class `exclude_keys` parameter to the assembler is a known gap.
+```python
+result = assembler.assemble(
+    query_cues={"topic": prompt},
+    agent_id=agent_id,
+    exclude_keys=already_injected_this_session,  # set of record keys
+)
+```
+
+The exclusion applies to every retrieval arm, including the proactive/push
+path, so a suppressed memory cannot re-enter by another route. Because
+filtering happens before selection, the budget backfills with the next-best
+candidates rather than returning short. Suppression is not deletion: excluded
+records stay in the store, stay retrievable on a later call that does not
+exclude them, and are not marked decayed, dismissed, or superseded.
+
+`SubconsciousMemory.inject_context()` takes the same `exclude_keys`. On the
+harness path you get it for free — `MemoryService` records each turn's
+selected keys to a per-session Redis set and feeds them back on the next
+`assemble()`, so the hook integration suppresses by default.
 
 ## What breaks it
 

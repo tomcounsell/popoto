@@ -814,7 +814,9 @@ class TestConfigurableFieldNames:
         result_msgs, assembly = sm.inject_context(messages)
 
         assert len(assembly.records) >= 1
-        assert "Relevant context:" in result_msgs[0]["content"]
+        # This test is about the agent_id field name, not placement; assert on
+        # the tail, where inject_context appends to keep the prefix cacheable.
+        assert "Relevant context:" in result_msgs[-1]["content"]
 
     def test_custom_agent_id_field_used_for_extraction(self):
         """extract_memories uses the custom agent_id_field name for saving."""
