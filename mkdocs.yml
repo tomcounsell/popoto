@@ -33,6 +33,7 @@ nav:
           - LLM Memory Extraction: 'features/llm-memory-extraction.md'
     - Add Memory to Your Harness:
           - Overview: 'features/harness-integration.md'
+          - Prompt Cache Efficiency: 'features/prompt-cache-efficiency.md'
           - Claude Code: 'guides/harness-claude-code.md'
           - Codex: 'guides/harness-codex.md'
           - Hermes: 'guides/harness-hermes.md'

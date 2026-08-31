@@ -170,6 +170,11 @@ assembler = ContextAssembler(
 
 [`SubconsciousMemory`](../guides/subconscious-memory-recipe.md) defaults to `"content"`; `ContextAssembler` keeps `"structured"` so existing call sites are untouched.
 
+!!! tip "`\"content\"` is also the replay-stable choice"
+    The other three formats serialize every non-null field, which on a memory model means decay scores, confidence, and access counts — values that change between turns. The same query then renders different bytes on a retry, fork, or resume, and a prompt cache keyed on an exact prefix treats that as a miss.
+
+    `"content"` carries no scores, so the block is stable under replay. Ranking may still depend on wall clock; what must not vary is the rendered text. See [Prompt Cache Efficiency](prompt-cache-efficiency.md#4-the-injected-block-is-a-pure-function-of-query-and-store).
+
 ### Telemetry hook: `emit_trace`
 
 `assemble(..., emit_trace=True)` attaches `metadata["trace"]` — a list of

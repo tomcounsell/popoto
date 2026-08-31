@@ -319,6 +319,28 @@ assembly measures 1-2 ms. `popoto.integrations` keeps its module scope free
 of heavy imports for this reason, and the write hook runs `"async": true` on
 Claude Code so only the read path is ever on the critical path.
 
+## Prompt cache efficiency
+
+Latency is not the only per-turn cost. Injecting context on every turn puts
+the memory layer in competition with the provider's prompt cache, and where
+it writes decides whether that costs the injected tokens or the entire
+prefix.
+
+The integration is built to append at the tail and never above it.
+`render_context()` in `hooks.py` emits into the user turn on all four
+harnesses — `additionalContext` for Claude Code and Codex, `context` for
+Hermes, `appendContext` for OpenClaw — precisely so the cached system prefix
+survives across turns. The write path touches Redis only, so capture never
+mutates anything the harness is reading.
+
+The residual cost is that injected blocks accumulate: they cannot be removed
+without invalidating everything behind them. Tuning `POPOTO_MEMORY_MAX_TOKENS`
+and suppressing already-injected records are the two levers, and both stay
+append-only.
+
+See [Prompt Cache Efficiency](prompt-cache-efficiency.md) for the cost model,
+the four rules, and how to measure it.
+
 ## Corpus growth
 
 Every turn in every session writes a record. `agent_id` defaults to the
