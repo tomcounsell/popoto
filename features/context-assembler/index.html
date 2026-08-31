@@ -732,6 +732,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../prompt-cache-efficiency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt Cache Efficiency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../guides/harness-claude-code/" class="md-nav__link">
         
   
@@ -3647,6 +3675,11 @@
 </code></pre></div>
 <p><code>content_field</code> names the text field <code>"content"</code> reads. Left at <code>None</code> it resolves from the model's <code>BM25Field</code> source, then a field literally named <code>content</code>, then (per record) the longest string value. A model with no string field at all yields an empty context block rather than an error.</p>
 <p><a href="../../guides/subconscious-memory-recipe/"><code>SubconsciousMemory</code></a> defaults to <code>"content"</code>; <code>ContextAssembler</code> keeps <code>"structured"</code> so existing call sites are untouched.</p>
+<div class="admonition tip">
+<p class="admonition-title"><code>\"content\"</code> is also the replay-stable choice</p>
+<p>The other three formats serialize every non-null field, which on a memory model means decay scores, confidence, and access counts — values that change between turns. The same query then renders different bytes on a retry, fork, or resume, and a prompt cache keyed on an exact prefix treats that as a miss.</p>
+<p><code>"content"</code> carries no scores, so the block is stable under replay. Ranking may still depend on wall clock; what must not vary is the rendered text. See <a href="../prompt-cache-efficiency/#4-the-injected-block-is-a-pure-function-of-query-and-store">Prompt Cache Efficiency</a>.</p>
+</div>
 <h3 id="telemetry-hook-emit_trace">Telemetry hook: <code>emit_trace</code><a class="headerlink" href="#telemetry-hook-emit_trace" title="Permanent link">&para;</a></h3>
 <p><code>assemble(..., emit_trace=True)</code> attaches <code>metadata["trace"]</code> — a list of
 <code>{"key", "rank", "score", "source"}</code> dicts describing the injected records in

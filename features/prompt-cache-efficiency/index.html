@@ -12,13 +12,13 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/features/content-and-embedding-fields/">
+        <link rel="canonical" href="https://popoto.io/features/prompt-cache-efficiency/">
       
       
-        <link rel="prev" href="../../pubsub/">
+        <link rel="prev" href="../harness-integration/">
       
       
-        <link rel="next" href="../../guides/export-import/">
+        <link rel="next" href="../../guides/harness-claude-code/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Content & Embeddings - Popoto Documentation</title>
+        <title>Prompt Cache Efficiency - Popoto Documentation</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#content-and-embedding-fields" class="md-skip">
+        <a href="#prompt-cache-efficiency" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Content & Embeddings
+              Prompt Cache Efficiency
             
           </span>
         </div>
@@ -266,10 +266,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../harness-integration/" class="md-tabs__link">
           
   
@@ -336,8 +338,6 @@
   
   
   
-    
-  
   
     
     
@@ -345,12 +345,10 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../../configuration/" class="md-tabs__link">
           
   
@@ -651,26 +649,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -688,7 +691,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -731,10 +734,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../prompt-cache-efficiency/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt Cache Efficiency
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -750,6 +780,170 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-position-is-the-only-variable-that-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why position is the only variable that matters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The four rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The four rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-recall-appends-at-the-tail-never-anywhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Recall appends at the tail, never anywhere else
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-the-preamble-is-a-snapshot-not-a-live-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The preamble is a snapshot, not a live view
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-memory-never-touches-the-tool-block-or-system-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Memory never touches the tool block or system prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-the-injected-block-is-a-pure-function-of-query-and-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The injected block is a pure function of query and store
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-cost-you-cannot-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The cost you cannot remove
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The cost you cannot remove">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shrink-the-constant-inject-stubs-not-full-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shrink the constant: inject stubs, not full content
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flatten-the-curve-do-not-re-inject-what-you-already-injected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flatten the curve: do not re-inject what you already injected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-breaks-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What breaks it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#measuring-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measuring it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2132,31 +2326,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -2174,7 +2363,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2198,20 +2387,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
         
           
-          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
             
   
   
@@ -2364,31 +2550,26 @@
                 
   
   
-    
   
   
-  
     
     
     
     
       
       
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
         
           
-          
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
             
   
   
@@ -2406,7 +2587,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2589,37 +2770,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Content & Embeddings
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../content-and-embedding-fields/" class="md-nav__link">
         
   
   
@@ -2635,281 +2789,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#contentfield" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ContentField
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="ContentField">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How It Works
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage-layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-content-stores" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Content Stores
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#embeddingfield" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        EmbeddingField
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="EmbeddingField">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-it-works_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How It Works
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage-layout_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embedding-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Embedding Providers
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Embedding Providers">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#voyageprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        VoyageProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#openaiprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenAIProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#ollamaprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OllamaProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Providers
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#semantic_search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        semantic_search()
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="semantic_search()">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#similarity-only-search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Similarity-Only Search
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combined-with-memory-signals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Combined with Memory Signals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#full-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cache-management" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cache Management
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -3095,10 +2974,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#why-position-is-the-only-variable-that-matters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Why position is the only variable that matters
       
     </span>
   </a>
@@ -3106,22 +2985,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#contentfield" class="md-nav__link">
+  <a href="#the-four-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ContentField
+        The four rules
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="ContentField">
+    <nav class="md-nav" aria-label="The four rules">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#1-recall-appends-at-the-tail-never-anywhere-else" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How It Works
+        1. Recall appends at the tail, never anywhere else
       
     </span>
   </a>
@@ -3129,10 +3008,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#storage-layout" class="md-nav__link">
+  <a href="#2-the-preamble-is-a-snapshot-not-a-live-view" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Storage Layout
+        2. The preamble is a snapshot, not a live view
       
     </span>
   </a>
@@ -3140,10 +3019,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#custom-content-stores" class="md-nav__link">
+  <a href="#3-memory-never-touches-the-tool-block-or-system-prompt" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Custom Content Stores
+        3. Memory never touches the tool block or system prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-the-injected-block-is-a-pure-function-of-query-and-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The injected block is a pure function of query and store
       
     </span>
   </a>
@@ -3156,22 +3046,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#embeddingfield" class="md-nav__link">
+  <a href="#the-cost-you-cannot-remove" class="md-nav__link">
     <span class="md-ellipsis">
       
-        EmbeddingField
+        The cost you cannot remove
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="EmbeddingField">
+    <nav class="md-nav" aria-label="The cost you cannot remove">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#how-it-works_1" class="md-nav__link">
+  <a href="#shrink-the-constant-inject-stubs-not-full-content" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How It Works
+        Shrink the constant: inject stubs, not full content
       
     </span>
   </a>
@@ -3179,121 +3069,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#storage-layout_1" class="md-nav__link">
+  <a href="#flatten-the-curve-do-not-re-inject-what-you-already-injected" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embedding-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Embedding Providers
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Embedding Providers">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#voyageprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        VoyageProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#openaiprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenAIProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#ollamaprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OllamaProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Providers
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#semantic_search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        semantic_search()
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="semantic_search()">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#similarity-only-search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Similarity-Only Search
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combined-with-memory-signals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Combined with Memory Signals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#full-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Example
+        Flatten the curve: do not re-inject what you already injected
       
     </span>
   </a>
@@ -3306,10 +3085,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-management" class="md-nav__link">
+  <a href="#what-breaks-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Cache Management
+        What breaks it
       
     </span>
   </a>
@@ -3317,10 +3096,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
+  <a href="#measuring-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Installation
+        Measuring it
       
     </span>
   </a>
@@ -3328,21 +3107,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
+        Related
       
     </span>
   </a>
@@ -3369,312 +3137,219 @@
   
 
 
-<h1 id="content-and-embedding-fields">Content and Embedding Fields<a class="headerlink" href="#content-and-embedding-fields" title="Permanent link">&para;</a></h1>
-<p>ContentField and EmbeddingField extend Popoto's storage model beyond Redis hashes,
-routing large content and vector embeddings to the filesystem while keeping Redis
-lean and fast.</p>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<h1 id="prompt-cache-efficiency">Prompt Cache Efficiency<a class="headerlink" href="#prompt-cache-efficiency" title="Permanent link">&para;</a></h1>
+<p>A subconscious memory layer writes into the model's context on every turn.
+That puts it in direct competition with the provider's prompt cache for the
+same bytes, and the outcome is not a rounding error: the difference between
+a memory system that appends and one that rewrites is roughly the difference
+between paying 10% and 100% of the input price on every turn of a long
+session.</p>
+<p>This page explains the mechanism, states the four rules that keep memory
+cache-neutral, and points at where Popoto's recipes and integration already
+follow them.</p>
+<h2 id="why-position-is-the-only-variable-that-matters">Why position is the only variable that matters<a class="headerlink" href="#why-position-is-the-only-variable-that-matters" title="Permanent link">&para;</a></h2>
+<p>Every provider caches the same way, whatever the vendor-specific naming:
+the cache is keyed on an <strong>exact token prefix</strong>, bounded by a TTL, and
+reusable only up to the first position where the current request diverges
+from the cached one.</p>
+<p>Two consequences follow, and they are the whole story.</p>
+<p><strong>The cost of a change is not proportional to the size of the change.</strong> It is
+proportional to everything that follows it. Flipping one token at position
+500 of a 100,000-token prompt costs 99,500 tokens of re-prefill. A memory
+system that rewrites a single line near the top of the context is more
+expensive than one that appends a full page at the bottom.</p>
+<p><strong>So the only design question is where memory writes.</strong> A prompt has three
+writable regions, and their prices differ by orders of magnitude:</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Stores in Redis</th>
-<th>Stores on Filesystem</th>
-<th>Purpose</th>
+<th>Region</th>
+<th>Contents</th>
+<th>Cost of writing there</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>ContentField</td>
-<td><code>$CF:{hash}:{path}</code> reference</td>
-<td>Raw content bytes</td>
-<td>Large text, documents, binary data</td>
+<td>Preamble</td>
+<td>system prompt, tool definitions, session-start files</td>
+<td>the entire prefix, every turn</td>
 </tr>
 <tr>
-<td>EmbeddingField</td>
-<td>Dimension count (integer)</td>
-<td><code>.npy</code> vector file</td>
-<td>Vector embeddings for similarity search</td>
+<td>History</td>
+<td>sealed prior turns and tool results</td>
+<td>everything behind the edit</td>
+</tr>
+<tr>
+<td>Tail</td>
+<td>the current turn</td>
+<td>the new tokens only</td>
 </tr>
 </tbody>
 </table>
-<p>Both fields are transparent to the caller -- you read and write normal Python values,
-and the storage indirection happens automatically on save/load.</p>
-<h2 id="contentfield">ContentField<a class="headerlink" href="#contentfield" title="Permanent link">&para;</a></h2>
-<h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
-<ol>
-<li><strong>On save</strong>: Content is written to the filesystem first (atomic temp-file + rename),
-   then a compact reference string (<code>$CF:{sha256}:{path}</code>) is stored in Redis.</li>
-<li><strong>On access</strong>: The descriptor detects the <code>$CF:</code> prefix and lazily loads content
-   from the filesystem, caching it on the instance.</li>
-<li><strong>On delete</strong>: No-op. Content files are append-only (content-addressable storage
-   means identical content shares files). Use <code>garbage_collect()</code> to clean up.</li>
-</ol>
-<h3 id="storage-layout">Storage Layout<a class="headerlink" href="#storage-layout" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>~/.popoto/content/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  Document/
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    &lt;sha256_hash&gt;       # Content file (raw bytes)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    &lt;sha256_hash&gt;.v1    # Previous version (auto-archived on overwrite)
+<p>Only the tail is cheap, and it is cheap for exactly one reason: nothing
+follows it.</p>
+<h2 id="the-four-rules">The four rules<a class="headerlink" href="#the-four-rules" title="Permanent link">&para;</a></h2>
+<h3 id="1-recall-appends-at-the-tail-never-anywhere-else">1. Recall appends at the tail, never anywhere else<a class="headerlink" href="#1-recall-appends-at-the-tail-never-anywhere-else" title="Permanent link">&para;</a></h3>
+<p>Injected context must land inside the current user turn, after all sealed
+history. This is the load-bearing rule — everything else here is a corollary.</p>
+<p>Popoto's harness adapter encodes it directly. <code>render_context()</code> in
+<code>popoto/integrations/hooks.py</code> emits <code>hookSpecificOutput.additionalContext</code>
+for Claude Code and Codex, <code>context</code> for Hermes, and <code>appendContext</code> for
+OpenClaw. All four are user-turn channels, and the function's docstring
+names the reason: they "place the text in the user turn rather than the
+system prompt, which is what keeps the cached system prefix intact across
+turns."</p>
+<p>The tempting alternative is to maintain one tidy "current memories" block
+near the top of the context and rewrite it each turn. Do not. That design
+invalidates the entire prefix on every turn where recall changes — which,
+for a working memory system, is every turn.</p>
+<h3 id="2-the-preamble-is-a-snapshot-not-a-live-view">2. The preamble is a snapshot, not a live view<a class="headerlink" href="#2-the-preamble-is-a-snapshot-not-a-live-view" title="Permanent link">&para;</a></h3>
+<p>Files loaded into the context at session start must not be re-read
+mid-session. When they are only read once, writing to them is invisible to
+the prefix, so capture costs nothing.</p>
+<p>Popoto's write path holds this by construction: the <code>Stop</code> hook writes to
+Redis and touches no file the harness is reading. Nothing in
+<code>MemoryService.capture()</code> mutates prompt-visible state.</p>
+<p>The rule has a price, and you should pay it knowingly: a memory written at
+turn five does not reach any session-start file until the next session.
+Freshness <em>within</em> a session is the recall path's job, never the preamble's.</p>
+<div class="admonition warning">
+<p class="admonition-title">The expensive version of this mistake</p>
+<p>If your harness re-reads a memory index file on every turn, each capture
+becomes a full-prefix invalidation. A hundred-turn session with capture
+on every turn then pays for its entire context a hundred times over.
+Load once, at session start.</p>
+</div>
+<h3 id="3-memory-never-touches-the-tool-block-or-system-prompt">3. Memory never touches the tool block or system prompt<a class="headerlink" href="#3-memory-never-touches-the-tool-block-or-system-prompt" title="Permanent link">&para;</a></h3>
+<p>Those sit at position zero. Any per-turn variation there — a memory count in
+a system line, a tool description that mentions recent recalls — costs the
+entire context on every turn. There is no cheap version of this mistake.</p>
+<p>Popoto's MCP server holds four frozen tool names with static descriptions
+for this reason among others. Tool definitions that varied with memory state
+would be the single most expensive thing the integration could do.</p>
+<h3 id="4-the-injected-block-is-a-pure-function-of-query-and-store">4. The injected block is a pure function of query and store<a class="headerlink" href="#4-the-injected-block-is-a-pure-function-of-query-and-store" title="Permanent link">&para;</a></h3>
+<p>The rendered text must be reproducible from the same inputs. Wall-clock
+values that reach the <em>rendered output</em> — a decay score printed in the
+block, an access counter, a timestamp in the header — make a replayed turn
+produce different bytes than the original.</p>
+<p>Within one linear session this is harmless, because past turns are sealed in
+the transcript and never re-rendered. It bites on retry after an API error,
+on session fork or resume, and on any harness that rebuilds the prompt from
+state rather than replaying a transcript.</p>
+<p>This is why <code>SubconsciousMemory</code> defaults to <code>output_format="content"</code>
+(<code>DEFAULT_OUTPUT_FORMAT</code> in <code>popoto/recipes/subconscious_memory.py</code>). That
+format emits the memory text alone — no field names, no key values, and no
+scores — so the block is stable under replay.</p>
+<div class="admonition danger">
+<p class="admonition-title">The other output formats are not replay-stable</p>
+<p><code>structured</code>, <code>xml</code>, and <code>natural</code> serialize through <code>_record_to_dict()</code>,
+which walks <strong>every</strong> field on the model. On a memory model that includes
+decay, confidence, or access-count fields, those values change between
+turns, so the same query renders different bytes on a replay.</p>
+<p>They remain correct choices when you want the full record shape and
+control the replay behavior yourself. They are the wrong default for
+per-turn injection, which is why they are not the default.</p>
+</div>
+<p>Note that ranking may safely depend on wall clock. Decay deciding <em>which</em>
+memories appear in a new block is fine; a decay score appearing <em>as text
+inside</em> one is not.</p>
+<h2 id="the-cost-you-cannot-remove">The cost you cannot remove<a class="headerlink" href="#the-cost-you-cannot-remove" title="Permanent link">&para;</a></h2>
+<p>Rule 1 buys cache-safety by forbidding removal, and that has a consequence
+nobody gets to opt out of: every block ever injected stays in the context for
+the rest of the session.</p>
+<p>At a budget of <code>B</code> tokens per turn over <code>T</code> turns, memory tokens resident in
+the prefix at turn <code>t</code> are roughly <code>B · t</code>, and every one of them is re-read
+on every later turn. Cumulative cache-read attributable to memory therefore
+grows with the <strong>square</strong> of session length:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>resident at turn t  =  B · t
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cumulative read     =  B · T(T+1) / 2
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>at B = 800 (the integration default), T = 100 turns:
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    ≈ 4.0M cache-read tokens
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    ≈ 400K full-price-equivalent tokens at a 0.1x read multiplier
 </code></pre></div>
-<p>The base directory defaults to <code>~/.popoto/content/</code> and can be changed via:
-- <code>POPOTO_CONTENT_PATH</code> environment variable
-- <code>popoto.configure(content_path="/data/content")</code>
-- Per-field: <code>ContentField(store=FilesystemStore(base_path="/data/content"))</code></p>
-<h3 id="custom-content-stores">Custom Content Stores<a class="headerlink" href="#custom-content-stores" title="Permanent link">&para;</a></h3>
-<p>Implement <code>AbstractContentStore</code> to use a different backend (S3, GCS, etc.):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.stores</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractContentStore</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">S3Store</span><span class="p">(</span><span class="n">AbstractContentStore</span><span class="p">):</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">content</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        <span class="c1"># Upload to S3, return a $CF: reference string</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="o">...</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>        <span class="c1"># Download from S3 using the reference</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="o">...</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="c1"># Remove from S3</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="o">...</span>
-</code></pre></div>
-<p>Register it globally or per-field:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">"my-bucket"</span><span class="p">))</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># or</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">body</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">"my-bucket"</span><span class="p">))</span>
-</code></pre></div>
-<h2 id="embeddingfield">EmbeddingField<a class="headerlink" href="#embeddingfield" title="Permanent link">&para;</a></h2>
-<h3 id="how-it-works_1">How It Works<a class="headerlink" href="#how-it-works_1" title="Permanent link">&para;</a></h3>
-<ol>
-<li><strong>On save</strong>: Reads the source field value, calls the embedding provider to generate
-   a vector, saves it as a <code>.npy</code> file, and stores the dimension count in Redis.</li>
-<li><strong>On query</strong>: <code>load_embeddings()</code> reads all <code>.npy</code> files for a model class into a
-   pre-normalized numpy matrix. This matrix is cached in memory for fast cosine similarity.</li>
-<li><strong>On delete</strong>: The <code>.npy</code> file is removed and the cache is invalidated.</li>
-</ol>
-<h3 id="storage-layout_1">Storage Layout<a class="headerlink" href="#storage-layout_1" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>~/.popoto/content/.embeddings/
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  Memory/
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    &lt;hex_encoded_redis_key&gt;.npy    # numpy float32 vector
-</code></pre></div>
-<h3 id="embedding-providers">Embedding Providers<a class="headerlink" href="#embedding-providers" title="Permanent link">&para;</a></h3>
-<p>Providers are pluggable. Configure a default via <code>popoto.configure()</code> or pass one
-directly to <code>EmbeddingField(provider=...)</code>.</p>
-<h4 id="voyageprovider">VoyageProvider<a class="headerlink" href="#voyageprovider" title="Permanent link">&para;</a></h4>
-<p>Voyage AI embeddings, optimized for retrieval tasks with asymmetric query/document
-embedding.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">VoyageProvider</span><span class="p">(</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">,</span>           <span class="c1"># or VOYAGE_API_KEY env var</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"voyage-3-lite"</span><span class="p">,</span>        <span class="c1"># default</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span>               <span class="c1"># default</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">max_batch_size</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>           <span class="c1"># default</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">)</span>
-</code></pre></div>
-<p>Install: <code>pip install popoto[voyage]</code></p>
-<h4 id="openaiprovider">OpenAIProvider<a class="headerlink" href="#openaiprovider" title="Permanent link">&para;</a></h4>
-<p>OpenAI text embeddings.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OpenAIProvider</span><span class="p">(</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">,</span>                  <span class="c1"># or OPENAI_API_KEY env var</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"text-embedding-3-small"</span><span class="p">,</span>      <span class="c1"># default</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="mi">1536</span><span class="p">,</span>                      <span class="c1"># default</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">max_batch_size</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>                  <span class="c1"># default</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
-</code></pre></div>
-<p>Install: <code>pip install popoto[openai]</code></p>
-<h4 id="ollamaprovider">OllamaProvider<a class="headerlink" href="#ollamaprovider" title="Permanent link">&para;</a></h4>
-<p>Local embeddings via a running <a href="https://ollama.com">Ollama</a> server. No API
-key, no per-token cost, no network dependency on a paid provider.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaProvider</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OllamaProvider</span><span class="p">(</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>   <span class="c1"># default</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">,</span>            <span class="c1"># default (768-dim)</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                            <span class="c1"># auto-detect from first response</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">)</span>
-</code></pre></div>
-<p><strong>Setup:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Install Ollama from https://ollama.com</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>ollama<span class="w"> </span>pull<span class="w"> </span>nomic-embed-text<span class="w">    </span><span class="c1"># or mxbai-embed-large (1024-dim), all-minilm (384-dim)</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>ollama<span class="w"> </span>serve<span class="w">                    </span><span class="c1"># run the local server</span>
-</code></pre></div>
-<p><strong>Behaviour:</strong></p>
+<p>You cannot fix this by pruning. Removing a stale block is a mutation of
+sealed history, which costs everything behind it — strictly worse than
+leaving it in place. The quadratic is the honest price of an immutable
+prefix.</p>
+<p>Two techniques reduce it without breaking rule 1. Both work by adding less,
+never by removing.</p>
+<h3 id="shrink-the-constant-inject-stubs-not-full-content">Shrink the constant: inject stubs, not full content<a class="headerlink" href="#shrink-the-constant-inject-stubs-not-full-content" title="Permanent link">&para;</a></h3>
+<p><code>B</code> is set by <code>POPOTO_MEMORY_MAX_TOKENS</code> (default 800) and
+<code>POPOTO_MEMORY_MAX_ITEMS</code> (default 5). Those defaults inject full memory
+content, which is the right call when there is no discretionary channel to
+fall back on.</p>
+<p>When the agent also has the MCP tools available, you can inject a one-line
+stub per memory — an identifier, a category, a title — and let the model call
+<code>memory_search</code> for the full content of the ones that look relevant. A stub
+costs roughly 15-25 tokens against 150+ for full content, which cuts <code>B</code> by
+close to an order of magnitude while keeping everything reachable. The
+on-demand fetch arrives as a tool result at the tail, so it is cache-safe
+too.</p>
+<p>Progressive disclosure like this is the single highest-leverage knob on this
+page, and it is only available because hooks and MCP tools are wired
+together: the hook guarantees the stub arrives every turn, and the tool makes
+the rest retrievable without paying for it up front.</p>
+<h3 id="flatten-the-curve-do-not-re-inject-what-you-already-injected">Flatten the curve: do not re-inject what you already injected<a class="headerlink" href="#flatten-the-curve-do-not-re-inject-what-you-already-injected" title="Permanent link">&para;</a></h3>
+<p>Consecutive prompts within one session are topically near-identical by
+nature, so the same top-<code>k</code> records recur turn after turn. Suppressing an
+already-injected memory is append-only by construction — you are declining
+to add, not removing — so it costs nothing in cache terms, and it changes
+growth from quadratic in <em>turns</em> to linear in <em>distinct memories</em>, which is
+bounded by store size rather than session length.</p>
+<div class="admonition note">
+<p class="admonition-title">Currently caller-side</p>
+<p><code>ContextAssembler.assemble()</code> does not yet accept an exclusion set, so
+per-session injection suppression is the integrator's job today. Track
+the record keys you have injected this session — <code>MemoryService</code> already
+records them per session for outcome feedback — and filter
+<code>result.records</code> before rendering.</p>
+<p>A per-session sidecar file holding the injected keys, passed into
+retrieval as an exclusion set, is the pattern that works today. Adding a
+first-class <code>exclude_keys</code> parameter to the assembler is a known gap.</p>
+</div>
+<h2 id="what-breaks-it">What breaks it<a class="headerlink" href="#what-breaks-it" title="Permanent link">&para;</a></h2>
+<p>Concrete anti-patterns, in rough order of how much they cost:</p>
 <ul>
-<li>Uses the batch-capable <code>/api/embed</code> endpoint (Ollama v0.2.0+).</li>
-<li>Vector dimensions are auto-detected from the first <code>embed()</code> response
-  and cached. Pass <code>dim=&lt;n&gt;</code> to the constructor to declare them up front.</li>
-<li><code>max_batch_size</code> defaults to 32 (conservative for local inference on
-  modest hardware). Subclass to raise it.</li>
-<li>No external dependencies -- uses stdlib <code>urllib.request</code>.</li>
-<li>Error messages include actionable hints: connection refused points at
-  <code>ollama serve</code>; missing models point at <code>ollama pull &lt;model&gt;</code>.</li>
+<li><strong>Rendering memory into the system prompt or a tool description.</strong> Full
+  prefix, every turn.</li>
+<li><strong>Re-reading a memory file into the context each turn.</strong> Full prefix on
+  every capture.</li>
+<li><strong>Editing or removing an earlier injected block.</strong> Everything behind the
+  edit.</li>
+<li><strong>Printing decay scores, access counts, or timestamps into the block.</strong>
+  Free until a retry, fork, or resume, then a full miss.</li>
+<li><strong>Injecting into short-lived subagents.</strong> Not a correctness bug, but a
+  subagent is a fresh prefix with no history to amortize against and often
+  lives two or three turns — injected memory is prefilled at full price and
+  read back once, if at all. Budget it well below the main-thread budget, or
+  skip it.</li>
 </ul>
-<p>Install: <code>pip install popoto</code> (stdlib-only; no extras needed).</p>
-<h4 id="custom-providers">Custom Providers<a class="headerlink" href="#custom-providers" title="Permanent link">&para;</a></h4>
-<p>Implement <code>AbstractEmbeddingProvider</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractEmbeddingProvider</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractEmbeddingProvider</span><span class="p">):</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">texts</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>        <span class="c1"># Return list of float vectors, one per text</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="o">...</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="nd">@property</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="k">return</span> <span class="mi">768</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="nd">@property</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">max_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>        <span class="k">return</span> <span class="mi">100</span>
+<h2 id="measuring-it">Measuring it<a class="headerlink" href="#measuring-it" title="Permanent link">&para;</a></h2>
+<p>Providers report per-call cache accounting, and harnesses record it in their
+session transcripts. Two numbers tell you almost everything:</p>
+<p><strong>Hit rate</strong>, as cache reads over total input. A healthy long session sits in
+the 90s. Enabling memory should move it by a point or two, not by tens.</p>
+<p><strong>Short-gap full misses.</strong> Any call with zero cache read that follows the
+previous call by less than the cache TTL is a prefix mutation, not an
+expiry. That count should be zero. If it is not, something is writing above
+the tail.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">read</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cache_read_input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">create</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cache_creation_input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">fresh</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">hit_rate</span> <span class="o">=</span> <span class="n">read</span> <span class="o">/</span> <span class="p">(</span><span class="n">read</span> <span class="o">+</span> <span class="n">create</span> <span class="o">+</span> <span class="n">fresh</span><span class="p">)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># read == 0 and gap &lt; cache_ttl  -&gt;  prefix mutation, investigate</span>
 </code></pre></div>
-<h2 id="semantic_search">semantic_search()<a class="headerlink" href="#semantic_search" title="Permanent link">&para;</a></h2>
-<p>The query method <code>semantic_search()</code> ties ContentField and EmbeddingField together
-into a retrieval pipeline.</p>
-<h3 id="similarity-only-search">Similarity-Only Search<a class="headerlink" href="#similarity-only-search" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">"revenue trends"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
-</code></pre></div>
-<p>Under the hood:
-1. Query text is embedded via the provider (with <code>input_type="query"</code>)
-2. Cosine similarity is computed against the cached embedding matrix
-3. Top-K results are hydrated from Redis and returned</p>
-<h3 id="combined-with-memory-signals">Combined with Memory Signals<a class="headerlink" href="#combined-with-memory-signals" title="Permanent link">&para;</a></h3>
-<p>When <code>indexes</code> is provided, similarity scores are injected into <code>composite_score()</code>
-as an additional weighted signal:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="s2">"revenue trends"</span><span class="p">,</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">)</span>
-</code></pre></div>
-<p>This produces a unified ranking that blends semantic relevance with recency (decay),
-confidence, and other sorted field signals.</p>
-<h3 id="full-example">Full Example<a class="headerlink" href="#full-example" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmbeddingField</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.decaying_sorted_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">DecayingSortedField</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="c1"># Configure once at startup</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/agent-memory"</span><span class="p">,</span>
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="p">)</span>
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">topic</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
-<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
-<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>
-<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
-<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>
-<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="c1"># Create memories</span>
-<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"q4-revenue"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Q4 revenue exceeded projections by 12%..."</span><span class="p">)</span>
-<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"q3-revenue"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Q3 revenue was flat compared to Q2..."</span><span class="p">)</span>
-<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"hiring-plan"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Engineering headcount target is 50 by EOY..."</span><span class="p">)</span>
-<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
-<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="c1"># Semantic search with memory signals</span>
-<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>    <span class="s2">"revenue performance"</span><span class="p">,</span>
-<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a><span class="p">)</span>
-<a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a>
-<a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">topic</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">80</span><span class="p">]</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
-</code></pre></div>
-<h2 id="cache-management">Cache Management<a class="headerlink" href="#cache-management" title="Permanent link">&para;</a></h2>
-<p>EmbeddingField maintains a process-level cache of pre-normalized numpy matrices.
-The cache is automatically invalidated when embeddings are saved or deleted within
-the same process.</p>
-<p>For multi-process deployments, call <code>invalidate_cache()</code> to force a reload from disk:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">invalidate_cache</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Invalidate cache for a specific model</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">invalidate_cache</span><span class="p">(</span><span class="s2">"Memory"</span><span class="p">)</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># Invalidate all cached embeddings</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">invalidate_cache</span><span class="p">()</span>
-</code></pre></div>
-<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Extra</th>
-<th>Command</th>
-<th>Includes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Base</td>
-<td><code>pip install popoto</code></td>
-<td>ContentField (no extra deps)</td>
-</tr>
-<tr>
-<td>Embeddings</td>
-<td><code>pip install popoto[embeddings]</code></td>
-<td>numpy</td>
-</tr>
-<tr>
-<td>Ollama</td>
-<td><code>pip install popoto[embeddings]</code></td>
-<td>numpy (no extra Python deps)</td>
-</tr>
-<tr>
-<td>Voyage AI</td>
-<td><code>pip install popoto[voyage]</code></td>
-<td>numpy, voyageai</td>
-</tr>
-<tr>
-<td>OpenAI</td>
-<td><code>pip install popoto[openai]</code></td>
-<td>numpy, openai</td>
-</tr>
-</tbody>
-</table>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>POPOTO_CONTENT_PATH</code></td>
-<td><code>~/.popoto/content</code></td>
-<td>Base directory for content files and embeddings</td>
-</tr>
-<tr>
-<td><code>VOYAGE_API_KEY</code></td>
-<td><em>(none)</em></td>
-<td>API key for VoyageProvider (alternative to passing <code>api_key=</code>)</td>
-</tr>
-<tr>
-<td><code>OPENAI_API_KEY</code></td>
-<td><em>(none)</em></td>
-<td>API key for OpenAIProvider (alternative to passing <code>api_key=</code>)</td>
-</tr>
-<tr>
-<td><em>(none)</em></td>
-<td>—</td>
-<td>OllamaProvider requires no API key</td>
-</tr>
-</tbody>
-</table>
-<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<p>The honest way to price the memory layer is not to measure the injected
+block. Run the same scripted session twice, once with memory enabled and
+once without, and compare total cache creation plus uncached input. That
+difference is what memory actually costs.</p>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../fields/#contentfield">Fields &gt; ContentField</a> -- field reference</li>
-<li><a href="../../fields/#embeddingfield">Fields &gt; EmbeddingField</a> -- field reference</li>
-<li><a href="../../query/#semantic-search">Making Queries &gt; Semantic Search</a> -- query interface</li>
-<li><a href="../../configuration/#content-and-embedding-configuration">Configuration</a> -- global setup</li>
-<li><a href="../../reference/popoto/fields/content_field/">API Reference: ContentField</a> -- method signatures</li>
+<li><a href="../harness-integration/">Harness Integration</a> — where the hooks attach</li>
+<li><a href="../context-assembler/">ContextAssembler</a> — <code>output_format</code> and token budgets</li>
+<li><a href="../../guides/subconscious-memory-recipe/">SubconsciousMemory</a> — the recall/capture loop</li>
 </ul>
 
 
