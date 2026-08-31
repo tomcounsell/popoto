@@ -175,6 +175,23 @@ assembler = ContextAssembler(
 
     `"content"` carries no scores, so the block is stable under replay. Ranking may still depend on wall clock; what must not vary is the rendered text. See [Prompt Cache Efficiency](prompt-cache-efficiency.md#4-the-injected-block-is-a-pure-function-of-query-and-store).
 
+### Injection suppression: `exclude_keys`
+
+`assemble(..., exclude_keys=keys)` drops those record keys from every retrieval arm, including the proactive/push path, unioned with any validity exclusions. `None` or an empty set leaves behavior byte-identical.
+
+This exists for per-session injection suppression. Injected context is appended to the model's prompt and stays resident for the rest of the session, so re-retrieving the same top-k every turn — which topically similar consecutive prompts produce — makes cumulative cache-read grow with the square of turn count. Passing the keys you already injected declines to add them again, which is append-only and therefore free. Pruning an already-sent block is the opposite: it mutates sealed history and costs every token behind it. See [Prompt Cache Efficiency](prompt-cache-efficiency.md).
+
+```python
+result = assembler.assemble(
+    query_cues={"topic": prompt},
+    exclude_keys=already_injected_this_session,
+)
+```
+
+Suppression is not deletion: excluded records stay in the store, stay retrievable on a later call that does not exclude them, and are not marked decayed, dismissed, or superseded.
+
+Because each arm applies the exclusion *after* a bounded candidate fetch, the fetch is widened by the size of the exclusion set (capped at `EXCLUDE_HEADROOM_CAP`). Without that headroom a suppression set as large as the fetch would empty it — with the default `max_items=5` the composite arm fetches 10 candidates, so a 10-key exclusion set would silence retrieval entirely after two turns. Selection still backfills with the next-best candidates rather than returning short.
+
 ### Telemetry hook: `emit_trace`
 
 `assemble(..., emit_trace=True)` attaches `metadata["trace"]` — a list of

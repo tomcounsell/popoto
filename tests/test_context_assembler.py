@@ -1925,3 +1925,154 @@ class TestAssemblerValidityGating:
             partition_filters={"agent_id": "a1"},
         )
         assert "unmanaged" in {r.content for r in result.records}
+
+
+class TestExcludeKeys:
+    """Per-session injection suppression (``assemble(exclude_keys=...)``).
+
+    The append-only way to bound what a subconscious memory layer costs
+    against a prompt cache: injected blocks stay resident for the session, so
+    re-adding the same top-k every turn grows cumulative cache-read
+    quadratically. Declining to re-add costs nothing; pruning would cost the
+    prefix.
+    """
+
+    def _seed(self, agent, n):
+        made = []
+        for i in range(n):
+            m = SimpleMemory(agent_id=agent, content=f"excl fixture content {i}")
+            m.save()
+            made.append(m)
+        return made
+
+    def _assembler(self, **kw):
+        return ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+            **kw,
+        )
+
+    def test_none_is_byte_identical_to_omitting(self):
+        """``None`` must not engage the exclusion seam at all."""
+        agent = "excl-none"
+        self._seed(agent, 3)
+        a = self._assembler()
+        base = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        with_none = a.assemble(
+            query_cues={"topic": "excl"},
+            partition_filters={"agent_id": agent},
+            exclude_keys=None,
+        )
+        assert base.formatted == with_none.formatted
+
+    def test_empty_set_is_also_a_no_op(self):
+        """An empty set means 'nothing to suppress', not 'suppress'."""
+        agent = "excl-empty"
+        self._seed(agent, 3)
+        a = self._assembler()
+        base = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        empty = a.assemble(
+            query_cues={"topic": "excl"},
+            partition_filters={"agent_id": agent},
+            exclude_keys=set(),
+        )
+        assert base.formatted == empty.formatted
+
+    def test_excluded_record_is_dropped(self):
+        agent = "excl-drop"
+        self._seed(agent, 3)
+        a = self._assembler()
+        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        assert first.records
+        drop = first.records[0].db_key.redis_key
+
+        second = a.assemble(
+            query_cues={"topic": "excl"},
+            partition_filters={"agent_id": agent},
+            exclude_keys={drop},
+        )
+        keys = {r.db_key.redis_key for r in second.records}
+        assert drop not in keys
+
+    def test_budget_backfills_rather_than_returning_short(self):
+        """Filtering happens before selection, so the freed slot is refilled."""
+        agent = "excl-backfill"
+        self._seed(agent, 4)
+        a = self._assembler(max_items=2)
+        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        assert len(first.records) == 2
+        drop = {r.db_key.redis_key for r in first.records}
+
+        second = a.assemble(
+            query_cues={"topic": "excl"},
+            partition_filters={"agent_id": agent},
+            exclude_keys=drop,
+        )
+        assert len(second.records) == 2, "budget should backfill with next-best"
+        assert not drop & {r.db_key.redis_key for r in second.records}
+
+    def test_suppression_is_not_deletion(self):
+        """An excluded record stays retrievable on a later unsuppressed call."""
+        agent = "excl-not-delete"
+        self._seed(agent, 2)
+        a = self._assembler()
+        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        drop = first.records[0].db_key.redis_key
+
+        a.assemble(
+            query_cues={"topic": "excl"},
+            partition_filters={"agent_id": agent},
+            exclude_keys={drop},
+        )
+        again = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        assert drop in {r.db_key.redis_key for r in again.records}
+
+    def test_excluding_everything_yields_empty_not_error(self):
+        agent = "excl-all"
+        self._seed(agent, 2)
+        a = self._assembler()
+        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        every = {r.db_key.redis_key for r in first.records}
+
+        result = a.assemble(
+            query_cues={"topic": "excl"},
+            partition_filters={"agent_id": agent},
+            exclude_keys=every,
+        )
+        assert result.records == []
+
+
+    def test_suppression_does_not_starve_retrieval(self):
+        """Headroom keeps a growing exclusion set from emptying the candidates.
+
+        Each arm applies the exclusion filter *after* a bounded candidate
+        fetch (``max_items * 2`` on the composite path). Without widening that
+        fetch, an exclusion set the size of the fetch consumes every candidate
+        and the arm returns nothing -- turning "do not repeat a memory" into
+        "go silent after two turns". Regression for exactly that.
+        """
+        agent = "excl-starve"
+        self._seed(agent, 60)
+        a = self._assembler(max_items=5)
+
+        seen = set()
+        for turn in range(6):
+            result = a.assemble(
+                query_cues={"topic": "excl"},
+                partition_filters={"agent_id": agent},
+                exclude_keys=seen or None,
+            )
+            assert result.records, f"retrieval went silent on turn {turn}"
+            keys = {r.db_key.redis_key for r in result.records}
+            assert not seen & keys, "a suppressed record was re-injected"
+            seen |= keys
+
+    def test_headroom_is_capped(self):
+        """A huge exclusion set must not grow the fetch without bound."""
+        from src.popoto.recipes.context_assembler import EXCLUDE_HEADROOM_CAP
+
+        a = self._assembler(max_items=5)
+        a._exclude_headroom = EXCLUDE_HEADROOM_CAP + 10_000
+        assert a._fetch_limit(10) == 10 + EXCLUDE_HEADROOM_CAP
+        a._exclude_headroom = 0
+        assert a._fetch_limit(10) == 10

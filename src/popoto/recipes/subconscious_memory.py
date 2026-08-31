@@ -319,22 +319,49 @@ class SubconsciousMemory:
         """
         return self._assembler
 
-    def inject_context(self, messages):
+    def inject_context(self, messages, *, exclude_keys=None, position="tail"):
         """Pre-turn: assemble memories and inject into the messages array.
 
-        Finds or creates a system message at index 0 and appends assembled
-        memory context to it. Returns the modified messages list and the
-        AssemblyResult for later outcome reporting.
-
-        If no memories are found, the messages are returned unchanged.
+        Returns the modified messages list and the AssemblyResult for later
+        outcome reporting. If no memories are found, the messages are returned
+        unchanged.
 
         Args:
             messages: List of message dicts with "role" and "content" keys.
+            exclude_keys: Keyword-only. Record keys to suppress this turn --
+                pass the keys already injected this session. Forwarded to
+                :meth:`ContextAssembler.assemble`, whose ``exclude_keys``
+                docs explain why suppression is the append-only way to bound
+                what memory costs against a prompt cache.
+            position: Keyword-only. Where the context block lands.
+
+                ``"tail"`` (default) appends after every existing message, so
+                the injection leaves the cached prefix intact and costs only
+                its own tokens. When the last message is a user message the
+                block is appended to its content; otherwise a new user message
+                carrying the block is appended, which keeps the write at the
+                true end of the array rather than editing sealed history.
+
+                ``"system"`` appends to the system message at index 0, creating
+                one if absent. This is the pre-1.9 behavior and is retained
+                for callers who depend on the block being read as system-level
+                instruction. **It is hostile to prompt caching**: a provider
+                cache is keyed on an exact token prefix, so rewriting index 0
+                invalidates the entire context on every turn where recall
+                changes -- which, for a working memory layer, is every turn.
+                Prefer ``"tail"`` unless you have a specific reason.
 
         Returns:
             Tuple of (modified_messages, AssemblyResult). The messages list
             is modified in-place for convenience but also returned.
+
+        Raises:
+            ValueError: If ``position`` is not ``"tail"`` or ``"system"``.
         """
+        if position not in ("tail", "system"):
+            raise ValueError(
+                f"position must be 'tail' or 'system', got {position!r}"
+            )
         if not messages:
             return messages, AssemblyResult()
 
@@ -349,6 +376,7 @@ class SubconsciousMemory:
             result = self._assembler.assemble(
                 query_cues=query_cues if query_cues else None,
                 agent_id=self.agent_id,
+                exclude_keys=exclude_keys,
             )
         except Exception as e:
             logger.warning("Context assembly failed: %s", e)
@@ -357,10 +385,25 @@ class SubconsciousMemory:
         if not result.records:
             return messages, result
 
-        # Inject into system message
         context_block = f"\n\nRelevant context:\n{result.formatted}"
 
-        if messages and messages[0].get("role") == "system":
+        if position == "tail":
+            # Append at the true end of the array. Editing an earlier message
+            # -- even the last *user* message when assistant/tool turns follow
+            # it -- is a mutation of sealed history and costs every cached
+            # token behind it.
+            messages = list(messages)
+            if messages[-1].get("role") == "user":
+                messages[-1] = dict(messages[-1])
+                messages[-1]["content"] = (
+                    messages[-1].get("content", "") + context_block
+                )
+            else:
+                messages.append({"role": "user", "content": context_block.lstrip()})
+            return messages, result
+
+        # position == "system": pre-1.9 behavior, cache-hostile. See docstring.
+        if messages[0].get("role") == "system":
             messages[0] = dict(messages[0])
             messages[0]["content"] = messages[0].get("content", "") + context_block
         else:

@@ -40,10 +40,30 @@ READ_EVENTS = frozenset(
         "agent_turn_prepare",
     }
 )
-"""Events that inject context. Claude Code only allows injection from
-``UserPromptSubmit``, ``UserPromptExpansion``, and ``SessionStart``; every
-other event's stdout goes to the debug log. Codex matches. The remaining
-names are the Hermes and OpenClaw equivalents."""
+"""Events that inject context, one per harness's pre-turn hook. Codex
+matches Claude Code; the remaining names are the Hermes and OpenClaw
+equivalents.
+
+These are the events this adapter *uses*, not the complete set a harness
+accepts. Claude Code also honors ``additionalContext`` from
+``UserPromptExpansion``, ``SessionStart``, and ``PostToolUse`` -- the last
+one verified end to end on 2026-08-31 against a scratch hook emitting a
+nonce the model was asked to echo back, and declared by the Agent SDK's
+``PostToolUseHookSpecificOutput``. An earlier version of this docstring
+claimed PostToolUse could not inject, following the public hooks
+documentation, which does not list it. The documentation is behind the
+implementation; do not reason about this contract from it.
+
+The pre-turn event stays the only read hook here regardless. Injecting
+per tool call multiplies resident context on a path already bounded by
+``POPOTO_MEMORY_MAX_TOKENS``, and turn granularity is what the write hook's
+outcome handoff is paired against.
+
+**Whatever the event, the payload must be nested under
+``hookSpecificOutput``.** A bare top-level ``{"additionalContext": ...}`` is
+parsed, matched against no key the harness acts on, and discarded silently --
+exit 0, no warning, nothing injected. :func:`render_context` emits the nested
+shape; do not "simplify" it."""
 
 WRITE_EVENTS = frozenset(
     {

@@ -298,8 +298,16 @@ def test_pending_list_is_capped(tmp_path):
     from popoto.integrations.service import MAX_PENDING_TURNS
 
     service = make_service(tmp_path)
-    seed(service, "Deploys are blue-green with automatic rollback")
-    for _ in range(MAX_PENDING_TURNS + 5):
+    # One turn pushes one pending entry, and only turns that actually inject
+    # push at all. Per-session suppression means a record is injected once, so
+    # driving N turns needs N * max_items distinct records -- seeding a single
+    # memory would inject on turn 1 and go quiet, leaving a list of length 1.
+    turns = MAX_PENDING_TURNS + 5
+    seed(
+        service,
+        *[f"Deploys roll back automatically, note {i}" for i in range(turns * 5)],
+    )
+    for _ in range(turns):
         service.assemble("how do deploys roll back?", session_id="s1")
     length = POPOTO_REDIS_DB.llen(service._pending_key("s1"))
     assert length == MAX_PENDING_TURNS
