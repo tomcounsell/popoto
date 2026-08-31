@@ -59,7 +59,7 @@ Memory(
 
 messages = [{"role": "user", "content": "What is our deployment strategy?"}]
 
-# Pre-turn: relevant memories are retrieved and injected into the system message
+# Pre-turn: relevant memories are retrieved and appended at the end of `messages`
 messages, assembly = memory.inject_context(messages)
 
 # ... call your LLM with `messages`, get back `response_text` ...

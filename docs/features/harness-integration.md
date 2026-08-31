@@ -127,13 +127,17 @@ capture.
 
 ### Injection lands in the user turn, never the system prompt
 
-`SubconsciousMemory.inject_context()`, the library API, appends to
-`messages[0]`, which invalidates a cached system prefix on every turn. The
-hook path does not do that: Claude Code `additionalContext`, Hermes
-`pre_llm_call` context, and OpenClaw `appendContext` all land in the user
-turn. Hermes documents the choice as caching-motivated. `MemoryService`
-returns a context *string* and never touches a message array, so where the
-text goes is the harness's decision.
+Claude Code `additionalContext`, Hermes `pre_llm_call` context, and OpenClaw
+`appendContext` all land in the user turn. Hermes documents the choice as
+caching-motivated. `MemoryService` returns a context *string* and never
+touches a message array, so where the text goes is the harness's decision.
+
+`SubconsciousMemory.inject_context()`, the library API, follows the same rule:
+it appends after every existing message. Passing `position="system"` restores
+the pre-1.9 placement in `messages[0]`, which invalidates a cached system
+prefix on every turn — available for callers who need the block read as
+system-level instruction, and priced accordingly. See
+[Prompt Cache Efficiency](prompt-cache-efficiency.md).
 
 ## The write path is raw ingestion, on purpose
 

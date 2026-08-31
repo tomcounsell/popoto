@@ -17,7 +17,7 @@ Automatic memory injection and extraction around every LLM turn. The agent's mem
 User message
     |
     v
-[Pre-turn: ContextAssembler.assemble() -> inject into system message]
+[Pre-turn: ContextAssembler.assemble() -> append at tail of messages]
     |
     v
 [LLM inference]
@@ -137,7 +137,7 @@ messages = [
 # (query-sensitive if BM25Field/EmbeddingField on model; query-blind composite otherwise)
 messages, assembly_result = sm.inject_context(messages)
 
-# Call the LLM (messages now include memory context in the system message)
+# Call the LLM (messages now carry memory context at the tail)
 response = client.chat.completions.create(
     model="gpt-4.1-nano",
     messages=messages,
@@ -153,14 +153,28 @@ sm.report_outcomes(assembly_result, outcome="acted")
 
 ## How It Works
 
-### Pre-turn: `inject_context(messages)`
+### Pre-turn: `inject_context(messages, *, exclude_keys=None, position="tail")`
 
 1. Extracts the last user message as a query cue
 2. Calls `ContextAssembler.assemble()` with the agent's memory model
-3. Appends the formatted context to the system message (creates one if absent)
+3. Appends the formatted context **at the tail** — joined to the last message when that is a user message, otherwise as a new trailing user message
 4. Returns the modified messages and an `AssemblyResult` for later outcome reporting
 
 If no memories are found (or all are filtered), messages are returned unchanged.
+
+**Why the tail.** A provider prompt cache is keyed on an exact token prefix, so appending after all sealed history costs only the injected tokens. Writing into `messages[0]` invalidates the whole context on every turn recall changes — which, for a working memory layer, is every turn. The block is never joined to an *earlier* message either, not even the last user message when assistant turns follow it, because that would still land behind cached tokens. See [Prompt Cache Efficiency](../features/prompt-cache-efficiency.md).
+
+`position="system"` restores the pre-1.9 placement in the system message (creating one if absent), for callers who need the block read as system-level instruction.
+
+**`exclude_keys`** suppresses records already injected this session, so the same memories are not re-added every turn. Suppression is append-only and therefore free against the cache, unlike pruning. Pass the keys you have already surfaced:
+
+```python
+seen = set()
+messages, assembly = sm.inject_context(messages, exclude_keys=seen)
+seen |= {r.db_key.redis_key for r in assembly.records}
+```
+
+Excluded records stay in the store and stay retrievable on a later call that does not exclude them.
 
 The query cue is only meaningful in **query-sensitive** modes (lexical or hybrid, requiring `BM25Field`). In composite mode (no `BM25Field`, no `EmbeddingField`), the query cue is ignored and ranking is driven purely by importance/confidence scores.
 
@@ -274,7 +288,7 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 | `model_class` | `None` (-> `DefaultMemory`) | Memory model. Leave unset for the batteries-included model |
 | `score_weights` | `{"relevance": 1.0}` | Weight dict for composite scoring. The benchmarked vector; ignored by the pull path in lexical/hybrid modes |
 | `output_format` | `"content"` | Injected payload shape. `"structured"` injects the full JSON record instead |
-| `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
+| `system_preamble` | "You are a helpful assistant." | Prefix for system messages auto-created by `inject_context(position="system")` |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
 | `extraction_provider` | `None` (-> `HeuristicExtractionProvider`) | `AbstractExtractionProvider` used by `extract_memories()`. See [LLM Memory Extraction](../features/llm-memory-extraction.md) |
