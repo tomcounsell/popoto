@@ -3398,13 +3398,16 @@ in #574; not fixed in this PR.</p>
 final text on the event itself, so a change to the JSONL format cannot break
 capture.</p>
 <h3 id="injection-lands-in-the-user-turn-never-the-system-prompt">Injection lands in the user turn, never the system prompt<a class="headerlink" href="#injection-lands-in-the-user-turn-never-the-system-prompt" title="Permanent link">&para;</a></h3>
-<p><code>SubconsciousMemory.inject_context()</code>, the library API, appends to
-<code>messages[0]</code>, which invalidates a cached system prefix on every turn. The
-hook path does not do that: Claude Code <code>additionalContext</code>, Hermes
-<code>pre_llm_call</code> context, and OpenClaw <code>appendContext</code> all land in the user
-turn. Hermes documents the choice as caching-motivated. <code>MemoryService</code>
-returns a context <em>string</em> and never touches a message array, so where the
-text goes is the harness's decision.</p>
+<p>Claude Code <code>additionalContext</code>, Hermes <code>pre_llm_call</code> context, and OpenClaw
+<code>appendContext</code> all land in the user turn. Hermes documents the choice as
+caching-motivated. <code>MemoryService</code> returns a context <em>string</em> and never
+touches a message array, so where the text goes is the harness's decision.</p>
+<p><code>SubconsciousMemory.inject_context()</code>, the library API, follows the same rule:
+it appends after every existing message. Passing <code>position="system"</code> restores
+the pre-1.9 placement in <code>messages[0]</code>, which invalidates a cached system
+prefix on every turn — available for callers who need the block read as
+system-level instruction, and priced accordingly. See
+<a href="../prompt-cache-efficiency/">Prompt Cache Efficiency</a>.</p>
 <h2 id="the-write-path-is-raw-ingestion-on-purpose">The write path is raw ingestion, on purpose<a class="headerlink" href="#the-write-path-is-raw-ingestion-on-purpose" title="Permanent link">&para;</a></h2>
 <p>Issue #489 evaluated LLM extraction, heuristic sentence-splitting, and raw
 turn ingestion on the same slice. <strong>Every extraction arm lost to raw

@@ -648,7 +648,7 @@ Automatic memory injection and extraction around every LLM turn. The agent's mem
 User message
     |
     v
-[Pre-turn: ContextAssembler.assemble() -> inject into system message]
+[Pre-turn: ContextAssembler.assemble() -> append at tail of messages]
     |
     v
 [LLM inference]
@@ -768,7 +768,7 @@ messages = [
 # (query-sensitive if BM25Field/EmbeddingField on model; query-blind composite otherwise)
 messages, assembly_result = sm.inject_context(messages)
 
-# Call the LLM (messages now include memory context in the system message)
+# Call the LLM (messages now carry memory context at the tail)
 response = client.chat.completions.create(
     model="gpt-4.1-nano",
     messages=messages,
@@ -784,14 +784,28 @@ sm.report_outcomes(assembly_result, outcome="acted")
 
 ## How It Works
 
-### Pre-turn: `inject_context(messages)`
+### Pre-turn: `inject_context(messages, *, exclude_keys=None, position="tail")`
 
 1. Extracts the last user message as a query cue
 2. Calls `ContextAssembler.assemble()` with the agent's memory model
-3. Appends the formatted context to the system message (creates one if absent)
+3. Appends the formatted context **at the tail** — joined to the last message when that is a user message, otherwise as a new trailing user message
 4. Returns the modified messages and an `AssemblyResult` for later outcome reporting
 
 If no memories are found (or all are filtered), messages are returned unchanged.
+
+**Why the tail.** A provider prompt cache is keyed on an exact token prefix, so appending after all sealed history costs only the injected tokens. Writing into `messages[0]` invalidates the whole context on every turn recall changes — which, for a working memory layer, is every turn. The block is never joined to an *earlier* message either, not even the last user message when assistant turns follow it, because that would still land behind cached tokens. See [Prompt Cache Efficiency](../features/prompt-cache-efficiency.md).
+
+`position="system"` restores the pre-1.9 placement in the system message (creating one if absent), for callers who need the block read as system-level instruction.
+
+**`exclude_keys`** suppresses records already injected this session, so the same memories are not re-added every turn. Suppression is append-only and therefore free against the cache, unlike pruning. Pass the keys you have already surfaced:
+
+```python
+seen = set()
+messages, assembly = sm.inject_context(messages, exclude_keys=seen)
+seen |= {r.db_key.redis_key for r in assembly.records}
+```
+
+Excluded records stay in the store and stay retrievable on a later call that does not exclude them.
 
 The query cue is only meaningful in **query-sensitive** modes (lexical or hybrid, requiring `BM25Field`). In composite mode (no `BM25Field`, no `EmbeddingField`), the query cue is ignored and ranking is driven purely by importance/confidence scores.
 
@@ -905,7 +919,7 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 | `model_class` | `None` (-> `DefaultMemory`) | Memory model. Leave unset for the batteries-included model |
 | `score_weights` | `{"relevance": 1.0}` | Weight dict for composite scoring. The benchmarked vector; ignored by the pull path in lexical/hybrid modes |
 | `output_format` | `"content"` | Injected payload shape. `"structured"` injects the full JSON record instead |
-| `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
+| `system_preamble` | "You are a helpful assistant." | Prefix for system messages auto-created by `inject_context(position="system")` |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
 | `extraction_provider` | `None` (-> `HeuristicExtractionProvider`) | `AbstractExtractionProvider` used by `extract_memories()`. See [LLM Memory Extraction](../features/llm-memory-extraction.md) |
@@ -1515,13 +1529,17 @@ capture.
 
 ### Injection lands in the user turn, never the system prompt
 
-`SubconsciousMemory.inject_context()`, the library API, appends to
-`messages[0]`, which invalidates a cached system prefix on every turn. The
-hook path does not do that: Claude Code `additionalContext`, Hermes
-`pre_llm_call` context, and OpenClaw `appendContext` all land in the user
-turn. Hermes documents the choice as caching-motivated. `MemoryService`
-returns a context *string* and never touches a message array, so where the
-text goes is the harness's decision.
+Claude Code `additionalContext`, Hermes `pre_llm_call` context, and OpenClaw
+`appendContext` all land in the user turn. Hermes documents the choice as
+caching-motivated. `MemoryService` returns a context *string* and never
+touches a message array, so where the text goes is the harness's decision.
+
+`SubconsciousMemory.inject_context()`, the library API, follows the same rule:
+it appends after every existing message. Passing `position="system"` restores
+the pre-1.9 placement in `messages[0]`, which invalidates a cached system
+prefix on every turn — available for callers who need the block read as
+system-level instruction, and priced accordingly. See
+[Prompt Cache Efficiency](prompt-cache-efficiency.md).
 
 ## The write path is raw ingestion, on purpose
 
@@ -1833,6 +1851,22 @@ near the top of the context and rewrite it each turn. Do not. That design
 invalidates the entire prefix on every turn where recall changes — which,
 for a working memory system, is every turn.
 
+If you build your own agent loop rather than using a harness hook,
+`SubconsciousMemory.inject_context()` follows the same rule: it appends the
+block after every existing message. When the array ends on a user message
+the block joins that message; otherwise a new trailing message carries it,
+so the write stays at the true end rather than editing a message that
+cached tokens already sit behind. Passing `position="system"` restores the
+pre-1.9 placement in the system message — available for callers who need the
+block read as system-level instruction, and priced accordingly.
+
+!!! warning "Injection shape, on any harness"
+    The payload must be nested under `hookSpecificOutput`. A bare top-level
+    `{"additionalContext": ...}` is parsed, matched against no key the harness
+    acts on, and discarded silently — exit 0, no warning, nothing injected.
+    This failure mode is invisible from the hook's side; verify by checking
+    that the model can actually quote something you injected.
+
 ### 2. The preamble is a snapshot, not a live view
 
 Files loaded into the context at session start must not be re-read
@@ -1951,16 +1985,27 @@ to add, not removing — so it costs nothing in cache terms, and it changes
 growth from quadratic in *turns* to linear in *distinct memories*, which is
 bounded by store size rather than session length.
 
-!!! note "Currently caller-side"
-    `ContextAssembler.assemble()` does not yet accept an exclusion set, so
-    per-session injection suppression is the integrator's job today. Track
-    the record keys you have injected this session — `MemoryService` already
-    records them per session for outcome feedback — and filter
-    `result.records` before rendering.
+Pass the keys already injected this session as `exclude_keys`:
 
-    A per-session sidecar file holding the injected keys, passed into
-    retrieval as an exclusion set, is the pattern that works today. Adding a
-    first-class `exclude_keys` parameter to the assembler is a known gap.
+```python
+result = assembler.assemble(
+    query_cues={"topic": prompt},
+    agent_id=agent_id,
+    exclude_keys=already_injected_this_session,  # set of record keys
+)
+```
+
+The exclusion applies to every retrieval arm, including the proactive/push
+path, so a suppressed memory cannot re-enter by another route. Because
+filtering happens before selection, the budget backfills with the next-best
+candidates rather than returning short. Suppression is not deletion: excluded
+records stay in the store, stay retrievable on a later call that does not
+exclude them, and are not marked decayed, dismissed, or superseded.
+
+`SubconsciousMemory.inject_context()` takes the same `exclude_keys`. On the
+harness path you get it for free — `MemoryService` records each turn's
+selected keys to a per-session Redis set and feeds them back on the next
+`assemble()`, so the hook integration suppresses by default.
 
 ## What breaks it
 
@@ -6129,6 +6174,23 @@ assembler = ContextAssembler(
     The other three formats serialize every non-null field, which on a memory model means decay scores, confidence, and access counts — values that change between turns. The same query then renders different bytes on a retry, fork, or resume, and a prompt cache keyed on an exact prefix treats that as a miss.
 
     `"content"` carries no scores, so the block is stable under replay. Ranking may still depend on wall clock; what must not vary is the rendered text. See [Prompt Cache Efficiency](prompt-cache-efficiency.md#4-the-injected-block-is-a-pure-function-of-query-and-store).
+
+### Injection suppression: `exclude_keys`
+
+`assemble(..., exclude_keys=keys)` drops those record keys from every retrieval arm, including the proactive/push path, unioned with any validity exclusions. `None` or an empty set leaves behavior byte-identical.
+
+This exists for per-session injection suppression. Injected context is appended to the model's prompt and stays resident for the rest of the session, so re-retrieving the same top-k every turn — which topically similar consecutive prompts produce — makes cumulative cache-read grow with the square of turn count. Passing the keys you already injected declines to add them again, which is append-only and therefore free. Pruning an already-sent block is the opposite: it mutates sealed history and costs every token behind it. See [Prompt Cache Efficiency](prompt-cache-efficiency.md).
+
+```python
+result = assembler.assemble(
+    query_cues={"topic": prompt},
+    exclude_keys=already_injected_this_session,
+)
+```
+
+Suppression is not deletion: excluded records stay in the store, stay retrievable on a later call that does not exclude them, and are not marked decayed, dismissed, or superseded.
+
+Because each arm applies the exclusion *after* a bounded candidate fetch, the fetch is widened by the size of the exclusion set (capped at `EXCLUDE_HEADROOM_CAP`). Without that headroom a suppression set as large as the fetch would empty it — with the default `max_items=5` the composite arm fetches 10 candidates, so a 10-key exclusion set would silence retrieval entirely after two turns. Selection still backfills with the next-best candidates rather than returning short.
 
 ### Telemetry hook: `emit_trace`
 

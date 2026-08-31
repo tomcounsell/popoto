@@ -721,10 +721,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#pre-turn-inject_contextmessages" class="md-nav__link">
+  <a href="#pre-turn-inject_contextmessages-exclude_keysnone-positiontail" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-turn: inject_context(messages)
+        Pre-turn: inject_context(messages, *, exclude_keys=None, position="tail")
       
     </span>
   </a>
@@ -3147,10 +3147,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#pre-turn-inject_contextmessages" class="md-nav__link">
+  <a href="#pre-turn-inject_contextmessages-exclude_keysnone-positiontail" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-turn: inject_context(messages)
+        Pre-turn: inject_context(messages, *, exclude_keys=None, position="tail")
       
     </span>
   </a>
@@ -3308,7 +3308,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>User message
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    |
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    v
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>[Pre-turn: ContextAssembler.assemble() -&gt; inject into system message]
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>[Pre-turn: ContextAssembler.assemble() -&gt; append at tail of messages]
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    |
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    v
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>[LLM inference]
@@ -3394,7 +3394,7 @@
 <a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="c1"># (query-sensitive if BM25Field/EmbeddingField on model; query-blind composite otherwise)</span>
 <a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">messages</span><span class="p">,</span> <span class="n">assembly_result</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
 <a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="c1"># Call the LLM (messages now include memory context in the system message)</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="c1"># Call the LLM (messages now carry memory context at the tail)</span>
 <a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
 <a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"gpt-4.1-nano"</span><span class="p">,</span>
 <a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="n">messages</span><span class="o">=</span><span class="n">messages</span><span class="p">,</span>
@@ -3408,14 +3408,22 @@
 <a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly_result</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">"acted"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
-<h3 id="pre-turn-inject_contextmessages">Pre-turn: <code>inject_context(messages)</code><a class="headerlink" href="#pre-turn-inject_contextmessages" title="Permanent link">&para;</a></h3>
+<h3 id="pre-turn-inject_contextmessages-exclude_keysnone-positiontail">Pre-turn: <code>inject_context(messages, *, exclude_keys=None, position="tail")</code><a class="headerlink" href="#pre-turn-inject_contextmessages-exclude_keysnone-positiontail" title="Permanent link">&para;</a></h3>
 <ol>
 <li>Extracts the last user message as a query cue</li>
 <li>Calls <code>ContextAssembler.assemble()</code> with the agent's memory model</li>
-<li>Appends the formatted context to the system message (creates one if absent)</li>
+<li>Appends the formatted context <strong>at the tail</strong> — joined to the last message when that is a user message, otherwise as a new trailing user message</li>
 <li>Returns the modified messages and an <code>AssemblyResult</code> for later outcome reporting</li>
 </ol>
 <p>If no memories are found (or all are filtered), messages are returned unchanged.</p>
+<p><strong>Why the tail.</strong> A provider prompt cache is keyed on an exact token prefix, so appending after all sealed history costs only the injected tokens. Writing into <code>messages[0]</code> invalidates the whole context on every turn recall changes — which, for a working memory layer, is every turn. The block is never joined to an <em>earlier</em> message either, not even the last user message when assistant turns follow it, because that would still land behind cached tokens. See <a href="../../features/prompt-cache-efficiency/">Prompt Cache Efficiency</a>.</p>
+<p><code>position="system"</code> restores the pre-1.9 placement in the system message (creating one if absent), for callers who need the block read as system-level instruction.</p>
+<p><strong><code>exclude_keys</code></strong> suppresses records already injected this session, so the same memories are not re-added every turn. Suppression is append-only and therefore free against the cache, unlike pruning. Pass the keys you have already surfaced:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">seen</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">messages</span><span class="p">,</span> <span class="n">assembly</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">exclude_keys</span><span class="o">=</span><span class="n">seen</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">seen</span> <span class="o">|=</span> <span class="p">{</span><span class="n">r</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">assembly</span><span class="o">.</span><span class="n">records</span><span class="p">}</span>
+</code></pre></div>
+<p>Excluded records stay in the store and stay retrievable on a later call that does not exclude them.</p>
 <p>The query cue is only meaningful in <strong>query-sensitive</strong> modes (lexical or hybrid, requiring <code>BM25Field</code>). In composite mode (no <code>BM25Field</code>, no <code>EmbeddingField</code>), the query cue is ignored and ranking is driven purely by importance/confidence scores.</p>
 <h3 id="post-turn-extract_memoriesresponse_text-importance">Post-turn: <code>extract_memories(response_text, importance)</code><a class="headerlink" href="#post-turn-extract_memoriesresponse_text-importance" title="Permanent link">&para;</a></h3>
 <p>Before anything else, <code>extract_memories()</code> runs the never-record firewall
@@ -3434,10 +3442,10 @@ pipeline: when <code>model_class</code> carries <code>NeverRecordMixin</code>, a
 <code>save()</code> call can itself be blocked. <code>extract_memories()</code> distinguishes "nothing
 extracted" from "everything extracted was privacy-dropped" via the
 <code>last_extraction_privacy_dropped</code> property:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">saved</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span> <span class="ow">not</span> <span class="n">saved</span> <span class="ow">and</span> <span class="n">sm</span><span class="o">.</span><span class="n">last_extraction_privacy_dropped</span><span class="p">:</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="c1"># The empty return is a deliberate privacy drop, not a failure.</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="o">...</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">saved</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span> <span class="ow">not</span> <span class="n">saved</span> <span class="ow">and</span> <span class="n">sm</span><span class="o">.</span><span class="n">last_extraction_privacy_dropped</span><span class="p">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="c1"># The empty return is a deliberate privacy drop, not a failure.</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="o">...</span>
 </code></pre></div>
 <p><code>last_extraction_privacy_dropped</code> is <code>True</code> when the most recent
 <code>extract_memories()</code> call returned <code>[]</code> because the turn-level gate blocked the
@@ -3546,7 +3554,7 @@ full design and a runnable quickstart.</p>
 <tr>
 <td><code>system_preamble</code></td>
 <td>"You are a helpful assistant."</td>
-<td>Prefix for auto-created system messages</td>
+<td>Prefix for system messages auto-created by <code>inject_context(position="system")</code></td>
 </tr>
 <tr>
 <td><code>content_field</code></td>
@@ -3579,36 +3587,36 @@ full design and a runnable quickstart.</p>
 <h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
 <h3 id="custom-fact-extraction">Custom Fact Extraction<a class="headerlink" href="#custom-fact-extraction" title="Permanent link">&para;</a></h3>
 <p>The preferred way to customize extraction is to pass an <code>extraction_provider</code> -- either the built-in <code>ClaudeExtractionProvider</code> or your own <code>AbstractExtractionProvider</code> implementation -- rather than subclassing. See <a href="../../features/llm-memory-extraction/">LLM Memory Extraction</a> for the full interface and a "writing a custom provider" example.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.extraction</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractExtractionProvider</span><span class="p">,</span> <span class="n">ExtractedFact</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractExtractionProvider</span><span class="p">):</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ExtractedFact</span><span class="p">]:</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>            <span class="n">ExtractedFact</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">f</span><span class="p">[</span><span class="s2">"text"</span><span class="p">],</span> <span class="n">importance</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"importance"</span><span class="p">))</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">facts</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>        <span class="p">]</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
-<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">MyProvider</span><span class="p">(),</span>
-<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.extraction</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractExtractionProvider</span><span class="p">,</span> <span class="n">ExtractedFact</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractExtractionProvider</span><span class="p">):</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ExtractedFact</span><span class="p">]:</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>            <span class="n">ExtractedFact</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">f</span><span class="p">[</span><span class="s2">"text"</span><span class="p">],</span> <span class="n">importance</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"importance"</span><span class="p">))</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">facts</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>        <span class="p">]</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">MyProvider</span><span class="p">(),</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="p">)</span>
 </code></pre></div>
 <p>If you need to change more than extraction itself (e.g. custom save logic, side effects beyond seeding confidence/co-occurrence), subclassing and overriding <code>extract_memories()</code> directly is still supported:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SmartSubconsciousMemory</span><span class="p">(</span><span class="n">SubconsciousMemory</span><span class="p">):</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract_memories</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response_text</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>        <span class="c1"># Use a secondary LLM call to extract structured facts</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>        <span class="n">saved</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">facts</span><span class="p">:</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>                <span class="n">content</span><span class="o">=</span><span class="n">fact</span><span class="p">[</span><span class="s2">"text"</span><span class="p">],</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>                <span class="n">importance</span><span class="o">=</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"importance"</span><span class="p">,</span> <span class="n">importance</span><span class="p">),</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>            <span class="p">)</span>
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>            <span class="n">m</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>            <span class="n">saved</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
-<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>        <span class="k">return</span> <span class="n">saved</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SmartSubconsciousMemory</span><span class="p">(</span><span class="n">SubconsciousMemory</span><span class="p">):</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract_memories</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response_text</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>        <span class="c1"># Use a secondary LLM call to extract structured facts</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>        <span class="n">saved</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>        <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">facts</span><span class="p">:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>                <span class="n">content</span><span class="o">=</span><span class="n">fact</span><span class="p">[</span><span class="s2">"text"</span><span class="p">],</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>                <span class="n">importance</span><span class="o">=</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"importance"</span><span class="p">,</span> <span class="n">importance</span><span class="p">),</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>            <span class="p">)</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>            <span class="n">m</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>            <span class="n">saved</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>        <span class="k">return</span> <span class="n">saved</span>
 </code></pre></div>
 <h3 id="custom-query-cues">Custom Query Cues<a class="headerlink" href="#custom-query-cues" title="Permanent link">&para;</a></h3>
 <p>The default implementation uses the last user message as the query cue. For more sophisticated cue extraction, subclass and override the relevant portion of <code>inject_context()</code>.</p>

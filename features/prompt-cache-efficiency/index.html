@@ -3203,6 +3203,22 @@ turns."</p>
 near the top of the context and rewrite it each turn. Do not. That design
 invalidates the entire prefix on every turn where recall changes — which,
 for a working memory system, is every turn.</p>
+<p>If you build your own agent loop rather than using a harness hook,
+<code>SubconsciousMemory.inject_context()</code> follows the same rule: it appends the
+block after every existing message. When the array ends on a user message
+the block joins that message; otherwise a new trailing message carries it,
+so the write stays at the true end rather than editing a message that
+cached tokens already sit behind. Passing <code>position="system"</code> restores the
+pre-1.9 placement in the system message — available for callers who need the
+block read as system-level instruction, and priced accordingly.</p>
+<div class="admonition warning">
+<p class="admonition-title">Injection shape, on any harness</p>
+<p>The payload must be nested under <code>hookSpecificOutput</code>. A bare top-level
+<code>{"additionalContext": ...}</code> is parsed, matched against no key the harness
+acts on, and discarded silently — exit 0, no warning, nothing injected.
+This failure mode is invisible from the hook's side; verify by checking
+that the model can actually quote something you injected.</p>
+</div>
 <h3 id="2-the-preamble-is-a-snapshot-not-a-live-view">2. The preamble is a snapshot, not a live view<a class="headerlink" href="#2-the-preamble-is-a-snapshot-not-a-live-view" title="Permanent link">&para;</a></h3>
 <p>Files loaded into the context at session start must not be re-read
 mid-session. When they are only read once, writing to them is invisible to
@@ -3297,17 +3313,23 @@ already-injected memory is append-only by construction — you are declining
 to add, not removing — so it costs nothing in cache terms, and it changes
 growth from quadratic in <em>turns</em> to linear in <em>distinct memories</em>, which is
 bounded by store size rather than session length.</p>
-<div class="admonition note">
-<p class="admonition-title">Currently caller-side</p>
-<p><code>ContextAssembler.assemble()</code> does not yet accept an exclusion set, so
-per-session injection suppression is the integrator's job today. Track
-the record keys you have injected this session — <code>MemoryService</code> already
-records them per session for outcome feedback — and filter
-<code>result.records</code> before rendering.</p>
-<p>A per-session sidecar file holding the injected keys, passed into
-retrieval as an exclusion set, is the pattern that works today. Adding a
-first-class <code>exclude_keys</code> parameter to the assembler is a known gap.</p>
-</div>
+<p>Pass the keys already injected this session as <code>exclude_keys</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="n">prompt</span><span class="p">},</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">exclude_keys</span><span class="o">=</span><span class="n">already_injected_this_session</span><span class="p">,</span>  <span class="c1"># set of record keys</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>The exclusion applies to every retrieval arm, including the proactive/push
+path, so a suppressed memory cannot re-enter by another route. Because
+filtering happens before selection, the budget backfills with the next-best
+candidates rather than returning short. Suppression is not deletion: excluded
+records stay in the store, stay retrievable on a later call that does not
+exclude them, and are not marked decayed, dismissed, or superseded.</p>
+<p><code>SubconsciousMemory.inject_context()</code> takes the same <code>exclude_keys</code>. On the
+harness path you get it for free — <code>MemoryService</code> records each turn's
+selected keys to a per-session Redis set and feeds them back on the next
+<code>assemble()</code>, so the hook integration suppresses by default.</p>
 <h2 id="what-breaks-it">What breaks it<a class="headerlink" href="#what-breaks-it" title="Permanent link">&para;</a></h2>
 <p>Concrete anti-patterns, in rough order of how much they cost:</p>
 <ul>
@@ -3334,12 +3356,12 @@ the 90s. Enabling memory should move it by a point or two, not by tens.</p>
 previous call by less than the cache TTL is a prefix mutation, not an
 expiry. That count should be zero. If it is not, something is writing above
 the tail.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">read</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cache_read_input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">create</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cache_creation_input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">fresh</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">hit_rate</span> <span class="o">=</span> <span class="n">read</span> <span class="o">/</span> <span class="p">(</span><span class="n">read</span> <span class="o">+</span> <span class="n">create</span> <span class="o">+</span> <span class="n">fresh</span><span class="p">)</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># read == 0 and gap &lt; cache_ttl  -&gt;  prefix mutation, investigate</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">read</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cache_read_input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">create</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"cache_creation_input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">fresh</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"input_tokens"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">hit_rate</span> <span class="o">=</span> <span class="n">read</span> <span class="o">/</span> <span class="p">(</span><span class="n">read</span> <span class="o">+</span> <span class="n">create</span> <span class="o">+</span> <span class="n">fresh</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="c1"># read == 0 and gap &lt; cache_ttl  -&gt;  prefix mutation, investigate</span>
 </code></pre></div>
 <p>The honest way to price the memory layer is not to measure the injected
 block. Run the same scripted session twice, once with memory enabled and
