@@ -233,3 +233,109 @@ class TestHybridRetrieval:
         assert (
             high_idx < low_idx
         ), f"High-tf doc (idx={high_idx}) should rank above low-tf doc (idx={low_idx})"
+
+
+class ScopedDoc(popoto.Model):
+    """Model with a filterable scope field, for the #576 leak regression."""
+
+    name = popoto.UniqueKeyField()
+    owner = popoto.KeyField(type=str)
+    raw_content = popoto.Field(type=str)
+    content = BM25Field(source="raw_content")
+
+
+class TestScopedRetrieval:
+    """#576: the BM25/graph signals are corpus-wide, so scope must reach them.
+
+    Before the fix, `Model.query.filter(owner=...).fuse(keyword=...)` read as
+    scoped but fused across every owner's records, leaking one agent's memories
+    into another's retrieval.
+    """
+
+    def _setup(self):
+        alpha = ScopedDoc(
+            name="alpha_secret",
+            owner="alpha",
+            raw_content="the alpha deploy token is rotated weekly",
+        )
+        alpha.save()
+        beta = ScopedDoc(
+            name="beta_note",
+            owner="beta",
+            raw_content="beta deploy token notes for the weekly rotation",
+        )
+        beta.save()
+        return alpha, beta
+
+    def test_fuse_honors_builder_filters(self):
+        """A filtered query must not fuse another owner's records."""
+        alpha, beta = self._setup()
+
+        keyword = BM25Field.search(ScopedDoc, "content", "deploy token", limit=10)
+        keys = [k for k, _s in keyword]
+        assert alpha.db_key.redis_key in keys, "precondition: BM25 sees both owners"
+        assert beta.db_key.redis_key in keys
+
+        results = ScopedDoc.query.filter(owner="beta").fuse(keyword=keyword, limit=10)
+        owners = {r.owner for r in results}
+        assert owners == {"beta"}, f"leaked across owners: {owners}"
+
+    def test_unfiltered_fuse_is_unchanged(self):
+        """No filters on the builder == the previous unscoped behavior."""
+        self._setup()
+
+        keyword = BM25Field.search(ScopedDoc, "content", "deploy token", limit=10)
+        results = ScopedDoc.query.fuse(keyword=keyword, limit=10)
+        assert {r.owner for r in results} == {"alpha", "beta"}
+
+    def test_scoped_search_returns_only_allowed_keys(self):
+        """allowed_keys confines BM25 results to the caller's scope."""
+        alpha, beta = self._setup()
+
+        results = BM25Field.search(
+            ScopedDoc,
+            "content",
+            "deploy token",
+            limit=10,
+            allowed_keys={beta.db_key.redis_key},
+        )
+        keys = [k for k, _s in results]
+        assert keys == [beta.db_key.redis_key]
+        assert alpha.db_key.redis_key not in keys
+
+    def test_empty_allowed_keys_returns_nothing(self):
+        """An empty scope means nothing is visible, not 'no filtering'."""
+        self._setup()
+
+        results = BM25Field.search(
+            ScopedDoc, "content", "deploy token", limit=10, allowed_keys=set()
+        )
+        assert results == []
+
+    def test_scoped_search_does_not_starve(self):
+        """A crowded corpus must not push the caller's own records out.
+
+        The regression this pins: applying the scope filter *after* a bounded
+        fetch lets 60 other-owner records fill the candidate window, so the
+        caller silently gets nothing instead of their own top hit.
+        """
+        _alpha, beta = self._setup()
+        for i in range(60):
+            ScopedDoc(
+                name=f"alpha_flood_{i}",
+                owner="alpha",
+                raw_content=f"alpha note {i} deploy token rotation weekly settings",
+            ).save()
+
+        results = BM25Field.search(
+            ScopedDoc,
+            "content",
+            "deploy token",
+            limit=5,
+            allowed_keys={beta.db_key.redis_key},
+        )
+        keys = [k for k, _s in results]
+        assert keys == [beta.db_key.redis_key], (
+            "scope filter starved by crowding records: "
+            f"got {len(keys)} in-scope hits, expected beta's own record"
+        )

@@ -1071,6 +1071,36 @@ class QueryBuilder:
         # Sort by RRF score descending
         sorted_results = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
+        # Apply this builder's own filters (#576). The ranked lists are supplied
+        # by the caller and carry no scope of their own -- BM25Field.search() and
+        # graph propagation both return every matching key in the database. So
+        # `Model.query.filter(agent_id=...).fuse(...)` read as scoped while
+        # fusing across every agent's records, leaking one agent's memories into
+        # another's retrieval. Filtering happens BEFORE the top-K slice so the
+        # limit backfills with the next-best in-scope candidates instead of
+        # returning short.
+        if self._filters or self._q_objects:
+            if self._q_objects:
+                # filter_for_keys_set() resolves kwargs only. Rather than fuse an
+                # unfiltered set under a query that reads as filtered, refuse.
+                raise QueryException(
+                    "fuse() cannot honor Q-object filters; the ranked lists are "
+                    "unscoped and would fuse across the whole keyspace. Use "
+                    "keyword filters, or pass a post_filter callback."
+                )
+            # filter_for_keys_set() returns raw Redis replies (bytes), while the
+            # ranked lists carry str keys. Normalize or the intersection is
+            # empty for every input and fuse() silently returns nothing.
+            allowed_keys = {
+                key.decode() if isinstance(key, bytes) else str(key)
+                for key in self._query.filter_for_keys_set(**self._filters)
+            }
+            sorted_results = [
+                (key, score) for key, score in sorted_results if key in allowed_keys
+            ]
+            if not sorted_results:
+                return []
+
         # Apply post_filter
         if post_filter is not None:
             sorted_results = [

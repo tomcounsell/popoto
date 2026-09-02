@@ -2340,12 +2340,31 @@ class ContextAssembler:
         graph_results: list = []
 
         # --- BM25 lexical retrieval ---
+        # The BM25 index is corpus-wide, so the caller's scope (agent_id and
+        # friends) has to be handed to search() rather than applied afterwards:
+        # filtering a bounded fetch lets other agents' records crowd the window
+        # and starve this one (#576).
+        allowed_keys = None
+        if filters:
+            try:
+                allowed_keys = self.model_class.query.filter_for_keys_set(**filters)
+            except Exception as e:
+                # Fail closed: an unscoped BM25 signal fused under a filtered
+                # query is exactly the cross-agent leak this guards against.
+                logger.warning(
+                    "Could not resolve retrieval scope %s, skipping the lexical "
+                    "signal: %s",
+                    filters,
+                    e,
+                )
+                allowed_keys = set()
         try:
             keyword_results = BM25Field.search(
                 self.model_class,
                 self._bm25_field_name,
                 query_text,
                 limit=candidate_limit,
+                allowed_keys=allowed_keys,
             )
         except Exception as e:
             logger.warning("BM25 search failed in hybrid path: %s", e)
