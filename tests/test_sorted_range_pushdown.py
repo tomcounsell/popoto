@@ -400,7 +400,7 @@ def test_orphan_density_past_the_margin_warns_and_still_returns_full(caplog):
 
     A short bounded result is a wrong answer rather than a slow one, so it
     cannot pass silently. The warning has to point at index repair, because
-    re-reading tolerates orphans and only ``repair_indexes()`` removes them.
+    re-reading tolerates orphans and only ``clean_indexes()`` removes them.
     """
     _seed(count=40)
     orphaned = list(range(39, 39 - 15, -1))
@@ -425,7 +425,7 @@ def test_orphan_density_past_the_margin_warns_and_still_returns_full(caplog):
     assert warnings, "a short bounded read must not be silent"
     joined = "\n".join(warnings)
     assert (
-        "repair_indexes" in joined
+        "clean_indexes" in joined
     ), f"the warning must point at index repair, got: {joined}"
     assert "PushdownDoc" in joined and "last_active_at" in joined
     assert "room_id" in joined, "the warning must name the partition"
@@ -506,7 +506,7 @@ def test_exhausted_range_short_on_orphans_still_warns(caplog):
     warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
     joined = "\n".join(warnings)
     assert warnings, "a short result must not be silent even when unavoidable"
-    assert "repair_indexes" in joined, joined
+    assert "clean_indexes" in joined, joined
     assert (
         "Re-reading the full range" not in joined
     ), f"an exhausted range must not trigger a pointless re-read: {joined}"

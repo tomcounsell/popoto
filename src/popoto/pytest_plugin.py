@@ -194,7 +194,10 @@ def _resolve_test_db(config):
     line of ``pyproject.toml`` (``popoto_test_db = "15"``) or the env var.
     """
     env_db = os.environ.get("POPOTO_TEST_DB", "").strip()
-    raw_value = env_db if env_db else str(config.getini("popoto_test_db") or "").strip()
+    ini_value = config.getini("popoto_test_db")
+    if not isinstance(ini_value, str):
+        ini_value = ""
+    raw_value = env_db if env_db else ini_value.strip()
     if not raw_value:
         return None
     try:

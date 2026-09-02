@@ -102,6 +102,10 @@ class TestDefaultsSync:
             # Defaults in the query path (models/query.py); no module-level
             # alias exists, so not in MODULE_CONSTANTS.
             "SORTED_PUSHDOWN_OVERFETCH_MARGIN",
+            # DefaultMemory per-agent record cap — a safety rail read as a
+            # class attribute of recipes/default_memory.py, not a swept
+            # constant; no module-level alias exists.
+            "DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT",
             # datetime KeyField identity kill switch (#537/#538) — a
             # deploy-level switch rather than a swept constant, read directly
             # from Defaults in models/canonical_key.py; no module-level alias
