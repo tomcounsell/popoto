@@ -83,11 +83,14 @@ smaller surface.
 
 6. **Query state lives on a class-level singleton.** `Model.query` is one
    object per class (`base.py:484`), and `filter_for_keys_set` writes
-   ordering, limit, pushdown and pending-client-filter state onto `self`
-   (`query.py:2255-2261`). Two threads querying the same model, or
-   `async_save` via `to_thread` alongside a sync caller, interleave and
-   return each other's ordering and limits. This is wrong results, not a
-   race that merely crashes. Make per-call state a per-call object.
+   ordering, limit and pushdown state onto `self`
+   (`query.py:2255-2261`). A stress test (four threads, 6,000
+   interleaved queries with different limits and orderings) did not
+   produce wrong results, because limit and order are re-applied from
+   each call's own kwargs. So this is a maintainability hazard rather
+   than a demonstrated bug: any future read of that state after I/O
+   becomes a race. Make per-call state a per-call object, but it is not
+   a blocker.
 
 7. **No eviction on the default path.** `DefaultMemory` has no TTL;
    `MemoryLifecycle` is never wired into the harness or `SubconsciousMemory`;
@@ -116,6 +119,14 @@ smaller surface.
     keys and field values) ships. It is opt-in, but it contradicts the
     README's "your memory data stays in your database". Set PII off and
     strip messages, or remove the module.
+
+Every item above except 6 has a red test in
+`tests/test_production_contracts.py` (13 red on main, one guard passing,
+one skipped for a missing sentry-sdk; Python 3.11, redis-py 8.1.0, Redis
+7.0.15 on DB 15). The file is the checklist; a fix is done when its test
+is green. The tests carry the `contract` marker so CI can run them as a
+separate non-blocking job (`-m contract`) and keep the main gate on
+`-m "not slow and not contract"` until the list is empty.
 
 ## The per-turn path, as it actually executes
 
@@ -172,9 +183,11 @@ context and two `report_outcomes` functions. Cut to one of each.
   `$oatF`, `UniqueField` becomes `$UniquF`, and `ModelField`/`MoField`
   collide. This is the on-disk index namespace, so it is now a frozen
   storage format with a collision hazard for any new field class.
-- SortedField parameter matching is substring-based
-  (`sorted_field_mixin.py:714`): a sorted field named `at` consumes
-  `created_at__gte` as its own bound.
+- `SortedFieldMixin.get_filter_query_params` matches parameters by
+  substring (`sorted_field_mixin.py:714`). The caller pre-filters kwargs
+  by exact field membership, so this does not misroute today (verified:
+  fields `at` and `created_at` filter independently). It is a latent
+  trap for any new caller of the helper, not a bug.
 - `Query.get()` by non-key field executes the query three times
   (`query.py:1906-1911`; `len`, `len`, `[0]` each re-run). Every
   `get_or_create` pays it.
