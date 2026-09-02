@@ -2349,15 +2349,23 @@ class ContextAssembler:
             try:
                 query = self.model_class.query
                 allowed_keys = query.filter_for_keys_set(**filters)
-                if getattr(query, "_pending_client_filters", None):
-                    # A plain (unindexed) Field in the scope has no index to
-                    # resolve, so filter_for_keys_set() hands back every key of
-                    # the model. Passing that on would decode the whole keyspace
-                    # per query to express "no scope at all". Drop it: fuse()
-                    # applies the same predicate to the fused set, so the result
-                    # is still correctly scoped -- only the candidate window is
-                    # unnarrowed, which costs recall under crowding, not
-                    # isolation.
+                pending = getattr(query, "_pending_client_filters", None) or {}
+                if pending and len(pending) == len(filters):
+                    # Every field in the scope is a plain (unindexed) Field, so
+                    # there was no index to resolve and filter_for_keys_set()
+                    # handed back every key of the model. Passing that on would
+                    # decode the whole keyspace per query to express "no scope
+                    # at all". Drop it: fuse() applies the same predicate to the
+                    # fused set, so the result is still correctly scoped -- only
+                    # the candidate window is unnarrowed, which costs recall
+                    # under crowding, not isolation.
+                    #
+                    # A MIXED scope is different and must not take this branch.
+                    # There, the indexed fields did resolve and the returned set
+                    # is their intersection -- a correct superset of the true
+                    # scope. Dropping it would leave BM25 fetching corpus-wide
+                    # while fuse() filters the window down to nothing: silent
+                    # starvation, the failure this scoping exists to prevent.
                     allowed_keys = None
             except Exception as e:
                 # Fail closed: an unscoped BM25 signal fused under a filtered
