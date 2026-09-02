@@ -2806,8 +2806,19 @@ class Query:
                 ``**ranked_lists``.
             **ranked_lists: Named ranked lists of (redis_key, score) tuples.
 
+        Reached from ``Model.query``, this entry point carries no filters, so
+        the fused set is unscoped -- the ranked lists are used exactly as
+        given. To scope a fusion, filter first:
+        ``Model.query.filter(agent_id=...).fuse(...)``. See
+        :meth:`QueryBuilder.fuse` for what that applies (#576).
+
         Returns:
             List of model instances ranked by RRF score (descending).
+
+        Raises:
+            QueryException: If no ranked lists are provided. The Q-object
+                refusal documented on :meth:`QueryBuilder.fuse` is not
+                reachable here, since this path has no filters to carry.
         """
         builder = QueryBuilder(self)
         return builder.fuse(
