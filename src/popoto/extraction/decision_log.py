@@ -89,7 +89,7 @@ from ..models.base import Model
 from ..models.db_key import DB_key
 from ..models.encoding import encode_popoto_model_obj
 from ..models.query import Query
-from ..redis_db import ENCODING, POPOTO_REDIS_DB
+from ..redis_db import ENCODING, POPOTO_REDIS_DB, run_lua
 from ..fields.shortcuts import FloatField, IntField, KeyField, StringField
 from .verdict import TERMINAL_VERDICTS, ReasonCode, Verdict
 
@@ -515,7 +515,8 @@ class DecisionLog:
             f"reason:{reason}",
         ]
 
-        written = self._redis.eval(
+        written = run_lua(
+            self._redis,
             TERMINAL_WRITE_LUA,
             # numkeys: row + summary + class set + one index Set per
             # KeyField. Undercounting here would shunt an index Set into
@@ -594,7 +595,8 @@ class DecisionLog:
         owns -- if the TTL expired and another runner re-claimed, the DEL
         would otherwise hand that runner's candidate to a third.
         """
-        released = self._redis.eval(
+        released = run_lua(
+            self._redis,
             CLAIM_RELEASE_LUA,
             1,
             self.claim_key(agent_id, turn_id, candidate_id),

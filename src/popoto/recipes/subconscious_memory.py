@@ -62,6 +62,7 @@ from ..fields.confidence_field import ConfidenceField
 from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
 from ..privacy.never_record import scan_never_record, write_tombstone
+from ..redis_db import OUTAGE_ERRORS
 
 logger = logging.getLogger("POPOTO.SubconsciousMemory")
 
@@ -359,9 +360,7 @@ class SubconsciousMemory:
             ValueError: If ``position`` is not ``"tail"`` or ``"system"``.
         """
         if position not in ("tail", "system"):
-            raise ValueError(
-                f"position must be 'tail' or 'system', got {position!r}"
-            )
+            raise ValueError(f"position must be 'tail' or 'system', got {position!r}")
         if not messages:
             return messages, AssemblyResult()
 
@@ -378,6 +377,11 @@ class SubconsciousMemory:
                 agent_id=self.agent_id,
                 exclude_keys=exclude_keys,
             )
+        except OUTAGE_ERRORS:
+            # A dead server must not read as "no relevant memories": the
+            # caller would carry on with a turn that silently lost its
+            # memory layer. Retrieval-quality failures degrade; outages raise.
+            raise
         except Exception as e:
             logger.warning("Context assembly failed: %s", e)
             return messages, AssemblyResult()
@@ -526,6 +530,8 @@ class SubconsciousMemory:
                     # so an all-dropped turn is not misreported as an outage.
                     # The tombstone was already written inside save().
                     privacy_dropped = True
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 logger.warning("Failed to save extracted memory: %s", e)
 
@@ -840,6 +846,8 @@ class SubconsciousMemory:
                 ObservationProtocol.on_context_used(
                     assembly_result.records, outcome_map
                 )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("Failed to report outcomes: %s", e)
 

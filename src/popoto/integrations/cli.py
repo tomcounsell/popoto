@@ -243,6 +243,7 @@ def _cmd_doctor(args: Any) -> int:
     else:
         lines.append("  status         DISABLED (POPOTO_MEMORY_ENABLED=0)")
     lines.append(f"  redis url      {info['redis_url']}")
+    lines.append(f"  url source     {info.get('url_source', 'default')}")
     if info["redis_reachable"]:
         lines.append(
             f"  redis          reachable, {info['server']}, "

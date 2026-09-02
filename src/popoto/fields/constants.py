@@ -283,6 +283,15 @@ class Defaults:
     # without meaningfully enlarging a 5-row query.
     SORTED_PUSHDOWN_OVERFETCH_MARGIN = 8
 
+    # --- DefaultMemory eviction ---
+    # Memories per agent partition kept by popoto.recipes.DefaultMemory. On
+    # every save past the cap, the stalest records by decay timestamp are
+    # deleted with full index cleanup. Nothing else on the default path
+    # evicts, so without this the store grows one record per turn forever.
+    # Not a tuning constant so much as a safety rail; raise it in a subclass
+    # by overriding ``_max_records_per_agent``.
+    DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT = 1000
+
     # -- Extraction (extraction/) ---------------------------------------------
     # Experimental tuning constants for the pluggable LLM-extraction path
     # (popoto.extraction). Not yet swept -- initial values set by design,

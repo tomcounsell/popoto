@@ -54,6 +54,7 @@ Limitations:
 """
 
 import logging
+from ..models.db_key import DB_key
 from .field import Field
 
 try:
@@ -108,6 +109,9 @@ class DataFrameField(Field):
         - models/encoding.py: Contains the TYPE_ENCODER_DECODERS entry for pd.DataFrame
         - finance/models/ohlcv.py: Real-world usage for financial time-series data
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$DataFramF")
 
     null: bool = False
 

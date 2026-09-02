@@ -83,7 +83,11 @@ need their own keyspace (or extra fields) subclass it::
         pass  # keys become ProjectMemory:*
 """
 
+import logging
+
 from ..fields.access_tracker import AccessTrackerMixin
+from ..fields.constants import Defaults
+from ..redis_db import POPOTO_REDIS_DB
 from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
 from ..fields.confidence_field import ConfidenceField
@@ -91,6 +95,8 @@ from ..fields.decaying_sorted_field import DecayingSortedField
 from ..fields.shortcuts import AutoKeyField, FloatField, KeyField, StringField
 from ..models.base import Model
 from ..privacy.never_record import NeverRecordMixin
+
+logger = logging.getLogger("POPOTO.DefaultMemory")
 
 
 class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
@@ -124,3 +130,42 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
     confidence = ConfidenceField()
     content_bm25 = BM25Field(source="content")
     associations = CoOccurrenceField()
+
+    #: Cap on records per ``agent_id``. See ``Defaults`` for the rationale.
+    _max_records_per_agent = Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT
+
+    def save(self, *args, **kwargs):
+        """Save, then evict the stalest records past ``_max_records_per_agent``.
+
+        Staleness is the ``relevance`` decay timestamp, so a memory that is
+        touched (recalled, acted on) stays; one nobody has refreshed goes
+        first. Eviction is a full ``delete()`` so every index is cleaned.
+        Costs one ``ZCARD`` per save when under the cap.
+        """
+        result = super().save(*args, **kwargs)
+        if result is False or "pipeline" in kwargs:
+            return result
+        cap = self._max_records_per_agent
+        if not cap:
+            return result
+        try:
+            field = self._meta.fields["relevance"]
+            zset_key = field.get_partitioned_sortedset_db_key(
+                self, "relevance"
+            ).redis_key
+            excess = POPOTO_REDIS_DB.zcard(zset_key) - cap
+            if excess <= 0:
+                return result
+            own_key = self.db_key.redis_key
+            for victim in POPOTO_REDIS_DB.zrange(zset_key, 0, excess - 1):
+                victim = victim.decode() if isinstance(victim, bytes) else victim
+                if victim == own_key:
+                    continue
+                stale = type(self).query.get(redis_key=victim)
+                if stale is not None:
+                    stale.delete()
+                else:
+                    self._purge_orphan_keys([victim])
+        except Exception as exc:  # eviction must never fail a save
+            logger.warning("DefaultMemory eviction skipped: %s", exc)
+        return result

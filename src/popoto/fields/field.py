@@ -125,7 +125,15 @@ class FieldBase(type):
             return super().__new__(cls, name, bases, attrs, **kwargs)
 
         new_class = super().__new__(cls, name, bases, attrs, **kwargs)
-        new_class.field_class_key = DB_key(f"${name.strip('Field')}F")
+        if "field_class_key" not in attrs:
+            # Index namespace derives from the class name minus the "Field"
+            # suffix. An earlier version used str.strip("Field"), which strips
+            # a character *set*, so FloatField became "$oatF" and two class
+            # names could fold onto one namespace. Classes that already have
+            # keys on disk under the old spelling pin it explicitly (see
+            # shortcuts.py); every other class gets the suffix rule.
+            stem = name[:-5] if name.endswith("Field") else name
+            new_class.field_class_key = DB_key(f"${stem}F")
         return new_class
 
 

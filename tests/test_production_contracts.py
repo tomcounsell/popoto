@@ -27,6 +27,7 @@ network policy.
 import contextlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -317,10 +318,14 @@ class TestBoundedCost:
         ContractGetModel.create(key="a", label="one")
         ContractGetModel.create(key="b", label="two")
         ContractGetModel.query.get(label="one")  # warm
+        with count_round_trips() as baseline:
+            list(ContractGetModel.query.filter(label="one"))
         with count_round_trips() as log:
             ContractGetModel.query.get(label="one")
-        # One key-set read plus one hydration is the honest floor.
-        assert log.round_trips <= 3, f"get() used {log.round_trips} round trips"
+        assert log.round_trips <= baseline.round_trips, (
+            f"get() used {log.round_trips} round trips against "
+            f"{baseline.round_trips} for one filter(); it re-executes the query"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -368,17 +373,27 @@ class TestSafety:
             "opt-in for projects that did not ask for it"
         )
 
-    def test_integration_default_url_is_not_db0(self):
-        """The harness must not default to the database everyone else uses.
+    def test_integration_refuses_db0_unless_opted_in(self):
+        """The harness must not write memory to the database everyone uses.
 
-        Issue #584. DB 0 is where a developer's other tooling lives; the
-        memory store must land somewhere explicit.
+        Issue #584, as settled by the maintainer: ``DEFAULT_URL`` stays at
+        DB 0 and the service refuses loudly rather than silently relocating
+        an adopter's corpus. ``POPOTO_MEMORY_ALLOW_DB0=1`` is the deploy-level
+        opt-in. The refusal runs before any rebinding, so this test never
+        moves the live connection.
         """
         from popoto.integrations.config import MemoryConfig
-        from redis.connection import parse_url
+        from popoto.integrations.service import MemoryService
 
-        config = MemoryConfig.from_env({}, cwd="/tmp/contract-db0")
-        assert parse_url(config.url).get("db", 0) != 0, config.url
+        env = {"POPOTO_MEMORY_URL": "redis://localhost:6379/0"}
+        config = MemoryConfig.from_env(env, cwd="/tmp/contract-db0")
+        with pytest.raises(ValueError, match="refuses to write agent memory"):
+            MemoryService(config)
+
+        opted = MemoryConfig.from_env(
+            {**env, "POPOTO_MEMORY_ALLOW_DB0": "1"}, cwd="/tmp/contract-db0"
+        )
+        assert opted.allow_db0 is True
 
     def test_status_redacts_credentials(self):
         """``status()`` feeds the MCP tool and transcripts; never echo secrets."""
@@ -526,12 +541,20 @@ class TestConsistency:
 
 
 class TestHonesty:
-    def test_repair_method_referenced_by_warnings_exists(self):
-        """The orphan-index warning tells users to call ``repair_indexes()``."""
-        assert hasattr(Model, "repair_indexes"), (
-            "query.py tells users to run Model.repair_indexes(); define it or "
-            "point the message at clean_indexes()/rebuild_indexes()"
+    def test_methods_named_in_orphan_warnings_exist(self):
+        """Every ``Model.<name>()`` an orphan-index message points at must exist."""
+        import inspect
+
+        from popoto.models import query as query_module
+
+        source = inspect.getsource(query_module)
+        referenced = set(re.findall(r"(?:Model|__name__\}|cls)\.([a-z_]+)\(\)", source))
+        missing = sorted(
+            name
+            for name in referenced
+            if name.endswith("_indexes") and not hasattr(Model, name)
         )
+        assert missing == [], f"query.py messages point at undefined {missing}"
 
     def test_field_class_keys_are_unique(self):
         """Index namespaces derive from class names and must not collide.

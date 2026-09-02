@@ -43,6 +43,20 @@ DEFAULT_URL = "redis://localhost:6379/0"
 """Connection URL used when neither ``POPOTO_MEMORY_URL`` nor ``REDIS_URL``
 is set. Valkey uses the same scheme, so this default covers both."""
 
+ALLOW_DB0_ENV = "POPOTO_MEMORY_ALLOW_DB0"
+"""Deploy-level opt-in for writing agent memory to Redis database 0. An
+environment variable rather than a constructor argument on purpose: a PyPI
+adopter running the hook cannot edit model code, and a hook is a bare
+command string with no place to pass Python arguments. Accepts the same
+truthy set as ``POPOTO_MEMORY_ENABLED`` (``1``/``true``/``yes``/``on``)."""
+
+HOOK_SOCKET_TIMEOUT_SECONDS = 1.0
+"""Socket connect and read timeout applied when the integration binds its
+own connection. The read hook sits on the user's prompt path, so a hung
+server must cost about a second, not the library default of five per
+attempt. Retries are disabled for the same reason: the harness will run the
+hook again next turn."""
+
 DEFAULT_MAX_ITEMS = 5
 """Records injected per turn. See the module docstring for why this is not
 the benchmark's 20."""
@@ -120,6 +134,8 @@ class MemoryConfig:
     enabled: bool = True
     log_path: Path = Path(DEFAULT_LOG_PATH).expanduser()
     url_is_explicit: bool = False
+    url_source: str = "default"
+    allow_db0: bool = False
 
     @classmethod
     def from_env(
@@ -145,7 +161,13 @@ class MemoryConfig:
         env = os.environ if env is None else env
 
         explicit_url = env.get("POPOTO_MEMORY_URL", "").strip()
-        url = explicit_url or env.get("REDIS_URL", "").strip() or DEFAULT_URL
+        inherited_url = env.get("REDIS_URL", "").strip()
+        if explicit_url:
+            url, url_source = explicit_url, "POPOTO_MEMORY_URL"
+        elif inherited_url:
+            url, url_source = inherited_url, "REDIS_URL"
+        else:
+            url, url_source = DEFAULT_URL, "default"
 
         agent_id = env.get("POPOTO_MEMORY_AGENT_ID", "").strip()
         if not agent_id:
@@ -166,6 +188,8 @@ class MemoryConfig:
             enabled=_as_bool(env.get("POPOTO_MEMORY_ENABLED"), True),
             log_path=Path(log_raw).expanduser(),
             url_is_explicit=bool(explicit_url),
+            url_source=url_source,
+            allow_db0=_as_bool(env.get(ALLOW_DB0_ENV), False),
         )
 
 
@@ -193,6 +217,145 @@ def derive_agent_id(cwd: Optional[str] = None) -> str:
             return "default"
     name = os.path.basename(os.path.normpath(str(cwd).strip() or "."))
     return name or "default"
+
+
+class Db0RefusedError(ValueError):
+    """Raised when agent memory would be written to Redis database 0.
+
+    Subclasses ``ValueError`` so the existing handlers keep working: the
+    hook's blanket catch, the MCP dispatcher's, and ``doctor``'s explicit
+    ``except ValueError`` all predate this error and all do the right thing
+    with it.
+    """
+
+
+def redact_url(url: str) -> str:
+    """Return ``url`` with any password replaced by ``***``.
+
+    ``status()`` feeds the MCP ``memory_status`` tool and ``doctor``, both
+    of which land in transcripts, so the connection URL must never carry
+    the credential through.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<unparseable url>"
+    if not parts.password:
+        return url
+    host = parts.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    if parts.port is not None:
+        host = f"{host}:{parts.port}"
+    userinfo = f"{parts.username or ''}:***@"
+    return urlunsplit(parts._replace(netloc=userinfo + host))
+
+
+def effective_db(config: MemoryConfig) -> int:
+    """The database number this service will actually write to.
+
+    Two cases, and conflating them is the trap:
+
+    * ``url_is_explicit`` -- the caller named a URL, so its ``db`` is the
+      answer. A URL with no ``db`` at all raises the "no database number"
+      ``ValueError`` here.
+    * otherwise -- Popoto's live connection is the answer, not
+      ``config.url``. With no ``POPOTO_MEMORY_URL``, ``config.url`` is
+      ``DEFAULT_URL`` (database 0) even when the process is on database
+      15: the pytest plugin swaps ``POPOTO_REDIS_DB``'s pool in place and
+      never touches ``MemoryConfig``. Reading ``config.url`` here would
+      refuse on every test in the suite and on every host application
+      that configured its own connection.
+    """
+    from redis.connection import parse_url
+
+    from ..redis_db import POPOTO_REDIS_DB
+
+    if config.url_is_explicit:
+        wanted = parse_url(config.url)
+        if "db" not in wanted:
+            raise ValueError(_no_db_message(config.url))
+        return int(wanted["db"])
+    return int(POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0) or 0)
+
+
+def suggest_free_db() -> Optional[int]:
+    """Lowest database in 1..15 that currently holds no keys, or ``None``.
+
+    Best effort and advisory only. Reads ``INFO keyspace`` (a core command
+    on both Redis and Valkey), which reports only non-empty databases, so
+    anything in 1..15 absent from that report is empty. Any exception
+    yields ``None``; a diagnostic must never be the thing that fails. This
+    function never rebinds anything.
+    """
+    try:
+        from ..redis_db import POPOTO_REDIS_DB
+
+        info = POPOTO_REDIS_DB.info("keyspace")
+        used = set()
+        for name in info:
+            if isinstance(name, bytes):
+                name = name.decode()
+            if str(name).startswith("db"):
+                used.add(int(str(name)[2:]))
+        for candidate in range(1, 16):
+            if candidate not in used:
+                return candidate
+    except Exception:
+        return None
+    return None
+
+
+def _no_db_message(url: str) -> str:
+    return (
+        f"POPOTO_MEMORY_URL={url!r} has no database number. "
+        "Write it in full, for example redis://localhost:6379/0 -- a "
+        "trailing slash with nothing after it is not database 0, it is "
+        "no database at all, and honouring it would silently leave "
+        "every write on whatever database Popoto is already using."
+    )
+
+
+def _db0_refusal_message(config: MemoryConfig) -> str:
+    free = suggest_free_db()
+    example_db = free if free is not None else 1
+    hint = f" (database {free} is empty on this server)" if free is not None else ""
+    example = f"redis://localhost:6379/{example_db}"
+    if config.url_source == "POPOTO_MEMORY_URL":
+        first = (
+            f"POPOTO_MEMORY_URL={config.url} targets Redis database 0, and "
+            "Popoto refuses to write agent memory there."
+        )
+        fix = f"Give the memory corpus a database of its own{hint}:"
+    elif config.url_source == "REDIS_URL":
+        first = (
+            f"REDIS_URL={config.url} puts Popoto on Redis database 0, and "
+            "Popoto refuses to write agent memory there."
+        )
+        fix = (
+            "Point the memory corpus at a database of its own without moving "
+            f"the rest of your application{hint}:"
+        )
+    else:
+        first = (
+            "Popoto's default connection is Redis database 0, and Popoto "
+            "refuses to write agent memory there."
+        )
+        fix = f"Give the memory corpus a database of its own{hint}:"
+    return (
+        f"{first} DB 0 is the default database of every stock Redis/Valkey "
+        "install, so it is the one most likely to already hold another "
+        "application's data, and a single FLUSHDB destroys both. The pytest "
+        "plugin refuses popoto_test_db=0 for the same reason; this is the "
+        "same rule on the write path.\n"
+        f"{fix}\n"
+        f"    export POPOTO_MEMORY_URL={example}\n"
+        "Or, if database 0 really is where this corpus belongs, opt in at "
+        "deploy time:\n"
+        f"    export {ALLOW_DB0_ENV}=1"
+    )
 
 
 def bind_connection(config: MemoryConfig) -> bool:
@@ -229,23 +392,22 @@ def bind_connection(config: MemoryConfig) -> bool:
             connection would leave writes on database 0 while the caller
             believes it redirected them.
     """
+    # The DB 0 guard runs before the explicit-URL early return: the
+    # zero-configuration path is exactly the one #584 is about.
+    if effective_db(config) == 0 and not config.allow_db0:
+        raise Db0RefusedError(_db0_refusal_message(config))
+
     if not config.url_is_explicit:
         return False
 
     import redis
+    from redis.backoff import NoBackoff
     from redis.connection import parse_url
+    from redis.retry import Retry
 
     from ..redis_db import POPOTO_REDIS_DB
 
     wanted = parse_url(config.url)
-    if "db" not in wanted:
-        raise ValueError(
-            f"POPOTO_MEMORY_URL={config.url!r} has no database number. "
-            "Write it in full, for example redis://localhost:6379/0 -- a "
-            "trailing slash with nothing after it is not database 0, it is "
-            "no database at all, and honouring it would silently leave "
-            "every write on whatever database Popoto is already using."
-        )
 
     client = POPOTO_REDIS_DB
     current = dict(client.connection_pool.connection_kwargs)
@@ -253,8 +415,13 @@ def bind_connection(config: MemoryConfig) -> bool:
         return False
 
     current.update(wanted)
-    current.setdefault("socket_timeout", 5)
-    current.setdefault("socket_connect_timeout", 5)
+    # The hook sits on the user's prompt path. One short attempt, no
+    # retries: a hung server costs about a second, and the harness runs
+    # the hook again next turn. redis-py's default is 5 s per attempt with
+    # up to 10 retries, which turned one hung server into a 25 s stall.
+    current["socket_timeout"] = HOOK_SOCKET_TIMEOUT_SECONDS
+    current["socket_connect_timeout"] = HOOK_SOCKET_TIMEOUT_SECONDS
+    current["retry"] = Retry(NoBackoff(), 0)
     old_pool = client.connection_pool
     client.connection_pool = redis.ConnectionPool(
         connection_class=old_pool.connection_class, **current

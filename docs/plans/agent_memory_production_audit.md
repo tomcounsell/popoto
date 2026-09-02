@@ -120,13 +120,13 @@ smaller surface.
     README's "your memory data stays in your database". Set PII off and
     strip messages, or remove the module.
 
-Every item above except 6 has a red test in
-`tests/test_production_contracts.py` (13 red on main, one guard passing,
-one skipped for a missing sentry-sdk; Python 3.11, redis-py 8.1.0, Redis
-7.0.15 on DB 15). The file is the checklist; a fix is done when its test
-is green. The tests carry the `contract` marker so CI can run them as a
-separate non-blocking job (`-m contract`) and keep the main gate on
-`-m "not slow and not contract"` until the list is empty.
+Every item above except 6 has a test in `tests/test_production_contracts.py`.
+On main at `35782e4`, 13 of 15 were red (Python 3.11, redis-py 8.1.0, Redis
+7.0.15 on DB 15). The branch that carries this document turns all 15 green;
+the tests keep the `contract` marker so they can be run on their own with
+`-m contract`. The `Meta.ttl` fix is partial by design: reads self-heal the
+indexes derivable from the key, and `clean_indexes()` remains the tool for
+partitions on non-key fields.
 
 ## The per-turn path, as it actually executes
 

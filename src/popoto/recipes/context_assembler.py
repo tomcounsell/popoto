@@ -81,7 +81,7 @@ from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.tag_field import TagFieldMixin
 from ..fields.validity_field import ValidityField
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import OUTAGE_ERRORS, POPOTO_REDIS_DB, run_lua
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
 
@@ -751,7 +751,8 @@ def _decayed_partition_scores(
                 # derivable directly from the partition ZSET key. The
                 # confidence hash is NOT -- it lives under its own
                 # $ConfidencF: prefix -- so it is resolved Python-side above.
-                result = POPOTO_REDIS_DB.eval(
+                result = run_lua(
+                    POPOTO_REDIS_DB,
                     CYCLIC_DECAY_LUA,
                     4,  # number of KEYS: zset + cycles + pressure + confidence
                     zkey,
@@ -766,7 +767,8 @@ def _decayed_partition_scores(
                     conf_c0,
                 )
             else:
-                result = POPOTO_REDIS_DB.eval(
+                result = run_lua(
+                    POPOTO_REDIS_DB,
                     DECAY_SCORE_LUA,
                     # numkeys: zset + confidence (KEYS[2]) + invalid_at
                     # (KEYS[3]) + valid_from (KEYS[4]). Passing the validity
@@ -1938,6 +1940,8 @@ class ContextAssembler:
                             pull_records[0], self._confidence_field_name
                         )
                     )
+                except OUTAGE_ERRORS:
+                    raise
                 except Exception as e:
                     # Fault-tolerant, matching the style of emit_trace /
                     # _compute_quality elsewhere in this method: a
@@ -2042,6 +2046,8 @@ class ContextAssembler:
         if emit_trace:
             try:
                 proxy = self._injection_scores(selected)
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 logger.warning("emit_trace score proxy failed: %s", e)
                 proxy = {}
@@ -2108,6 +2114,8 @@ class ContextAssembler:
                     all_pull_candidates=all_pull_candidates,
                     query_cues=query_cues or {},
                 )
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 logger.warning("_compute_quality failed: %s", e)
                 metadata["quality"] = RetrievalQuality()
@@ -2173,6 +2181,8 @@ class ContextAssembler:
                 raise TypeError(
                     f"token_counter returned {tokens!r}; expected a non-negative int"
                 )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning(
                 "token_counter raised %s on serialized text (first 80 chars: "
@@ -2246,6 +2256,8 @@ class ContextAssembler:
                 co_occurrence_boost=co_occurrence_boost,
                 as_of=self._assembly_as_of,
             )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("CompositeScoreQuery failed: %s", e)
             return [], []
@@ -2298,6 +2310,8 @@ class ContextAssembler:
                         co_occurrence_boost=propagated,
                         as_of=self._assembly_as_of,
                     )
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 logger.warning("CoOccurrence propagation failed: %s", e)
 
@@ -2333,7 +2347,9 @@ class ContextAssembler:
                 )
                 return [], []
 
-        candidate_limit = self._fetch_limit(self.max_items * HYBRID_CANDIDATE_MULTIPLIER)
+        candidate_limit = self._fetch_limit(
+            self.max_items * HYBRID_CANDIDATE_MULTIPLIER
+        )
 
         keyword_results: list = []
         vector_results: list = []
@@ -2367,6 +2383,8 @@ class ContextAssembler:
                     # while fuse() filters the window down to nothing: silent
                     # starvation, the failure this scoping exists to prevent.
                     allowed_keys = None
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 # Fail closed: an unscoped BM25 signal fused under a filtered
                 # query is exactly the cross-agent leak this guards against.
@@ -2385,6 +2403,8 @@ class ContextAssembler:
                 limit=candidate_limit,
                 allowed_keys=allowed_keys,
             )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("BM25 search failed in hybrid path: %s", e)
 
@@ -2403,6 +2423,8 @@ class ContextAssembler:
                 vector_results = _qb._get_vector_scores(
                     query_text, limit=candidate_limit
                 )
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 logger.warning("Vector search failed in hybrid path: %s", e)
 
@@ -2455,6 +2477,8 @@ class ContextAssembler:
                         threshold=0.01,
                     )
                     graph_results = list(propagated.items())
+            except OUTAGE_ERRORS:
+                raise
             except Exception as e:
                 logger.warning("Graph propagation failed in hybrid path: %s", e)
 
@@ -2479,6 +2503,8 @@ class ContextAssembler:
                 weights=fusion_weights,
                 **fuse_kwargs,
             )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("RRF fusion failed, falling back to composite: %s", e)
             return self._pull_path_composite(query_cues, filters)
@@ -2509,6 +2535,8 @@ class ContextAssembler:
                 ),
                 as_of=self._assembly_as_of,
             )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("Push path failed: %s", e)
             return []
@@ -2552,12 +2580,15 @@ class ContextAssembler:
                             candidate,
                             self._confidence_field_name,
                             signal=COMPETITIVE_SUPPRESSION_SIGNAL,
+                            pipeline=pipeline,
                         )
                     except (TypeError, ValueError):
                         pass  # Model may not have confidence on this instance
 
         try:
             pipeline.execute()
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("Post-effects pipeline failed: %s", e)
 
@@ -2713,6 +2744,8 @@ class ContextAssembler:
                 indexes=self.score_weights,
                 limit=limit,
             )
+        except OUTAGE_ERRORS:
+            raise
         except Exception as e:
             logger.warning("assess() composite_score probe failed: %s", e)
             probe_candidates = []

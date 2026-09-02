@@ -69,7 +69,7 @@ from ..fields.field import Field
 from ..fields.prediction_ledger import PredictionLedgerMixin
 from ..fields.shortcuts import AutoKeyField, DecimalField, KeyField
 from ..models.base import Model
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 
 logger = logging.getLogger("POPOTO.PolicyCache")
 
@@ -374,7 +374,8 @@ def update_q_value(
     """
     redis_key = _get_redis_key(instance)
 
-    td_error = POPOTO_REDIS_DB.eval(
+    td_error = run_lua(
+        POPOTO_REDIS_DB,
         TD_UPDATE_LUA,
         1,  # num keys
         redis_key,  # KEYS[1] — model hash key

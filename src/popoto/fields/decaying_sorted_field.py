@@ -31,6 +31,7 @@ Example:
 """
 
 import logging
+from ..models.db_key import DB_key
 from typing import Any, Optional
 
 from ..exceptions import ModelException
@@ -264,6 +265,9 @@ class DecayingSortedField(SortedFieldMixin, Field):
         partition_by: Partition the sorted set by key field values.
             Inherited from SortedFieldMixin.
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$DecayingSortF")
 
     def __init__(self, **kwargs):
         decay_rate = kwargs.pop("decay_rate", None)

@@ -309,6 +309,7 @@ def _log_hook_error(operation: str, exc: BaseException) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{stamp} {operation} {type(exc).__name__}: {exc}\n")
+            detail = " ".join(str(exc).split())
+            handle.write(f"{stamp} {operation} {type(exc).__name__}: {detail}\n")
     except Exception:
         pass

@@ -21,6 +21,7 @@ wrappers, DatetimeField lives in its own module because it introduces behavioral
 (auto_now/auto_now_add) beyond just type enforcement.
 """
 
+from ..models.db_key import DB_key
 from .field import Field
 from datetime import datetime, timezone
 
@@ -60,6 +61,9 @@ class DatetimeField(Field):
         class User(Timestampable):
             username = popoto.KeyField()
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$DatetimF")
 
     def __init__(self, *args, **kwargs):
         """

@@ -50,7 +50,7 @@ import redis.client
 
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB, scan_keys
+from ..redis_db import POPOTO_REDIS_DB, scan_keys, run_lua
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -390,7 +390,8 @@ class IndexedFieldMixin:
                         f"value '{field_value}' is already taken by another instance"
                     )
             # Queue EVAL into caller's pipeline — authoritative check at execute()
-            pipeline.eval(
+            run_lua(
+                pipeline,
                 INDEX_SWAP_LUA,
                 4,
                 member_key,  # KEYS[1]: the model hash key (same as record redis_key)
@@ -409,7 +410,8 @@ class IndexedFieldMixin:
             # Internal path: execute EVAL via POPOTO_REDIS_DB directly.
             # This runs atomically on the Redis server; no client-side race.
             try:
-                result = POPOTO_REDIS_DB.eval(
+                result = run_lua(
+                    POPOTO_REDIS_DB,
                     INDEX_SWAP_LUA,
                     4,
                     member_key,  # KEYS[1]: the model hash key (same as record redis_key)

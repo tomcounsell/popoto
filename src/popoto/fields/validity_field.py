@@ -74,7 +74,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union, cast
 import redis.client
 
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB, scan_keys
+from ..redis_db import POPOTO_REDIS_DB, scan_keys, run_lua
 from .constants import Defaults
 from .field import Field
 
@@ -794,10 +794,10 @@ class ValidityField(Field):
         ]
 
         if isinstance(pipeline, redis.client.Pipeline):
-            pipeline.eval(SUPERSEDE_LUA, 6, *args)
+            run_lua(pipeline, SUPERSEDE_LUA, 6, *args)
             return pipeline
         try:
-            result = POPOTO_REDIS_DB.eval(SUPERSEDE_LUA, 6, *args)
+            result = run_lua(POPOTO_REDIS_DB, SUPERSEDE_LUA, 6, *args)
         except redis.exceptions.ResponseError as e:
             if CLOSE_BEFORE_START_ERROR in str(e):
                 raise ValueError(

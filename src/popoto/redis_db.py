@@ -72,6 +72,7 @@ Note:
 
 import os
 import logging
+import threading
 import asyncio
 import redis
 import redis.asyncio as aioredis
@@ -560,3 +561,49 @@ class PopotoException(Exception):
     def __init__(self, message):
         self.message = message
         logger.error(message)
+
+
+# ---------------------------------------------------------------------------
+# Lua script registry
+# ---------------------------------------------------------------------------
+
+#: Exceptions that mean "the server is unreachable", as opposed to a bad
+#: query. Recipes let these propagate so an outage never masquerades as an
+#: empty retrieval; the harness boundary is where they get swallowed.
+OUTAGE_ERRORS = (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)
+
+_SCRIPTS: dict = {}
+_SCRIPTS_LOCK = threading.Lock()
+
+
+def lua_script(script_text: str):
+    """Return a cached ``redis.commands.core.Script`` for ``script_text``.
+
+    A ``Script`` sends ``EVALSHA`` and falls back to loading the source only
+    when the server does not know the SHA, so a script is uploaded once per
+    server rather than on every call. Scripts are keyed by their text and
+    bound to the shared client; passing ``client=`` to the returned object
+    (a pipeline, or a sibling client) is supported by redis-py.
+    """
+    script = _SCRIPTS.get(script_text)
+    if script is None:
+        with _SCRIPTS_LOCK:
+            script = _SCRIPTS.get(script_text)
+            if script is None:
+                script = POPOTO_REDIS_DB.register_script(script_text)
+                _SCRIPTS[script_text] = script
+    return script
+
+
+def run_lua(client, script_text: str, numkeys: int, *keys_and_args):
+    """Run ``script_text`` with the ``EVAL``-style argument layout.
+
+    Drop-in replacement for ``client.eval(script, numkeys, *args)`` that
+    goes through :func:`lua_script`, so the server sees ``EVALSHA`` after
+    the first call. ``client`` may be the shared client, a sibling client,
+    or a pipeline; for a pipeline the call is queued and its result comes
+    back from ``execute()``.
+    """
+    keys = list(keys_and_args[:numkeys])
+    args = list(keys_and_args[numkeys:])
+    return lua_script(script_text)(keys=keys, args=args, client=client)

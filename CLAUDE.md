@@ -9,7 +9,7 @@ Popoto is a Python Redis/Valkey ORM providing Django-like model syntax: object p
 ## Commands
 
 ```bash
-pytest                          # requires Redis on localhost:6379; auto-isolated on DB 15
+pytest                          # requires Redis on localhost:6379; isolated on DB 15 via popoto_test_db in pyproject
 pytest -k "test_name"           # single test by name
 mypy src/                       # type checking
 ruff check src/                 # lint (config in [tool.ruff.lint]; gated by lint.yml)
@@ -18,7 +18,7 @@ mkdocs serve                    # docs locally
 scripts/ci-local.sh             # local CI gates: lint + tests + stress + docs (--all, --fast, or named gates)
 ```
 
-Tests are auto-isolated on Redis DB 15 via the `popoto.pytest_plugin` entry point (both `import popoto` and `import src.popoto` collapse onto one canonical module/connection). Override with `POPOTO_TEST_DB=<n>`; DB 0 is rejected to prevent accidental production data loss.
+Tests are isolated on Redis DB 15 by the `popoto.pytest_plugin` entry point, which is opt-in: this repo opts in with `popoto_test_db = "15"` under `[tool.pytest.ini_options]`, and a downstream project that never sets it (or `POPOTO_TEST_DB`) gets no DB swap and no flush. Both `import popoto` and `import src.popoto` collapse onto one canonical module/connection. Override with `POPOTO_TEST_DB=<n>`; DB 0 is rejected to prevent accidental production data loss.
 
 **Ad-hoc scripts (outside pytest) default to DB 0, which is a LIVE agent store on this machine.** `POPOTO_TEST_DB` only binds the pytest plugin, and `POPOTO_REDIS_DB` is the Python global client's name, not an environment variable — setting it does nothing. The only env var that binds the connection is `REDIS_URL`, and it is read at import time: run repro scripts with `REDIS_URL=redis://localhost:6379/15` set *before* `import popoto` (see #577 — this mistake has written to the live store twice).
 

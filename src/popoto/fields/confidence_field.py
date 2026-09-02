@@ -41,9 +41,10 @@ import logging
 import msgpack
 import redis
 
+from ..models.db_key import DB_key
 from ..exceptions import ModelException
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
@@ -64,6 +65,13 @@ local hash_key = KEYS[1]
 local member = ARGV[1]
 local signal = tonumber(ARGV[2])
 local initial_confidence = tonumber(ARGV[3])
+
+-- KEYS[2] (optional): the member's own hash. When given, an update for a
+-- record that no longer exists is a no-op, which lets callers batch many
+-- updates into one pipeline without a preceding EXISTS round trip each.
+if KEYS[2] and redis.call('EXISTS', KEYS[2]) == 0 then
+    return nil
+end
 
 -- Read existing data
 local raw = redis.call('HGET', hash_key, member)
@@ -157,6 +165,9 @@ class ConfidenceField(Field):
         memory = Memory.create(key="fact1", project="atlas", content="...")
         ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$ConfidencF")
 
     # Export/import: the companion hash holds evidence_count, corroborations
     # and contradictions, which exist nowhere else -- only ``confidence`` is
@@ -504,18 +515,20 @@ class ConfidenceField(Field):
             across processes produce silently inconsistent gain
             schedules with no runtime detection.
 
-        Note: Always executes immediately via Lua EVAL (not batched into
-        pipeline) because the Lua script needs to read-modify-write atomically.
-        The pipeline parameter is accepted for API consistency but unused.
+        Note: When ``pipeline`` is given the update is queued on it and
+        this method returns ``None``; the instance attribute is not
+        synced, and a record that no longer exists is skipped server-side
+        instead of raising. Without a pipeline the update runs at once.
 
         Args:
             model_instance: The Model instance to update.
             field_name: Name of the ConfidenceField on the model.
             signal: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
-            pipeline: Optional Redis pipeline (unused — Lua EVAL is atomic).
+            pipeline: Optional Redis pipeline to queue the update on.
 
         Returns:
-            float: The new confidence value.
+            float: The new confidence value, or ``None`` when queued on a
+            pipeline.
 
         Raises:
             TypeError: If field is not a ConfidenceField or model is unsaved.
@@ -538,12 +551,29 @@ class ConfidenceField(Field):
         except Exception:
             raise TypeError("update_confidence() requires a saved model instance")
 
+        data_hash_key = field.get_data_hash_key(model_instance, field_name)
+
+        if pipeline is not None:
+            # Batched: the Lua EXISTS guard on KEYS[2] replaces the
+            # round-trip check below, so N suppressions cost one execute().
+            run_lua(
+                pipeline,
+                CAPPED_BAYESIAN_UPDATE_LUA,
+                2,
+                data_hash_key,
+                member_key,
+                member_key,
+                str(signal),
+                str(field.initial_confidence),
+                str(field.evidence_cap),
+            )
+            return None
+
         if not POPOTO_REDIS_DB.exists(member_key):
             raise TypeError("update_confidence() requires a saved model instance")
 
-        data_hash_key = field.get_data_hash_key(model_instance, field_name)
-
-        result = POPOTO_REDIS_DB.eval(
+        result = run_lua(
+            POPOTO_REDIS_DB,
             CAPPED_BAYESIAN_UPDATE_LUA,
             1,  # number of KEYS
             data_hash_key,

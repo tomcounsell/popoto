@@ -48,6 +48,7 @@ See Also:
 
 import msgpack
 
+from ..models.db_key import DB_key
 from .field import Field
 from .key_field_mixin import KeyFieldMixin
 from .auto_field_mixin import AutoFieldMixin
@@ -99,6 +100,9 @@ class FloatField(Field):
             humidity = FloatField(null=True)
     """
 
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$oatF")
+
     def __init__(self, *args, **kwargs):
         """
         Initialize a FloatField with float type constraint.
@@ -128,6 +132,9 @@ class DecimalField(Field):
             amount = DecimalField(null=False)
             tax_rate = DecimalField(default=Decimal("0.0825"))
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$DecimaF")
 
     def __init__(self, *args, **kwargs):
         """
@@ -614,6 +621,9 @@ class TupleField(Field):
             coordinates = TupleField(null=True)  # (lat, lng)
     """
 
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$TupF")
+
     def __init__(self, *args, **kwargs):
         """
         Initialize a TupleField with tuple type constraint.
@@ -644,6 +654,9 @@ class DateField(Field):
             registration_deadline = DateField(null=True)
     """
 
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$DatF")
+
     def __init__(self, *args, **kwargs):
         """
         Initialize a DateField with date type constraint.
@@ -672,6 +685,9 @@ class TimeField(Field):
             opening_time = TimeField(null=False)
             closing_time = TimeField(null=False)
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$TimF")
 
     def __init__(self, *args, **kwargs):
         """
@@ -900,6 +916,9 @@ class SortedField(SortedFieldMixin, Field):
         - SortedKeyField: Combines SortedField with KeyField behavior
     """
 
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$SortF")
+
     def __init__(self, *args, **kwargs):
         """
         Initialize a SortedField with Sorted Set indexing.
@@ -996,6 +1015,9 @@ class IndexedField(IndexedFieldMixin, Field):
         - KeyField: For fields that should be part of the Redis key
     """
 
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$IndexF")
+
     def __init__(self, *args, **kwargs):
         """
         Initialize an IndexedField with secondary indexing enabled.
@@ -1032,6 +1054,9 @@ class UniqueField(IndexedFieldMixin, Field):
         - IndexedField: For indexed fields without uniqueness
         - UniqueKeyField: For unique fields that are part of the Redis key
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$UniquF")
 
     def __init__(self, *args, **kwargs):
         """

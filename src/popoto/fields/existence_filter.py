@@ -68,7 +68,8 @@ import math
 
 import redis
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..models.db_key import DB_key
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .field import Field
 
 logger = logging.getLogger("POPOTO.ExistenceFilter")
@@ -427,9 +428,9 @@ class ExistenceFilter(Field):
         if not tokens:
             # Fallback: add the raw fingerprint lowercased (handles empty strings,
             # short tokens, redis keys, etc.)
-            client.eval(BLOOM_ADD_LUA, 1, key, fingerprint.lower(), m, k)
+            run_lua(client, BLOOM_ADD_LUA, 1, key, fingerprint.lower(), m, k)
         else:
-            client.eval(BLOOM_ADD_MULTI_LUA, 1, key, m, k, *tokens)
+            run_lua(client, BLOOM_ADD_MULTI_LUA, 1, key, m, k, *tokens)
         return pipeline if pipeline else None
 
     @classmethod
@@ -477,13 +478,13 @@ class ExistenceFilter(Field):
         tokens = tokenize(query_str)
         if not tokens:
             # Fallback: check the raw lowercased query (matches on_save fallback)
-            result = POPOTO_REDIS_DB.eval(
-                BLOOM_EXISTS_LUA, 1, key, query_str.lower(), m, k
+            result = run_lua(
+                POPOTO_REDIS_DB, BLOOM_EXISTS_LUA, 1, key, query_str.lower(), m, k
             )
             return bool(result)
         # Check if ANY token is in the bloom filter
         for token in tokens:
-            result = POPOTO_REDIS_DB.eval(BLOOM_EXISTS_LUA, 1, key, token, m, k)
+            result = run_lua(POPOTO_REDIS_DB, BLOOM_EXISTS_LUA, 1, key, token, m, k)
             if bool(result):
                 return True
         return False
@@ -571,8 +572,8 @@ class ExistenceFilter(Field):
             return {fp: False for fp in fingerprint_order}
 
         # Single Lua EVAL for all tokens
-        raw_results = POPOTO_REDIS_DB.eval(
-            BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
+        raw_results = run_lua(
+            POPOTO_REDIS_DB, BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
         )
 
         # Map token results back to fingerprints (ANY token hit = fingerprint hit)
@@ -636,6 +637,9 @@ class FrequencySketch(Field):
 
         Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
     """
+
+    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
+    field_class_key = DB_key("$requencySketchF")
 
     # Override Field defaults -- FrequencySketch does not store a value
     MAX_DEPTH = 7
@@ -715,11 +719,19 @@ class FrequencySketch(Field):
         tokens = tokenize(fingerprint)
         if not tokens:
             # Fallback: increment the raw fingerprint lowercased
-            client.eval(
-                CMS_INCR_LUA, 1, key, fingerprint.lower(), field.width, field.depth
+            run_lua(
+                client,
+                CMS_INCR_LUA,
+                1,
+                key,
+                fingerprint.lower(),
+                field.width,
+                field.depth,
             )
         else:
-            client.eval(CMS_INCR_MULTI_LUA, 1, key, field.width, field.depth, *tokens)
+            run_lua(
+                client, CMS_INCR_MULTI_LUA, 1, key, field.width, field.depth, *tokens
+            )
         return pipeline if pipeline else None
 
     @classmethod
@@ -765,15 +777,21 @@ class FrequencySketch(Field):
         tokens = tokenize(query_str)
         if not tokens:
             # Fallback: query the raw lowercased fingerprint
-            result = POPOTO_REDIS_DB.eval(
-                CMS_QUERY_LUA, 1, key, query_str.lower(), self.width, self.depth
+            result = run_lua(
+                POPOTO_REDIS_DB,
+                CMS_QUERY_LUA,
+                1,
+                key,
+                query_str.lower(),
+                self.width,
+                self.depth,
             )
             return int(result) if result else 0
         # For multi-token queries, return min frequency (conservative)
         min_freq = None
         for token in tokens:
-            result = POPOTO_REDIS_DB.eval(
-                CMS_QUERY_LUA, 1, key, token, self.width, self.depth
+            result = run_lua(
+                POPOTO_REDIS_DB, CMS_QUERY_LUA, 1, key, token, self.width, self.depth
             )
             freq = int(result) if result else 0
             if min_freq is None or freq < min_freq:
