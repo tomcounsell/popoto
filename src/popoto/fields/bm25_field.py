@@ -608,6 +608,13 @@ class BM25Field(Field):
         # whole corpus has been scanned. Capped so a caller whose scope holds
         # almost nothing cannot walk an unbounded corpus on every query; at the
         # cap the result is honestly short rather than silently empty.
+        #
+        # Each pass re-runs BM25_SEARCH_LUA from scratch rather than extending
+        # the previous window, so the cost is the sum of the passes, not the
+        # final width. Worst case is a fully starved scope: at limit=10 and
+        # SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -> 40 -> 160 -> 640 -> 2560
+        # -> 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the
+        # widen factor trades passes for wasted scoring width.
         raw_n: Any = POPOTO_REDIS_DB.get(n_key)
         try:
             corpus_n = int(raw_n)

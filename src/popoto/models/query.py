@@ -1028,11 +1028,25 @@ class QueryBuilder:
             **ranked_lists: Named ranked lists. Each value is a list of
                 ``(redis_key, score)`` tuples sorted by score descending.
 
+        Scope (#576): the ranked lists are supplied by the caller and carry no
+        scope of their own -- ``BM25Field.search()`` and graph propagation both
+        return every matching key in the database. So this builder's own
+        keyword filters are applied to the fused set, before the top-K slice,
+        which means ``Model.query.filter(agent_id=...).fuse(...)`` is scoped as
+        it reads and the ``limit`` still backfills with in-scope candidates.
+        Filters on unindexed plain ``Field``s are honored too, at the cost of
+        hydrating the surviving candidates to evaluate them.
+
         Returns:
             List of model instances ranked by RRF score (descending).
 
         Raises:
-            QueryException: If no ranked lists are provided.
+            QueryException: If no ranked lists are provided, or if the builder
+                carries Q-object filters. Q objects cannot be resolved to a key
+                set here, and fusing an unscoped set under a query that reads
+                as filtered is the leak this scoping exists to prevent, so
+                fuse() refuses rather than silently widening. Use keyword
+                filters or a ``post_filter`` callback instead.
 
         Example:
             results = Memory.query.fuse(
@@ -1079,6 +1093,9 @@ class QueryBuilder:
         # another's retrieval. Filtering happens BEFORE the top-K slice so the
         # limit backfills with the next-best in-scope candidates instead of
         # returning short.
+        # Instances already decoded by the client-side filter pass below, reused
+        # by hydration so a plain-field filter costs one HGETALL per candidate.
+        prefetched: dict[str, Any] = {}
         if self._filters or self._q_objects:
             if self._q_objects:
                 # filter_for_keys_set() resolves kwargs only. Rather than fuse an
@@ -1098,6 +1115,32 @@ class QueryBuilder:
             sorted_results = [
                 (key, score) for key, score in sorted_results if key in allowed_keys
             ]
+            # A filter on a plain (unindexed) Field has no index to resolve, so
+            # filter_for_keys_set() stashes it in _pending_client_filters and
+            # hands back the whole keyspace -- making the intersection above a
+            # no-op and reopening the exact cross-scope leak (#576) for that
+            # filter class. Every other read path applies the stash client-side;
+            # do the same here, before the top-K slice so the limit still
+            # backfills with in-scope candidates.
+            client_filters = getattr(self._query, "_pending_client_filters", None) or {}
+            if client_filters and sorted_results:
+                pipe = POPOTO_REDIS_DB.pipeline()
+                for key, _score in sorted_results:
+                    pipe.hgetall(key)
+                in_scope = []
+                for (key, score), data in zip(sorted_results, pipe.execute()):
+                    if not data:
+                        continue
+                    instance = decode_popoto_model_hashmap(
+                        model_class, data, source_redis_key=key
+                    )
+                    if all(
+                        getattr(instance, fname, None) == expected
+                        for fname, expected in client_filters.items()
+                    ):
+                        prefetched[key] = instance
+                        in_scope.append((key, score))
+                sorted_results = in_scope
             if not sorted_results:
                 return []
 
@@ -1114,19 +1157,23 @@ class QueryBuilder:
             return []
 
         # Hydrate model instances
-        pipe = POPOTO_REDIS_DB.pipeline()
-        for key, _score in sorted_results:
-            pipe.hgetall(key)
-        hashes = pipe.execute()
+        missing = [(key, s) for key, s in sorted_results if key not in prefetched]
+        if missing:
+            pipe = POPOTO_REDIS_DB.pipeline()
+            for key, _score in missing:
+                pipe.hgetall(key)
+            for (key, _score), data in zip(missing, pipe.execute()):
+                if data:
+                    prefetched[key] = decode_popoto_model_hashmap(
+                        model_class, data, source_redis_key=key
+                    )
 
         instances = []
-        for (key, score), data in zip(sorted_results, hashes):
-            if data:
-                instance = decode_popoto_model_hashmap(
-                    model_class, data, source_redis_key=key
-                )
-                instance._rrf_score = score
-                instances.append(instance)
+        for key, score in sorted_results:
+            hydrated = prefetched.get(key)
+            if hydrated is not None:
+                hydrated._rrf_score = score
+                instances.append(hydrated)
 
         if not self._no_track:
             _fire_on_read(model_class, instances)

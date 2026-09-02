@@ -12,8 +12,11 @@ import os
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
+import pytest  # noqa: E402
+
 from src import popoto  # noqa: E402
 from src.popoto.fields.bm25_field import BM25Field  # noqa: E402
+from src.popoto.models.query import QueryException  # noqa: E402
 
 # --- Test Model ---
 
@@ -339,3 +342,101 @@ class TestScopedRetrieval:
             "scope filter starved by crowding records: "
             f"got {len(keys)} in-scope hits, expected beta's own record"
         )
+
+
+class PlainScopedDoc(popoto.Model):
+    """#576 follow-up: the scope field is a plain, unindexed Field."""
+
+    name = popoto.UniqueKeyField()
+    owner = popoto.Field(type=str)
+    raw_content = popoto.Field(type=str)
+    content = BM25Field(source="raw_content")
+
+
+class TestPlainFieldScopedFuse:
+    """A filter on an unindexed Field must scope fuse() too.
+
+    ``filter_for_keys_set()`` has no index to resolve for a plain Field, so it
+    stashes the predicate in ``_pending_client_filters`` and returns the whole
+    keyspace. fuse() intersected against that and the scope silently evaporated
+    — the same cross-owner leak as #576, for a whole filter class.
+    """
+
+    def _setup(self, alpha_extra=0):
+        alpha = PlainScopedDoc(
+            name="plain_alpha",
+            owner="alpha",
+            raw_content="the alpha deploy token is rotated weekly",
+        )
+        alpha.save()
+        beta = PlainScopedDoc(
+            name="plain_beta",
+            owner="beta",
+            raw_content="beta deploy token notes for the weekly rotation",
+        )
+        beta.save()
+        for i in range(alpha_extra):
+            PlainScopedDoc(
+                name=f"plain_alpha_flood_{i}",
+                owner="alpha",
+                raw_content=f"alpha note {i} deploy token rotation weekly",
+            ).save()
+        return alpha, beta
+
+    def test_fuse_honors_plain_field_filters(self):
+        alpha, beta = self._setup()
+
+        keyword = BM25Field.search(PlainScopedDoc, "content", "deploy token", limit=10)
+        keys = [k for k, _s in keyword]
+        assert alpha.db_key.redis_key in keys, "precondition: BM25 sees both owners"
+        assert beta.db_key.redis_key in keys
+
+        results = PlainScopedDoc.query.filter(owner="beta").fuse(
+            keyword=keyword, limit=10
+        )
+        owners = {r.owner for r in results}
+        assert owners == {"beta"}, f"leaked across owners: {owners}"
+
+    def test_plain_field_scope_backfills_the_limit(self):
+        """Filtering runs before the top-K slice, so the limit stays full."""
+        _alpha, _beta = self._setup(alpha_extra=6)
+        for i in range(3):
+            PlainScopedDoc(
+                name=f"plain_beta_extra_{i}",
+                owner="beta",
+                raw_content=f"beta note {i} deploy token rotation weekly",
+            ).save()
+
+        keyword = BM25Field.search(PlainScopedDoc, "content", "deploy token", limit=50)
+        results = PlainScopedDoc.query.filter(owner="beta").fuse(
+            keyword=keyword, limit=4
+        )
+        assert {r.owner for r in results} == {"beta"}
+        assert len(results) == 4, (
+            "scope applied after the slice would return short; "
+            f"got {len(results)} of 4"
+        )
+
+    def test_q_object_filters_are_refused(self):
+        """The one branch that changes behavior for existing callers.
+
+        A Q object cannot be resolved to a key set here, so fuse() refuses
+        rather than silently fusing across the whole keyspace under a query
+        that reads as filtered.
+        """
+        self._setup()
+
+        keyword = BM25Field.search(PlainScopedDoc, "content", "deploy token", limit=10)
+        with pytest.raises(QueryException, match="Q-object filters"):
+            PlainScopedDoc.query.filter(popoto.Q(owner="beta")).fuse(
+                keyword=keyword, limit=10
+            )
+
+    def test_plain_field_filter_matching_nothing_returns_empty(self):
+        self._setup()
+
+        keyword = BM25Field.search(PlainScopedDoc, "content", "deploy token", limit=10)
+        results = PlainScopedDoc.query.filter(owner="gamma").fuse(
+            keyword=keyword, limit=10
+        )
+        assert results == []
