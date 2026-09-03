@@ -22,10 +22,14 @@ same ground; GitHub runs the real Valkey job on PR.
 
 ## Test isolation: DB 15, and the six expected failures
 
-The suite auto-isolates onto **Redis DB 15** through the `popoto.pytest_plugin`
+The suite isolates onto **Redis DB 15** through the `popoto.pytest_plugin`
 entry point (both `import popoto` and `import src.popoto` collapse onto one
-canonical module and connection). `POPOTO_TEST_DB=<n>` overrides it; DB 0 is
-rejected to prevent production data loss.
+canonical module and connection). The plugin is opt-in and this repo opts in
+with `popoto_test_db = "15"` in `pyproject.toml`; `POPOTO_TEST_DB=<n>`
+overrides that, and DB 0 is rejected to prevent production data loss. A
+checkout whose `pyproject.toml` lost that line gets no isolation and no
+warning — if flush-dependent tests start failing in a worktree, check it
+first.
 
 Because every worktree shares DB 15, concurrent pipelines collide there and
 have produced 73–158 phantom failures. Setting `POPOTO_TEST_DB=<n>` avoids the
