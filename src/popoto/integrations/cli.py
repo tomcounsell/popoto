@@ -206,7 +206,7 @@ def _cmd_mcp() -> int:
 def _cmd_doctor(args: Any) -> int:
     """Print the diagnostic report. Returns 1 when Redis is unreachable."""
     from .config import MemoryConfig
-    from .service import MemoryService
+    from .service import MemoryService, NON_FAILURE_COUNTERS
 
     config = MemoryConfig.from_env()
     try:
@@ -289,7 +289,11 @@ def _cmd_doctor(args: Any) -> int:
         lines.append(f"  hook read      {info['hook_read_ms']} ms (in-process)")
 
     counters = info.get("counters") or {}
-    failures = {k: v for k, v in counters.items() if not k.endswith("_ok")}
+    failures = {
+        k: v
+        for k, v in counters.items()
+        if not k.endswith("_ok") and k not in NON_FAILURE_COUNTERS
+    }
     successes = {k: v for k, v in counters.items() if k.endswith("_ok")}
     lines.append(
         "  successes      "
@@ -302,6 +306,17 @@ def _cmd_doctor(args: Any) -> int:
         )
     else:
         lines.append("  failures       none")
+
+    evicted = counters.get("evicted") or 0
+    if evicted:
+        lines.append(
+            f"  DATA LOSS      {evicted} records selected for eviction "
+            "past the per-agent cap (permanent, no tombstone)"
+        )
+        lines.append(
+            "                 set POPOTO_DEFAULT_MEMORY_MAX_RECORDS to raise "
+            "or lower the cap, or to 0/off to disable eviction"
+        )
 
     last = info.get("last_success") or {}
     if last:
