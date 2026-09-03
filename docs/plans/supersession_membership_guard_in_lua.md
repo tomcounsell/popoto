@@ -71,9 +71,12 @@ call instead of a pipeline the caller assembles by hand.
 
 ## Freshness Check
 
-**Baseline commit:** `44abc17` (`fix(#576): scope fuse() for unindexed plain-Field filters too`)
+**Baseline commit:** `c7fc167` (`origin/main`, 2026-09-03) — superseding the first-pass
+baseline `44abc17`. See **Post-#594 re-verification** below for the authoritative line-number
+table; where this section and that table disagree, the table wins.
 **Issue filed at:** 2026-08-17T09:12:23Z
-**Disposition:** Unchanged (all cited line numbers still exact)
+**Disposition:** Minor drift (root cause and all decisions unchanged; `models/base.py` and
+`tests/test_validity_field.py` line numbers moved under PR #594)
 
 <!-- Re-baselined from 60aa730 to 44abc17 during the critique revision pass. The single
      intervening commit touches bm25_field.py / query.py / context_assembler.py /
@@ -104,8 +107,9 @@ validations, and `observation.py:484` for the `except` line.
 - `src/popoto/recipes/provenance_journal.py:1118-1138` — M1's "use `execute_supersede`, NOT
   `SupersessionProtocol` (#588)" comment and direct call — **still holds, exact lines.**
 - `src/popoto/models/base.py:1383-1432` — the internal-pipeline save path: `HSET` queued at
-  `:1386`, field `on_save` hooks queued at `:1412-1424`, `execute()` at `:1432` — **still
-  holds.** This ordering is load-bearing for D5 below.
+  `:1386`, field `on_save` hooks queued at `:1412-1424`, `execute()` at `:1432` — held at
+  `44abc17`; **moved to `:1405-1453` / `:1407` / `:1430-1445` / `:1453` by PR #594** (see the
+  re-verification table). This ordering is load-bearing for D5 below.
 - `src/popoto/fields/observation.py:480-486` **[corrected]** — `_apply_supersession` delegates to
   `SupersessionProtocol.invalidate` inside `except (TypeError, ValueError): pass` — **still
   holds, exact lines.**
@@ -191,6 +195,61 @@ The root cause, the decisions, and the D1–D7 approach all still hold.
 **Sibling issue status refresh (2026-09-03):** #584 is closed by PR #594, so the "sequenced
 alongside" note under Cited sibling issues is now historical. #576 is closed (PR #593 merged).
 #563 (M4) remains open and still sequences after this plan.
+
+### Post-#594 re-verification (2026-09-03, PLAN stage)
+
+**PR #594 has merged** as `16aa702`. **The authoritative baseline for this plan is now
+`c7fc167` (`origin/main`)**, not `44abc17`. Every file:line reference in this document was
+re-read against `origin/main`. The root cause, the decisions, and D1–D7 are unaffected.
+
+**Still exact at `c7fc167` — no edit needed:**
+`supersession.py:376-394` / `:391` / `:246-253` / `:471-481`;
+`validity_field.py:157` (`SUPERSEDE_LUA =`) / `:197` / `:213-215` / `:220` / `:229` /
+`:704-809` (`execute_supersede`, def at `:705`) / `:796-798` (pipeline branch) /
+`:801-807` (remap) / `:849-896` `on_save` with the coercion at `:883-886` / `:764-772`
+(client-side close-before-start pre-check);
+`provenance_journal.py:299-310` (four `IndexedField`s + `ValidityField`) / `:906-964` (D7
+pre-flight) / `:1015-1057` (the three pipeline validations, at `:1018-1022`, `:1023-1028`,
+`:1046-1057`) / `:1085-1102` (falsy-save `RuntimeError`) / `:1118-1138` (M1's false `#588`
+comment, still at `:1118`, call at `:1126`);
+`observation.py:480-486` with the `except` at `:485`;
+`test_provenance_journal.py:326-336` (`_supersede_mode`) / `:1369` / `:1373-1374` / `:1453` /
+`:1501` / `:1540` / `:1840`.
+
+**Drifted — use these numbers, the ones cited elsewhere in this plan are pre-#594:**
+
+| Cited elsewhere as | Correct at `c7fc167` | What it is |
+|---|---|---|
+| `base.py:1559-1584` | **`base.py:1581-1607`** | full-save eager `IndexedFieldMixin` phase; the #476 rationale comment is `:1581-1592`, the dict `:1593-1597`, the loop `:1598+`. The `pre_save_validate` dispatch goes immediately before `:1593`. |
+| `base.py:1591` (HSET queued) | **`base.py:1609`** `internal_pipeline`, **`:1612`** `HSET` | full-save pipelined phase |
+| `base.py:1625-1634` (execute) | **`base.py:1678`** | full-save `internal_pipeline.execute()` |
+| `base.py:1367-1381` | **`base.py:1384-1394`** | partial-save eager phase (`_eager_indexed_update_fields`); dispatch goes immediately before `:1388` |
+| `base.py:1383-1432` / `:1386` / `:1412-1424` / `:1432` | **`base.py:1405-1453`** / `:1407` / `:1430-1445` / `:1453` | partial-save internal pipeline: construct, `HSET`, queued `on_save` hooks, `execute()` |
+| `validity_field.py:30-32` | **`:30-34`** | the Valkey-safe command list (`EXISTS` gets added here) |
+| `validity_field.py:483-487` | **`:485-489`** | `import_state`'s plain `SET` of open pointers (Risk 3) |
+| `provenance_journal.py:1157-1161` | **`:1157-1162`** | `bool(results[close_index])` is on `:1162` |
+| `test_validity_field.py:1388` | **`:1401`** | `test_unsaved_instance_degrades_with_no_partial_state` (REPLACE) |
+| `test_validity_field.py:1406` | **`:1419`** | `test_invalidate_with_an_unsaved_successor_is_a_no_op` (REPLACE) |
+| `test_validity_field.py:1595` | **`:1608`** | `test_unsaved_successor_degrades_with_no_partial_state` (**frozen**, D7) |
+| `test_validity_field.py:1609` | **`:1622`** | `test_unsaved_contradicted_instance_degrades_with_no_partial_state` (**frozen**, D7) |
+| `test_validity_field.py:649` | **`:655`** | `test_invalidate_issues_exactly_one_mutating_call` (`:635` is unchanged) |
+| `test_validity_field.py:859` | **`:855`** | `_decay_eval_numkeys` |
+| `test_validity_field.py:1840-1970` | **`:1853-1983`** | `TestTransferRoundTrip`; return-shape assertions are now `:588, :646, :1460, :1880, :1977` |
+
+**Confirmed converted by #594:** `execute_supersede` now calls
+`run_lua(pipeline, SUPERSEDE_LUA, 6, *args)` at `:797` and
+`run_lua(POPOTO_REDIS_DB, SUPERSEDE_LUA, 6, *args)` at `:800`; `redis_db.lua_script` is at
+`:594` and `redis_db.run_lua` at `:613`. **Write the new call sites as `run_lua`, never
+`eval`.**
+
+**Every anti-criterion and red-state row below was proven at `44abc17`.** #594 touched none of
+the greps' subjects (`_member_key`'s probe, the `MUTATION PHASE` marker, M1's comment, the
+`ARGV[8]` string, `CHANGELOG.md`, `popoto.SupersessionProtocol`'s attribute set), so the
+red-state readings carry forward unchanged. Re-run them at `c7fc167` at build start anyway —
+they are one-line commands and the table is the PR's paper trail.
+
+**Baseline for Task 4's test counts must be re-measured at `c7fc167`.** A count taken at
+`44abc17` is not comparable: #594 changed `test_validity_field.py` and added files.
 
 ## Prior Art
 
@@ -296,7 +355,7 @@ it is answered and acted on inside the same script invocation.
 | Redis/Valkey reachable | `redis-cli -n 15 PING` | Test suite runs on DB 15 |
 | Editable install resolves to this checkout | `python -c "import popoto,os;print(os.path.realpath(popoto.__file__))"` | CLAUDE.md worktree gate 1 |
 | Full extras installed — **satisfied 2026-09-02** | `python -c "import numpy, sentence_transformers, mcp"` | CLAUDE.md worktree gate 2. `mcp` was genuinely missing from this venv and has now been installed, so `.[dev,embeddings,benchmark,mcp]` is satisfied and the ~95 previously-deselected tests are collected again. Re-run the check before trusting any count; do not compare a baseline taken before this to a post-change number. |
-| Baseline suite green | `pytest tests/test_validity_field.py tests/test_provenance_journal.py -q` | Establish the pre-change count before touching anything |
+| Baseline suite green | `pytest tests/test_validity_field.py tests/test_provenance_journal.py -q` | Establish the pre-change count before touching anything, **at `c7fc167` or later** — a count taken at `44abc17` predates PR #594's test edits and is not comparable |
 
 ## Solution
 
@@ -550,7 +609,8 @@ whichever writer wins, the other writes half the record. Two halves, handled sep
 **Half 1 — both surfaces set, disagreeing.** This is the 30-day case and it is now impossible
 to *write*: an asserted `valid_from` that disagrees with the stored score returns
 `VALID_FROM_CONFLICT`. But an error inside `EXEC` does not roll back the `HSET` that
-`Model.save()` queued at `base.py:1386`, so a script-level rejection alone would still leave
+`Model.save()` queued at `base.py:1407` (partial save) / `:1612` (full save), so a
+script-level rejection alone would still leave
 the hash corrected and the index refusing — loudly, but still divergent. The check therefore
 has to happen before the save writes anything, and **where** it runs is the whole of this
 decision.
@@ -558,13 +618,13 @@ decision.
 **[corrected — the first-pass plan got this wrong.]** It is not enough to raise from
 `ValidityField.on_save`. `Model.save()` has *two* write phases, not one:
 
-1. **Eager phase** — `base.py:1559-1584` (full save) and `base.py:1367-1381` (partial save)
+1. **Eager phase** — `base.py:1581-1607` (full save) and `base.py:1384-1394` (partial save)
    run every `IndexedFieldMixin` field's `on_save` **eagerly, with `pipeline=None`, directly
    against live Redis**, before `internal_pipeline` is even constructed. That ordering is
    deliberate and is the #476 unique-conflict fix; its rationale is written out at
-   `base.py:1559-1571`.
-2. **Pipelined phase** — `base.py:1591` onward queues the `HSET` and then every remaining
-   field's `on_save`, executing at `base.py:1625-1634` / `:1413-1424`.
+   `base.py:1581-1592`.
+2. **Pipelined phase** — `base.py:1609-1612` onward queues the `HSET` and then every remaining
+   field's `on_save`, executing at `base.py:1678` (full save) / `base.py:1453` (partial save).
 
 `ValidityField` is `class ValidityField(Field)` (`validity_field.py:229`), deliberately **not**
 an `IndexedFieldMixin` (plan D2 of V0 — see the class docstring). Its `on_save` therefore runs
@@ -583,7 +643,7 @@ gave the unique-conflict window. A new optional field hook, defaulting to a no-o
 def pre_save_validate(cls, model_instance, field_name, field_value, **kwargs) -> None:
     """Raise to abort a save before ANY write is issued or queued.
 
-    Runs ahead of the eager indexed-field phase (base.py:1559-1584), which is
+    Runs ahead of the eager indexed-field phase (base.py:1581-1607), which is
     what distinguishes it from ``on_save``: a hook that raises from ``on_save``
     has already let every ``IndexedFieldMixin`` field commit. Default: no-op.
     """
@@ -615,7 +675,7 @@ message, plus the authoritative check in the script for the race (Race 4).
 
 **The guarantee, stated exactly.** On the **non-pipeline** save path, a rejected declared
 re-save writes nothing at all — no hash field, no index entry, no interval — because the
-pre-scan raises before phase 1. On the **external-pipeline** path (`base.py:1304-1341`) there
+pre-scan raises before phase 1. On the **external-pipeline** path (`base.py:1325-1382`) there
 is no eager phase (indexed `on_save` is queued, not executed), and the pre-scan raises before
 the caller's `execute()`, so nothing is *applied* — but the caller's pipeline still holds the
 queued `HSET` and must be discarded rather than executed. That is the same contract M1
@@ -724,7 +784,7 @@ value.
 
 `_apply_supersession` (`observation.py:480-486`, the `except` at `:485`) is a **signal** path: `on_context_used`
 reports outcomes for a batch of memories and must not raise because one of them was never
-saved. Two shipped tests pin that (`test_validity_field.py:1595,1609`), and
+saved. Two shipped tests pin that (`test_validity_field.py:1608,1622`), and
 `on_context_used` passes an internal pipeline, so a queued EVAL that errors at `EXEC` would
 surface *after* the batch's other effects had applied.
 
@@ -753,7 +813,7 @@ still catches the new exceptions because they subclass `ValueError` (D4).
 ### Exception Handling Coverage
 
 - `observation.py:485` `except (TypeError, ValueError): pass` — in scope, and its behavior is
-  deliberately preserved. Covered by `test_validity_field.py:1595,1609` (existing, must keep
+  deliberately preserved. Covered by `test_validity_field.py:1608,1622` (existing, must keep
   passing unchanged) plus a **new** test asserting the `logger.debug` degradation line fires,
   so "silently degraded" is observable rather than merely asserted-by-absence.
 - `supersession.py:536-541` `_hydrate`'s narrow `except` — in scope but untouched; already
@@ -786,26 +846,27 @@ still catches the new exceptions because they subclass `ValueError` (D4).
 ## Test Impact
 
 **Total suite touched: 5 test files + 2 benchmark files.** Counts below are from a full
-enumeration at `44abc17`.
+enumeration at `44abc17`; the line numbers have been re-verified and corrected at `c7fc167`
+(post-#594).
 
 Tests that **must change** (they pin the behavior this plan deliberately reverses):
 
-- [ ] `tests/test_validity_field.py::TestFailurePaths::test_unsaved_instance_degrades_with_no_partial_state` (`:1388`) — **REPLACE.** Currently asserts `supersede(unsaved) is None` and `invalidate(unsaved) is None`. Becomes `pytest.raises(ValidityMemberAbsentError)` for both, with the same six-key "no partial state" assertions retained verbatim — the *no-write* guarantee is unchanged and is the more important half of this test.
-- [ ] `tests/test_validity_field.py::TestFailurePaths::test_invalidate_with_an_unsaved_successor_is_a_no_op` (`:1406`) — **REPLACE.** Becomes `pytest.raises(ValidityMemberAbsentError)`; keeps the `invalid_at == inf` assertion (the incumbent must still be untouched).
+- [ ] `tests/test_validity_field.py::TestFailurePaths::test_unsaved_instance_degrades_with_no_partial_state` (`:1401`) — **REPLACE.** Currently asserts `supersede(unsaved) is None` and `invalidate(unsaved) is None`. Becomes `pytest.raises(ValidityMemberAbsentError)` for both, with the same six-key "no partial state" assertions retained verbatim — the *no-write* guarantee is unchanged and is the more important half of this test.
+- [ ] `tests/test_validity_field.py::TestFailurePaths::test_invalidate_with_an_unsaved_successor_is_a_no_op` (`:1419`) — **REPLACE.** Becomes `pytest.raises(ValidityMemberAbsentError)`; keeps the `invalid_at == inf` assertion (the incumbent must still be untouched).
 - [ ] `tests/test_provenance_journal.py::TestAnnotationAtomicity::test_supersession_protocol_silently_no_ops_for_a_pipelined_successor` (`:1501`) — **REPLACE.** This test *is* the bug report. It inverts: the pipelined successor now produces a queued `invalidate` EVAL, `invalid_at` finite after `execute()`, and both chain hashes populated. Rename to `test_supersession_protocol_closes_a_pipelined_successor`. Its docstring must stop citing the `POPOTO_REDIS_DB.exists(...)` probe.
 - [ ] `src/popoto/recipes/provenance_journal.py:1118-1131` — **UPDATE (source, not test).** The "use `execute_supersede`, NOT `SupersessionProtocol` (#588)" comment is now false. Rewrite it to record *why the direct call is still correct* (M1 needs `old_member` explicit and `assert_valid_from=False`; it does not need the identity pointer) rather than "the protocol is broken". Do **not** switch M1 to the protocol in this PR — see No-Gos.
 
 Tests that **must keep passing unchanged** (the plan is designed around them):
 
-- [ ] `tests/test_validity_field.py::TestContradictedSupersessionWiring::test_unsaved_successor_degrades_with_no_partial_state` (`:1595`) and `::test_unsaved_contradicted_instance_degrades_with_no_partial_state` (`:1609`) — the observation path must stay silent (D7). If either needs editing, D7 was implemented wrong.
+- [ ] `tests/test_validity_field.py::TestContradictedSupersessionWiring::test_unsaved_successor_degrades_with_no_partial_state` (`:1608`) and `::test_unsaved_contradicted_instance_degrades_with_no_partial_state` (`:1622`) — the observation path must stay silent (D7). If either needs editing, D7 was implemented wrong.
 - [ ] `tests/test_provenance_journal.py::TestAnnotationAtomicity::test_valid_time_is_taken_from_construction_not_from_the_supersede_argv` (`:1540`) — pins Q2's answer. Its second half asserts `raw_valid_from != requested` for a raw `execute_supersede(valid_from=...)` — that still holds because `SupersessionProtocol` and this raw shape pass `assert_valid_from=False`. **UPDATE** only to add a third arm asserting `assert_valid_from=True` raises `ValidityValidFromConflictError` on the same input.
 - [ ] `tests/test_provenance_journal.py:326-336` `_supersede_mode` helper — **UPDATE.** It asserts `len(args) >= 16` and reads mode at `args[13]`. Adding ARGV[8] makes the list 17 long; the positional indices for KEYS and ARGV[1..7] are unchanged, so only the `>= 16` bound needs revisiting (it still passes, but the helper should assert the new exact length to stay a real oracle). Consumed by ~8 tests.
 - [ ] `tests/test_provenance_journal.py:1369,1373,1374` — `_numkeys == 6`, `args[9]` new member, `args[15]` old member. **Unchanged** — ARGV[8] appends.
 - [ ] `tests/test_provenance_journal.py:1300` (`bool(results[close_index]) is True`) and `:1840` (`assert not results[second.close_index]`) — depend on the *unchanged* reply shape. If either breaks, D2's "reply shapes are unchanged" was violated.
 - [ ] `tests/test_provenance_journal.py:1453` `test_bypassing_the_pre_flight_surfaces_a_raw_response_error` — pins that the pipeline branch does **not** remap. Unchanged by design (D4).
-- [ ] `tests/test_validity_field.py` return-shape assertions at `:588, :644, :711, :713, :723, :724, :1447, :1867, :1964` — all assert `closed == old.db_key.redis_key` or `is None`. Unchanged.
-- [ ] `tests/test_validity_field.py::TestAtomicity::test_supersede_issues_exactly_one_mutating_call` (`:635`) and `::test_invalidate_issues_exactly_one_mutating_call` (`:649`) — count `eval` plus 13 mutating client methods. The removed `EXISTS` is a *read*, so the counts are unchanged; the new script-internal `EXISTS` is invisible to the counter. **These two tests are the proof that D1 removed a round trip rather than moving one.**
-- [ ] `tests/test_validity_field.py::TestTransferRoundTrip` (`:1840-1970`, 4 tests) — `import_state` writes plain `ZADD`/`HSET`/`SET`, never through the script, so it is untouched. `:1923`'s post-import supersede now goes through the new validation phase against a restored pointer; the D2 "pointer is a hint, not an assertion" rule is what keeps it passing.
+- [ ] `tests/test_validity_field.py` return-shape assertions at `:588, :646, :1460, :1880, :1977` (re-enumerated at `c7fc167`) — all assert `closed == old.db_key.redis_key` or `is None`. Unchanged.
+- [ ] `tests/test_validity_field.py::TestAtomicity::test_supersede_issues_exactly_one_mutating_call` (`:635`) and `::test_invalidate_issues_exactly_one_mutating_call` (`:655`) — count `eval` **plus `evalsha`** (PR #594) plus 13 mutating client methods. The removed `EXISTS` is a *read*, so the counts are unchanged; the new script-internal `EXISTS` is invisible to the counter. **These two tests are the proof that D1 removed a round trip rather than moving one.**
+- [ ] `tests/test_validity_field.py::TestTransferRoundTrip` (`:1853-1983`, 4 tests) — `import_state` writes plain `ZADD`/`HSET`/`SET`, never through the script, so it is untouched. `:1936`'s post-import supersede now goes through the new validation phase against a restored pointer; the D2 "pointer is a hint, not an assertion" rule is what keeps it passing.
 
 Tests **unaffected but re-run as regression** (validity consumers, no supersede mutation
 under test): `tests/test_context_assembler.py::TestAssemblerValidityGating` (7),
@@ -856,7 +917,7 @@ Enumerated in Step 3 below.
 
 **Impact:** `ValidityField.on_save` runs in mode `'open'` with `new_member` = the record being
 saved. If the script required `EXISTS(new_member)` there, any save path where the hash is
-written *after* the field hooks — or not at all, as on `base.py:1387`'s EVAL-only path where
+written *after* the field hooks — or not at all, as on the EVAL-only path where
 `hset_mapping` is empty and the indexed-field EVALs write the hash — would start failing
 every save on the model.
 
@@ -874,7 +935,7 @@ mode would abort effects that had already been queued for the rest of the batch.
 
 **Mitigation:** D7 — the `EXISTS` probe is retained on that one path, plus the existing
 `except (TypeError, ValueError)`, plus the new exceptions subclassing `ValueError`. Three
-layers, and `test_validity_field.py:1595,1609` must pass **unedited** as the gate.
+layers, and `test_validity_field.py:1608,1622` must pass **unedited** as the gate.
 
 ### Risk 3: A restored open-pointer names a hard-deleted record
 
@@ -905,7 +966,7 @@ script with 7 ARGV and asserts identical behavior.
 in-script key lookups.
 
 **Mitigation:** strictly faster on the wire, and `TestAtomicity`'s call counters
-(`test_validity_field.py:635,649`) prove the round trip is gone rather than moved. After PR
+(`test_validity_field.py:635,655`) prove the round trip is gone rather than moved. After PR
 #594 those counters sum `eval` **and** `evalsha`; the contract is unchanged but the assertion
 shape is not — see the Post-#594 Addendum. The
 benchmark gates in `tests/benchmarks/test_journal_append.py` are re-run as the p50 check.
@@ -924,7 +985,7 @@ call per field and no Redis command — measurable against
 which are re-run as a gate. `ValidityField.pre_save_validate` issues **at most one `ZSCORE`,
 and only when the field value is a declared, numeric, non-`None` value** — a defaulted save
 returns before touching Redis, so the common path costs nothing. Risk 5's call-count tests
-(`test_validity_field.py:635,649`) bound the total.
+(`test_validity_field.py:635,655`) bound the total.
 
 **If review rejects this:** D5 states the fallback explicitly (keep the check in `on_save`,
 narrow the guarantee to "no `ValidityField`-owned byte", reword the Success Criterion, the
@@ -983,9 +1044,10 @@ racing is harmless — it can only produce a false negative, which the script th
   this PR's. This PR only corrects M1's now-false `#588` source comment.
 - [SEPARATE-SLUG #584] Anything touching `popoto.integrations` DB selection. Sequenced
   alongside this issue by the maintainer decision, separate plan, separate PR.
-- [ORDERED] Merging ahead of #576/PR #593. That work is already on this branch as `60aa730`/`44abc17`;
-  this plan's branch must be cut from a main that contains it, and the maintainer decision
-  fixes the order as #576 → #588/#584 → #563.
+- [ORDERED] Merging ahead of #576/PR #593 and #584/PR #594. **Both have now merged** (#593 as
+  `07b7268`, #594 as `16aa702`), so this plan's branch must be cut from `origin/main` at
+  `c7fc167` or later. The maintainer order was #576 → #588/#584 → #563; the first two legs are
+  done and #563 (M4) still follows this plan.
 
 Nothing else is deferred. The combined entry point, the typed exception hierarchy, the
 hash/index divergence, and the full test rewrite are all in scope for this plan.
@@ -1084,15 +1146,15 @@ them; the three new exception classes **do** need `__all__` entries.
 - [ ] After a rejected declared re-save on the **non-pipeline** path, nothing was written at
       all: the record's hash and index still agree, **and** a sibling `IndexedField` on the
       same model still holds its pre-save value with no new index entry (D5 half 1 — this is
-      the criterion the eager-indexed phase at `base.py:1559-1584` would otherwise defeat).
+      the criterion the eager-indexed phase at `base.py:1581-1607` would otherwise defeat).
       On the external-pipeline path the criterion is that nothing was *applied*; the caller's
       queued `HSET` is theirs to discard.
 - [ ] `save_and_supersede` performs the save and the close in one MULTI/EXEC (exactly one
       `pipe.execute()`, `transaction is True`, zero mutating commands issued outside it).
 - [ ] All three Lua error tokens map to their typed exception; an unrecognized `ResponseError`
       re-raises unchanged.
-- [ ] `test_validity_field.py:1595` and `:1609` pass **unedited** (anti-criterion row, proven
-      red at `44abc17`).
+- [ ] `test_validity_field.py:1608` and `:1622` pass **unedited** (anti-criterion row, proven
+      red at `44abc17`; the grep is name-anchored, not line-anchored, so it survives the drift).
 - [ ] `CHANGELOG.md` carries a `### Breaking` entry under `## [Unreleased]` naming
       `SupersessionProtocol.supersede`/`.invalidate`, `ValidityMemberAbsentError`, and the
       one-line adopter fix — the library is published on PyPI at 1.8.2 and this ships in
@@ -1162,13 +1224,17 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
   conflict check.
 - Update the header comment block: KEYS/ARGV contract, the numbered Logic list, the reply
   table, and `EXISTS` added to the Valkey-safe command list in the module docstring.
+- Keep both `execute_supersede` script invocations on `redis_db.run_lua` (`redis_db.py:613`),
+  the cached-`Script` seam PR #594 introduced — **never reintroduce a raw `client.eval(...)`**;
+  a build that does will pass its own tests and silently regress the registry.
 - Add `assert_valid_from: bool = False` to `execute_supersede`, append ARGV[8], and replace the
   single `if CLOSE_BEFORE_START_ERROR in str(e)` branch with the ordered dispatch table;
   preserve the bare `raise` for unrecognized errors.
 - Add `Field.pre_save_validate` (default no-op) to `fields/field.py`, dispatch it over
   `self._meta.fields` in `models/base.py` **immediately before** the `_eager_indexed_fields`
-  loop in the full-save branch (`base.py:1559-1584`) **and** before
-  `_eager_indexed_update_fields` in the partial-save branch (`base.py:1367-1381`), and
+  loop in the full-save branch (`base.py:1581-1607`, dispatch immediately before `:1593`)
+  **and** before `_eager_indexed_update_fields` in the partial-save branch
+  (`base.py:1384-1394`, dispatch immediately before `:1388`), and
   implement it on `ValidityField` per D5 half 1. Pass `assert_valid_from` per D3.
   This is the one edit outside the two field modules; keep it to the dispatch call plus the
   hook definition, and take the D5 fallback rather than growing it if review objects.
@@ -1250,12 +1316,12 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 - **Assigned To**: validity-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run, and report counts against a baseline measured at `44abc17` in the *same* environment
+- Run, and report counts against a baseline measured at `c7fc167` in the *same* environment
   (CLAUDE.md worktree rule — state redis-py version alongside every number):
   `tests/test_validity_field.py`, `tests/test_provenance_journal.py`,
   `tests/test_context_assembler.py`, `tests/test_decaying_sorted_field.py`,
   `tests/test_composite_score_query.py`, `tests/benchmarks/`.
-- Confirm `test_validity_field.py:1595` and `:1609` are **byte-identical** to their baseline.
+- Confirm `test_validity_field.py:1608` and `:1622` are **byte-identical** to their baseline.
 - Confirm `TestAtomicity`'s two call-count tests still pass with the same counts.
 - Run `mypy src/` and report the base-vs-branch delta with the redis-py version stated.
 
