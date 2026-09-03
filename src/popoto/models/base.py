@@ -1291,6 +1291,31 @@ class Model(metaclass=ModelBase):
         elif pipeline:
             pipeline = pipeline_or_success
 
+        # The field pre-save validation hook: the last chance to refuse a
+        # save before ANY
+        # write is issued or queued (#588 plan D5). ONE site, deliberately: the
+        # two eager indexed-field loops both sit inside the `else:` arm of an
+        # external-pipeline test that has already returned by then, so a
+        # per-loop dispatch would skip every caller-supplied-pipeline save --
+        # including SupersessionProtocol.save_and_supersede's own (#588
+        # round-2 B1).
+        #
+        # Placed AFTER the pre_save gate rather than at the top of save(): the
+        # never-record firewall, the write filter, and pre_save's own early
+        # return all *decline* a save by returning rather than raising, and a
+        # declined save must not raise on its way out. Declining comes first,
+        # validating second.
+        _validate_names = (
+            update_fields if update_fields is not None else self._meta.fields.keys()
+        )
+        for field_name in _validate_names:
+            self._meta.fields[field_name].pre_save_validate(
+                self,
+                field_name=field_name,
+                field_value=getattr(self, field_name),
+                **kwargs,
+            )
+
         new_db_key = DB_key(self.db_key)  # todo: why have a new key??
 
         if update_fields is not None:

@@ -28,8 +28,9 @@ Design Philosophy
 - **No model-hash mutation for chain links** (plan D3). Chain links live in two
   derived HASHes so an append-only journal (#560) can adopt this field unchanged.
 - **Valkey-safe.** Core commands only (``ZADD``/``ZSCORE``/``ZREM``/
-  ``ZRANGEBYSCORE``/``HSET``/``HDEL``/``GET``/``SET``/``DEL``) plus Lua 5.1.
-  No Redis-module commands (``BF.``/``CMS.``/``TS.``/``TOPK.``) anywhere.
+  ``ZRANGEBYSCORE``/``HSET``/``HDEL``/``GET``/``SET``/``DEL``/``EXISTS``) plus
+  Lua 5.1. No Redis-module commands (``BF.``/``CMS.``/``TS.``/``TOPK.``)
+  anywhere.
 
 Index Structure (plan D1) — six Redis keys per model/field::
 
@@ -96,9 +97,105 @@ VALID_MODES = frozenset({"open", "supersede", "invalidate"})
 #: mirroring the ``POPOTO_UNIQUE_CONFLICT`` mapping in ``indexed_field_mixin.py``.
 CLOSE_BEFORE_START_ERROR = "POPOTO_VALIDITY_CLOSE_BEFORE_START"
 
+#: Lua error token returned when a member named by the caller (the successor, or
+#: an explicitly-named incumbent) does not exist at the instant of the write
+#: (#588). The reply carries two diagnostic tokens after this one: the role
+#: (``successor`` / ``incumbent``) and the member key.
+MEMBER_ABSENT_ERROR = "POPOTO_VALIDITY_MEMBER_ABSENT"
+
+#: Lua error token returned when a caller *asserts* a ``valid_from`` (ARGV[8] ==
+#: ``'1'``) that disagrees with the start already stored in the ``valid_from``
+#: ZSET. Without this the assertion would lose silently to ``ZADD NX`` and leave
+#: the model hash and the index answering differently (#588 secondary defect).
+VALID_FROM_CONFLICT_ERROR = "POPOTO_VALIDITY_VALID_FROM_CONFLICT"
+
 #: Models already warned about the TTL/validity interaction (plan D9). Keyed by
 #: ``(model name, field name)`` so the warning fires exactly once per pair.
 _TTL_WARNED: "set[tuple[str, str]]" = set()
+
+
+class ValidityError(ValueError):
+    """Base for every typed failure raised out of :data:`SUPERSEDE_LUA`.
+
+    Subclasses :class:`ValueError` deliberately (plan D4). Two shipped contracts
+    depend on it: ``ObservationProtocol._apply_supersession`` degrades on
+    ``except (TypeError, ValueError)``, and the V0 test suite asserts
+    ``pytest.raises(ValueError)`` for close-before-start. Widening those to a new
+    base class would be a silent behavior change on a signal path.
+    """
+
+
+class ValidityMemberAbsentError(ValidityError):
+    """A member the caller named does not exist at the instant of the write.
+
+    Raised for a successor that was never saved (including the ``"Model:None"``
+    key an unsaved instance yields) and for an incumbent named explicitly via
+    ``old_member``. An incumbent merely *resolved* from the open-claim pointer is
+    a hint, not an assertion, and its absence means "no incumbent" instead.
+    """
+
+
+class ValidityCloseBeforeStartError(ValidityError):
+    """A close instant precedes the record's own stored ``valid_from``."""
+
+
+class ValidityValidFromConflictError(ValidityError):
+    """An asserted ``valid_from`` disagrees with the already-stored start.
+
+    Valid-time has exactly one writer: the field value at construction. Any other
+    writer that *asserts* a disagreeing start gets this rather than losing
+    silently to ``ZADD NX``.
+    """
+
+
+#: Token -> exception dispatch, consulted in order by :func:`_map_lua_error`.
+#:
+#: An ordered tuple rather than a dict on purpose: matching is by *substring* of
+#: ``str(ResponseError)`` (Redis versions differ on whether ``error_reply``
+#: output is prefixed), so the tokens must be tested in a declared order and a
+#: future token that is a prefix of another cannot shadow it.
+_LUA_ERROR_MAP = (
+    (MEMBER_ABSENT_ERROR, ValidityMemberAbsentError),
+    (CLOSE_BEFORE_START_ERROR, ValidityCloseBeforeStartError),
+    (VALID_FROM_CONFLICT_ERROR, ValidityValidFromConflictError),
+)
+
+
+def _map_lua_error(e: BaseException) -> BaseException:
+    """Return the typed exception for a :data:`SUPERSEDE_LUA` error reply.
+
+    **Returns** the mapped exception instance, or ``e`` itself when no token
+    matches. It never raises: every call site is spelled
+    ``raise _map_lua_error(e) from e``, so a helper that raised internally would
+    leave that expression unfinished, and one that returned ``None`` would turn
+    the call site into a ``TypeError``.
+
+    The reply is a space-separated string whose first token is a stable
+    ``POPOTO_VALIDITY_*`` constant; the remaining tokens are diagnostic detail
+    for humans and are never parsed.
+    """
+    text = str(e)
+    for token, exc_type in _LUA_ERROR_MAP:
+        if token in text:
+            return exc_type(_LUA_ERROR_MESSAGES[token].format(detail=text.strip()))
+    return e
+
+
+#: Human-facing message templates, one per token. ``{detail}`` is the raw reply.
+_LUA_ERROR_MESSAGES = {
+    MEMBER_ABSENT_ERROR: (
+        "ValidityField: a member named by this call does not exist at write "
+        "time, so no interval, chain link, or pointer was written ({detail})"
+    ),
+    CLOSE_BEFORE_START_ERROR: (
+        "ValidityField: close-at precedes the record's own valid_from " "({detail})"
+    ),
+    VALID_FROM_CONFLICT_ERROR: (
+        "ValidityField: the asserted valid_from disagrees with the start "
+        "already stored for this record; valid-time has one writer, the field "
+        "value at construction ({detail})"
+    ),
+}
 
 
 # SUPERSEDE_LUA — atomic interval closure + chain linking + open-pointer repoint.
@@ -125,27 +222,68 @@ _TTL_WARNED: "set[tuple[str, str]]" = set()
 #   ARGV[5] = mode: 'open' | 'supersede' | 'invalidate'
 #   ARGV[6] = explicit close-at for the incumbent ('' -> use now)
 #   ARGV[7] = explicit old member, bypassing the pointer ('' -> resolve via KEYS[4])
+#   ARGV[8] = '1' when ARGV[3] is a caller *assertion* about the new member's
+#             valid-time; '' or '0' (or absent) otherwise. Only an assertion can
+#             conflict (#588 plan D3).
+#
+# Phase rule (#588, plan D2) — LOAD-BEARING, do not "tidy" it away:
+#   The script is split by the `-- MUTATION PHASE` marker. **No redis.call that
+#   writes may appear above that marker.** Redis Lua has no rollback, so a script
+#   that half-applied before hitting an error_reply would leave torn state
+#   permanently. All-or-nothing is achieved by ordering, not by transactions:
+#   every check that can fail runs first, reading only.
 #
 # Logic:
+#   VALIDATION PHASE (reads and error_reply only)
 #   1. Resolve the incumbent: ARGV[7] if given, else GET KEYS[4]. Skipped entirely
 #      in mode 'open' (a plain save never closes anything).
-#   2. Idempotency guard: read ZSCORE invalid_at <incumbent> and refuse to re-close
+#   2. Membership, at the instant of the write (#588). A caller-named successor
+#      that does not exist -> error_reply(POPOTO_VALIDITY_MEMBER_ABSENT successor).
+#      This is the whole of the fix: in a pipeline the record's HSET has already
+#      applied by the time this body runs inside MULTI, so a same-transaction
+#      successor is visible here even though a client-side EXISTS ahead of the
+#      queue was not. The guards run ONLY in modes 'supersede'/'invalidate',
+#      never in 'open' (plan Risk 1): mode 'open' is co-transactional with the
+#      record's own hash write by construction, so there is nothing to verify.
+#   3. Asserted vs hinted incumbent (plan Risk 3). An incumbent named explicitly
+#      in ARGV[7] is a caller assertion: if it does not exist, error_reply(
+#      POPOTO_VALIDITY_MEMBER_ABSENT incumbent). An incumbent resolved from the
+#      open pointer is a hint — a pointer left naming a hard-deleted record reads
+#      as "no incumbent", the same way chain() reads a dangling link.
+#   4. Idempotency guard: read ZSCORE invalid_at <incumbent> and refuse to re-close
 #      anything whose score is not +inf. Under retry, or when two writers race the
 #      same identity, the second close is a no-op — the script is idempotent and
-#      chains rather than forks (plan Race 1).
-#   3. Input validation: if the incumbent's own valid_from exceeds the close-at,
+#      chains rather than forks (plan Race 1). Records the decision in will_close.
+#   5. Input validation: if the incumbent's own valid_from exceeds the close-at,
 #      return error_reply(POPOTO_VALIDITY_CLOSE_BEFORE_START). A zero-or-negative
 #      length interval is a caller bug, not a state to store silently.
-#   4. Close the incumbent (ZADD invalid_at <close_at>) and write BOTH chain links
+#   6. Valid-time single writer: when ARGV[8] == '1' and a valid_from score is
+#      already stored for the new member, a disagreeing ARGV[3] returns
+#      error_reply(POPOTO_VALIDITY_VALID_FROM_CONFLICT <stored> <requested>)
+#      rather than losing silently to the NX below (#588 secondary defect,
+#      measured by the reporter at 30 days of divergence).
+#
+#   MUTATION PHASE (every check above has passed)
+#   7. Close the incumbent (ZADD invalid_at <close_at>) and write BOTH chain links
 #      (HSET fwd old->new, HSET rev new->old) — same EVAL, so a half-linked chain
 #      is unobservable.
-#   5. Open the newcomer with NX semantics: valid_from / ingested_at / invalid_at
+#   8. Open the newcomer with NX semantics: valid_from / ingested_at / invalid_at
 #      are only written when absent, so a re-save never shifts an existing interval
 #      and — critically — can never resurrect an already-closed record (plan Race 2,
 #      the reason ValidityField.on_save routes through this script in mode 'open'
 #      rather than issuing a bare ZADD).
-#   6. Repoint the open pointer at the newcomer, but only when the newcomer is
+#   9. Repoint the open pointer at the newcomer, but only when the newcomer is
 #      actually open. Returns the closed member key, or '' if nothing was closed.
+#
+# Replies:
+#   bulk string <old_member>   the incumbent was closed by this call
+#   bulk string ''             nothing closed: no incumbent, or already closed
+#   error POPOTO_VALIDITY_MEMBER_ABSENT <role> <key>
+#   error POPOTO_VALIDITY_CLOSE_BEFORE_START
+#   error POPOTO_VALIDITY_VALID_FROM_CONFLICT <stored> <requested>
+#
+# The success reply shapes are UNCHANGED and that is load-bearing:
+# ProvenanceJournal._write reads bool(results[close_index]).
 #
 # Nil-safety: every KEYS/ARGV read is guarded `KEYS[n] or ''` (Lua 5.1 gives nil,
 # not '', for indices past numkeys), mirroring `decaying_sorted_field.py:67`. A
@@ -164,6 +302,9 @@ local new_member = ARGV[1] or ''
 local now = tonumber(ARGV[2] or '') or 0
 local mode = ARGV[5] or 'open'
 local old_member = ARGV[7] or ''
+local vf_assert = (ARGV[8] or '') == '1'
+-- ARGV[7] was supplied by the caller: an assertion, not a pointer hint.
+local asserted_old = old_member ~= ''
 
 local valid_from = tonumber(ARGV[3] or '') or now
 local ingested_at = tonumber(ARGV[4] or '') or now
@@ -180,11 +321,37 @@ local function is_open(score)
 end
 
 local closed = ''
+local will_close = false
+
+-- VALIDATION PHASE -- reads and error_reply only. No write command may appear
+-- above the `-- MUTATION PHASE` marker below: Redis Lua has no rollback, so
+-- all-or-nothing is achieved by ordering.
 
 if mode ~= 'open' then
   if old_member == '' and ptr_key ~= '' then
     local pointed = redis.call('GET', ptr_key)
     if pointed and pointed ~= false then old_member = pointed end
+  end
+
+  -- A caller-named successor must exist at the instant of the write. This is
+  -- the whole of #588: in a pipeline the HSET has already applied by the time
+  -- this script body runs inside MULTI, so a same-transaction successor is
+  -- visible here even though a client-side EXISTS ahead of the queue was not.
+  if new_member ~= '' and redis.call('EXISTS', new_member) == 0 then
+    return redis.error_reply('POPOTO_VALIDITY_MEMBER_ABSENT successor ' .. new_member)
+  end
+
+  if old_member ~= '' then
+    if redis.call('EXISTS', old_member) == 0 then
+      if asserted_old then
+        -- The caller named this record. A missing record is a caller error.
+        return redis.error_reply('POPOTO_VALIDITY_MEMBER_ABSENT incumbent ' .. old_member)
+      end
+      -- Resolved from the open pointer, which is a hint and not an assertion.
+      -- A pointer left naming a hard-deleted record means "no incumbent", the
+      -- same reading chain() already gives a dangling link.
+      old_member = ''
+    end
   end
 
   if old_member ~= '' and old_member ~= new_member then
@@ -197,13 +364,33 @@ if mode ~= 'open' then
           return redis.error_reply('POPOTO_VALIDITY_CLOSE_BEFORE_START')
         end
       end
-      redis.call('ZADD', ia_key, close_at, old_member)
-      closed = old_member
-      if new_member ~= '' then
-        if fwd_key ~= '' then redis.call('HSET', fwd_key, old_member, new_member) end
-        if rev_key ~= '' then redis.call('HSET', rev_key, new_member, old_member) end
-      end
+      will_close = true
     end
+  end
+end
+
+if new_member ~= '' and vf_assert then
+  -- Valid-time has one writer. The ZADD NX below would drop a disagreeing start
+  -- on the floor and leave the hash and the index answering differently
+  -- (#588 secondary observation, measured at 30 days).
+  local stored_vf = redis.call('ZSCORE', vf_key, new_member)
+  if stored_vf and stored_vf ~= false then
+    local s = tonumber(stored_vf)
+    if s ~= nil and s ~= valid_from then
+      return redis.error_reply(
+        'POPOTO_VALIDITY_VALID_FROM_CONFLICT ' .. tostring(s) .. ' ' .. tostring(valid_from))
+    end
+  end
+end
+
+-- MUTATION PHASE -- every check above has passed.
+
+if will_close then
+  redis.call('ZADD', ia_key, close_at, old_member)
+  closed = old_member
+  if new_member ~= '' then
+    if fwd_key ~= '' then redis.call('HSET', fwd_key, old_member, new_member) end
+    if rev_key ~= '' then redis.call('HSET', rev_key, new_member, old_member) end
   end
 end
 
@@ -715,6 +902,7 @@ class ValidityField(Field):
         close_at: Optional[float] = None,
         old_member: str = "",
         identity_digest: str = "",
+        assert_valid_from: bool = False,
         pipeline: Optional[redis.client.Pipeline] = None,
     ) -> Any:
         """Run :data:`SUPERSEDE_LUA` once against this model/field's six keys.
@@ -742,6 +930,15 @@ class ValidityField(Field):
             identity_digest: Identity digest naming the open-claim pointer. When
                 empty, ``KEYS[4]`` is passed as ``''`` and the script neither
                 reads nor repoints a pointer.
+            assert_valid_from: When ``True``, ``valid_from`` is a caller
+                *assertion* about ``new_member``'s start rather than a default,
+                and a disagreement with the already-stored start raises
+                :class:`ValidityValidFromConflictError` instead of losing
+                silently to the script's ``ZADD NX`` (plan D3). ``False`` — the
+                default, and what ``SupersessionProtocol`` and
+                ``ProvenanceJournal`` pass — preserves today's behavior for every
+                existing caller: their ``at=`` is a *close-time* assertion about
+                the incumbent, not a start-time assertion about the successor.
             pipeline: Optional external pipeline. When given, the EVAL is queued
                 (following ``tag_field.py``'s threading shape) and the pipeline
                 is returned; the closed-member result is only available at
@@ -752,9 +949,23 @@ class ValidityField(Field):
             or the ``pipeline`` when one was supplied.
 
         Raises:
-            ValueError: If ``mode`` is not one of :data:`VALID_MODES`, or if
-                ``close_at`` precedes the incumbent's own ``valid_from`` (the
-                script's :data:`CLOSE_BEFORE_START_ERROR` reply, mapped here).
+            ValueError: If ``mode`` is not one of :data:`VALID_MODES`, or if the
+                client-side pre-check finds ``close_at`` before ``valid_from``.
+            ValidityMemberAbsentError: If ``new_member``, or an explicitly-named
+                ``old_member``, does not exist at the instant of the write.
+            ValidityCloseBeforeStartError: If ``close_at`` precedes the
+                incumbent's stored ``valid_from``.
+            ValidityValidFromConflictError: If ``assert_valid_from`` is set and
+                ``valid_from`` disagrees with the stored start.
+
+        Note:
+            The ``ResponseError`` -> typed-exception remap lives on the
+            **non-pipeline** branch only. On a caller-supplied pipeline redis-py
+            raises during ``pipe.execute()`` result parsing, long after this
+            method returned, so the caller sees a raw
+            ``redis.exceptions.ResponseError``. Use
+            :meth:`SupersessionProtocol.save_and_supersede`, which owns its
+            ``execute()``, to get a typed error in pipeline shape.
         """
         if mode not in VALID_MODES:
             raise ValueError(
@@ -791,6 +1002,7 @@ class ValidityField(Field):
             mode,  # ARGV[5]
             "" if close_at is None else repr(float(close_at)),  # ARGV[6]
             old_member or "",  # ARGV[7]
+            "1" if assert_valid_from else "",  # ARGV[8]
         ]
 
         if isinstance(pipeline, redis.client.Pipeline):
@@ -799,12 +1011,7 @@ class ValidityField(Field):
         try:
             result = run_lua(POPOTO_REDIS_DB, SUPERSEDE_LUA, 6, *args)
         except redis.exceptions.ResponseError as e:
-            if CLOSE_BEFORE_START_ERROR in str(e):
-                raise ValueError(
-                    "ValidityField: close-at precedes the record's own valid_from "
-                    f"(member={old_member or '<pointer>'}, close_at={close_at})"
-                ) from e
-            raise
+            raise _map_lua_error(e) from e
         closed = _as_str(result) if result else ""
         return closed or None
 
@@ -880,8 +1087,13 @@ class ValidityField(Field):
         """
         cls.warn_if_ttl(model_instance, field_name)
         now = time.time()
+        declared = False
         try:
-            valid_from = float(field_value) if field_value is not None else now
+            if field_value is not None:
+                valid_from = float(field_value)
+                declared = True
+            else:
+                valid_from = now
         except (TypeError, ValueError):
             valid_from = now
         return cls.execute_supersede(
@@ -892,8 +1104,100 @@ class ValidityField(Field):
             now=now,
             valid_from=valid_from,
             ingested_at=now,
+            # Plan D3: a declared field value IS the single authoritative writer
+            # of valid-time, so a re-save that declares a different start is the
+            # reporter's bug and must be loud. A defaulted save asserts nothing
+            # and keeps NX idempotence.
+            assert_valid_from=declared,
             pipeline=pipeline,
         )
+
+    @classmethod
+    def pre_save_validate(  # type: ignore[override]
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Refuse a save that declares a ``valid_from`` the index disagrees with.
+
+        Runs from the single pre-split dispatch site in ``Model.save()``, before
+        *any* write is issued or queued — which is the point. Raising from
+        :meth:`on_save` would be too late on a model that also declares
+        ``IndexedFieldMixin`` fields: those commit their hash values and index
+        entries eagerly, against live Redis, before ``ValidityField.on_save``
+        ever runs (plan D5 half 1, the same treatment #476 gave the
+        unique-conflict window).
+
+        A cheap client-side pre-check for a good error message; the authoritative
+        comparison is in :data:`SUPERSEDE_LUA` under ``ARGV[8]``, evaluated
+        atomically (plan Race 4). A racing pre-check can only produce a false
+        negative, which the script then catches.
+        """
+        if field_value is None:
+            return  # defaulted: no assertion, nothing to conflict with
+        try:
+            declared = float(field_value)
+        except (TypeError, ValueError):
+            return  # on_save falls back to the save clock; not an assertion
+        try:
+            member_key = model_instance.db_key.redis_key
+        except (TypeError, ValueError):
+            return
+        if not member_key:
+            return
+        stored = POPOTO_REDIS_DB.zscore(
+            cls.get_valid_from_key(model_instance, field_name), member_key
+        )
+        if stored is not None and float(stored) != declared:
+            raise ValidityValidFromConflictError(
+                f"ValidityField: {model_instance.__class__.__name__}.{field_name} "
+                f"declares valid_from={declared!r} for {member_key}, but the "
+                f"index already holds {float(stored)!r}. Valid-time has one "
+                "writer -- the field value at construction. Adopt the stored "
+                "value with ValidityField.get_valid_from(...), or overwrite the "
+                "index with a plain ZADD (no NX), then save again."
+            )
+
+    @classmethod
+    def get_valid_from(
+        cls,
+        model: "ModelLike",
+        field_name: str,
+        member_key: Optional[str] = None,
+    ) -> Optional[float]:
+        """Return the record's *effective* valid-from — the index score.
+
+        ``instance.validity`` is the **declared** value: ``None`` there means
+        "not declared, defaulted to the save clock". This returns what the
+        ``valid_from`` index actually holds, which is what every ``as_of`` query
+        answers against (plan D5 half 2). The two differ legitimately, and
+        reading this is how an operator reconciles a record whose hash and index
+        already disagree.
+
+        Args:
+            model: The model class, or a live instance.
+            field_name: Name of the ``ValidityField``.
+            member_key: The record's Redis key. Defaults to ``model``'s own key
+                when an instance was passed.
+
+        Returns:
+            The stored valid-from epoch, or ``None`` when the member has no
+            entry in the index.
+        """
+        if member_key is None:
+            try:
+                member_key = model.db_key.redis_key  # type: ignore[union-attr]
+            except (AttributeError, TypeError, ValueError) as e:
+                raise ValueError(
+                    "ValidityField.get_valid_from: pass member_key when the "
+                    "first argument is a model class rather than an instance"
+                ) from e
+        score = POPOTO_REDIS_DB.zscore(
+            cls.get_valid_from_key(model, field_name), member_key
+        )
+        return None if score is None else float(cast(float, score))
 
     @classmethod
     def on_delete(
