@@ -202,28 +202,66 @@ Small.
 
 ## Step by Step Tasks
 
-1. Add `_read_default_memory_max_records()` to `src/popoto/fields/constants.py` beside the existing
-   `_read_*` switch helpers, returning `int | None` per the semantics above. Docstring cites #596
-   and states why it is not a `Defaults` attribute.
+Every task carries its own green signal; run it before moving on.
+
+1. Add `_read_default_memory_max_records() -> int | None` and `_FALSY = ("off", "false", "no")` and
+   `_WARNED_BAD_ENV: set[str]` to `src/popoto/fields/constants.py`, beside the existing `_read_*`
+   switch helpers. Integer parse first, then `_FALSY`, then malformed→dedupe-warn→`None`. Docstring
+   cites #596, states the parse order, states why `_TRUTHY` is not used (`"1"` is ambiguous), and
+   states why it is not a `Defaults` attribute.
+   → `python -c "import os,popoto.fields.constants as c; [os.environ.__setitem__('POPOTO_DEFAULT_MEMORY_MAX_RECORDS',v) or print(v, c._read_default_memory_max_records()) for v in ('','0','1','5','off','FALSE','no','1k','-3')]"`
+   (expect `None,0,1,5,0,0,0,None,None` and exactly two warnings).
 2. In `src/popoto/recipes/default_memory.py:153`, replace `cap = self._max_records_per_agent` with
-   a resolution that consults the env reader first and falls back to the class attribute. Keep the
-   existing `if not cap: return result` early exit so `0` disables the `ZCARD` too.
-3. Add the once-per-`(class, agent_id)`-per-process WARNING with the specified fields; demote
-   repeats to `DEBUG`. Warn only when at least one record was actually deleted, not merely when the
-   cap was consulted.
-4. Tests (new `tests/test_default_memory_eviction.py`, or extend the #594 recipe suite): env unset
-   → cap 1000 enforced; `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` → no eviction ever *and* no `ZCARD`;
-   `off`/`false` likewise; `=5` → cap 5; invalid value → one warning + class-attribute cap, save
-   still succeeds; subclass `_max_records_per_agent` still honored when the env var is unset, and
-   overridden when it is set; first eviction warns once, second eviction for the same agent does
-   not re-warn (`caplog`), a different agent does warn. Use `monkeypatch.setenv`/`delenv` and clear
-   `_EVICTION_WARNED` in a fixture.
-5. Harden `tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded`
+   the asymmetric resolution block from Solution §1 (falsy class attribute short-circuits before
+   the env var is consulted). Keep the existing `if not cap: return result` early exit so a
+   resolved `0` skips the `ZCARD` too.
+   → `ruff check src/ && mypy src/popoto/recipes/default_memory.py`
+3. Move the notice ahead of the delete loop: after `excess = ... ; if excess <= 0: return result`,
+   emit the once-per-`(class, agent_id)` WARNING (agent_id, `excess`, cap in effect, env-var name),
+   mark `_EVICTION_WARNED` at the same point, and demote repeats to `DEBUG`. Add
+   `EVICTION_COUNTER_PREFIX` and the `INCRBY …:{agent_id}:evicted` by `excess`, inside the existing
+   `try/except`.
+   → `pytest tests/test_default_memory_eviction.py -k "notice or counter"` (after task 5)
+4. Add the doctor surface: in `src/popoto/integrations/cli.py::_cmd_doctor`, when
+   `info["counters"].get("evicted")` is non-zero, print a data-loss line with the count and
+   `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`. No change to `service.py` — `_read_counters()` already
+   scans the prefix.
+   → `pytest tests/ -k "doctor" -q`
+5. New `tests/test_default_memory_eviction.py` (in-process, `monkeypatch.setenv`/`delenv`, fixture
+   clearing `_EVICTION_WARNED` and `_WARNED_BAD_ENV`):
+   - env unset → cap 1000 enforced;
+   - `=0`, `off`, `false`, `no` → no eviction *and* no `ZCARD` issued;
+   - `=5` → cap 5; `=1` → cap 1 (not "enabled");
+   - invalid value (`1k`, `-3`) → exactly one warning per distinct value across *several* saves,
+     class-attribute cap still applied, save still succeeds;
+   - **subclass with falsy `_max_records_per_agent` stays disabled even when
+     `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=5000`** (the BLOCKER's regression test) — and also when it
+     is `=0`;
+   - subclass with a *truthy* non-default cap: honored when env unset, overridden when env set;
+   - env var set **after** `import popoto` still takes effect on the next save — the discriminating
+     anti-regression for call-time reading (setting it before import passes even under an
+     import-time binding);
+   - notice fires once per `(class, agent_id)` (`caplog`), a different agent warns again, and it is
+     emitted even when the delete loop raises mid-way (monkeypatch `zrange`/`delete` to raise);
+   - the `…:{agent_id}:evicted` counter equals the number of records evicted;
+   - `default_memory.EVICTION_COUNTER_PREFIX == service.COUNTER_KEY_PREFIX`.
+   → `pytest tests/test_default_memory_eviction.py -q`
+6. Subprocess test proving the switch works with no Python seam, modeled on
+   `tests/test_pytest_plugin.py::test_isolated_db_subprocess`:
+   `subprocess.run([sys.executable, "-c", script], env={**os.environ, "REDIS_URL":
+   "redis://localhost:6379/15", "POPOTO_DEFAULT_MEMORY_MAX_RECORDS": "0"})`. `REDIS_URL` **must**
+   be in the child env before `import popoto` or the script writes the live DB 0 (CLAUDE.md, #577).
+   Assert the child's record count exceeds 1000 with nothing evicted.
+   → `pytest tests/test_default_memory_eviction.py -k subprocess -q`
+7. Harden `tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded`
    (line ~540): it hardcodes `cap = 1000`, so an operator or CI box with the new env var exported
-   would silently change what that contract asserts. Add `monkeypatch.delenv(...,
-   raising=False)` (or resolve the cap through the same reader) so the contract keeps testing the
-   default.
-6. Docs + CHANGELOG per the Documentation section.
+   would silently change what that contract asserts. Add `monkeypatch.delenv("POPOTO_DEFAULT_MEMORY_MAX_RECORDS",
+   raising=False)` so the contract keeps testing the default.
+   → `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=5 pytest tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded -q`
+   (must still pass with the env var exported — that is the point of the task).
+8. Docs + CHANGELOG per the Documentation section, including the asymmetric-precedence rule stated
+   explicitly in each place the falsy-subclass escape hatch is currently documented.
+   → `mkdocs build --strict`
 
 ## No-Gos
 
@@ -249,9 +287,24 @@ Small.
   Acceptable at this appetite; note it in the code comment rather than adding an LRU.
 - **Don't touch pipeline-mode saves**: eviction already only runs on non-pipelined saves; keep it
   that way.
-- **Precedence surprise**: an env var that outranks a subclass attribute is deliberate (deploy
-  beats library code) but is the one behavior a reader could reasonably expect the other way round.
-  It must be stated explicitly in the docstring, the configuration table, and the recipes doc.
+- **Precedence is asymmetric on purpose, and the asymmetry is the load-bearing safety property.**
+  A positive env value overrides the *default* cap but must never re-arm eviction on a subclass
+  that set `_max_records_per_agent` falsy — that opt-out is the escape hatch three shipped docs
+  currently advertise, and a symmetric rule would let `=5000` (exported to *raise* a cap)
+  process-globally re-enable hard `delete()` on a model that had handed forgetting to
+  `MemoryLifecycle`. Task 5 carries the explicit regression test. State the rule in the reader's
+  docstring, the configuration table, and every recipes/harness doc that mentions the falsy
+  attribute.
+- **`0` vs `None` must not collapse** in the reader's return type: `0` is "explicitly disabled",
+  `None` is "no opinion, defer to the class attribute". A truthiness test on the return value
+  conflates them and breaks both the disable path and the falsy-subclass guard.
+- **Malformed-value log flood**: the reader runs per save, so a bad value warns per save unless
+  deduped by `_WARNED_BAD_ENV`. The tempting fix (`lru_cache` on the reader) is forbidden — it is
+  the import-time binding this whole design exists to avoid.
+- **Counter-prefix coupling**: `default_memory.EVICTION_COUNTER_PREFIX` duplicates
+  `service.COUNTER_KEY_PREFIX` to respect the `recipes/` → `integrations/` layering direction. The
+  equality assertion in Task 5 is what keeps the duplication honest; without it a rename in
+  `service.py` silently removes the eviction count from `doctor`.
 
 ## Success Criteria
 
@@ -260,20 +313,35 @@ Small.
 - `ruff check src/` exits 0; `black src/ tests/` clean; `mypy src/` delta 0 vs main, measured in
   the same environment (redis-py version stated alongside the number).
 - `mkdocs build --strict` passes.
-- `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` demonstrably disables eviction in a subprocess test shaped
-  like a hook invocation (env set before `import popoto`), proving the switch works without any
-  Python seam.
-- `test_default_memory_growth_is_bounded` still asserts the 1000 default regardless of ambient env.
+- `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` demonstrably disables eviction in the Task 6 subprocess
+  test shaped like a hook invocation, proving the switch works without any Python seam — and the
+  Task 5 after-import case proves the value is read at call time, not bound at import.
+- A subclass with a falsy `_max_records_per_agent` evicts nothing under
+  `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=5000` (Task 5).
+- The first-eviction WARNING is present in `caplog` even when the delete loop raises after the
+  first victim (Task 5).
+- `popoto-memory doctor` reports a non-zero `evicted` count and names the env var after an
+  over-cap save (Task 4).
+- `test_default_memory_growth_is_bounded` still asserts the 1000 default regardless of ambient env
+  (verified by running it *with* the env var exported, Task 7).
 
 ## Data Flow
 
 `DefaultMemory.save()` → `super().save()` (writes hash + `relevance` partition ZADD) → early exit
-if pipelined or write-filtered → **[new] cap resolution: env reader → class attribute** → `ZCARD`
-on the agent's `relevance` partition → `zrange(0, excess-1)` (stalest by decay timestamp) → per
-victim `hgetall` + `decode_popoto_model_hashmap(...).delete()` (full index cleanup, no tombstone),
-or `_purge_orphan_keys` when the hash is already gone → **[new] first-eviction WARNING for this
-`(class, agent_id)`, DEBUG thereafter** → return the original save result. The whole eviction block
-stays inside `except Exception: logger.warning(...)` so no new failure mode reaches a save.
+if pipelined or write-filtered → **[new] cap resolution: falsy class attribute short-circuits;
+else env reader (`int | None`) else class attribute** → `ZCARD` on the agent's `relevance`
+partition → `excess = zcard - cap`; return if `<= 0` → **[new] first-eviction WARNING for this
+`(class, agent_id)` (DEBUG thereafter), `_EVICTION_WARNED` marked, and `INCRBY
+$popoto_memory:counter:{agent_id}:evicted excess` — all BEFORE any delete** → `zrange(0, excess-1)`
+(stalest by decay timestamp) → per victim `hgetall` +
+`decode_popoto_model_hashmap(...).delete()` (full index cleanup, no tombstone), or
+`_purge_orphan_keys` when the hash is already gone → return the original save result. The whole
+eviction block stays inside `except Exception: logger.warning(...)` so no new failure mode reaches
+a save — which is precisely why the notice is emitted before the loop rather than after it.
+
+Read-back path: `MemoryService._read_counters()` scans `$popoto_memory:counter:{agent_id}:*` →
+`status()["counters"]["evicted"]` → `popoto-memory doctor` line **[new]** and the MCP
+`memory_status` tool (no change needed there).
 
 ## Documentation
 
@@ -290,6 +358,15 @@ Verified targets (each already contains cap text that will otherwise contradict 
 - `docs/guides/tuning-magic-numbers.md` — the kill-switch listing (see the
   `POPOTO_NEVER_RECORD_DISABLE` entry ~line 87) gains the new switch.
 - `CHANGELOG.md` (line 16) — upgrade the existing 1.9.0 bullet to a BREAKING / data-loss callout.
+
+Each of `recipes.md`, `harness-integration.md` and `subconscious-memory-recipe.md` currently
+documents the falsy-`_max_records_per_agent` opt-out; each must gain the explicit statement that
+the env var never re-arms that opt-out (only lowers/raises/disables the default), so the shipped
+guarantee and the new switch agree.
+
+Also document the `evicted` counter where `doctor`'s output is described (`docs/features/harness-integration.md`
+doctor section and any `memory_status` field list), so an operator can find the data-loss signal
+without reading logs.
 
 `docs/guides/harness-claude-code.md` / `harness-codex.md` mention `DefaultMemory` but not the cap;
 touch them only if the build finds cap-relevant text there.
