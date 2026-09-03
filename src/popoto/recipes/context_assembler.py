@@ -2340,12 +2340,50 @@ class ContextAssembler:
         graph_results: list = []
 
         # --- BM25 lexical retrieval ---
+        # The BM25 index is corpus-wide, so the caller's scope (agent_id and
+        # friends) has to be handed to search() rather than applied afterwards:
+        # filtering a bounded fetch lets other agents' records crowd the window
+        # and starve this one (#576).
+        allowed_keys = None
+        if filters:
+            try:
+                query = self.model_class.query
+                allowed_keys = query.filter_for_keys_set(**filters)
+                pending = getattr(query, "_pending_client_filters", None) or {}
+                if pending and len(pending) == len(filters):
+                    # Every field in the scope is a plain (unindexed) Field, so
+                    # there was no index to resolve and filter_for_keys_set()
+                    # handed back every key of the model. Passing that on would
+                    # decode the whole keyspace per query to express "no scope
+                    # at all". Drop it: fuse() applies the same predicate to the
+                    # fused set, so the result is still correctly scoped -- only
+                    # the candidate window is unnarrowed, which costs recall
+                    # under crowding, not isolation.
+                    #
+                    # A MIXED scope is different and must not take this branch.
+                    # There, the indexed fields did resolve and the returned set
+                    # is their intersection -- a correct superset of the true
+                    # scope. Dropping it would leave BM25 fetching corpus-wide
+                    # while fuse() filters the window down to nothing: silent
+                    # starvation, the failure this scoping exists to prevent.
+                    allowed_keys = None
+            except Exception as e:
+                # Fail closed: an unscoped BM25 signal fused under a filtered
+                # query is exactly the cross-agent leak this guards against.
+                logger.warning(
+                    "Could not resolve retrieval scope %s, skipping the lexical "
+                    "signal: %s",
+                    filters,
+                    e,
+                )
+                allowed_keys = set()
         try:
             keyword_results = BM25Field.search(
                 self.model_class,
                 self._bm25_field_name,
                 query_text,
                 limit=candidate_limit,
+                allowed_keys=allowed_keys,
             )
         except Exception as e:
             logger.warning("BM25 search failed in hybrid path: %s", e)

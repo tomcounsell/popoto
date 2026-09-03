@@ -79,6 +79,17 @@ class EmbeddingOnlyMemory(Model):
     embedding = EmbeddingField(source="content")
 
 
+class MixedScopeMemory(Model):
+    """BM25 model whose scope mixes an indexed KeyField with a plain Field."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    tier = Field(type=str)
+    content = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+    content_index = BM25Field(source="content")
+
+
 class HybridMemory(Model):
     """Model with BM25Field + EmbeddingField + CoOccurrenceField — full hybrid."""
 
@@ -444,6 +455,68 @@ class TestPullPathDispatch:
             assembler.assemble(query_cues={"topic": query_text})
 
         assert captured_kwargs.get("weights") == expected_weights
+
+    def _capture_allowed_keys(self, assembler, filters):
+        """Run the hybrid pull and return the allowed_keys handed to BM25."""
+        captured = {}
+
+        def _capture_search(model_class, field_name, query_text, **kwargs):
+            captured["allowed_keys"] = kwargs.get("allowed_keys")
+            return []
+
+        with patch(
+            "src.popoto.fields.bm25_field.BM25Field.search",
+            side_effect=_capture_search,
+        ):
+            assembler._pull_path_hybrid({"topic": "deploy token"}, filters)
+        return captured["allowed_keys"]
+
+    def test_all_plain_field_scope_drops_allowed_keys(self):
+        """An all-unindexed scope resolves to the whole keyspace, so it is
+        dropped rather than decoded — fuse() still enforces the predicate."""
+        _flush()
+        MixedScopeMemory(agent_id="a1", tier="hot", content="deploy token").save()
+        assembler = ContextAssembler(
+            model_class=MixedScopeMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+
+        assert self._capture_allowed_keys(assembler, {"tier": "hot"}) is None
+
+    def test_mixed_scope_keeps_the_resolved_indexed_keys(self):
+        """A scope mixing an indexed and an unindexed field must keep the
+        indexed narrowing.
+
+        The regression this pins: dropping allowed_keys whenever *any* filter
+        is client-side threw away the resolved agent_id set too. BM25 then
+        fetched corpus-wide, fuse() filtered the window down to nothing, and
+        the composite fallback never fired — silent starvation, the same
+        failure this scoping exists to prevent.
+        """
+        _flush()
+        mine = MixedScopeMemory(agent_id="a1", tier="hot", content="deploy token")
+        mine.save()
+        for i in range(5):
+            MixedScopeMemory(
+                agent_id="other", tier="hot", content=f"deploy token {i}"
+            ).save()
+
+        assembler = ContextAssembler(
+            model_class=MixedScopeMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+
+        allowed = self._capture_allowed_keys(
+            assembler, {"agent_id": "a1", "tier": "hot"}
+        )
+        assert allowed is not None, "mixed scope dropped the indexed narrowing"
+        normalized = {k.decode() if isinstance(k, bytes) else str(k) for k in allowed}
+        assert normalized == {mine.db_key.redis_key}, (
+            "mixed scope must narrow to the indexed field's key set, "
+            f"got {len(normalized)} keys"
+        )
 
 
 # ---------------------------------------------------------------------------

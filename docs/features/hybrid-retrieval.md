@@ -92,6 +92,36 @@ scored = BM25Field.search(Memory, "content_bm25", "redis deployment", limit=50)
 # Returns [(redis_key, bm25_score), ...]
 ```
 
+**Scoping a search with `allowed_keys`.** The BM25 index is corpus-wide: `search()`
+scores every record of the model, not just one agent's. Pass `allowed_keys` to confine
+it to a set of Redis keys:
+
+```python
+scoped = BM25Field.search(
+    Memory, "content_bm25", "redis deployment", limit=10,
+    allowed_keys={m.db_key.redis_key for m in Memory.query.filter(agent_id="beta")},
+)
+```
+
+The two empty-ish values mean different things, deliberately:
+
+| `allowed_keys` | Meaning |
+|---|---|
+| `None` (default) | No scoping — search the whole corpus. Unchanged behavior. |
+| a non-empty `set` | Only these keys are in scope. |
+| `set()` | **Nothing** is in scope; returns `[]`. It is *not* read as "no filter". |
+
+The empty-set convention matches `exclude_keys` in the recipes API. It exists so a
+caller that computes a scope and gets nothing back fails closed rather than silently
+searching everything.
+
+`limit` counts *in-scope* hits. Applying the scope after a bounded fetch would let
+other records crowd the candidate window and starve the caller — returning zero hits
+while their own matching records sit in the index. `search()` therefore widens its
+fetch window until `limit` in-scope hits are found, capped so a nearly-empty scope
+cannot walk an unbounded corpus on every query. At the cap the result is honestly
+short rather than silently empty.
+
 Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
 are tie-broken by `redis_key` ascending (byte-wise) inside the scoring Lua script -- before
 `limit` truncation -- so identical searches always return identical orderings on both Redis
@@ -135,6 +165,39 @@ for memory in results:
 | `limit` | `int` | `10` | Maximum results to return. |
 | `post_filter` | `Callable` | `None` | Optional `(redis_key, rrf_score) -> bool` callback. Return True to keep the result. |
 | `**ranked_lists` | keyword args | (required) | Named ranked lists. Each value is a list of `(redis_key, score)` tuples sorted by score descending. |
+
+#### fuse() applies the query's own filters
+
+The ranked lists are supplied by the caller and carry no scope of their own —
+`BM25Field.search()` and graph propagation both return every matching key in the
+database. So `fuse()` applies the filters on the builder it was called from:
+
+```python
+# Scoped as it reads: only beta's records are fused.
+results = Memory.query.filter(agent_id="beta").fuse(
+    keyword=keyword_results,
+    graph=graph_results,
+    limit=10,
+)
+```
+
+Filtering happens **before** the top-K slice, so `limit` backfills with the next-best
+in-scope candidates instead of returning short.
+
+Details worth knowing:
+
+- **Filters on unindexed plain `Field`s are honored**, at the cost of hydrating the
+  surviving candidates to evaluate them. Indexed fields are resolved through their
+  index, which is cheaper — prefer a `KeyField` or `SortedField` for anything you
+  routinely scope by.
+- **Q-object filters raise `QueryException`.** A Q object cannot be resolved to a key
+  set here, and fusing an unscoped set under a query that *reads* as filtered is
+  precisely the leak this scoping prevents, so `fuse()` refuses rather than silently
+  widening. Use keyword filters, or a `post_filter` callback.
+- **No filters on the builder is unchanged** — byte-for-byte the previous behavior.
+
+Scope is not deletion: out-of-scope records stay in the store and in the BM25 index,
+and remain retrievable by their own owner.
 
 ### Maintenance
 

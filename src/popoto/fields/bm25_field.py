@@ -35,12 +35,23 @@ Example:
 
 import logging
 import math
+from typing import Any
 
 from ._tokenizer import tokenize
 from .field import Field
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.BM25Field")
+
+#: Widening factor for a scoped :meth:`BM25Field.search` (``allowed_keys``).
+#: Each pass that comes up short re-runs the script with a window this many
+#: times larger. Magic number for experimental tuning, not user config.
+SCOPED_SEARCH_WIDEN_FACTOR = 4
+
+#: Hard ceiling on that widening window. A caller whose scope holds almost
+#: nothing would otherwise scan the whole corpus on every query; at the cap the
+#: result is honestly short rather than silently empty.
+SCOPED_SEARCH_FETCH_CAP = 4096
 
 # ---------------------------------------------------------------------------
 # Lua Scripts
@@ -502,7 +513,7 @@ class BM25Field(Field):
         return pipeline if pipeline else None
 
     @classmethod
-    def search(cls, model_class, field_name, query_text, limit=10):
+    def search(cls, model_class, field_name, query_text, limit=10, allowed_keys=None):
         """Search the BM25 index and return ranked results.
 
         Tokenizes the query, executes the BM25 scoring Lua script, and
@@ -516,6 +527,12 @@ class BM25Field(Field):
             field_name: Name of the BM25Field on the model.
             query_text: The search query string.
             limit: Maximum number of results to return. Default 10.
+            allowed_keys: Optional set of redis keys the caller is permitted to
+                see. When given, ``limit`` counts *in-scope* hits: the script is
+                re-run with a widening fetch window until ``limit`` in-scope
+                results are found or the corpus is exhausted. ``None`` (the
+                default) is byte-for-byte the previous unscoped behavior; an
+                empty set means "nothing is in scope" and returns ``[]``.
 
         Returns:
             list[tuple[str, float]]: List of (redis_key, bm25_score) tuples
@@ -524,6 +541,13 @@ class BM25Field(Field):
 
         Raises:
             QueryException: If field_name does not refer to a BM25Field.
+
+        Note:
+            Applying ``allowed_keys`` *after* a bounded fetch would silently
+            starve the caller: records outside their scope crowd the candidate
+            window and the caller sees nothing rather than their own top hits
+            (#576). The widening loop is what keeps the bound and the scope
+            applying to the same set.
         """
         from ..models.query import QueryException
 
@@ -546,25 +570,69 @@ class BM25Field(Field):
         inv_prefix = f"{prefix}:inv:"
 
         keys = [df_key, dl_key, n_key, avgdl_key]
-        argv = [inv_prefix, limit, field.BM25_K1, field.BM25_B] + query_tokens
 
-        result = POPOTO_REDIS_DB.eval(BM25_SEARCH_LUA, len(keys), *keys, *argv)
+        if allowed_keys is not None:
+            allowed_keys = {
+                key.decode() if isinstance(key, bytes) else str(key)
+                for key in allowed_keys
+            }
+            if not allowed_keys:
+                return []
 
-        if not result:
-            return []
+        def _run(fetch_limit: int) -> list[tuple[str, float]]:
+            argv = [
+                inv_prefix,
+                fetch_limit,
+                field.BM25_K1,
+                field.BM25_B,
+            ] + query_tokens
+            result = POPOTO_REDIS_DB.eval(BM25_SEARCH_LUA, len(keys), *keys, *argv)
+            if not result:
+                return []
+            # Parse flat array: [key1, score1, key2, score2, ...]
+            scored = []
+            for i in range(0, len(result), 2):
+                key = result[i]
+                score = result[i + 1]
+                if isinstance(key, bytes):
+                    key = key.decode()
+                if isinstance(score, bytes):
+                    score = score.decode()
+                scored.append((key, float(score)))
+            return scored
 
-        # Parse flat array: [key1, score1, key2, score2, ...]
-        scored = []
-        for i in range(0, len(result), 2):
-            key = result[i]
-            score = result[i + 1]
-            if isinstance(key, bytes):
-                key = key.decode()
-            if isinstance(score, bytes):
-                score = score.decode()
-            scored.append((key, float(score)))
+        if allowed_keys is None:
+            return _run(limit)
 
-        return scored
+        # Widen the fetch window until `limit` in-scope hits are found or the
+        # whole corpus has been scanned. Capped so a caller whose scope holds
+        # almost nothing cannot walk an unbounded corpus on every query; at the
+        # cap the result is honestly short rather than silently empty.
+        #
+        # Each pass re-runs BM25_SEARCH_LUA from scratch rather than extending
+        # the previous window, so the cost is the sum of the passes, not the
+        # final width. Worst case is a fully starved scope: at limit=10 and
+        # SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -> 40 -> 160 -> 640 -> 2560
+        # -> 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the
+        # widen factor trades passes for wasted scoring width.
+        raw_n: Any = POPOTO_REDIS_DB.get(n_key)
+        try:
+            corpus_n = int(raw_n)
+        except (TypeError, ValueError):
+            corpus_n = 0
+        ceiling = min(max(corpus_n, limit), SCOPED_SEARCH_FETCH_CAP)
+
+        fetch_limit = limit
+        while True:
+            scored = _run(fetch_limit)
+            in_scope = [(k, s) for k, s in scored if k in allowed_keys]
+            if (
+                len(in_scope) >= limit
+                or fetch_limit >= ceiling
+                or len(scored) < fetch_limit
+            ):
+                return in_scope[:limit]
+            fetch_limit = min(fetch_limit * SCOPED_SEARCH_WIDEN_FACTOR, ceiling)
 
     @classmethod
     def recompute_stats(cls, model_class, field_name):

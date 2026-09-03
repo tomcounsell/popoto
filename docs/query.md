@@ -274,7 +274,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](reference/popoto/models/query.md)) |
 | `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](reference/popoto/models/query.md)) |
 | `keyword_search(query_text, field, limit)` | Return instances ranked by BM25 keyword relevance. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
-| `fuse(k, limit, post_filter, **ranked_lists)` | Reciprocal Rank Fusion across heterogeneous ranked lists. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
+| `fuse(k, limit, post_filter, weights, **ranked_lists)` | Reciprocal Rank Fusion across heterogeneous ranked lists. Applies the builder's own keyword filters to the fused set (before the top-K slice); raises `QueryException` on Q-object filters. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |

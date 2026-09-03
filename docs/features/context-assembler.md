@@ -231,12 +231,32 @@ Additional non-tunable defaults:
 ### Pull Path — Hybrid mode (`"hybrid"` or auto-detected)
 
 1. **ExistenceFilter pre-check**: Same short-circuit as composite path.
-2. **BM25 lexical retrieval**: `BM25Field.search(query_text, limit=max_items×5)` — scored keyword matches.
+2. **BM25 lexical retrieval**: `BM25Field.search(query_text, limit=max_items×5, allowed_keys=...)` — scored keyword matches, confined to the caller's scope.
 3. **Vector retrieval**: `QueryBuilder._get_vector_scores(query_text, limit=max_items×5)` — cosine similarity via configured embedding provider.
 4. **CoOccurrence graph expansion**: BFS from BM25 top-5 seeds (optional, requires `CoOccurrenceField`).
-5. **RRF fusion**: `query.fuse(keyword=..., vector=..., graph=..., k=60, limit=max_items×2)` — rank-based fusion.
+5. **RRF fusion**: `query.filter(**filters).fuse(keyword=..., vector=..., graph=..., k=60, limit=max_items×2)` — rank-based fusion, scoped by the same filters.
 
 If both BM25 and vector signals return empty results, the path falls back to the composite path automatically.
+
+#### Scoping (`filters`)
+
+The BM25 index and the graph are corpus-wide, so a caller's `filters` (typically
+`agent_id`) has to reach the *fetch*, not just the fused output — filtering a bounded
+fetch lets other agents' records crowd the candidate window and starve the caller.
+Step 2 therefore resolves `filters` to a key set and passes it as `allowed_keys`, and
+step 5 applies the same filters to the fused result.
+
+Two behaviors worth knowing:
+
+- **Fails closed.** If the scope cannot be resolved, the lexical signal is dropped
+  rather than issued unscoped — an unscoped BM25 signal fused under a filtered query
+  is a cross-agent leak.
+- **All-unindexed scopes skip `allowed_keys`.** When every field in `filters` is a
+  plain, unindexed `Field`, resolving it would materialize the whole keyspace, which
+  expresses no scope at all. The candidate window is left unnarrowed and `fuse()`
+  enforces the predicate instead — correct, but subject to crowding. A scope mixing
+  indexed and unindexed fields keeps the indexed narrowing. **Scope by an indexed
+  field** (`KeyField`/`SortedField`) for reliable recall under load.
 
 ### Push Path
 
