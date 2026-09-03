@@ -33,7 +33,6 @@ Example:
 import json
 import logging
 
-from ..models.db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
@@ -252,9 +251,6 @@ class CoOccurrenceField(Field):
             content = StringField()
             associations = CoOccurrenceField(symmetric=True, max_edges=100)
     """
-
-    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
-    field_class_key = DB_key("$CoOccurrencF")
 
     # Export/import: edge weights are accumulated by strengthen()/weaken_all()
     # calls over time -- a function of interaction history between records,

@@ -67,6 +67,27 @@ from ..exceptions import (
 
 logger = logging.getLogger("POPOTO.model_base")
 
+#: Remove one orphan's index memberships, only if its hash is still gone.
+#: KEYS[1] is the hash, KEYS[2..] the index keys; ARGV[i] is "s" (set) or
+#: "z" (sorted set) for KEYS[i+1]. The EXISTS check inside the script is
+#: what makes the purge safe against a concurrent re-create.
+PURGE_ORPHAN_LUA = """
+if redis.call('EXISTS', KEYS[1]) == 1 then
+    return 0
+end
+local member = KEYS[1]
+local removed = 0
+for i = 2, #KEYS do
+    local kind = ARGV[i - 1]
+    if kind == 'z' then
+        removed = removed + redis.call('ZREM', KEYS[i], member)
+    else
+        removed = removed + redis.call('SREM', KEYS[i], member)
+    end
+end
+return removed
+"""
+
 
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
@@ -3580,17 +3601,24 @@ class Model(metaclass=ModelBase):
         return result
 
     @classmethod
-    def _purge_orphan_keys(cls, redis_keys) -> int:
+    def _purge_orphan_keys(cls, redis_keys: "list[str] | set[str]") -> int:
         """Drop index memberships for hashes that no longer exist.
 
         ``Meta.ttl`` expires the hash only; Redis cannot expire a member of
         a set or sorted set. So a read that finds an index member with no
         hash behind it repairs the indexes it can derive from the key
         alone: the class set, every non-auto ``KeyField`` pointer set, and
-        every sorted-set index whose partition values are key fields. One
-        pipeline, no scan. Indexes that need the vanished field values
-        (partitions on non-key fields, ``IndexedField`` sets) are left to
-        :meth:`clean_indexes`.
+        every sorted-set index whose partition values are key fields. Each
+        orphan is handled by one Lua call that re-checks ``EXISTS`` on the
+        hash before touching anything, so a record re-created under the
+        same key between the read and the purge keeps its fresh index
+        entries. One pipeline, no scan.
+
+        Not covered, because they need the vanished field values:
+        ``IndexedField``/``UniqueField``/``TagField`` pointer sets,
+        ``GeoField`` indexes, ``Relationship`` reverse indexes, and sorted
+        sets partitioned on non-key fields. :meth:`clean_indexes` handles
+        those.
 
         Returns:
             Number of orphan keys processed.
@@ -3600,40 +3628,54 @@ class Model(metaclass=ModelBase):
         ]
         if not keys:
             return 0
+        meta = cls._meta  # type: ignore[attr-defined]
         pipe = POPOTO_REDIS_DB.pipeline()
-        class_set_key = cls._meta.db_class_set_key.redis_key
+        class_set_key = meta.db_class_set_key.redis_key
         for key in keys:
-            pipe.srem(class_set_key, key)
+            index_keys: list[str] = [class_set_key]
+            kinds: list[str] = ["s"]
             try:
                 parts = DB_key.from_redis_key(key)
             except Exception:
-                continue
-            values = {}
-            for field_name in cls._meta.key_field_names:
-                try:
-                    values[field_name] = parts[
-                        cls._meta.get_db_key_index_position(field_name)
-                    ]
-                except Exception:
-                    continue
-            for field_name in cls._meta.key_field_names:
-                field = cls._meta.fields[field_name]
+                parts = None
+            values: dict[str, str] = {}
+            if parts is not None:
+                for field_name in meta.key_field_names:
+                    try:
+                        values[field_name] = parts[
+                            meta.get_db_key_index_position(field_name)
+                        ]
+                    except Exception:
+                        continue
+            for field_name in meta.key_field_names:
+                field = meta.fields[field_name]
                 if getattr(field, "auto", False) or field_name not in values:
                     continue
-                set_key = DB_key(
-                    field.get_special_use_field_db_key(cls, field_name),
-                    values[field_name],
+                index_keys.append(
+                    DB_key(
+                        field.get_special_use_field_db_key(cls, field_name),
+                        values[field_name],
+                    ).redis_key
                 )
-                pipe.srem(set_key.redis_key, key)
-            for field_name in cls._meta.sorted_field_names:
-                field = cls._meta.fields[field_name]
+                kinds.append("s")
+            for field_name in meta.sorted_field_names:
+                field = meta.fields[field_name]
                 partition = tuple(getattr(field, "partition_by", ()) or ())
                 if any(name not in values for name in partition):
                     continue
                 zset_key = field.get_sortedset_db_key(cls, field_name)
                 for name in partition:
                     zset_key.append(values[name])
-                pipe.zrem(zset_key.redis_key, key)
+                index_keys.append(zset_key.redis_key)
+                kinds.append("z")
+            run_lua(
+                pipe,
+                PURGE_ORPHAN_LUA,
+                1 + len(index_keys),
+                key,
+                *index_keys,
+                *kinds,
+            )
         try:
             pipe.execute()
         except Exception as exc:

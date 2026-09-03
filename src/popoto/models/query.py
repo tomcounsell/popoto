@@ -1989,7 +1989,8 @@ class Query:
             # Materialize once: a QueryBuilder re-executes on every len()
             # and index, so the previous three-step check ran the query
             # three times. Two rows are enough to prove non-uniqueness.
-            instances = list(self.filter(**kwargs, limit=2))
+            kwargs.setdefault("limit", 2)
+            instances = list(self.filter(**kwargs))
             if len(instances) > 1:
                 raise QueryException(
                     f"{self.model_class.__name__} found more than one unique instance. Use `query.filter()`"

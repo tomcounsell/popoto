@@ -52,10 +52,13 @@ truthy set as ``POPOTO_MEMORY_ENABLED`` (``1``/``true``/``yes``/``on``)."""
 
 HOOK_SOCKET_TIMEOUT_SECONDS = 1.0
 """Socket connect and read timeout applied when the integration binds its
-own connection. The read hook sits on the user's prompt path, so a hung
-server must cost about a second, not the library default of five per
-attempt. Retries are disabled for the same reason: the harness will run the
-hook again next turn."""
+own connection (``POPOTO_MEMORY_URL`` or ``REDIS_URL``). The read hook sits
+on the user's prompt path, so a hung server must cost about a second, not
+the library default of five per attempt. Retries are disabled for the same
+reason: the harness will run the hook again next turn. Lives here rather
+than in ``popoto.fields.constants.Defaults`` because it is integration
+transport config, not a retrieval tuning constant; see that docstring for
+the convention."""
 
 DEFAULT_MAX_ITEMS = 5
 """Records injected per turn. See the module docstring for why this is not
@@ -397,7 +400,10 @@ def bind_connection(config: MemoryConfig) -> bool:
     if effective_db(config) == 0 and not config.allow_db0:
         raise Db0RefusedError(_db0_refusal_message(config))
 
-    if not config.url_is_explicit:
+    if config.url_source == "default":
+        # Neither variable set: an in-process caller (a test under the
+        # pytest plugin, a host application) chose this connection. Leave
+        # it, timeouts included.
         return False
 
     import redis
@@ -408,10 +414,13 @@ def bind_connection(config: MemoryConfig) -> bool:
     from ..redis_db import POPOTO_REDIS_DB
 
     wanted = parse_url(config.url)
+    if "db" not in wanted:
+        raise ValueError(_no_db_message(config.url))
 
     client = POPOTO_REDIS_DB
     current = dict(client.connection_pool.connection_kwargs)
-    if all(current.get(key) == value for key, value in wanted.items()):
+    target_matches = all(current.get(key) == value for key, value in wanted.items())
+    if target_matches and current.get("socket_timeout") == HOOK_SOCKET_TIMEOUT_SECONDS:
         return False
 
     current.update(wanted)

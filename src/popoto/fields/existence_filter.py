@@ -68,7 +68,6 @@ import math
 
 import redis
 
-from ..models.db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .field import Field
 
@@ -637,9 +636,6 @@ class FrequencySketch(Field):
 
         Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
     """
-
-    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
-    field_class_key = DB_key("$requencySketchF")
 
     # Override Field defaults -- FrequencySketch does not store a value
     MAX_DEPTH = 7

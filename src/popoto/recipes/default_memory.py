@@ -84,6 +84,7 @@ need their own keyspace (or extra fields) subclass it::
 """
 
 import logging
+from typing import Any, cast
 
 from ..fields.access_tracker import AccessTrackerMixin
 from ..fields.constants import Defaults
@@ -94,6 +95,7 @@ from ..fields.confidence_field import ConfidenceField
 from ..fields.decaying_sorted_field import DecayingSortedField
 from ..fields.shortcuts import AutoKeyField, FloatField, KeyField, StringField
 from ..models.base import Model
+from ..models.encoding import decode_popoto_model_hashmap
 from ..privacy.never_record import NeverRecordMixin
 
 logger = logging.getLogger("POPOTO.DefaultMemory")
@@ -134,7 +136,7 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
     #: Cap on records per ``agent_id``. See ``Defaults`` for the rationale.
     _max_records_per_agent = Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT
 
-    def save(self, *args, **kwargs):
+    def save(self, pipeline: Any = None, *args: Any, **kwargs: Any) -> Any:
         """Save, then evict the stalest records past ``_max_records_per_agent``.
 
         Staleness is the ``relevance`` decay timestamp, so a memory that is
@@ -142,8 +144,11 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
         first. Eviction is a full ``delete()`` so every index is cleaned.
         Costs one ``ZCARD`` per save when under the cap.
         """
-        result = super().save(*args, **kwargs)
-        if result is False or "pipeline" in kwargs:
+        result = super().save(pipeline, *args, **kwargs)
+        if pipeline is not None or result is False:
+            # Inside a caller's pipeline the record's own ZADD is still
+            # queued, so the cap cannot be evaluated yet; a False result is
+            # a write-filter drop with nothing to evict for.
             return result
         cap = self._max_records_per_agent
         if not cap:
@@ -157,13 +162,17 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
             if excess <= 0:
                 return result
             own_key = self.db_key.redis_key
-            for victim in POPOTO_REDIS_DB.zrange(zset_key, 0, excess - 1):
-                victim = victim.decode() if isinstance(victim, bytes) else victim
+            for raw in POPOTO_REDIS_DB.zrange(zset_key, 0, excess - 1):
+                victim = raw.decode() if isinstance(raw, bytes) else str(raw)
                 if victim == own_key:
                     continue
-                stale = type(self).query.get(redis_key=victim)
-                if stale is not None:
-                    stale.delete()
+                hashmap = POPOTO_REDIS_DB.hgetall(victim)
+                if hashmap:
+                    # Decode directly: query.get() would fire on_read and
+                    # stage an access for a record about to be deleted.
+                    decode_popoto_model_hashmap(
+                        cast(Any, type(self)), hashmap, source_redis_key=victim
+                    ).delete()
                 else:
                     self._purge_orphan_keys([victim])
         except Exception as exc:  # eviction must never fail a save

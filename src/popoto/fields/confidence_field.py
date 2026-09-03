@@ -41,7 +41,6 @@ import logging
 import msgpack
 import redis
 
-from ..models.db_key import DB_key
 from ..exceptions import ModelException
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB, run_lua
@@ -165,9 +164,6 @@ class ConfidenceField(Field):
         memory = Memory.create(key="fact1", project="atlas", content="...")
         ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
     """
-
-    # Pinned pre-1.9 index namespace: keys on disk use this spelling.
-    field_class_key = DB_key("$ConfidencF")
 
     # Export/import: the companion hash holds evidence_count, corroborations
     # and contradictions, which exist nowhere else -- only ``confidence`` is
