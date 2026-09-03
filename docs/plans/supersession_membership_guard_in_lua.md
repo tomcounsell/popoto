@@ -7,7 +7,7 @@ created: 2026-09-02
 tracking: https://github.com/tomcounsell/popoto/issues/588
 last_comment_id: 5508044139
 revision_applied: true
-revision_applied_at: 2026-09-02
+revision_applied_at: 2026-09-03T09:43:27Z
 ---
 
 # #588 — Move the supersession membership guard into SUPERSEDE_LUA, and make valid-time single-writer
@@ -330,8 +330,10 @@ it is answered and acted on inside the same script invocation.
 - **New dependency on `models/base.py`** (added in the critique revision): a generic
   `Field.pre_save_validate` hook and its dispatch, needed because `ValidityField` is not an
   `IndexedFieldMixin` and so cannot otherwise run before the eager indexed-field write phase
-  (D5 half 1, Risk 6). This is the only edit outside `validity_field.py`, `supersession.py`,
-  `observation.py`, and a comment in `provenance_journal.py`.
+  (D5 half 1, Risk 6). Dispatched from a **single** site above the partial/full save split, so
+  it covers the external-pipeline arms too (round-2 B1). This is the only edit outside
+  `validity_field.py`, `supersession.py`, `observation.py`, and two narrow edits in
+  `provenance_journal.py` (a comment correction, plus D8's `pipe.execute()` wrapper).
 - **Interface changes**:
   - `SUPERSEDE_LUA` gains `ARGV[8]` and three error replies. Additive: a caller passing 7 ARGV
     still works (`ARGV[8] or ''` -> not asserted), which matters because the script is embedded
@@ -959,6 +961,56 @@ exist on this path, and the alternative — a typed error escaping a telemetry c
 worse. The existing `except (TypeError, ValueError): pass` stays as a second layer, and it
 still catches the new exceptions because they subclass `ValueError` (D4).
 
+#### D8 — `ProvenanceJournal._write`'s failure mode changes, and is made typed
+
+**[added by the round-2 revision pass — CONCERN C2.]** The No-Gos say M1 is unchanged. That is
+true of its *design* and false of its *failure mode*, and the difference has to be on the
+record.
+
+M1 calls `execute_supersede(..., old_member=target_key, pipeline=pipe)`
+(`provenance_journal.py:1126-1137`) with an **explicit** `old_member`. Under D2's new
+asserted-vs-hinted rule, an explicit `old_member` is a caller *assertion*, so if the target is
+hard-deleted between M1's D7 pre-flight (`:906-964`) and `EXEC`, the script now returns
+`POPOTO_VALIDITY_MEMBER_ABSENT incumbent …` where it previously took the idempotent no-op
+branch. Redis does not roll back the rest of the `MULTI`, so:
+
+- the journal entry's `HSET` **commits** (it is above the EVAL in the queue), and
+- `pipe.execute()` raises a raw `redis.exceptions.ResponseError` out of `_write`
+  (`provenance_journal.py:1155`), which has no handler,
+
+so the caller gets neither an `AnnotationResult` nor a typed error. The window is narrow but
+real, and shipping it unexercised on an append-only model is not acceptable.
+
+**Decision, recorded rather than deferred: the committed-entry-plus-raised-error outcome is
+the intended contract, and the error is made typed.** The entry is real provenance — an
+annotation genuinely was written, and suppressing it to match a failed close would lose
+information an append-only journal exists to keep. What is not acceptable is the *raw*
+`ResponseError`, which forces the caller to string-match Lua tokens. So `_write` gains exactly
+one defensive wrapper, and nothing else:
+
+```python
+# provenance_journal.py, replacing the bare `results = pipe.execute()` at :1155
+try:
+    results = pipe.execute()
+except ResponseError as e:                    # noqa: perf — cold path only
+    # The entry HSET is above the EVAL in this MULTI and has already applied;
+    # Redis does not roll back a transaction when one command errors. The
+    # annotation is real and stays. Only the close failed -- surface which,
+    # typed, rather than a raw Lua token string (#588 round-2 C2).
+    raise _map_lua_error(e) from e
+```
+
+where `_map_lua_error` is the `_LUA_ERROR_MAP` dispatch already being extracted for D4,
+exported from `validity_field.py` so both call sites share one table. If no token matches, it
+re-raises the original unchanged — same rule as D4.
+
+This does **not** contradict `test_provenance_journal.py:1453`
+(`test_bypassing_the_pre_flight_surfaces_a_raw_response_error`) as long as that test drives
+`execute_supersede` on a caller pipeline directly rather than through `_write`; the builder
+must check which, and if it goes through `_write`, update it to expect the typed subclass and
+say so in the PR description. It also does not change M1's *success* path, its pre-flight, or
+its `AnnotationResult` shape — the No-Go on converting M1 to `save_and_supersede` stands.
+
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
@@ -1005,6 +1057,14 @@ Tests that **must change** (they pin the behavior this plan deliberately reverse
 - [ ] `tests/test_validity_field.py::TestFailurePaths::test_unsaved_instance_degrades_with_no_partial_state` (`:1401`) — **REPLACE.** Currently asserts `supersede(unsaved) is None` and `invalidate(unsaved) is None`. Becomes `pytest.raises(ValidityMemberAbsentError)` for both, with the same six-key "no partial state" assertions retained verbatim — the *no-write* guarantee is unchanged and is the more important half of this test.
 - [ ] `tests/test_validity_field.py::TestFailurePaths::test_invalidate_with_an_unsaved_successor_is_a_no_op` (`:1419`) — **REPLACE.** Becomes `pytest.raises(ValidityMemberAbsentError)`; keeps the `invalid_at == inf` assertion (the incumbent must still be untouched).
 - [ ] `tests/test_provenance_journal.py::TestAnnotationAtomicity::test_supersession_protocol_silently_no_ops_for_a_pipelined_successor` (`:1501`) — **REPLACE.** This test *is* the bug report. It inverts: the pipelined successor now produces a queued `invalidate` EVAL, `invalid_at` finite after `execute()`, and both chain hashes populated. Rename to `test_supersession_protocol_closes_a_pipelined_successor`. Its docstring must stop citing the `POPOTO_REDIS_DB.exists(...)` probe.
+- [ ] `src/popoto/recipes/provenance_journal.py:1155` — **UPDATE (source, not test), per D8.**
+  Wrap the bare `results = pipe.execute()` so a `ResponseError` is remapped through the shared
+  `_LUA_ERROR_MAP`. New coverage in `tests/test_provenance_journal.py` (Task 3, test 21): hard-
+  delete the target after `_pre_flight` returns and before `pipe.execute()`, assert
+  `ValidityMemberAbsentError` **and** that the entry hash is present — the
+  committed-entry-plus-raised-error contract D8 records. Also re-read
+  `test_provenance_journal.py:1453` and confirm whether it drives `_write` or
+  `execute_supersede` directly; only the former needs updating.
 - [ ] `src/popoto/recipes/provenance_journal.py:1118-1131` — **UPDATE (source, not test).** The "use `execute_supersede`, NOT `SupersessionProtocol` (#588)" comment is now false. Rewrite it to record *why the direct call is still correct* (M1 needs `old_member` explicit and `assert_valid_from=False`; it does not need the identity pointer) rather than "the protocol is broken". Do **not** switch M1 to the protocol in this PR — see No-Gos.
 
 Tests that **must keep passing unchanged** (the plan is designed around them):
@@ -1027,9 +1087,12 @@ under test): `tests/test_context_assembler.py::TestAssemblerValidityGating` (7),
 `tests/benchmarks/test_defaults_sync.py` (2 — will fail if a new `Defaults` constant is added,
 which this plan does not do).
 
-**New tests: `tests/test_validity_field.py::TestMembershipGuardInLua` (new class), 18 tests**
-(16 in the first-pass plan, plus test 17 — the eager-indexed-phase test the critique found
-missing — and test 18 for `save_and_invalidate`).
+**New tests: 21 total** — `tests/test_validity_field.py::TestMembershipGuardInLua` (new class,
+tests 1-20) plus one in `tests/test_provenance_journal.py` (test 21). 16 came from the
+first-pass plan; the round-1 critique added test 17 (eager-indexed phase) and test 18
+(`save_and_invalidate`); the round-2 critique adds test 19 (`chain(unsaved) == []`, B2),
+test 20 (pre-existing hash/index divergence, C1) and test 21 (M1's `MEMBER_ABSENT` failure
+mode, C2).
 
 **One new model** in `tests/test_validity_field.py`: `IndexedValidFact`, declaring one
 `IndexedField` alongside a `ValidityField`. None of the existing models in that file pairs the
@@ -1124,10 +1187,14 @@ benchmark gates in `tests/benchmarks/test_journal_append.py` are re-run as the p
 
 ### Risk 6: The D5 pre-scan adds a generic hook to `Model.save()`
 
-**Impact:** `Field.pre_save_validate` is invoked over `self._meta.fields` on **every** save of
-**every** model, in both the full-save and partial-save branches. A bug in the dispatch (not
-in `ValidityField`'s implementation) would affect the whole ORM, and the blast radius of this
-bug fix widens from two field modules to `models/base.py`.
+**Impact:** `Field.pre_save_validate` is invoked on **every** save of **every** model, from a
+single site above the partial/full split — so it now covers the two external-pipeline arms as
+well (B1), which is *more* reach than the round-1 placement, not less. A bug in the dispatch
+(not in `ValidityField`'s implementation) would affect the whole ORM, and the blast radius of
+this bug fix widens from two field modules to `models/base.py`. The single site is also what
+makes the failure mode uniform: there is one place to read, one place to break, and one
+`grep` (the two new ANTI rows) that proves it did not get duplicated back into the eager
+loops.
 
 **Mitigation:** the default implementation is a bare `return None` on `Field`, so for every
 model that does not declare a `ValidityField` the added work is one `isinstance`-free method
@@ -1192,7 +1259,11 @@ racing is harmless — it can only produce a false negative, which the script th
 - [SEPARATE-SLUG #563] Converting `ProvenanceJournal._write` to `save_and_supersede`. M4 is
   the consumer that will exercise the combined entry point; M1's pre-flight has firewall and
   cross-agent checks the protocol does not express, and merging them is M4's design work, not
-  this PR's. This PR only corrects M1's now-false `#588` source comment.
+  this PR's. This PR makes exactly two edits to `provenance_journal.py`, both narrow: it
+  corrects M1's now-false `#588` source comment, and per **D8** it wraps the bare
+  `pipe.execute()` at `:1155` so the newly-reachable `MEMBER_ABSENT` failure surfaces as a
+  typed exception instead of a raw `ResponseError`. M1's pre-flight, its success path, its
+  `AnnotationResult` shape, and its direct `execute_supersede` call are all unchanged.
 - [SEPARATE-SLUG #584] Anything touching `popoto.integrations` DB selection. Sequenced
   alongside this issue by the maintainer decision, separate plan, separate PR.
 - [ORDERED] Merging ahead of #576/PR #593 and #584/PR #594. **Both have now merged** (#593 as
@@ -1211,8 +1282,14 @@ variable, and no `Defaults` constant (deliberately: `tests/benchmarks/test_defau
 would require an exemption-list edit, and there is no tunable here — the guard is not
 optional).
 
-**No data migration.** No stored key, score, or hash field changes shape. Existing intervals,
-chains, and pointers are read and written identically.
+**No data migration, stated precisely** (round-2 C1). No stored key, score, or hash field
+changes shape; existing intervals, chains, and pointers are read and written identically; no
+backfill or rewrite step runs at upgrade. What *does* change is an operational consequence: a
+record that already carries a hash/index `valid_from` divergence will refuse a **full**
+`save()` with `ValidityValidFromConflictError` until an operator reconciles it. Partial saves
+(`update_fields=[...]`) of unrelated fields are unaffected, because the `pre_save_validate`
+dispatch is scoped to `update_fields` on that path. The two remediation recipes are in D5 and
+are reproduced in the CHANGELOG.
 
 ## Agent Integration
 
@@ -1235,9 +1312,15 @@ them; the three new exception classes **do** need `__all__` entries.
     the shape that was broken is now the recommended one.
   - New "Valid-time has one writer" section: construct with `validity=t`; `at=` is close-time;
     `.validity` is the *declared* value and `get_valid_from()` is the *effective* one.
+  - New "Reconciling a record that already diverges" subsection (round-2 C1): both two-line
+    remediations, and the note that partial saves of unrelated fields are unaffected.
+  - Note in the traversal section that `chain()` returns `[]` for an unsaved instance and that
+    the guard now lives in `chain()` itself, not in `_member_key` (B2).
 - [ ] Update `docs/features/provenance-journal.md`: replace the "#588 trap" note with a
-  pointer to the fixed protocol and to `save_and_supersede`, and explain why M1 still calls
-  `execute_supersede` directly.
+  pointer to the fixed protocol and to `save_and_supersede`, explain why M1 still calls
+  `execute_supersede` directly, and document D8's failure mode — a target hard-deleted between
+  pre-flight and `EXEC` now raises `ValidityMemberAbsentError` from `_write` while the journal
+  entry commits.
 - [ ] Confirm `docs/features/README.md` index entries still describe both pages accurately.
 
 ### CHANGELOG (breaking change — the library is on PyPI at 1.8.2, this ships in 1.9.0)
@@ -1258,7 +1341,17 @@ them; the three new exception classes **do** need `__all__` entries.
     `ValidityCloseBeforeStartError`, `ValidityValidFromConflictError`,
     `SupersessionProtocol.save_and_supersede` / `.save_and_invalidate`, `SupersedeResult`,
     `ValidityField.get_valid_from`.
-  - **No data migration** — no stored key, score, or hash field changes shape.
+  - **Remediating a record that already diverges** (D5 / round-2 C1): a full `save()` of such a
+    record now raises. Include both two-line exits verbatim — adopt the effective start via
+    `ValidityField.get_valid_from(Model, "validity", member_key=...)`, or make the declared
+    value authoritative with a plain `ZADD` (no `NX`) before re-saving. Note that a partial
+    save (`update_fields=[...]`) of an unrelated field is unaffected.
+  - `ProvenanceJournal._write` now raises `ValidityMemberAbsentError` (was: a raw
+    `redis.exceptions.ResponseError`) if its annotation target is hard-deleted between the
+    pre-flight and `EXEC`; the journal entry still commits (D8).
+  - **No data migration** — no stored key, score, or hash field changes shape, and no backfill
+    runs. Records with a pre-existing divergence refuse a *full* re-save until reconciled; see
+    the remediation bullet above.
 
 ### External Documentation Site
 
@@ -1298,8 +1391,16 @@ them; the three new exception classes **do** need `__all__` entries.
       all: the record's hash and index still agree, **and** a sibling `IndexedField` on the
       same model still holds its pre-save value with no new index entry (D5 half 1 — this is
       the criterion the eager-indexed phase at `base.py:1581-1607` would otherwise defeat).
-      On the external-pipeline path the criterion is that nothing was *applied*; the caller's
-      queued `HSET` is theirs to discard.
+      On the **external-pipeline** path the same criterion holds and for the same reason: the
+      single pre-split dispatch site raises before `save()` queues anything for this call.
+- [ ] `SupersessionProtocol.chain(unsaved) == []` and the two D7-frozen tests pass unedited
+      (B2) — the unsaved-instance contract survives the removal of `_member_key`'s probe.
+- [ ] A record carrying a **pre-existing** hash/index divergence still accepts a partial save
+      of an unrelated field, raises `ValidityValidFromConflictError` on a full save, and
+      accepts a full save after either documented remediation (C1).
+- [ ] `ProvenanceJournal._write` raises `ValidityMemberAbsentError` — not a raw
+      `ResponseError` — when its target is hard-deleted between pre-flight and `EXEC`, and the
+      journal entry is present afterwards (C2/D8).
 - [ ] `save_and_supersede` performs the save and the close in one MULTI/EXEC (exactly one
       `pipe.execute()`, `transaction is True`, zero mutating commands issued outside it).
 - [ ] All three Lua error tokens map to their typed exception; an unrecognized `ResponseError`
@@ -1381,14 +1482,24 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 - Add `assert_valid_from: bool = False` to `execute_supersede`, append ARGV[8], and replace the
   single `if CLOSE_BEFORE_START_ERROR in str(e)` branch with the ordered dispatch table;
   preserve the bare `raise` for unrecognized errors.
-- Add `Field.pre_save_validate` (default no-op) to `fields/field.py`, dispatch it over
-  `self._meta.fields` in `models/base.py` **immediately before** the `_eager_indexed_fields`
-  loop in the full-save branch (`base.py:1581-1607`, dispatch immediately before `:1593`)
-  **and** before `_eager_indexed_update_fields` in the partial-save branch
-  (`base.py:1384-1394`, dispatch immediately before `:1388`), and
-  implement it on `ValidityField` per D5 half 1. Pass `assert_valid_from` per D3.
+- Add `Field.pre_save_validate` (default no-op) to `fields/field.py` and dispatch it from
+  **exactly one site** in `models/base.py`: immediately after the `pre_save` gate
+  (`base.py:1289-1292`) and before `new_db_key = DB_key(self.db_key)` (`:1294`) — i.e. above
+  the `if update_fields is not None:` split at `:1296`. Iterate `update_fields` when one is
+  supplied, `self._meta.fields` otherwise (C1(a)). **Do not** place it at the two eager loops
+  (`:1388`, `:1593`) as the round-1 plan said: both sit inside the `else:` arm of an
+  external-pipeline test that returns at `:1382` / `:1578`, so that placement silently skips
+  every caller-supplied-pipeline save, including `save_and_supersede`'s own (D5, round-2 B1).
+  Implement the hook on `ValidityField` per D5 half 1. Pass `assert_valid_from` per D3.
   This is the one edit outside the two field modules; keep it to the dispatch call plus the
   hook definition, and take the D5 fallback rather than growing it if review objects.
+- **Per-task verification for the dispatch site** (run before handing off to Task 2):
+  `grep -n 'pre_save_validate' src/popoto/models/base.py` must return **exactly one** line, and
+  its number must be `> 1292` and `< 1296` (offset by the lines this task adds). A second hit
+  means the round-1 two-site placement crept back in.
+- Extract the `_LUA_ERROR_MAP` dispatch into a module-level `_map_lua_error(e)` helper in
+  `validity_field.py` (used by `execute_supersede`'s non-pipeline branch and, per D8, by
+  `ProvenanceJournal._write`). It re-raises the original unchanged when no token matches.
 - Add `ValidityField.get_valid_from()` (D5 half 2).
 - Add `scripts/check_supersede_lua_phases.py` — the executable anti-criterion for the phase
   rule. It parses `SUPERSEDE_LUA`, prints `BAD` when the `MUTATION PHASE` marker is missing,
@@ -1405,6 +1516,11 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 - **Agent Type**: builder
 - **Parallel**: false
 - Rewrite `_member_key` per D1, including the full docstring rewrite.
+- Move the unsaved-instance contract into `SupersessionProtocol.chain` per D1's B2 fix: hoist
+  the `get_interval_keys` lookup (`supersession.py:330`) above the anchor gate (`:323-324`) and
+  add the `zscore(valid_from_key, anchor) is None -> []` guard. `_walk_one` is left alone.
+  **Verification for this bullet:** `tests/test_validity_field.py:1650` and `:1407` must pass
+  with `chain(unsaved) == []` unedited.
 - Rewrite the `supersession.py` module docstring's "Graceful degradation, narrowly scoped"
   bullet and the `Returns:`/`Raises:` blocks on `supersede` and `invalidate`.
 - Add `SupersedeResult`, `save_and_supersede`, `save_and_invalidate` per D6, including the
@@ -1412,7 +1528,12 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 - Add the D7 `EXISTS` probe and `logger.debug` to `observation.py::_apply_supersession`, with
   the comment explaining why it is correct on that path and nowhere else.
 - Correct the false `#588` comment at `provenance_journal.py:1118-1131`; do **not** change M1's
-  behavior.
+  pre-flight, success path, or `AnnotationResult` shape.
+- Per D8, wrap `results = pipe.execute()` (`provenance_journal.py:1155`) in
+  `try/except ResponseError: raise _map_lua_error(e) from e`, and record in the comment that
+  the entry hash has already committed by then. Re-read
+  `test_provenance_journal.py:1453` and update it **only** if it drives `_write` rather than
+  `execute_supersede` directly.
 
 ### 3. Tests
 - **Task ID**: build-tests
@@ -1459,6 +1580,27 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
       load-bearing, and it belongs in the PR description.
   18. `save_and_invalidate` end to end: successor saved and incumbent closed in one
       MULTI/EXEC, both chain links written, `closed_key` == the incumbent's key.
+  19. **`chain(unsaved) == []` (round-2 BLOCKER B2).** Direct assertion, not inherited from a
+      frozen observation test: `SupersessionProtocol.chain(ValidFact(name="never-saved")) == []`,
+      plus `superseded_by(unsaved) is None` and `supersedes(unsaved) is None` (which hold via
+      `_walk_one`'s nil `HGET`, not via a probe). Red-state note for the builder: run this
+      against a D1 implementation that does *not* carry the `chain()` `ZSCORE` gate and confirm
+      it returns `[unsaved]` — that failure is the proof the gate is load-bearing, and
+      `test_validity_field.py:1650` inside the frozen test is the second witness.
+  20. **Pre-existing hash/index divergence (round-2 CONCERN C1).** Construct the divergence
+      directly (save a record, then `ZADD` the `valid_from` key to a value 30 days from the
+      hash's, with no `NX`). Assert three things: (a) `obj.save(update_fields=["<some other
+      field>"])` **succeeds** — the partial-save dispatch scopes to `update_fields`; (b) a full
+      `obj.save()` raises `ValidityValidFromConflictError`; (c) after applying either
+      remediation from D5 (adopt `get_valid_from()`, or plain `ZADD` the declared value), the
+      full save succeeds and hash and index agree. This is the operator's exit, pinned.
+  21. **M1's `MEMBER_ABSENT` failure mode (round-2 CONCERN C2)** — in
+      `tests/test_provenance_journal.py`, not in `TestMembershipGuardInLua`. Hard-delete the
+      annotation target after `_pre_flight` returns and before `pipe.execute()` (monkeypatch the
+      pre-flight's return, or `POPOTO_REDIS_DB.delete(target_key)` from a patched seam). Assert
+      `pytest.raises(ValidityMemberAbsentError)` from `_write` **and** that the entry hash
+      exists afterwards — the committed-entry-plus-typed-error contract D8 records. A test that
+      only asserts the raise would let a future change silently start swallowing the entry.
 - Add the D7 degradation-logging test (`caplog` on `POPOTO.ObservationProtocol`).
 
 ### 4. Blast-radius validation
@@ -1521,6 +1663,11 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 | No stale xfails | `grep -rn 'xfail\|@pytest.mark.skip' tests/test_validity_field.py tests/test_provenance_journal.py` | exit code 1 |
 | ARGV[8] is nil-safe | `grep -c "ARGV\[8\] or ''" src/popoto/fields/validity_field.py` | output > 0 |
 | No new Defaults constant | `git diff origin/main -- src/popoto/fields/constants.py \| grep -c '^+.*VALIDITY'` | match count == 0 |
+| ANTI: `pre_save_validate` is dispatched from exactly one site, above the partial/full split (B1) | `grep -n 'pre_save_validate' src/popoto/models/base.py` | exactly one line, numbered above the `if update_fields is not None:` split |
+| ANTI: the dispatch is not inside either eager-loop arm (B1) | `python -c "import re;s=open('src/popoto/models/base.py').read().split(chr(10));i=[n for n,l in enumerate(s,1) if 'pre_save_validate' in l];j=[n for n,l in enumerate(s,1) if 'if update_fields is not None:' in l];print(i[0]<j[0])"` | output contains True |
+| `chain()` keeps the unsaved contract (B2) | `pytest tests/test_validity_field.py -q -k 'chain or degrades_with_no_partial_state'` | exit code 0 |
+| M1 surfaces a typed error, not a raw ResponseError (C2/D8) | `grep -c '_map_lua_error' src/popoto/recipes/provenance_journal.py` | output > 0 |
+| CHANGELOG carries the divergence remediation recipe (C1) | `grep -c 'get_valid_from' CHANGELOG.md` | output > 0 |
 
 ### Red-state proof (run at `44abc17`, critique revision pass)
 
@@ -1613,6 +1760,20 @@ Robustness, Scope & Value, History & Consistency) rather than three spawned crit
 no Agent tool was exposed in the executing context, so no roster result-files or membership
 gate were produced. Every blocker and concern above is grounded in source read directly at
 `a6c81ce`.
+
+### Revision applied (round 2, 2026-09-03)
+
+All five findings addressed. Every anchor the critique named was re-verified independently
+against `origin/main` at `d8914fc` before being written in; two of the critique's own line
+numbers were off by a little and are corrected below.
+
+| Finding | Resolution |
+|---|---|
+| **B1** — dispatch site unreachable on the external-pipeline path | **Accepted, took the proposed fix.** Verified the four arms myself at `d8914fc`: `:1325` returns at `:1382`, `:1503` returns at `:1578`, and the eager loops (`:1388`, `:1593`) are inside the `else:` arms — so the round-1 two-site placement did skip both external-pipeline arms. D5 half 1 now carries a four-arm table and a **single** dispatch site, placed after the `pre_save` gate (`:1289-1292`) and before `new_db_key` (`:1294`) — above the `if update_fields is not None:` split at `:1296`, with the code snippet written out. Added a paragraph on why *after* the `pre_save` gate rather than at the top of `save()` (the firewall, write filter, and `pre_save` all decline by returning; declining must precede validating). `Field.pre_save_validate`'s docstring, Risk 6, Task 1, and Success Criterion 6's external-pipeline sentence all rewritten to match. Task 1 gains a per-task verification (`grep` must return exactly one hit, above the split), and two ANTI rows enforce it. |
+| **B2** — D1 breaks `chain(unsaved)` | **Accepted, took the proposed fix.** Verified: `chain()`'s anchor gate is `supersession.py:323-324`, `get_interval_keys` is at `:330` (below it), and `assert SupersessionProtocol.chain(unsaved) == []` is at `tests/test_validity_field.py:1650` inside the frozen `test_unsaved_contradicted_instance_degrades_with_no_partial_state` (`:1622`), with a second copy at `:1407`. D1 rewritten: `_walk_one` is genuinely unchanged (nil `HGET` on `"Model:None"`, so `superseded_by(old) is None` at `:1604` also holds), but `chain()` is **not**, and gets the `ZSCORE`-based membership gate with the `get_interval_keys` lookup hoisted above the anchor gate — `ZSCORE` rather than `EXISTS` so an anchor and a dangling link are judged by one rule. The Success Criterion "`_member_key` issues zero Redis commands" is preserved (the command lives in `chain()`). Task 2 gains the bullet, and new test 19 pins `chain(unsaved) == []` directly with a red-state instruction. |
+| **C1** — pre-existing divergence makes records unsaveable | **Accepted, took both proposed parts.** (a) The single dispatch iterates `update_fields` when one is supplied, so a partial save of an unrelated column cannot trip a pre-existing divergence. (b) D5 gains a "Pre-existing divergence, and how an operator gets out of it" block with two two-line remediations (adopt `get_valid_from()`, or plain `ZADD` with no `NX`), reproduced in the CHANGELOG. Update System's "No data migration" is restated precisely — shapes unchanged, but a diverged record refuses a full re-save until reconciled. New test 20 pins all three arms (partial save succeeds, full save raises, remediated full save succeeds); new Verification row greps the CHANGELOG for the recipe; the feature docs gain a "Reconciling a record that already diverges" subsection. |
+| **C2** — M1's failure mode changes and ships unexercised | **Accepted; decided on the record rather than deferred.** Verified M1's explicit `old_member=target_key` at `provenance_journal.py:1126-1137` and the bare `results = pipe.execute()` at **`:1155`** (the critique cited `:1157`, which is inside the comment above it). New **D8** section: committed-entry-plus-typed-error *is* the intended contract — the annotation is real provenance and an append-only journal must keep it — but the raw `ResponseError` is not, so `_write` gains exactly one `try/except ResponseError: raise _map_lua_error(e) from e`. Task 1 extracts `_map_lua_error` from D4's dispatch table so both call sites share one table; Task 2 does the wrap; new test 21 (in `test_provenance_journal.py`) asserts the exception type **and** the entry's presence. No-Gos amended to name the two narrow `provenance_journal.py` edits explicitly, and `test_provenance_journal.py:1453` is flagged for a read-and-decide rather than a blind edit. |
+| **N1** — stale baseline `c7fc167` | **Accepted.** Re-verified: `git diff --stat c7fc167 d8914fc -- src/ tests/` is empty, and all eight intervening commits are plan-document edits for #588/#595/#596. Baseline restated as `d8914fc` in the Freshness Check header, the Post-#594 re-verification header, the Prerequisites baseline-suite row, the Task 4 baseline instruction, and the Task 4 test-count note — with the "`c7fc167` or later" equivalence stated so an already-cut branch stays valid. The `44abc17` red-state proof table is left as-is: it is a historical record of when those rows were proven, not a baseline instruction. |
 
 ---
 
