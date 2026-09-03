@@ -18,10 +18,21 @@ Example:
     )
 """
 
+import logging
 import os
+
+logger = logging.getLogger("POPOTO.constants")
 
 #: Environment values that read as "on" for a boolean deploy-level switch.
 _TRUTHY = ("1", "true", "yes", "on")
+
+#: Non-numeric environment values that read as "off". Kept separate from
+#: :data:`_TRUTHY` because a value switch cannot reuse an *on* set.
+_FALSY = ("off", "false", "no")
+
+#: Raw environment values already warned about, so a malformed value that is
+#: re-read on every save warns once per process rather than once per save.
+_WARNED_BAD_ENV: set[str] = set()
 
 
 def _read_legacy_datetime_key_switch() -> bool:
@@ -48,6 +59,69 @@ def _read_never_record_switch() -> bool:
     """
     value = os.environ.get("POPOTO_NEVER_RECORD_DISABLE", "").strip().lower()
     return value not in _TRUTHY
+
+
+def _read_default_memory_max_records() -> int | None:
+    """Cap on records **per ``agent_id``** kept by ``DefaultMemory``;
+    ``0``/``off`` disables eviction.
+
+    Reads ``POPOTO_DEFAULT_MEMORY_MAX_RECORDS`` (#596) — the deploy-level
+    escape hatch for the eviction introduced in #594, for hook adopters who
+    use ``DefaultMemory`` directly and cannot edit model code. The env var
+    name omits ``PER_AGENT`` for table brevity, so the scope is stated here.
+
+    Parse order, on the stripped/lowercased raw value:
+
+    1. unset or empty → ``None`` ("no opinion"; the class attribute applies);
+    2. ``int(raw)`` succeeds and is ``>= 0`` → that integer (``0`` disables
+       eviction, ``1`` unambiguously means a cap of one record);
+    3. ``int(raw)`` succeeds and is negative → malformed;
+    4. value in :data:`_FALSY` → ``0`` (disabled);
+    5. anything else → malformed.
+
+    Malformed values warn once per distinct raw value (deduped through
+    :data:`_WARNED_BAD_ENV`, since this runs on every save) and return
+    ``None``. This never raises: eviction must never fail a save.
+
+    :data:`_TRUTHY` is deliberately **not** consulted. It is an *on* set that
+    cannot express this switch's disable words, and ``"1"`` is a member of it
+    while also being a valid cap of one record — so integers are parsed first
+    and ``_TRUTHY`` never applies.
+
+    Return type is ``int | None`` and the two falsy values must not collapse:
+    ``0`` means "explicitly disabled", ``None`` means "defer to the class
+    attribute".
+
+    This is a call-time function and deliberately **not** a ``Defaults`` class
+    attribute (nor ``lru_cache``-wrapped): binding the value at import time
+    would defeat a runtime-flippable deploy switch — the defect recorded for
+    ``VALIDITY_GATING_ENABLED`` in ``tests/benchmarks/test_defaults_sync.py``.
+    """
+    raw = os.environ.get("POPOTO_DEFAULT_MEMORY_MAX_RECORDS", "").strip()
+    if not raw:
+        return None
+    value = raw.lower()
+    malformed = False
+    try:
+        parsed = int(value)
+    except ValueError:
+        if value in _FALSY:
+            return 0
+        malformed = True
+    else:
+        if parsed >= 0:
+            return parsed
+        malformed = True
+    if malformed and raw not in _WARNED_BAD_ENV:
+        _WARNED_BAD_ENV.add(raw)
+        logger.warning(
+            "POPOTO_DEFAULT_MEMORY_MAX_RECORDS=%r is not a non-negative "
+            "integer or one of %s; ignoring it and using the model's "
+            "_max_records_per_agent",
+            raw,
+            ", ".join(_FALSY),
+        )
+    return None
 
 
 class Defaults:
