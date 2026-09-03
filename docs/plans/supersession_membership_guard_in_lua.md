@@ -71,9 +71,15 @@ call instead of a pipeline the caller assembles by hand.
 
 ## Freshness Check
 
-**Baseline commit:** `c7fc167` (`origin/main`, 2026-09-03) — superseding the first-pass
-baseline `44abc17`. See **Post-#594 re-verification** below for the authoritative line-number
-table; where this section and that table disagree, the table wins.
+**Baseline commit:** `d8914fc` (`origin/main`, 2026-09-03) — superseding the first-pass
+baseline `44abc17` and the post-#594 baseline `c7fc167`. `git diff --stat c7fc167 d8914fc --
+src/ tests/` is **empty**: every commit between them (`4612883`, `a6c81ce`, `1494969`,
+`593edc4`, `a2266bc`, `7ad9c8f`, `0d4dc66`, `d8914fc`) is a plan-document edit for #588,
+#595, or #596. So every line number verified at `c7fc167` is still exact at `d8914fc`, and
+the branch may be cut from **`c7fc167` or later** — but the baseline suite and mypy counts
+must be *measured* at the commit actually checked out (Task 4). See **Post-#594
+re-verification** below for the authoritative line-number table; where this section and that
+table disagree, the table wins.
 **Issue filed at:** 2026-08-17T09:12:23Z
 **Disposition:** Minor drift (root cause and all decisions unchanged; `models/base.py` and
 `tests/test_validity_field.py` line numbers moved under PR #594)
@@ -198,11 +204,12 @@ alongside" note under Cited sibling issues is now historical. #576 is closed (PR
 
 ### Post-#594 re-verification (2026-09-03, PLAN stage)
 
-**PR #594 has merged** as `16aa702`. **The authoritative baseline for this plan is now
-`c7fc167` (`origin/main`)**, not `44abc17`. Every file:line reference in this document was
+**PR #594 has merged** as `16aa702`. **The authoritative baseline for this plan is `c7fc167`
+or later**, not `44abc17`; `origin/main` is `d8914fc` as of 2026-09-03 and `src/`/`tests/` are
+byte-identical across that range (N1). Every file:line reference in this document was
 re-read against `origin/main`. The root cause, the decisions, and D1–D7 are unaffected.
 
-**Still exact at `c7fc167` — no edit needed:**
+**Still exact at `c7fc167` — and, per N1, still exact at `d8914fc` — no edit needed:**
 `supersession.py:376-394` / `:391` / `:246-253` / `:471-481`;
 `validity_field.py:157` (`SUPERSEDE_LUA =`) / `:197` / `:213-215` / `:220` / `:229` /
 `:704-809` (`execute_supersede`, def at `:705`) / `:796-798` (pipeline branch) /
@@ -216,7 +223,13 @@ comment, still at `:1118`, call at `:1126`);
 `test_provenance_journal.py:326-336` (`_supersede_mode`) / `:1369` / `:1373-1374` / `:1453` /
 `:1501` / `:1540` / `:1840`.
 
-**Drifted — use these numbers, the ones cited elsewhere in this plan are pre-#594:**
+**Drifted — use these numbers, the ones cited elsewhere in this plan are pre-#594.** Three
+further anchors were added by the round-2 revision pass and are verified at `d8914fc`:
+`base.py:1282-1292` (the `pre_save` gate, B1's single dispatch site), `base.py:1325` /
+`:1382` and `base.py:1503` / `:1578` (the external-pipeline arms and their returns),
+`supersession.py:292` / `:323` / `:330` (`chain`, its anchor gate, and the
+`get_interval_keys` call B2 hoists), and `provenance_journal.py:1155` (`results =
+pipe.execute()` — C2 cited `:1157`, which is one line inside the comment above it).
 
 | Cited elsewhere as | Correct at `c7fc167` | What it is |
 |---|---|---|
@@ -248,8 +261,11 @@ the greps' subjects (`_member_key`'s probe, the `MUTATION PHASE` marker, M1's co
 red-state readings carry forward unchanged. Re-run them at `c7fc167` at build start anyway —
 they are one-line commands and the table is the PR's paper trail.
 
-**Baseline for Task 4's test counts must be re-measured at `c7fc167`.** A count taken at
-`44abc17` is not comparable: #594 changed `test_validity_field.py` and added files.
+**Baseline for Task 4's test counts must be re-measured at the branch point (`d8914fc` or
+later).** A count taken at `44abc17` is not comparable: #594 changed `test_validity_field.py`
+and added files. A count taken at `c7fc167` *is* comparable to one at `d8914fc` (`src/` and
+`tests/` are byte-identical between them), but measure at the commit you actually check out
+rather than assuming.
 
 ## Prior Art
 
@@ -355,7 +371,7 @@ it is answered and acted on inside the same script invocation.
 | Redis/Valkey reachable | `redis-cli -n 15 PING` | Test suite runs on DB 15 |
 | Editable install resolves to this checkout | `python -c "import popoto,os;print(os.path.realpath(popoto.__file__))"` | CLAUDE.md worktree gate 1 |
 | Full extras installed — **satisfied 2026-09-02** | `python -c "import numpy, sentence_transformers, mcp"` | CLAUDE.md worktree gate 2. `mcp` was genuinely missing from this venv and has now been installed, so `.[dev,embeddings,benchmark,mcp]` is satisfied and the ~95 previously-deselected tests are collected again. Re-run the check before trusting any count; do not compare a baseline taken before this to a post-change number. |
-| Baseline suite green | `pytest tests/test_validity_field.py tests/test_provenance_journal.py -q` | Establish the pre-change count before touching anything, **at `c7fc167` or later** — a count taken at `44abc17` predates PR #594's test edits and is not comparable |
+| Baseline suite green | `pytest tests/test_validity_field.py tests/test_provenance_journal.py -q` | Establish the pre-change count before touching anything, **at the commit the branch was cut from (`d8914fc` or later)** — a count taken at `44abc17` predates PR #594's test edits and is not comparable |
 
 ## Solution
 
@@ -416,10 +432,53 @@ def _member_key(instance: Any) -> Optional[str]:
     return member or None
 ```
 
-`chain()` and `_walk_one()` also call `_member_key`. Their behavior is unchanged in
-substance: an unresolvable key still short-circuits, and a well-formed key naming a
-nonexistent record now costs one `HGET` that returns nil (`_walk_one`) or is caught by
-`_walk_links`'s existing `zscore is None` dangling-link guard. Reads never raise.
+`chain()` and `_walk_one()` also call `_member_key`. **`_walk_one` is unchanged in
+substance** — `superseded_by`/`supersedes` on an unsaved instance now cost one `HGET` against
+the chain hash for `"Model:None"`, which returns nil, so both still return `None` and
+`test_validity_field.py:1604` (`superseded_by(old) is None`) is unaffected. Reads never raise.
+
+**`chain()` is NOT unchanged, and must be fixed explicitly (round-2 BLOCKER B2).** Today
+`_member_key(unsaved)` returns `None` because the `EXISTS` fails, so `chain()` short-circuits
+at `supersession.py:323-324` and returns `[]`. Once `_member_key` resolves without the probe,
+the anchor becomes `"ValidFact:None"`, `_walk_links` finds no links in either direction, and
+the function falls through to `chain.append(instance)` — returning `[unsaved]`. That breaks
+`assert SupersessionProtocol.chain(unsaved) == []` at **`test_validity_field.py:1650`**, which
+sits inside `test_unsaved_contradicted_instance_degrades_with_no_partial_state` (`:1622`) —
+one of the two tests D7 **freezes** and whose editing this plan defines as proof that D7 was
+implemented wrong. The same assertion also sits at `:1407` (in a test we *do* replace), and
+`chain()`'s own docstring promises `[]` "when … the instance is unsaved".
+
+So the unsaved contract moves *into* `chain()` rather than being inherited from
+`_member_key`, using `_walk_links`' existing dangling-link rule (a member with no `valid_from`
+score is not a chain participant) rather than a reintroduced `EXISTS`. This requires hoisting
+the `get_interval_keys` lookup — currently `supersession.py:330`, below the anchor gate —
+above it:
+
+```python
+# SupersessionProtocol.chain, replacing supersession.py:323-330
+model = type(instance)
+valid_from_key, _ = ValidityField.get_interval_keys(model, resolved)
+
+anchor = _member_key(instance)
+if anchor is None:
+    return []
+# Membership, not resolvability. `_member_key` no longer probes (D1), so the
+# "unsaved instance -> []" contract this method documents has to live here.
+# `ZSCORE` rather than `EXISTS` on purpose: it is the same rule `_walk_links`
+# already applies to a dangling link, so an anchor and a link are judged by
+# one criterion. Read-only path; `_member_key` still issues zero commands.
+if POPOTO_REDIS_DB.zscore(valid_from_key, anchor) is None:
+    return []
+
+fwd_key = ValidityField.get_chain_fwd_key(model, resolved)
+rev_key = ValidityField.get_chain_rev_key(model, resolved)
+```
+
+Cost: one `ZSCORE` on a read-only traversal. The Success Criterion "`_member_key` issues zero
+Redis commands" is unaffected — the command lives in `chain()`, and the command-counter test
+(test 7) scopes to `_member_key`. `test_validity_field.py:1650` and `:1407` both keep passing
+unedited, and a new test (test 19) pins `chain(unsaved) == []` directly rather than only as a
+side assertion inside a frozen observation test.
 
 #### D2 — The revised `SUPERSEDE_LUA` contract
 
@@ -1316,7 +1375,8 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 - **Assigned To**: validity-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run, and report counts against a baseline measured at `c7fc167` in the *same* environment
+- Run, and report counts against a baseline measured at the branch point (`d8914fc` or
+  later — record the SHA in the report) in the *same* environment
   (CLAUDE.md worktree rule — state redis-py version alongside every number):
   `tests/test_validity_field.py`, `tests/test_provenance_journal.py`,
   `tests/test_context_assembler.py`, `tests/test_decaying_sorted_field.py`,
