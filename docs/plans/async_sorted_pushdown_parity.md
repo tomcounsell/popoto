@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/571
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-03T10:17:26Z
+revision_applied_at: 2026-09-03T10:29:52Z
 ---
 
 # #571 — async_filter must apply the SortedField limit pushdown (bound parity with sync)
@@ -212,8 +212,11 @@ the gap and overwrite all seven fields. The failure modes:
   cliff, plus a misleading warning naming the wrong field).
 - `_sorted_field_order` swapped mid-flight ⇒ A hydrates B's key list ⇒ **wrong rows**.
 
-This is not hypothetical: `docs/async.md:327–342` promotes exactly the concurrency pattern that
-triggers it (an `asyncio.gather` worker loop over `async_filter` results). Two of the seven reads
+This is not hypothetical: `docs/async.md:221–231` promotes exactly the concurrency pattern that
+triggers it — two `Model.query.async_filter(...)` calls run concurrently under a single
+`asyncio.gather`. (Corrected citation: the earlier pointer to `docs/async.md:327–342` was wrong;
+that block gathers `async_save()` calls inside a sequential loop and is not the hazard. The
+hazard claim is unchanged — only the line reference moves.) Two of the seven reads
 (`_sorted_field_order` at query.py:3440, `_pending_client_filters` at query.py:3452) already
 happen after the await **today**, so a narrower version of this bug is already live on the async
 path; this plan closes it rather than widening it.
@@ -296,7 +299,7 @@ and confirm it **fails** against a deliberately un-snapshotted variant before ac
 | `tests/test_sorted_range_pushdown.py:398/434/457/485` (caplog assertions on both warning texts) | Must pass **unchanged**. The `_short_result_action` extraction has to emit both messages verbatim; these four are the tripwire for that. |
 | Rest of `tests/test_sorted_range_pushdown.py` (sync) | Must pass unchanged — No-Gos forbid sync behavior change. `_bound_keys_before_hydration` keeps its `state=None` → read/write `self` path for exactly this reason. |
 | `tests/test_async.py` | Must pass unchanged; `async_get` (query.py:3347) is the only internal `async_filter` caller and gets `_allow_pushdown`'s default. |
-| New async section in `tests/test_sorted_range_pushdown.py` | 6 tests — see Task 3. Each needs an explicit `@pytest.mark.asyncio` (`pyproject.toml` declares no `asyncio_mode`; house pattern is `tests/test_async.py:38`) and the async-connection-reset autouse fixture from `tests/test_async.py:14–26`, or the cached async client leaks across loops. |
+| New async section in `tests/test_sorted_range_pushdown.py` | 6 tests — see Task 4. Each needs an explicit `@pytest.mark.asyncio` (`pyproject.toml` declares no `asyncio_mode`; house pattern is `tests/test_async.py:38`) and an async-connection-reset autouse fixture **replicated in this file** (modelled on `tests/test_async.py:14–26` — it is module-local and cannot be imported into autouse) and **composed with the existing `clean_docs` autouse fixture at tests/test_sorted_range_pushdown.py:39**, or the cached async client leaks across loops. |
 | #559's `xfail(strict=True)` on async hydration count | Not on `main` at `d72d393`. If it lands before build, convert to a hard assertion (Task 4). |
 
 ### Failure Path Test Strategy
@@ -338,8 +341,24 @@ Each failure mode gets a test that fails without the fix:
    yet; this proves nothing regressed).
 
 4. **Add the async test section** to `tests/test_sorted_range_pushdown.py` — six tests, each
-   `@pytest.mark.asyncio`, each reusing `tests/test_async.py:14–26`'s async-connection-reset
-   autouse fixture:
+   `@pytest.mark.asyncio`.
+
+   **Fixture: replicate, do not import.** `tests/test_async.py:14–26` (`flush_redis`) is a
+   *module-local* `autouse` fixture — importing it from another module does not make it autouse
+   there, and pytest will not collect it. The builder must **write a new async-connection-reset
+   fixture inside `tests/test_sorted_range_pushdown.py`** that performs the same two resets
+   (`redis_db_module._POPOTO_ASYNC_REDIS_DB = None` and
+   `redis_db_module._async_redis_lock = asyncio.Lock()`), and must **compose it with the file's
+   existing autouse fixture `clean_docs` at tests/test_sorted_range_pushdown.py:39** rather than
+   assuming either one covers the other: `clean_docs` flushes but does not reset the async
+   connection, and blindly adding a second `flushdb()` fixture double-flushes around every sync
+   test in the file. Preferred shape: extend `clean_docs` itself (or add a separate autouse
+   fixture that only does the async reset, no flush), then confirm the *existing* sync tests in
+   the file still pass unchanged. Without the async reset, the cached async client leaks across
+   pytest-asyncio's per-test loops and the new tests fail with
+   "Future attached to a different loop".
+
+   The six tests:
    - **(a) Hydration is bounded.** Add an `AsyncHydrationCounter` alongside the existing
      `HydrationCounter` (tests/test_sorted_range_pushdown.py:63–80): patch
      `redis.asyncio.client.Pipeline.hgetall`, **not** `redis.client.Pipeline.hgetall` —
@@ -348,6 +367,19 @@ Each failure mode gets a test that fails without the fix:
      bound fires. Assert **both** bounds:
      `limit <= counter.count <= limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`. The lower
      bound is what makes the headline criterion falsifiable.
+
+     **Scope the counter explicitly — `hgetall` is not the only hydration path.**
+     `_async_get_many_objects` hydrates via `pipeline.hgetall` only in the no-`values=` branch
+     (query.py:3686–3688); when `values=` is passed it hydrates with `pipeline.hmget`
+     (query.py:3672–3680). An `AsyncHydrationCounter` that patches `hgetall` alone therefore
+     reads **0** for any `values=` query — silently vacuous, the same trap as patching the sync
+     pipeline. Do one of the two, and say which in a comment on the counter class:
+     (i) **preferred** — patch **both** `redis.asyncio.client.Pipeline.hgetall` and
+     `redis.asyncio.client.Pipeline.hmget` and sum the calls, so the counter stays valid if a
+     `values=` case is ever added; or (ii) patch `hgetall` only and add a docstring/comment
+     stating "valid only for queries without `values=`; a `values=` query hydrates via `hmget`
+     and would count 0." None of the six tests here use `values=`, so either is correct today —
+     but the choice must be recorded, not implicit.
    - **(b) Range call is bounded and direction-correct.** The range read is issued on the *sync*
      client inside `to_thread`, so patch `redis.client.Redis.zrangebyscore` /
      `zrevrangebyscore`. Assert a descending query hits `zrevrangebyscore` with a `num` bound,
@@ -450,9 +482,10 @@ result (CLAUDE.md). Reproduce any subagent-reported metric before relaying it.
 
 - CHANGELOG.md. `docs/query.md`'s pushdown/perf notes if they state the async caveat (check
   and update).
-- `docs/async.md` — the `asyncio.gather` worker pattern at lines 327–342 is now explicitly
-  supported for bounded `async_filter`; if the page carries any caveat about concurrent
-  `async_filter` or about limits not applying, update it.
+- `docs/async.md` — the concurrent-`async_filter`-under-`gather` pattern at **lines 221–231**
+  (not 327–342, which gathers `async_save()` in a sequential loop) is now explicitly supported
+  for bounded `async_filter`; if the page carries any caveat about concurrent `async_filter` or
+  about limits not applying, update it.
 
 ## Critique Results
 
@@ -487,7 +520,7 @@ All six findings resolved. Nothing deferred.
 | Check | Status | Detail |
 |-------|--------|--------|
 | Required sections | ~~PARTIAL~~ → PASS | Race Conditions, Test Impact + Failure Path Test Strategy, and Verification added in the revision pass |
-| Task numbering | PASS | 1–5, no gaps or cycles |
+| Task numbering | PASS | 1–7, no gaps or cycles (corrected 2026-09-03: the round-1 self-report read "1–5", written before Tasks 6–7 were added in the revision pass) |
 | File paths exist | PASS | 4 of 4 |
 | Line references | PASS | All Freshness Check line numbers verified verbatim against `main` |
 | Task validation commands | ~~FAIL~~ → PASS | Every task in the revised list carries a `Validate:` command; `## Verification` carries the full gate sequence |
@@ -510,18 +543,27 @@ and carries a stale 5.5 KB copy of this plan).
 | CONCERN — missing standard sections | **RESOLVED** | `## Race Conditions`, `## Test Impact` (+ `### Failure Path Test Strategy`), and `## Verification` all present; every task carries a `Validate:` command. |
 | NIT — Freshness Check re-verify ask | **RESOLVED** | Restated as settled fact at `d72d393`. |
 
-Carried into build as concerns (none blocking):
+Carried into build as concerns (none blocking). **All four were folded into the task text on
+2026-09-03 (run `336cfd30`) — see the "Folded into" note under each; the builder does not need to
+read this list to get them right:**
 
 1. **Fixture reuse is a copy, not an import.** `tests/test_async.py:14–26` is a module-local
    autouse fixture; `tests/test_sorted_range_pushdown.py` has its own autouse fixture at line 39.
    The builder must replicate the async-connection/lock reset in the pushdown file and confirm it
    composes with the existing flush fixture rather than assuming it applies.
+   **Folded into:** Task 4 preamble ("Fixture: replicate, do not import") and the Test Impact row
+   for the new async section.
 2. **`AsyncHydrationCounter` covers `hgetall` only.** `_async_get_many_objects` has a separate
    `hmget` path for `values=` (query.py:3672–3680). None of the six planned tests use `values=`,
    so the counter is sufficient as scoped — but a later `values=` test would silently read 0.
+   **Folded into:** Task 4(a), "Scope the counter explicitly" — patch both `hgetall` and `hmget`,
+   or document the `values=`-excluded scope on the counter class.
 3. **Citation is off by one example.** The gather-over-`async_filter` pattern the Race Conditions
    section relies on is at `docs/async.md:221–231` (two concurrent `async_filter` calls under one
    `gather`), not `327–342`, which gathers `async_save()` calls inside a sequential loop. The
    hazard claim is correct; the pointer should be corrected when the section is next touched.
+   **Folded into:** `## Race Conditions` → "The hazard" and `## Documentation` — both now cite
+   221–231 and name 327–342 as the wrong pointer. Verified against source 2026-09-03.
 4. **Stale self-report.** The Structural Check row above reads "Task numbering PASS 1–5"; the task
    list now runs 1–7. Cosmetic only.
+   **Folded into:** the Structural Check "Task numbering" row, now reading 1–7.
