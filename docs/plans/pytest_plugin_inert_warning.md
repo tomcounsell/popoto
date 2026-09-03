@@ -38,6 +38,38 @@ Verified 2026-09-03 against main `16aa702` (the #594 squash-merge, ~30 min befor
 
 **Disposition: Unchanged.** The issue was filed against the #594 branch which is now main.
 
+Re-verified 2026-09-03 (second pass) against main `c7fc167`: `src/popoto/pytest_plugin.py`
+is 358 lines and unchanged since #594; there is still no `pytest_unconfigure` /
+`pytest_sessionfinish` hook in the module (the plan adds the first one); #549 is still OPEN;
+no `xfail` markers exist in `tests/test_pytest_plugin.py`, so nothing needs converting.
+
+## Spike Results
+
+### spike-1: the pool-instance `get_connection` seam actually works and is silent on import
+
+- **Assumption**: wrapping `redis_db.POPOTO_REDIS_DB.connection_pool.get_connection` on the
+  *instance* catches the first real Redis op, and neither `import popoto` nor defining a
+  `Model` subclass trips it (required for "importable but unused → no warning").
+- **Method**: prototype (probe script, `REDIS_URL=redis://localhost:6379/15` set before import).
+- **Result**: confirmed. After `import popoto` → 0 calls; after a `class Probe(popoto.Model)`
+  definition with a `KeyField` → still 0 calls; `Probe.create(...)` → 1 call;
+  `Probe.query.get(...)` → 2 calls. Instance-level assignment sticks
+  (`pool.get_connection is wrapper` → True).
+- **Confidence**: high.
+- **Impact if false**: would have forced a model-layer hook instead; not needed.
+
+### spike-2: redis-py signature variance across 7.x / 8.x
+
+- **Assumption**: `ConnectionPool.get_connection` has an incompatible signature between
+  redis-py 7 and 8, so the wrapper must be signature-agnostic.
+- **Method**: code-read + local introspection.
+- **Result**: confirmed. Local env is redis-py **7.1.1**, where the signature is
+  `get_connection(self, command_name=None, *keys, **options)`. redis-py 8 drops the
+  positional `command_name`. `def wrapper(*args, **kwargs)` delegating verbatim covers both;
+  the wrapper must never inspect or reorder the arguments.
+- **Confidence**: high.
+- **Impact if false**: none — the `*args/**kwargs` form is correct either way.
+
 ## Appetite
 
 Small. One warning, one trigger mechanism, subprocess tests, a docs touch.
