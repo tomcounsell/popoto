@@ -277,3 +277,98 @@ def test_the_rejection_reaches_the_hook_as_exit_zero_plus_a_log(tmp_path):
     assert result.stdout == ""
     assert log.exists(), "a rejected URL must leave a trace for doctor"
     assert "no database number" in log.read_text()
+
+
+def test_mcp_dispatch_reports_the_refusal_instead_of_raising(db0_unchanged):
+    """A DB 0 refusal must reach the agent as a tool error, not a traceback.
+
+    ``dispatch`` constructs its own ``MemoryService`` when the caller passes
+    none, and construction is what binds the connection -- so it is where
+    ``Db0RefusedError`` is raised. Built above ``dispatch``'s ``try``, that
+    exception left the function uncaught and crashed the tool call, which is
+    the one thing an MCP tool must not do: the shipped contract is "errors
+    come back as MCP error results with a readable message, never a
+    traceback rendered as tool output".
+
+    No service reaches Redis here -- the refusal fires before any connection
+    is opened -- so database 0 stays untouched, as ``db0_unchanged`` asserts.
+    """
+    from popoto.integrations import mcp_server
+
+    saved = {
+        k: os.environ.get(k) for k in ("POPOTO_MEMORY_URL", "POPOTO_MEMORY_ALLOW_DB0")
+    }
+    os.environ["POPOTO_MEMORY_URL"] = "redis://localhost:6379/0"
+    os.environ.pop("POPOTO_MEMORY_ALLOW_DB0", None)
+    try:
+        result = mcp_server.dispatch("memory_search", {"query": "anything"})
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    assert result["is_error"] is True
+    assert "Db0RefusedError" in result["text"]
+    assert (
+        "POPOTO_MEMORY_ALLOW_DB0" in result["text"]
+    ), "the error result must carry the remediation, not just the failure"
+
+
+def test_the_kill_switch_is_not_broken_by_the_db0_refusal(db0_unchanged):
+    """``POPOTO_MEMORY_ENABLED=0`` must stay a clean no-op on a DB 0 host.
+
+    ``MemoryService.__init__`` binds unconditionally while ``config.enabled``
+    is consulted inside the operation methods, so a guard that does not check
+    ``enabled`` first turns the documented kill switch into a crash --
+    ``MemoryConfig``'s own contract is "when False every operation is a no-op
+    that still exits cleanly, so the kill switch never breaks a turn". The
+    operator this hits is the one who disabled memory *because* the machine
+    is on database 0.
+    """
+    from popoto.integrations.config import MemoryConfig, bind_connection
+    from popoto.integrations.service import MemoryService
+
+    env = {
+        "POPOTO_MEMORY_URL": "redis://localhost:6379/0",
+        "POPOTO_MEMORY_ENABLED": "0",
+    }
+    config = MemoryConfig.from_env(env, cwd="/tmp/kill-switch-db0")
+    assert config.enabled is False
+
+    assert bind_connection(config) is False, "a disabled layer binds nothing"
+    service = MemoryService(config)
+    assert service.assemble("anything") == ""
+    assert service.status()["enabled"] is False
+
+    enabled = MemoryConfig.from_env(
+        {"POPOTO_MEMORY_URL": "redis://localhost:6379/0"}, cwd="/tmp/kill-switch-db0"
+    )
+    with pytest.raises(ValueError, match="refuses to write agent memory"):
+        MemoryService(enabled)
+
+
+def test_the_disabled_hook_stays_silent_on_a_db0_host(tmp_path, db0_unchanged):
+    """End to end: kill switch on a DB 0 machine writes no log line either.
+
+    Exit 0 with empty stdout was already true (the hook's blanket handler
+    catches anything), but a refusal reaching that handler logs one line per
+    turn -- a log that grows forever for a user who turned the feature off.
+    """
+    log = tmp_path / "disabled.log"
+    env = _env(
+        POPOTO_MEMORY_URL="redis://localhost:6379/0",
+        POPOTO_MEMORY_ENABLED="0",
+        POPOTO_MEMORY_LOG=str(log),
+    )
+    result = _run(
+        ["-m", "popoto.integrations.cli", "hook"],
+        env,
+        stdin=(FIXTURES / "claude_code_user_prompt_submit.json").read_text(),
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert (
+        not log.exists()
+    ), f"a disabled memory layer must not log: {log.read_text() if log.exists() else ''}"

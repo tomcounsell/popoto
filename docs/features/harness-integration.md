@@ -227,9 +227,15 @@ Pick any other database:
 export POPOTO_MEMORY_URL=redis://localhost:6379/1
 ```
 
-`Db0RefusedError` subclasses `ValueError`, so `doctor` prints it and exits 1
-rather than tracebacking. If database 0 really is where this corpus belongs,
+`Db0RefusedError` subclasses `ValueError`, and every entry point renders it
+rather than tracebacking: `doctor` prints it and exits 1, the MCP tools
+return it as an error result, and the hook logs it and exits 0 so the turn
+survives. If database 0 really is where this corpus belongs,
 `POPOTO_MEMORY_ALLOW_DB0=1` opts in at deploy time.
+
+`POPOTO_MEMORY_ENABLED=0` short-circuits the check entirely. A disabled
+memory layer writes to no database, so there is nothing to refuse — the kill
+switch stays a clean no-op on a database-0 host, with no log line per turn.
 
 ### The one deliberate divergence from the benchmarked configuration
 
@@ -315,7 +321,7 @@ user's prompt and under 2.
 |---|---|
 | Redis down, read hook | exit 0, no stdout, one log line, counter not incremented (same client is down). One connection attempt, ~1 s, not one per operation |
 | Redis down, write hook | exit 0, turn dropped, logged. No retry queue |
-| Database 0 with no opt-in | `Db0RefusedError` from `MemoryService` construction: `doctor` prints it and exits 1; the read hook logs it and exits 0, once per turn, until the URL is changed |
+| Database 0 with no opt-in | `Db0RefusedError` from `MemoryService` construction: `doctor` prints it and exits 1, MCP tools return an error result, the read hook logs it and exits 0 — once per turn until the URL changes. `POPOTO_MEMORY_ENABLED=0` skips the check and logs nothing |
 | Healthy Redis, empty corpus (fresh DB / first run) | exit 0, no stdout, one stderr line -- a BM25 advisory that it collected no query signal and fell back to composite (query-blind). Expected on a user's first turn after install; stderr goes quiet and stdout carries content once the corpus is seeded. See [Query-Blind Retrieval](../guides/query-blind-retrieval.md). |
 | Malformed JSON on stdin | exit 0, no output, logged as `hook_decode` |
 | Empty prompt | no retrieval attempted, no output |

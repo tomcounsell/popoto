@@ -394,7 +394,20 @@ def bind_connection(config: MemoryConfig) -> bool:
             dict with no ``db`` key, so silently keeping the current
             connection would leave writes on database 0 while the caller
             believes it redirected them.
+        Db0RefusedError: If the effective database is 0 and neither
+            ``POPOTO_MEMORY_ALLOW_DB0`` nor ``config.allow_db0`` opts in.
     """
+    # A disabled memory layer writes to no database, so there is nothing to
+    # refuse. This has to come first: MemoryService.__init__ binds
+    # unconditionally while config.enabled is consulted inside the
+    # operation methods, so guarding without this check turns the
+    # documented kill switch into a crash for the operator most likely to
+    # reach for it -- someone on a DB 0 machine turning memory off. It also
+    # skips the INFO keyspace probe and the POPOTO_REDIS_DB import on the
+    # disabled path.
+    if not config.enabled:
+        return False
+
     # The DB 0 guard runs before the explicit-URL early return: the
     # zero-configuration path is exactly the one #584 is about.
     if effective_db(config) == 0 and not config.allow_db0:
