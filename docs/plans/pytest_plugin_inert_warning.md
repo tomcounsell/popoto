@@ -99,17 +99,56 @@ Mechanism (zero steady-state cost, no hot-path check):
 
 1. In `_configure_test_db`, when `_resolve_test_db()` returns `None`, do not just return —
    record the inert state and arm a **one-shot tripwire** on the live connection pool:
-   wrap `redis_db.POPOTO_REDIS_DB.connection_pool.get_connection` with a function that
-   (a) emits the warning once, (b) restores the original method, (c) delegates. After the
-   first Redis op the pool is byte-identical to before.
-2. The warning text names: the DB the connection currently points at, the fact that popoto is
+   assign `pool.get_connection = wrapper` on the *pool instance*, and store
+   `config._popoto_tripwire = (pool, wrapper)` for teardown.
+
+2. **Wrapper body order is load-bearing — the Redis op must never be affected by the
+   warning.** The wrapper runs inside an arbitrary `Model.create()` / query call, so any
+   exception it raises (most realistically a `PopotoIsolationWarning` promoted by a
+   downstream suite's `filterwarnings = error`) surfaces as a Redis failure — and popoto's own
+   bare `except Exception` in `check_connection()` (`src/popoto/redis_db.py:425-429`) would
+   swallow it and report "Redis is down" while the one-shot's only emission is consumed.
+   The body must therefore be, in this exact order:
+
+   1. Under a module-level `threading.Lock()`: if already fired, release and
+      `return original(*args, **kwargs)` immediately; otherwise set `fired = True` and
+      **disarm** (see step 4) while still holding the lock. Arming and firing happen on a
+      `ConnectionPool` shared across threads, so the flag flip and the disarm must be atomic
+      or two concurrent first-ops can both warn or race the restore.
+   2. Resolve the DB **at trip time**, not at arm time: `db = pool.connection_kwargs.get("db", 0)`
+      (mirrors `src/popoto/pytest_plugin.py:143`). Capturing it in the closure at configure
+      time would make the message lie if anything rebound the connection in between, and
+      `connection_kwargs` has no `"db"` key for some pool constructions (unix-socket / URL
+      forms) — a bare `[...]` lookup would raise `KeyError` inside a user's Redis call. Read
+      only with `.get(..., default)`; never splat `connection_kwargs` (see Prior Art, #490).
+   3. `logger.warning(...)` the mirror line **first and unguarded**, so the signal survives
+      even when the next step raises.
+   4. `try: warnings.warn(msg, PopotoIsolationWarning, stacklevel=2)` / `except Exception: pass`.
+   5. `return original(*args, **kwargs)` **unconditionally**.
+
+3. The warning text names: the DB the connection currently points at, the fact that popoto is
    NOT isolating or flushing it, and both opt-ins (`popoto_test_db = "15"` in
    `[tool.pytest.ini_options]`, or `POPOTO_TEST_DB`), plus `-p no:popoto` to silence by intent.
-3. Emit via `warnings.warn(..., PopotoIsolationWarning)` where `PopotoIsolationWarning`
+   Emit via `warnings.warn(..., PopotoIsolationWarning)` where `PopotoIsolationWarning`
    subclasses `UserWarning` (defined in the plugin module) — it lands in pytest's warnings
-   summary, is filterable by class, and needs no logging config to be visible. Also mirror one
-   line at `logger.warning` for log-capture environments.
-4. Disarm on session teardown (unwrap if never fired) so the wrapper cannot leak past pytest.
+   summary, is filterable by class, and needs no logging config to be visible. The
+   `logger.warning` mirror (step 2.3) is what log-capture environments and `-W error` suites see.
+
+4. **Disarm is identity-checked and leaves nothing behind.** Both on trip (step 2.1) and in
+   `pytest_unconfigure`, disarm as:
+
+   ```python
+   pool, wrapper = getattr(config, "_popoto_tripwire", (None, None))
+   if pool is not None and getattr(pool, "get_connection", None) is wrapper:
+       pool.__dict__.pop("get_connection", None)
+   ```
+
+   `pop` rather than reassigning the bound method: assigning `original` back leaves a
+   shadowing instance attribute plus a reference cycle, so the pool would *not* be
+   byte-identical. The `is wrapper` identity check keeps the disarm from clobbering a later
+   wrapper installed by someone else, and from touching a different pool if a conftest rebound
+   `redis_db.POPOTO_REDIS_DB` after arm time. `pytest_unconfigure` (a new hook) makes this a
+   no-op when the tripwire already fired, so the wrapper cannot leak past pytest either way.
 
 Why pool-level and not model-level: every popoto read/write goes through the shared pool;
 wrapping `get_connection` catches sync usage with one seam and no per-op overhead after the
