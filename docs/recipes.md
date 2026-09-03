@@ -529,8 +529,24 @@ lifecycle = MemoryLifecycle(
     (`_max_records_per_agent`). That is a blunt floor, not a substitute for
     this layer: `MemoryLifecycle` tombstones restorably and reads tier and
     evidence before forgetting, while the cap only reads the decay clock.
-    Set `_max_records_per_agent` falsy on your subclass if you want
-    lifecycle policy to be the only thing that removes records.
+    Set the deploy-level `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` (or `off`) if
+    you want lifecycle policy to be the only thing that removes records — it
+    works with no Python seam, unlike setting `_max_records_per_agent` falsy
+    on a subclass. The env var can lower, raise, or disable the *default*
+    cap, but it can never re-arm eviction on a subclass that already set
+    `_max_records_per_agent` falsy; that opt-out always wins.
+
+    !!! danger "First save after upgrading deletes the entire excess at once"
+        If a corpus is already over the cap when eviction ships, the first
+        `save()` afterward deletes the *whole* excess synchronously, inside
+        that one call — `zcard - cap` records, each a full `delete()`, no
+        tombstone, unrecoverable. It is not a gradual per-save trim. Measured
+        at roughly 0.7 ms per record, so an agent 50,000 over the cap blocks
+        that save for ~35 seconds — inside a hook process whose harness
+        timeout is 10 seconds. Check `popoto-memory doctor` for the record
+        count before upgrading, and set `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0`
+        first if you need to size or stage the cleanup instead of taking it
+        in one burst.
 
 ```python
 from popoto.recipes import DefaultMemory, MemoryLifecycle, SubconsciousMemory

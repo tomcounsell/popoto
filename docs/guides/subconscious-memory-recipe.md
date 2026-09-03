@@ -71,7 +71,9 @@ The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` reso
 
 Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
 
-`DefaultMemory` also caps itself at **1000 records per `agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`, 1.9.0). Past the cap each save deletes the stalest record by `relevance` decay timestamp — a full `delete()`, so indexes are cleaned and the record is gone for good. Nothing evicted before 1.9.0, so a long-lived corpus grew one record per turn forever; if yours is already over the cap, the first save after upgrading starts deleting. Subclass and set `_max_records_per_agent` to change the number, or a falsy value to turn eviction off.
+`DefaultMemory` also caps itself at **1000 records per `agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`, 1.9.0). Past the cap each save deletes the stalest record by `relevance` decay timestamp — a full `delete()`, so indexes are cleaned and the record is gone for good. Nothing evicted before 1.9.0, so a long-lived corpus grew one record per turn forever; if yours is already over the cap, the first save after upgrading deletes the *entire* excess at once, synchronously inside that one save — not a gradual trim — so size the exposure as "everything above the cap, now" and check `popoto-memory doctor` for the record count first.
+
+Subclass and set `_max_records_per_agent` to change the number, or a falsy value to turn eviction off. The deploy-level `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` environment variable is the escape hatch for callers with no Python seam (hook adopters using `DefaultMemory` directly): `0`/`off` disables eviction, a positive integer sets the cap, read fresh on every save. It can lower, raise, or disable the *default* cap, but it can never re-arm eviction on a subclass that already set `_max_records_per_agent` falsy — that opt-out always wins over the env var.
 
 ### Bringing your own model
 
