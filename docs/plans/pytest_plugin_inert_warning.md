@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/595
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-03T10:01:24Z
+revision_applied_at: 2026-09-03T10:09:26Z
 ---
 
 # #595 — Warn once when the pytest plugin is inert but popoto is actually used
@@ -470,6 +470,29 @@ one added test 5g, two citation fixes, two test-mechanism clarifications). No fu
 round: the revision cap for this lane is reached and the plan is cleared for build.
 
 **Structural checks (at critique time)**: required sections FAIL (`## Prior Art` missing); task numbering PASS (1–7, no gaps); dependencies PASS (none declared); file paths PASS (5/5 exist, all line citations verified); freshness claims PASS (plugin is 358 lines, no `pytest_unconfigure`/`pytest_sessionfinish`, no `xfail` in `tests/test_pytest_plugin.py`, entry point is `popoto` so `-p no:popoto` in the warning copy is correct); cross-references PASS (all 4 acceptance criteria map to Task 5); per-task validation FAIL (minor — verification lives only in Success Criteria).
+
+### Concern acceptance (round 3, bound spent)
+
+The concern re-critique bound for this lane is spent (`concern_round_count = 3`, the maximum).
+The standing verdict is **READY TO BUILD (WITH CONCERNS)** — 0 blockers, recorded
+2026-09-03T10:03:34Z. There will be no round-4 critique, so the round-3 fold below is **accepted
+unreviewed** and the build proceeds on it. This note is the recorded accountability for that
+acceptance; nothing further is re-opened.
+
+Residual concerns carried into build (all folded into the task text above; none re-verified by a
+critic):
+
+| Residual concern | Where it lives in the build | Accepted risk if the fold is imperfect |
+|---|---|---|
+| Arming the tripwire is unguarded in a hook that runs in every downstream pytest session | Task 2 (`try/except Exception` + `logger.debug` around the whole arm block; `config._popoto_tripwire` left unset on failure) and Task 5 test 5g | A conftest that rebinds `POPOTO_REDIS_DB` to an object without `.connection_pool` could abort a downstream run at startup. Test 5g is the only guard; it was not re-critiqued. |
+| Tests 5b/5c opt-in mechanism in a `tmp_path` probe | Task 5, "Opt-in mechanism for 5b/5c" block (`-o popoto_test_db=15` via argv; `env["POPOTO_TEST_DB"]`; positive `connection_kwargs.get("db") == 15` assertion) | If the argv opt-in does not take, 5b/5c pass vacuously. The positive assertion is the mitigation; it was not re-critiqued. |
+| Two round-2 citations were false (`get_redis_db` does not exist; `check_connection()` is unreachable from `src/`) | spike-2 **Correction** bullet and Solution step 2 preamble | Corrected text is accepted as-is. The round-2 table retains the superseded references for the historical record — a builder must follow the round-3 row, not round 2. |
+| NIT — `fired` scope and `original` capture | Task 2 (`fired` closure-local via `nonlocal`, module-level lock; `original` is the **bound** `pool.get_connection`) | Accepted as specified. |
+| NIT — `stacklevel=2` resolves into `site-packages/redis/client.py` | No change; test 5a asserts on the message text only | Accepted; harmless. |
+| NIT (round 2) — six subprocess spawns | Optional suite-time optimization on Task 5 | Accepted; not required. |
+| NIT (round 2) — emit from `pytest_sessionfinish` instead of inside the Redis call path | **Not adopted**; recorded for a future revisit | Accepted; the chosen design is hardened (lock, guarded `warnings.warn`, unguarded log mirror, test 5e). |
+
+Scope, appetite, and the task list are **unchanged** by this acceptance pass. Next stage: BUILD.
 
 ---
 
