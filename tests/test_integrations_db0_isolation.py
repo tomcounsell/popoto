@@ -279,6 +279,70 @@ def test_the_rejection_reaches_the_hook_as_exit_zero_plus_a_log(tmp_path):
     assert "no database number" in log.read_text()
 
 
+def test_redis_url_naming_db0_is_refused_when_it_would_bind(db0_unchanged):
+    """Zero-config REDIS_URL on database 0 must refuse, like POPOTO_MEMORY_URL.
+
+    In a fresh process Popoto's import-time resolution reads the same
+    ``REDIS_URL``, so the live connection and the URL agree on database 0
+    and ``bind_connection`` would bind there. The old guard read only the
+    live connection, which is the same thing here -- but the refusal must
+    also hold on the parsed-URL side of the decision (PR #594 blocker 2):
+    judging the live connection let a swapped pool mask a REDIS_URL naming
+    database 0 while the rebind below moved the pool there anyway.
+    """
+    env = dict(os.environ)
+    for key in ("POPOTO_TEST_DB", "POPOTO_MEMORY_URL", "POPOTO_MEMORY_ALLOW_DB0"):
+        env.pop(key, None)
+    env["REDIS_URL"] = "redis://localhost:6379/0"
+    env["POPOTO_MEMORY_AGENT_ID"] = AGENT
+    script = (
+        "from popoto.integrations import MemoryService\n"
+        "from popoto.integrations.config import Db0RefusedError\n"
+        "try:\n"
+        "    MemoryService()\n"
+        "except Db0RefusedError as exc:\n"
+        "    print('REFUSED')\n"
+        "    print(str(exc))\n"
+        "else:\n"
+        "    print('BOUND')\n"
+    )
+    result = _run(["-c", script], env)
+    assert result.returncode == 0, result.stderr
+    assert "REFUSED" in result.stdout, result.stdout
+    assert (
+        "REDIS_URL" in result.stdout
+    ), "the refusal must name the variable that put Popoto on database 0"
+
+
+def test_redis_url_does_not_rebind_a_swapped_in_process_connection():
+    """REDIS_URL must not move a pool an in-process caller already swapped.
+
+    The pytest plugin (or a host application) deliberately points the shared
+    pool at an isolated database; ``REDIS_URL`` still names another one --
+    possibly database 0. The verified escape (PR #594 blocker 2): the DB 0
+    guard read the live connection (isolated, non-zero, passes) while the
+    rebind parsed ``config.url`` (REDIS_URL, database 0) and silently moved
+    the shared pool there mid-test. The rule: a live connection that
+    diverges from REDIS_URL was swapped on purpose -- keep it, bind nothing,
+    and refuse nothing, because writes stay on the swapped database.
+    """
+    from popoto.integrations.config import MemoryConfig, bind_connection
+
+    live_db = POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db")
+    assert int(live_db) != 0, "the pytest plugin should have us on an isolated db"
+
+    config = MemoryConfig.from_env(
+        {"REDIS_URL": "redis://localhost:6379/0"}, cwd="/tmp/swap-guard"
+    )
+    assert config.url_source == "REDIS_URL"
+    assert config.url_is_explicit is False
+
+    assert bind_connection(config) is False, "a swapped connection is kept"
+    assert (
+        POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db") == live_db
+    ), "bind_connection moved the shared pool despite the in-process swap"
+
+
 def test_mcp_dispatch_reports_the_refusal_instead_of_raising(db0_unchanged):
     """A DB 0 refusal must reach the agent as a tool error, not a traceback.
 

@@ -217,3 +217,74 @@ for item in Order.query.all():
 
 assert Order.query.count() == 0
 print("\nAll client-side filter tests passed!")
+
+
+# =============================================================================
+# PR #594 blocker: limit must not truncate keys before client-side filters
+# =============================================================================
+
+
+class TruncationRepro(popoto.Model):
+    """Meta.order_by on a KeyField triggers get_many_objects' pre-hydration
+    key slice, which used to run BEFORE _pending_client_filters."""
+
+    name = popoto.KeyField()
+    kind = popoto.IndexedField(type=str)
+    note = popoto.Field(type=str)
+
+    class Meta:
+        order_by = "name"
+
+
+def _seed_truncation_repro():
+    for item in TruncationRepro.query.all():
+        item.delete()
+    TruncationRepro.create(name="aaa", kind="x", note="miss")
+    TruncationRepro.create(name="bbb", kind="x", note="miss")
+    TruncationRepro.create(name="ccc", kind="x", note="hit")
+
+
+def test_get_finds_a_match_beyond_the_uniqueness_limit():
+    """get()'s limit=2 optimization must not hide a unique match that sorts
+    after the first two keys when a plain-field filter is in play."""
+    _seed_truncation_repro()
+    try:
+        found = TruncationRepro.query.get(kind="x", note="hit")
+        assert found is not None, (
+            "get(kind='x', note='hit') returned None although a unique "
+            "match exists -- limit truncated keys before the client filter"
+        )
+        assert found.name == "ccc"
+    finally:
+        for item in TruncationRepro.query.all():
+            item.delete()
+
+
+def test_get_still_detects_non_uniqueness_beyond_the_limit():
+    """The truncation also masked the more-than-one check: both 'miss'
+    rows sort first here, but the guard must hold regardless of order."""
+    import pytest
+
+    _seed_truncation_repro()
+    try:
+        with pytest.raises(QueryException, match="more than one"):
+            TruncationRepro.query.get(kind="x", note="miss")
+    finally:
+        for item in TruncationRepro.query.all():
+            item.delete()
+
+
+def test_explicit_filter_limit_applies_after_client_side_filters():
+    """filter(..., limit=N) with a plain-field filter must filter first,
+    then limit -- the same latent wrongness as get(), fixed by the same
+    suppression of pre-hydration truncation."""
+    _seed_truncation_repro()
+    try:
+        rows = TruncationRepro.query.filter(kind="x", note="hit", limit=2)
+        assert [o.name for o in rows] == ["ccc"]
+        rows = TruncationRepro.query.filter(kind="x", note="miss", limit=1)
+        assert len(rows) == 1
+        assert rows[0].note == "miss"
+    finally:
+        for item in TruncationRepro.query.all():
+            item.delete()

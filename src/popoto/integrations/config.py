@@ -408,17 +408,17 @@ def bind_connection(config: MemoryConfig) -> bool:
     if not config.enabled:
         return False
 
-    # The DB 0 guard runs before the explicit-URL early return: the
-    # zero-configuration path is exactly the one #584 is about.
-    if effective_db(config) == 0 and not config.allow_db0:
-        raise Db0RefusedError(_db0_refusal_message(config))
-
     if not config.url_is_explicit and config.url_source != "REDIS_URL":
         # Neither variable set: an in-process caller (a test under the
         # pytest plugin, a host application) chose this connection. Leave
         # it, timeouts included. ``url_is_explicit`` rather than
         # ``url_source`` because in-process callers build MemoryConfig
-        # directly and set only the former.
+        # directly and set only the former. No rebind happens, so the DB 0
+        # guard judges the live connection -- the database that will
+        # actually be written to. The zero-configuration path is exactly
+        # the one #584 is about.
+        if effective_db(config) == 0 and not config.allow_db0:
+            raise Db0RefusedError(_db0_refusal_message(config))
         return False
 
     import redis
@@ -431,6 +431,38 @@ def bind_connection(config: MemoryConfig) -> bool:
     wanted = parse_url(config.url)
     if "db" not in wanted:
         raise ValueError(_no_db_message(config.url))
+    target_db = int(wanted["db"])
+
+    if not config.url_is_explicit:
+        # REDIS_URL path. Popoto's own import-time resolution read the same
+        # variable, so the live connection diverging from REDIS_URL means an
+        # in-process caller deliberately swapped the pool afterwards -- the
+        # pytest plugin moving the suite to an isolated database, or a host
+        # application binding its own connection. Rebinding here would move
+        # the shared pool behind that caller's back (and, when REDIS_URL
+        # names database 0, would do so on the exact path #584 refuses), so
+        # keep the swapped connection and judge the refusal against it.
+        live_db = int(
+            POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0) or 0
+        )
+        if live_db != target_db:
+            if live_db == 0 and not config.allow_db0:
+                from dataclasses import replace
+
+                # The live connection, not REDIS_URL, is what would be
+                # written to -- word the refusal accordingly.
+                raise Db0RefusedError(
+                    _db0_refusal_message(replace(config, url_source="default"))
+                )
+            return False
+
+    # This call rebinds the pool to ``config.url``, so the refusal must
+    # judge that URL -- "this call will rebind" and "this URL's database"
+    # are one decision. Judging the live connection here let a swapped-in
+    # connection on another database mask a REDIS_URL naming database 0,
+    # and the rebind below then silently moved the pool there.
+    if target_db == 0 and not config.allow_db0:
+        raise Db0RefusedError(_db0_refusal_message(config))
 
     client = POPOTO_REDIS_DB
     current = dict(client.connection_pool.connection_kwargs)

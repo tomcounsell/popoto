@@ -1989,6 +1989,10 @@ class Query:
             # Materialize once: a QueryBuilder re-executes on every len()
             # and index, so the previous three-step check ran the query
             # three times. Two rows are enough to prove non-uniqueness.
+            # Safe with plain-field (client-side) filters too: _execute_filter
+            # suppresses the pre-hydration truncation whenever
+            # _pending_client_filters is non-empty, so this limit is applied
+            # only after those filters have run.
             kwargs.setdefault("limit", 2)
             instances = list(self.filter(**kwargs))
             if len(instances) > 1:
@@ -2910,11 +2914,19 @@ class Query:
             db_keys_set, q_objects, _allow_pushdown, kwargs
         )
 
+        # A pending client-side filter must see every candidate before any
+        # truncation: get_many_objects slices KeyField-ordered keys to `limit`
+        # BEFORE hydration, which would cut rows the plain-field filter would
+        # have kept -- filter(kind="x", note="hit", limit=2) on a model whose
+        # Meta.order_by is a KeyField returned the first two keys, filtered
+        # them all away, and answered [] although matches existed further down.
+        # prepare_results re-applies the limit after the client filters run.
+        client_filters_pending = bool(getattr(self, "_pending_client_filters", None))
         objects = Query.get_many_objects(
             self.model_class,
             db_keys_set,
             order_by_attr_name=kwargs.get("order_by", None),
-            limit=kwargs.get("limit", None),
+            limit=None if client_filters_pending else kwargs.get("limit", None),
             values=kwargs.get("values", None),
         )
 
@@ -3437,12 +3449,15 @@ class Query:
         if sorted_field_order and not explicit_order_by:
             db_keys_set = sorted_field_order  # Use ordered list instead of set
 
-        # Use native async for bulk object loading
+        # Use native async for bulk object loading. As in _execute_filter, a
+        # pending client-side filter suppresses the pre-hydration limit so the
+        # filter sees every candidate; prepare_results re-applies the limit.
+        client_filters_pending = bool(getattr(self, "_pending_client_filters", None))
         objects = await self._async_get_many_objects(
             self.model_class,
             db_keys_set,
             order_by_attr_name=kwargs.get("order_by", None),
-            limit=kwargs.get("limit", None),
+            limit=None if client_filters_pending else kwargs.get("limit", None),
             values=kwargs.get("values", None),
         )
 
