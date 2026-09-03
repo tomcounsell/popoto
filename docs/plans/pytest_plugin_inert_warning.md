@@ -98,10 +98,15 @@ Mechanism (zero steady-state cost, no hot-path check):
 
 Why pool-level and not model-level: every popoto read/write goes through the shared pool;
 wrapping `get_connection` catches sync usage with one seam and no per-op overhead after the
-first call. The async client mirrors the sync pool lazily (`get_async_redis_db()`); arm the
-same one-shot on the async pool at creation time only if trivially reachable — otherwise the
-sync-side warning is sufficient for v1 (an async-only popoto test suite is rare; note it as a
-known limit in the docstring).
+first call — spike-1 confirms it fires on the first `create`/`query` and stays silent through
+import and model definition.
+
+**Async is explicitly out of scope for v1.** `get_async_redis_db()`
+(`src/popoto/redis_db.py:302`) builds its client lazily *inside* the running event loop, so
+there is no async pool in existence at `pytest_configure` time to arm. Covering it would mean
+editing production code in `redis_db.py`, not the plugin — outside this appetite. An
+async-only popoto test suite that never touches the sync client gets no warning; record that
+as a known limit in the plugin docstring and in `docs/testing.md`.
 
 ## Acceptance Criteria (from the issue, verbatim)
 
@@ -148,6 +153,23 @@ known limit in the docstring).
   complementary, not redundant (the warning covers non-zero DBs and plain model usage too).
 - **Warning dedup across xdist workers**: out of scope; one warning per worker process is
   acceptable (note in docstring).
+- **Overlap with the existing `_popoto_db0_tripwire` fixture** (`pytest_plugin.py:295`):
+  that session-scoped autouse fixture does **not** early-return on the inert path — it runs in
+  every downstream popoto-dependent suite, opens a side client on DB 0, and `pytest.fail`s at
+  session end if DB 0 was empty at session start and gained keys. So the inert path is not
+  *entirely* silent today, but the existing signal is (a) failure-shaped rather than
+  advisory, (b) limited to DB 0, and (c) disabled whenever DB 0 already has keys — which is
+  the normal developer box, i.e. exactly the case the issue is about. The new warning covers
+  non-zero DBs and non-idle DB 0. Do not fold the two together and do not change the
+  tripwire's behavior in this change; just verify in the new subprocess tests that a warning
+  and a tripwire failure can coexist without the tripwire masking the warning assertion
+  (point the subprocess at a non-zero DB, which keeps the tripwire on its SKIP path).
+- **The wrapper is lost if the pool object is replaced.** `_swap_db()` builds a *new*
+  `redis.ConnectionPool` and `set_REDIS_DB_settings()` can rebind `POPOTO_REDIS_DB` wholesale;
+  either drops the armed wrapper and the warning never fires. On the inert path the plugin
+  itself never calls `_swap_db`, so this only bites a downstream suite that reconfigures the
+  connection by hand. Degrading to silence is acceptable (warn-only feature, never a
+  correctness dependency) — but do not attempt to re-arm on rebind, that is a rabbit hole.
 
 ## Success Criteria
 
