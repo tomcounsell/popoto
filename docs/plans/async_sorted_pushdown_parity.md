@@ -40,13 +40,14 @@ holds; line numbers drifted under #594's query.py changes — corrected referenc
 - **New since the issue was filed (#594):** both paths now suppress the pre-hydration `limit`
   when `_pending_client_filters` is non-empty (query.py:2914–2929 sync, 3452–3461 async). The
   async pushdown must respect the same suppression — pushdown and key-slice must NOT bound when
-  client-side filters are pending. **Verified at `d72d393`: reusing the sync helpers gives this
-  for free, no new logic needed.** `_sorted_pushdown_args` condition 5 (query.py:2293–2300)
-  declines whenever any filter param survives the sorted field and its partitions — which is
-  exactly the case that populates `_pending_client_filters` — and
-  `_bound_keys_before_hydration` additionally has an explicit
-  `if getattr(self, "_pending_client_filters", None): return db_keys` guard at query.py:2217.
-  The build must not add a parallel check; it must confirm by test that the reused helpers fire.
+  client-side filters are pending. **Settled at `d72d393` — no build-time re-verification
+  needed:** `_sorted_pushdown_args` condition 5 (query.py:2293–2300) declines whenever any filter
+  param survives the sorted field and its partitions — exactly the case that populates
+  `_pending_client_filters` — and `_bound_keys_before_hydration` independently bails at
+  query.py:2217 (`if getattr(self, "_pending_client_filters", None): return db_keys`). Both
+  suppressions are unconditional on the helper, so reusing the helpers inherits #594's semantics
+  for free. The build must NOT add a parallel check; it only adds the test that confirms the
+  reused helpers fire (Task 3).
 - `#559` is still **open** and its branch `test/559-pushdown-coverage` is still unmerged;
   `grep -rn 'pytest.mark.xfail\|pytest.xfail('` over `tests/` at `d72d393` finds **no** async
   pushdown xfail on main, so Step 4 below is still conditional, not yet actionable.
@@ -74,32 +75,115 @@ on codebase context.
 ## Solution
 
 Mirror `_execute_filter`'s bounding into `async_filter`, reusing the sync helpers (no forked
-logic):
+logic) — but **carry the pushdown bookkeeping in a per-call state object rather than reading it
+off `self` after an await**. That last clause is the whole difference between this plan and the
+naive port, and it is why the design is spelled out concretely below rather than left to build
+time. See `## Race Conditions` for the reasoning.
 
-1. Arm/disarm `_pushdown_allowed` around the `to_thread(self.filter_for_keys_set, ...)` call
-   with the same try/finally shape and the same conditions `_execute_filter` uses (including
-   threading `_desc` so descending queries issue a descending range read).
-2. After key-set resolution, call `_bound_keys_before_hydration(...)` exactly as the sync path
-   does (query.py:2913), including the #594 client-filter suppression semantics. `async_filter`
-   has no Q-object path (it calls `filter_for_keys_set(**kwargs)` directly, query.py:3432), so
-   pass `q_objects=None`; the helper's `if q_objects or not allow_pushdown` guard then reduces
-   to the `_allow_pushdown` flag alone.
-3. Port the short-result re-read guard (`_pushdown_limit` / `_pushdown_fetched` /
+0. **Introduce a per-call state carrier.** Add a small mutable dataclass, private to
+   `query.py`:
+
+   ```python
+   @dataclass
+   class _PushdownState:
+       sorted_field_order: "Optional[list]" = None
+       sorted_field_name: "Optional[str]" = None
+       pending_client_filters: "dict[str, Any]" = field(default_factory=dict)
+       pushdown_limit: "Optional[int]" = None
+       pushdown_requested: int = 0
+       pushdown_fetched: int = 0
+       pushdown_partition: "dict[str, Any]" = field(default_factory=dict)
+   ```
+
+   These are exactly the seven attributes `filter_for_keys_set` writes onto `self`
+   (query.py:2346–2352 reset, 2411–2414 populate) and that the post-hydration guard reads
+   (query.py:2940–2949).
+
+1. **Arm, execute, and snapshot inside one thread hop.** Add a sync helper that does the whole
+   arm/execute/disarm/snapshot with no await inside it:
+
+   ```python
+   def _filter_keys_with_pushdown(self, allow_pushdown, kwargs) -> "tuple[Any, _PushdownState]":
+       self._pushdown_allowed = allow_pushdown
+       try:
+           db_keys = self.filter_for_keys_set(**kwargs)
+       finally:
+           self._pushdown_allowed = False
+       return db_keys, _PushdownState(
+           sorted_field_order=self._sorted_field_order,
+           sorted_field_name=self._sorted_field_name,
+           pending_client_filters=dict(self._pending_client_filters or {}),
+           pushdown_limit=self._pushdown_limit,
+           pushdown_requested=self._pushdown_requested,
+           pushdown_fetched=self._pushdown_fetched,
+           pushdown_partition=dict(self._pushdown_partition or {}),
+       )
+   ```
+
+   `async_filter` calls `await to_thread(self._filter_keys_with_pushdown, _allow_pushdown, kwargs)`
+   in place of today's `await to_thread(self.filter_for_keys_set, **kwargs)` (query.py:3432),
+   **while holding the per-loop lock described in `## Race Conditions`**. This threads `_desc`
+   automatically: `_sorted_pushdown_args` computes it and `filter_for_keys_set` passes
+   `{"_limit": ..., "_desc": ...}` into `field.filter_query` (query.py:2390–2394), so a
+   descending async query issues `zrevrangebyscore` with no extra wiring.
+
+   The sync path is NOT refactored onto this helper (No-Gos forbid behavior change to sync); it
+   keeps its inline try/finally at query.py:2881–2886.
+
+2. **Bound the key list from the state object.** Give `_bound_keys_before_hydration` a
+   keyword-only `state: "Optional[_PushdownState]" = None`. When `state` is None it reads and
+   writes `self` exactly as today (sync path unchanged, byte-for-byte in behavior); when a state
+   is supplied it reads `pending_client_filters` / `pushdown_limit` / `sorted_field_order` /
+   `_sorted_field_name` from it and writes `pushdown_limit` / `pushdown_requested` /
+   `pushdown_fetched` back into it (the writes at query.py:2242–2244). `async_filter` passes
+   `q_objects=None` (it has no Q-object path) and its own `_allow_pushdown`, so the helper's
+   `if q_objects or not allow_pushdown` guard reduces to the flag alone.
+
+   Everything else `async_filter` reads after the await — the `_sorted_field_order` check at
+   query.py:3440–3448 and the `_pending_client_filters` check at query.py:3452–3461 — must be
+   re-pointed at the state object too. Those two reads are a *pre-existing* instance-state race
+   on the async path; re-pointing them costs nothing and closes it as a side effect.
+
+3. **Port the short-result re-read guard** (`_pushdown_limit` / `_pushdown_fetched` /
    `_pushdown_requested` orphan handling — sync at query.py:2936–2977) so a bounded async read
    cannot return short when orphaned index members eat the budget. Without this the async
-   pushdown is a correctness regression, not an optimization. Prefer extracting the guard into a
-   shared helper called by both paths over copy-paste — note the sync guard's two branches are
-   asymmetric: the `_allow_pushdown and short and not exhausted` branch **re-reads** (recursing
-   into `_execute_filter(..., _allow_pushdown=False)`), while the `short and orphans > 0` branch
-   only warns. A shared helper must therefore return a decision (re-read / warn-only / ok) and
-   let each caller perform its own recursion, rather than recursing itself.
+   pushdown is a correctness regression, not an optimization.
+
+   **Extract, do not duplicate** (the critique closed this open choice). The two branches are
+   asymmetric — `_allow_pushdown and short and not exhausted` **re-reads** by recursing, while
+   `short and orphans > 0` only warns — and the retry differs per path
+   (`return self._execute_filter(...)` vs `return await self.async_filter(...)`). So the shared
+   piece decides and logs only; each caller owns its own recursion:
+
+   ```python
+   def _short_result_action(self, n_objects, allow_pushdown, state) -> bool:
+       """Emit the standard warnings; return True iff the caller must re-read unbounded."""
+   ```
+
+   It must emit both existing `logger.warning` texts **verbatim** — `tests/test_sorted_range_pushdown.py`
+   asserts on `caplog` at lines 398 / 434 / 457 / 485 and those tests must pass unchanged. Its
+   only inputs are the object count, the flag, and the state object; no I/O, no retry ownership.
+   The sync call site replaces query.py:2940–2977 with a `_short_result_action(...)` call plus
+   its existing `return self._execute_filter(..., _allow_pushdown=False, **kwargs)`.
+
    **Signature consequence:** the sync re-read works because `_execute_filter` takes an
-   `_allow_pushdown` parameter. `async_filter` today is `async def async_filter(self, **kwargs)`
-   (query.py:3403) with no such parameter, so the build must add an underscore-prefixed
-   `_allow_pushdown: bool = True` keyword to `async_filter` and recurse through it — mirroring
-   `_execute_filter`'s convention. Field names must start lowercase (CLAUDE.md), so there is no
-   collision risk with a user filter kwarg. Public callers (`filter()`'s async twin) pass
-   nothing and get the default.
+   `_allow_pushdown` parameter kept out of `**kwargs`. `async_filter` today is
+   `async def async_filter(self, **kwargs)` (query.py:3403) and forwards `**kwargs` straight into
+   `filter_for_keys_set`, which raises `QueryException` on any non-field param. So the new
+   parameter must be **keyword-only with a default**:
+
+   ```python
+   async def async_filter(self, *, _allow_pushdown: bool = True, **kwargs) -> list:
+   ```
+
+   and the retry is `return await self.async_filter(_allow_pushdown=False, **kwargs)`. Pass
+   `_allow_pushdown` (never a literal `True`) as the third positional argument of
+   `_bound_keys_before_hydration`, otherwise the retry re-applies the bound and returns the same
+   short answer — the exact trap in the issue body's suggested one-liner
+   `_bound_keys_before_hydration(db_keys_set, None, True, kwargs)`. Field names must start
+   lowercase (CLAUDE.md), so there is no collision risk with a user filter kwarg. The internal
+   caller `async_get` (query.py:3347) passes nothing and still type-checks.
+
 4. `async_count` stays untouched (verified correct: full match count).
 
 ## Step by Step Tasks
