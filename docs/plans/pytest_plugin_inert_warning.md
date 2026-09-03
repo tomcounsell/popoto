@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/595
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-03T09:35:06Z
+revision_applied_at: 2026-09-03T09:47:17Z
 ---
 
 # #595 — Warn once when the pytest plugin is inert but popoto is actually used
@@ -84,6 +84,17 @@ this plan proposes.
   `get_connection(self, command_name=None, *keys, **options)`. redis-py 8 drops the
   positional `command_name`. `def wrapper(*args, **kwargs)` delegating verbatim covers both;
   the wrapper must never inspect or reorder the arguments.
+- **Correction (round-2 critique)**: this spike was run against the base `ConnectionPool`, but
+  the live pool is a **`BlockingConnectionPool`** — `redis_db.get_redis_db()` builds
+  `redis.BlockingConnectionPool` (`src/popoto/redis_db.py:139,149,209`), so
+  `redis_db.POPOTO_REDIS_DB.connection_pool` is a `BlockingConnectionPool` at
+  `pytest_configure` time. `BlockingConnectionPool.get_connection` overrides the base with its
+  own `(self, command_name=None, *keys, **options)` on 7.x. The conclusion is unchanged: the
+  `*args, **kwargs`-verbatim wrapper is correct for both classes and both redis-py majors, and
+  although `BlockingConnectionPool.__slots__ == ()`, its instances still carry a `__dict__`, so
+  `pool.get_connection = wrapper` and `pool.__dict__.pop("get_connection", None)` work exactly
+  as planned. **No code change — but every mention of the pool's class in this plan means
+  `BlockingConnectionPool`.**
 - **Confidence**: high.
 - **Impact if false**: none — the `*args/**kwargs` form is correct either way.
 
@@ -101,8 +112,11 @@ Mechanism (zero steady-state cost, no hot-path check):
 
 1. In `_configure_test_db`, when `_resolve_test_db()` returns `None`, do not just return —
    record the inert state and arm a **one-shot tripwire** on the live connection pool:
-   assign `pool.get_connection = wrapper` on the *pool instance*, and store
-   `config._popoto_tripwire = (pool, wrapper)` for teardown.
+   assign `pool.get_connection = wrapper` on the *pool instance* — which is a
+   **`BlockingConnectionPool`**, not a `ConnectionPool` (`src/popoto/redis_db.py:139,149,209`);
+   its `__slots__` is `()` but instances still carry a `__dict__`, so instance assignment and
+   `__dict__.pop` both work — and store `config._popoto_tripwire = (pool, wrapper)` for
+   teardown.
 
 2. **Wrapper body order is load-bearing — the Redis op must never be affected by the
    warning.** The wrapper runs inside an arbitrary `Model.create()` / query call, so any
@@ -115,7 +129,7 @@ Mechanism (zero steady-state cost, no hot-path check):
    1. Under a module-level `threading.Lock()`: if already fired, release and
       `return original(*args, **kwargs)` immediately; otherwise set `fired = True` and
       **disarm** (see step 4) while still holding the lock. Arming and firing happen on a
-      `ConnectionPool` shared across threads, so the flag flip and the disarm must be atomic
+      pool shared across threads, so the flag flip and the disarm must be atomic
       or two concurrent first-ops can both warn or race the restore.
    2. Resolve the DB **at trip time**, not at arm time: `db = pool.connection_kwargs.get("db", 0)`
       (mirrors `src/popoto/pytest_plugin.py:143`). Capturing it in the closure at configure
@@ -194,8 +208,11 @@ Added by critique (not in the issue, but required for the above to hold):
    and for any `**` splat of `connection_kwargs` — both must be absent.
 3. Add the `pytest_unconfigure` hook and disarm there with the identity check + `__dict__.pop`
    from Solution step 4; it is a no-op if the tripwire already fired.
-   *Verify:* after an inert+unused session, `"get_connection" not in pool.__dict__` and
-   `pool.get_connection` is the plain `ConnectionPool` bound method (test 5f).
+   *Verify:* after an inert+unused session, `"get_connection" not in pool.__dict__` (test 5f).
+   **Do not assert the restored method belongs to `ConnectionPool`** — the live pool is a
+   `BlockingConnectionPool`, which overrides `get_connection`, so that assertion is literally
+   false. If a positive assertion is wanted alongside the `__dict__` check, use
+   `pool.get_connection.__qualname__ == "BlockingConnectionPool.get_connection"`.
 4. Warning copy: `"popoto is writing to Redis DB {db} during this pytest session and is NOT
    isolating or flushing it (the popoto pytest plugin is installed but not opted in). Set
    popoto_test_db = \"15\" under [tool.pytest.ini_options] or export POPOTO_TEST_DB to
@@ -207,6 +224,25 @@ Added by critique (not in the issue, but required for the above to hold):
    `test_isolated_db_subprocess` (the plugin's configure-time behavior cannot be re-entered
    in-process). Subprocess Redis target must be a non-zero DB via `REDIS_URL` set before
    `import popoto`.
+
+   **Environment handling for the inert-path tests (5a, 5d, 5e, 5f) — mandatory.** The existing
+   pattern copies the parent env wholesale (`env = dict(os.environ)`,
+   `tests/test_pytest_plugin.py:568`). If the developer has `POPOTO_TEST_DB` exported,
+   `_resolve_test_db` returns a number, the plugin is **not** inert, 5a/5e fail and 5d/5f pass
+   **vacuously** — the silent half is the dangerous one. So:
+
+   ```python
+   env = dict(os.environ)
+   env.pop("POPOTO_TEST_DB", None)
+   env["REDIS_URL"] = "redis://localhost:6379/14"
+   ```
+
+   Then make inertness self-verifying rather than assumed: every inert probe file asserts, as
+   its first statements, `pytestconfig.getini("popoto_test_db") == ""` and
+   `"POPOTO_TEST_DB" not in os.environ`, so a leaked opt-in fails loudly. (The repo's own
+   `popoto_test_db = "15"` ini is not a hazard: pytest resolves `inipath = None` for a
+   `tmp_path` probe file even with `cwd=repo_root` — verified at critique.)
+
    - **5a** inert + popoto used → exactly one `PopotoIsolationWarning`, naming that DB.
    - **5b** ini opt-in (`popoto_test_db`) → none.
    - **5c** env opt-in (`POPOTO_TEST_DB`) → none.
@@ -215,10 +251,20 @@ Added by critique (not in the issue, but required for the above to hold):
    - **5e** inert + used **under `-W error::UserWarning`** → the popoto operation still
      succeeds (no exception escapes into the Redis call path), the subprocess exits 0, and the
      `logger.warning` mirror line is present in the captured output. This is the blocker's
-     regression test.
+     regression test. **The mirror line is invisible without live-log flags**: on a *passing*
+     run pytest's logging plugin captures `POPOTO-PYTEST` records into the report and prints
+     the "captured log" section only on failure, so 5e would fail for a reason unrelated to the
+     code under test. Run it as
+     `[sys.executable, "-m", "pytest", str(probe), "-q", "-W", "error::UserWarning", "-o", "log_cli=true", "--log-cli-level=WARNING"]`
+     and assert against `result.stdout + result.stderr`. Do **not** use `caplog` — the trip
+     happens in a different process.
    - **5f** inert + unused → after `pytest_unconfigure`, the pool carries no instance-level
      `get_connection` attribute (disarm left nothing behind).
    *Verify:* all six pass; each asserts on subprocess exit code as well as output.
+   *Optional (critique NIT, suite-time only — correctness unaffected either way):* 5d and 5f
+   are the same scenario observed at two points and may be merged into one probe (5f's
+   `"get_connection" not in pool.__dict__` check via a `request.addfinalizer`), and 5b/5c may be
+   driven from one parametrized helper.
 6. Module docstring (`src/popoto/pytest_plugin.py:3-19`): (a) **correct the stale pre-#594
    text** — the opening list still claims the plugin "automatically" switches/flushes and
    documents "3. Default: 15"; rewrite it to state the plugin is inert unless `popoto_test_db`
@@ -245,9 +291,11 @@ Added by critique (not in the issue, but required for the above to hold):
 
 ## Risks / Rabbit Holes
 
-- **redis-py pool internals**: wrap the bound method on the *pool instance*, not the class,
-  so other pools (tripwire's DB-0 client, user-created clients) are untouched. redis-py 7 and
-  8 both expose `ConnectionPool.get_connection`; redis-py 8 changed its signature
+- **redis-py pool internals**: wrap the bound method on the *pool instance* — a
+  **`BlockingConnectionPool`** (`src/popoto/redis_db.py:139,149,209`), which subclasses and
+  overrides `ConnectionPool.get_connection` — not the class, so other pools (tripwire's DB-0
+  client, user-created clients) are untouched. redis-py 7 and
+  8 both expose `get_connection`; redis-py 8 changed its signature
   (`get_connection()` with no args vs 7's `get_connection(command_name, *keys, **options)`) —
   the wrapper must accept `*args, **kwargs` and delegate verbatim. The wrapper reads nothing
   from the pool but `connection_kwargs.get("db", 0)`; splatting `connection_kwargs` is what
@@ -266,8 +314,14 @@ Added by critique (not in the issue, but required for the above to hold):
   the normal developer box, i.e. exactly the case the issue is about. The new warning covers
   non-zero DBs and non-idle DB 0. Do not fold the two together and do not change the
   tripwire's behavior in this change; just verify in the new subprocess tests that a warning
-  and a tripwire failure can coexist without the tripwire masking the warning assertion
-  (point the subprocess at a non-zero DB, which keeps the tripwire on its SKIP path).
+  and a tripwire failure can coexist without the tripwire masking the warning assertion —
+  **point the subprocess at a non-zero DB.** Note the actual mechanism: this does *not* put
+  the tripwire on its SKIP path. `_popoto_db0_tripwire` opens its own side client on **DB 0
+  regardless** of the session's DB (`sibling_client_kwargs(..., db=0)`), and its SKIP is
+  governed solely by `before = db0_client.dbsize()` at session start — on clean CI (DB 0
+  empty) the tripwire is *armed*, not skipped. What keeps the new tests green is that the
+  subprocess's writes land on a non-zero DB, so `after` stays 0 and `pytest.fail` is never
+  reached.
 - **The wrapper is lost if the pool object is replaced.** `_swap_db()` builds a *new*
   `redis.ConnectionPool` and `set_REDIS_DB_settings()` can rebind `POPOTO_REDIS_DB` wholesale;
   either drops the armed wrapper and the warning never fires. On the inert path the plugin
@@ -278,8 +332,9 @@ Added by critique (not in the issue, but required for the above to hold):
 ## Success Criteria
 
 - All six acceptance tests (5a–5f) green in `tests/test_pytest_plugin.py`.
-- No `PopotoIsolationWarning` can propagate out of `ConnectionPool.get_connection`: test 5e
-  passes under `-W error::UserWarning` with a zero exit code.
+- No `PopotoIsolationWarning` can propagate out of the wrapped
+  `BlockingConnectionPool.get_connection`: test 5e passes under `-W error::UserWarning` with a
+  zero exit code (run with `-o log_cli=true --log-cli-level=WARNING` so the mirror is visible).
 - Full non-slow suite green; this repo's own suite (opted in) emits zero new warnings.
 - `ruff check src/` clean; mypy delta 0 vs main measured in the same environment.
 
@@ -316,6 +371,18 @@ specified, identity-checked `__dict__.pop` disarm under a module lock, trip-time
 | CONCERN | history-consistency | **The Risks section gives the wrong reason the DB-0 tripwire stays green in the new tests.** It claims pointing the subprocess at a non-zero DB "keeps the tripwire on its SKIP path". It does not: `_popoto_db0_tripwire` opens its own side client on **DB 0 regardless** of the session's DB (`sibling_client_kwargs(..., db=0)`), and its SKIP is governed solely by `before = db0_client.dbsize()` at session start. On clean CI (DB 0 empty) the tripwire is *armed*, not skipped. A builder trusting the stated mechanism could write the wrong assertion or mis-diagnose a CI-only failure. | Reword to the actual mechanism: the tripwire arms whenever DB 0 is idle at session start; what keeps the new tests green is that the subprocess writes land on a **non-zero** DB, so `after` stays 0 and `pytest.fail` is never reached. Keep the operative instruction (point the subprocess at a non-zero DB) — only the justification is wrong. |
 | NIT | scope-value | Six separate `subprocess.run([sys.executable, "-m", "pytest", ...])` invocations is ~6 process spawns of suite time for one advisory warning. 5d and 5f are the same scenario (inert + unused) observed at two points, and 5b/5c differ only in which opt-in is set. | Merge 5f's `"get_connection" not in pool.__dict__` assertion into 5d's probe as a `pytest_unconfigure`-adjacent check (or a `request.addfinalizer`), and drive 5b/5c from one parametrized helper. Purely a suite-time optimization; correctness is unaffected either way. |
 | NIT | scope-value | The plan emits the warning from *inside* the Redis call path and then spends a module lock, a `try/except Exception: pass`, an unguarded log mirror, and test 5e defending that position. Setting a flag in the wrapper and emitting the warning from `pytest_sessionfinish` would put the whole emission outside any user Redis call. (Flagged as a NIT, not a CONCERN: the chosen design is sound and already hardened, and re-architecting is out of this skill's scope.) | If ever revisited: `_pytest/warnings.py` wraps `pytest_sessionfinish` in `catch_warnings_for_item`, so a `warnings.warn` raised there still lands in the warnings summary. The wrapper would reduce to `fired = True; disarm; db = pool.connection_kwargs.get("db", 0); return original(*args, **kwargs)`. Not required for this build. |
+
+**Round-2 revision applied 2026-09-03** — 0 blockers, so scope is unchanged; all four concerns
+are folded into the task text and two nits are dispositioned:
+
+| Round-2 finding | Folded into |
+|---|---|
+| CONCERN — pool is a `BlockingConnectionPool` | spike-2 **Correction** bullet; Solution step 1; Task 3 *Verify* (the false `ConnectionPool` assertion is replaced with `"get_connection" not in pool.__dict__` / `__qualname__ == "BlockingConnectionPool.get_connection"`); Risks bullet 1; Success Criteria. No code change. |
+| CONCERN — 5e mirror invisible in subprocess stdout | Task 5, test 5e: exact argv with `-o log_cli=true --log-cli-level=WARNING`, assert on `stdout + stderr`, no `caplog`. |
+| CONCERN — inert tests must strip `POPOTO_TEST_DB` | Task 5, new "Environment handling" block: `env.pop("POPOTO_TEST_DB", None)` plus self-verifying inertness assertions in every inert probe. |
+| CONCERN — wrong reason the DB-0 tripwire stays green | Risks, `_popoto_db0_tripwire` bullet reworded to the real mechanism (tripwire arms whenever DB 0 is idle; writes landing on a non-zero DB keep `after` at 0). Operative instruction unchanged. |
+| NIT — six subprocess spawns | Recorded as an explicitly optional suite-time optimization on Task 5. Not required. |
+| NIT — emit from `pytest_sessionfinish` instead of inside the Redis call path | **Not adopted.** The chosen design is sound and already hardened (lock, guarded `warnings.warn`, unguarded log mirror, test 5e); re-architecting is out of scope for this build. Recorded here for any future revisit. |
 
 **Structural checks (round 2)**: required sections PASS (`## Prior Art` now present); task numbering PASS (1–7, no gaps); dependencies PASS (none declared); per-task validation PASS (every task 1–7 carries a *Verify:* line — round-1 FAIL resolved); file paths PASS (5/5 exist); line citations PASS — re-verified `pytest_plugin.py:118` `_configure_test_db`, `:136-137` inert early-return, `:143` `.get("db", 0)`, `:187` `_resolve_test_db`, `:295` `_popoto_db0_tripwire`, `redis_db.py:246` `sibling_client_kwargs`, `:302` `get_async_redis_db`, `:425-429` `check_connection` bare `except`; freshness PASS (plugin 358 lines, no `pytest_unconfigure`/`pytest_sessionfinish`, entry point is `popoto` so `-p no:popoto` is correct); cross-references PASS (all 5 acceptance criteria map to Task 5). Independently **confirmed** the plan's unix-socket claim: `BlockingConnectionPool.from_url("unix://…")`, `rediss://host` and the direct constructor all omit `db` from `connection_kwargs`, so the `.get("db", 0)` guard is load-bearing, not defensive padding.
 
