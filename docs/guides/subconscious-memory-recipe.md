@@ -45,7 +45,7 @@ sm.extract_memories(answer, importance=0.6)        # post-turn
 sm.report_outcomes(assembly, outcome="acted")      # feedback
 ```
 
-That is the whole loop. `agent_id` is the only required argument — it partitions every index, and an explicit `.filter(agent_id=...)` query always honors that partition. `inject_context`'s default retrieval path (lexical/BM25) does not yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis through the default loop can retrieve each other's memories; a distinct Redis database per agent is the actual isolation boundary today.
+That is the whole loop. `agent_id` is the only required argument — it partitions every index, and an explicit `.filter(agent_id=...)` query always honors that partition. Since 1.9.0 `inject_context`'s default retrieval path (lexical/BM25) honors it too ([#576](https://github.com/tomcounsell/popoto/issues/576)); on 1.8.2 and earlier two agents sharing one Redis through the default loop could retrieve each other's memories, and a distinct Redis database per agent was the workaround.
 
 ### What the defaults give you
 
@@ -277,6 +277,23 @@ Reported outcomes are not only a ranking nudge -- they set how fast a memory lea
 Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. Set `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` to take confidence out of the ranking entirely, without touching model code.
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
+
+### Redis outages raise
+
+Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not.
+
+Wrap the call at your application's turn boundary if a turn must survive an outage:
+
+```python
+from popoto.redis_db import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError, not the builtins
+
+try:
+    assembly = sm.inject_context(query)
+except OUTAGE_ERRORS:
+    assembly = None    # serve the turn without memory, and alert
+```
+
+Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index.
 
 ## Tuning
 

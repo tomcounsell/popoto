@@ -255,9 +255,11 @@ def _cmd_doctor(args: Any) -> int:
             lines.append(f"                 {err}")
         lines.append("")
         lines.append(
+            # Not database 0: MemoryService refuses it, so suggesting it
+            # here would trade one failure for another.
             "  Start a server, or point POPOTO_MEMORY_URL at one:\n"
             "    redis-server        (or: valkey-server)\n"
-            "    export POPOTO_MEMORY_URL=redis://localhost:6379/0"
+            "    export POPOTO_MEMORY_URL=redis://localhost:6379/1"
         )
         sys.stdout.write("\n".join(lines) + "\n")
         return 1

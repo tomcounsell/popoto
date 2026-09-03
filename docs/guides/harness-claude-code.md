@@ -88,11 +88,14 @@ health check.
 ## What is stored, and where
 
 In your Redis or Valkey, in the `DefaultMemory:*` keyspace, tagged with an
-`agent_id` that defaults to the basename of your working directory. That tag
-is honored as a read filter only on the composite-score retrieval path; the
-shipped default lexical/BM25 path does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two
-projects on one Redis can retrieve each other's memories. Use a distinct
-`POPOTO_MEMORY_URL` database per project for real isolation.
+`agent_id` that defaults to the basename of your working directory. Since
+1.9.0 that tag is honored as a read filter on every shipped retrieval path,
+the default lexical/BM25 one included ([#576](https://github.com/tomcounsell/popoto/issues/576)).
+On 1.8.2 and earlier it was honored only on the composite-score path, so two
+projects on one Redis could retrieve each other's memories; a distinct
+`POPOTO_MEMORY_URL` database per project was the workaround, and remains the
+stronger boundary if you want one enforced by Redis rather than by a query
+filter.
 
 One turn becomes one record, verbatim. Issue #489 measured
 sentence-splitting extraction at 0.2078 judged accuracy against 0.3636 for

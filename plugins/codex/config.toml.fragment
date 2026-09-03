@@ -8,8 +8,9 @@ hooks = true
 command = "popoto-memory"
 args = ["mcp"]
 
-# Optional. Every one of these has a default; see
-# docs/features/harness-integration.md.
+# Optional, except the database: agent memory refuses to write to Redis
+# database 0, so on a default install set POPOTO_MEMORY_URL (or REDIS_URL)
+# at some other database. See docs/features/harness-integration.md.
 # [mcp_servers.popoto-memory.env_vars]
-# POPOTO_MEMORY_URL = "redis://localhost:6379/0"
+# POPOTO_MEMORY_URL = "redis://localhost:6379/1"
 # POPOTO_MEMORY_AGENT_ID = "my-project"

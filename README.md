@@ -205,11 +205,11 @@ redis-server                     # or: brew services start redis
 # 2. Install Popoto with dev dependencies:
 uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
 
-# 3. Run the test suite (auto-isolated on Redis DB 15):
+# 3. Run the test suite (isolated on Redis DB 15 by this repo's pytest config):
 pytest
 ```
 
-By default Popoto connects to `localhost:6379`; set `REDIS_URL` to point at a different server. The pytest plugin isolates tests on Redis DB 15 (override with `POPOTO_TEST_DB=<n>`).
+By default Popoto connects to `localhost:6379`; set `REDIS_URL` to point at a different server. The pytest plugin isolates tests on Redis DB 15, which this repo opts into with `popoto_test_db = "15"` in `pyproject.toml` (override with `POPOTO_TEST_DB=<n>`). In *your* project the plugin does nothing until you set one of those — see [Testing](https://popoto.io/testing/).
 
 
 # Documentation

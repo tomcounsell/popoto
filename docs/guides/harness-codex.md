@@ -72,17 +72,20 @@ This was reproduced first-hand against codex-cli 0.144.4: with a project
 
 Install at `~/.codex/hooks.json` instead.
 
-`POPOTO_MEMORY_AGENT_ID` tags writes and is honored as a read filter only on
-the composite-score retrieval path — the shipped default lexical/BM25 path
-does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so setting it per project does **not**
-isolate one project's memories from another's on the same database:
+`POPOTO_MEMORY_AGENT_ID` tags writes and is honored as a read filter on
+every shipped retrieval path since 1.9.0, the default lexical/BM25 one
+included ([#576](https://github.com/tomcounsell/popoto/issues/576)). On
+1.8.2 and earlier it was honored only on the composite-score path, so setting
+it per project did **not** isolate one project's memories from another's on
+the same database:
 
 ```bash
 export POPOTO_MEMORY_AGENT_ID=my-project
 ```
 
-If you need real per-project isolation today, point each project at its own
-`POPOTO_MEMORY_URL` database instead.
+For a boundary enforced by Redis rather than by a query filter, point each
+project at its own `POPOTO_MEMORY_URL` database (any database but 0, which
+is refused — see [Harness Integration](../features/harness-integration.md#database-0-is-refused)).
 
 ## Context limit
 

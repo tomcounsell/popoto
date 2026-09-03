@@ -34,6 +34,54 @@ sufficient. A plain re-save (construct a new instance with the same values and c
 `save()`) fully reconstructs that structure. This is the common case, and it is
 exactly what `roundtrip_policy = "rebuild"` (the default) declares.
 
+## Lua scripts: use `run_lua`, not `client.eval`
+
+A field that needs atomicity should run its script through
+`popoto.redis_db.run_lua`, which takes the same arguments `client.eval` does:
+
+```python
+from popoto.redis_db import POPOTO_REDIS_DB, run_lua
+
+run_lua(pipeline or POPOTO_REDIS_DB, MY_LUA, 2, key_a, key_b, arg_1)
+```
+
+`run_lua` caches a redis-py `Script` per script text and sends `EVALSHA`,
+falling back to loading the source only when the server does not know the
+hash. Calling `client.eval` directly still works, but it ships the whole
+script body on every invocation — for a field whose hook runs on every save,
+that is the script's byte size added to every write. Every shipped field was
+converted in 1.9.0.
+
+`run_lua` accepts a pipeline as its client, so the pipelined and immediate
+branches of an `on_save` keep the shape they already have.
+
+## Your field's index namespace changed in 1.9.0
+
+`field_class_key` — the `$<Stem>F` prefix your field's internal keys live
+under — is derived from the class name with a trailing `"Field"` removed.
+Before 1.9.0 the derivation was `str.strip("Field")`, which strips a
+character *set* rather than a suffix: `FloatField` became `$oatF`, and two
+different class names could collapse onto one namespace.
+
+The 14 shipped field classes pin their old spelling explicitly, so nothing
+Popoto writes moves. **A field class you wrote yourself is not pinned**, and
+if its name ends in any of the characters `F`, `i`, `e`, `l`, `d` beyond the
+`Field` suffix, its namespace changes on upgrade — `MyCacheField` was
+`$MyCachF` and becomes `$MyCacheF`. Existing keys under the old prefix stay
+on disk and stop being read.
+
+If that applies to a field with data on disk, pin the old spelling on the
+class before upgrading:
+
+```python
+from popoto.models.db_key import DB_key
+
+class MyCacheField(Field):
+    field_class_key = DB_key("$MyCachF")   # pre-1.9.0 spelling
+```
+
+Or migrate the keys and let the new derivation apply.
+
 ## The round-trip obligation
 
 Some fields maintain state that is *not* derivable from the field's stored value
