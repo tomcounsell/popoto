@@ -1113,7 +1113,7 @@ class ValidityField(Field):
         )
 
     @classmethod
-    def pre_save_validate(  # type: ignore[override]
+    def pre_save_validate(
         cls,
         model_instance: "Model",
         field_name: str,
@@ -1197,7 +1197,7 @@ class ValidityField(Field):
         score = POPOTO_REDIS_DB.zscore(
             cls.get_valid_from_key(model, field_name), member_key
         )
-        return None if score is None else float(cast(float, score))
+        return None if score is None else float(score)
 
     @classmethod
     def on_delete(

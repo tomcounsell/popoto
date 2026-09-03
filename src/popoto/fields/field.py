@@ -48,7 +48,7 @@ See Also:
 
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 import redis
 
 from ..exceptions import ModelException
@@ -621,8 +621,8 @@ class Field(metaclass=FieldBase):
         cls,
         model_instance: "Model",
         field_name: str,
-        field_value,
-        **kwargs,
+        field_value: Any,
+        **kwargs: Any,
     ) -> None:
         """Raise to abort a save before ANY write is issued or queued.
 
