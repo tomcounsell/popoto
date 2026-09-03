@@ -4461,8 +4461,8 @@ complex queries dynamically or when you prefer a fluent interface style.</p>
 <td>Return instances ranked by BM25 keyword relevance. See <a href="../features/hybrid-retrieval/">Hybrid Retrieval</a>.</td>
 </tr>
 <tr>
-<td><code>fuse(k, limit, post_filter, **ranked_lists)</code></td>
-<td>Reciprocal Rank Fusion across heterogeneous ranked lists. See <a href="../features/hybrid-retrieval/">Hybrid Retrieval</a>.</td>
+<td><code>fuse(k, limit, post_filter, weights, **ranked_lists)</code></td>
+<td>Reciprocal Rank Fusion across heterogeneous ranked lists. Applies the builder's own keyword filters to the fused set (before the top-K slice); raises <code>QueryException</code> on Q-object filters. See <a href="../features/hybrid-retrieval/">Hybrid Retrieval</a>.</td>
 </tr>
 <tr>
 <td><code>all()</code></td>

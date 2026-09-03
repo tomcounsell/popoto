@@ -1559,6 +1559,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Pull Path — Hybrid mode (&#34;hybrid&#34; or auto-detected)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scoping-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoping (filters)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3271,6 +3288,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Pull Path — Hybrid mode (&#34;hybrid&#34; or auto-detected)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scoping-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoping (filters)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3779,12 +3813,30 @@ recipe to turn live <code>assemble()</code> calls into a real-workload benchmark
 <h3 id="pull-path-hybrid-mode-hybrid-or-auto-detected">Pull Path — Hybrid mode (<code>"hybrid"</code> or auto-detected)<a class="headerlink" href="#pull-path-hybrid-mode-hybrid-or-auto-detected" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>ExistenceFilter pre-check</strong>: Same short-circuit as composite path.</li>
-<li><strong>BM25 lexical retrieval</strong>: <code>BM25Field.search(query_text, limit=max_items×5)</code> — scored keyword matches.</li>
+<li><strong>BM25 lexical retrieval</strong>: <code>BM25Field.search(query_text, limit=max_items×5, allowed_keys=...)</code> — scored keyword matches, confined to the caller's scope.</li>
 <li><strong>Vector retrieval</strong>: <code>QueryBuilder._get_vector_scores(query_text, limit=max_items×5)</code> — cosine similarity via configured embedding provider.</li>
 <li><strong>CoOccurrence graph expansion</strong>: BFS from BM25 top-5 seeds (optional, requires <code>CoOccurrenceField</code>).</li>
-<li><strong>RRF fusion</strong>: <code>query.fuse(keyword=..., vector=..., graph=..., k=60, limit=max_items×2)</code> — rank-based fusion.</li>
+<li><strong>RRF fusion</strong>: <code>query.filter(**filters).fuse(keyword=..., vector=..., graph=..., k=60, limit=max_items×2)</code> — rank-based fusion, scoped by the same filters.</li>
 </ol>
 <p>If both BM25 and vector signals return empty results, the path falls back to the composite path automatically.</p>
+<h4 id="scoping-filters">Scoping (<code>filters</code>)<a class="headerlink" href="#scoping-filters" title="Permanent link">&para;</a></h4>
+<p>The BM25 index and the graph are corpus-wide, so a caller's <code>filters</code> (typically
+<code>agent_id</code>) has to reach the <em>fetch</em>, not just the fused output — filtering a bounded
+fetch lets other agents' records crowd the candidate window and starve the caller.
+Step 2 therefore resolves <code>filters</code> to a key set and passes it as <code>allowed_keys</code>, and
+step 5 applies the same filters to the fused result.</p>
+<p>Two behaviors worth knowing:</p>
+<ul>
+<li><strong>Fails closed.</strong> If the scope cannot be resolved, the lexical signal is dropped
+  rather than issued unscoped — an unscoped BM25 signal fused under a filtered query
+  is a cross-agent leak.</li>
+<li><strong>All-unindexed scopes skip <code>allowed_keys</code>.</strong> When every field in <code>filters</code> is a
+  plain, unindexed <code>Field</code>, resolving it would materialize the whole keyspace, which
+  expresses no scope at all. The candidate window is left unnarrowed and <code>fuse()</code>
+  enforces the predicate instead — correct, but subject to crowding. A scope mixing
+  indexed and unindexed fields keeps the indexed narrowing. <strong>Scope by an indexed
+  field</strong> (<code>KeyField</code>/<code>SortedField</code>) for reliable recall under load.</li>
+</ul>
 <h3 id="push-path">Push Path<a class="headerlink" href="#push-path" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>CyclicDecayField scan</strong>: Find records whose cyclic + pressure score exceeds <code>DEFAULT_SURFACING_THRESHOLD</code>.</li>

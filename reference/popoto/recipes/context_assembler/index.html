@@ -6438,7 +6438,45 @@ is not one of <code>{"refuse", "flag"}</code>; or if
 <span class="normal"><a href="#__codelineno-0-2691">2691</a></span>
 <span class="normal"><a href="#__codelineno-0-2692">2692</a></span>
 <span class="normal"><a href="#__codelineno-0-2693">2693</a></span>
-<span class="normal"><a href="#__codelineno-0-2694">2694</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1252" name="__codelineno-0-1252"></a><span class="k">class</span><span class="w"> </span><span class="nc">ContextAssembler</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-2694">2694</a></span>
+<span class="normal"><a href="#__codelineno-0-2695">2695</a></span>
+<span class="normal"><a href="#__codelineno-0-2696">2696</a></span>
+<span class="normal"><a href="#__codelineno-0-2697">2697</a></span>
+<span class="normal"><a href="#__codelineno-0-2698">2698</a></span>
+<span class="normal"><a href="#__codelineno-0-2699">2699</a></span>
+<span class="normal"><a href="#__codelineno-0-2700">2700</a></span>
+<span class="normal"><a href="#__codelineno-0-2701">2701</a></span>
+<span class="normal"><a href="#__codelineno-0-2702">2702</a></span>
+<span class="normal"><a href="#__codelineno-0-2703">2703</a></span>
+<span class="normal"><a href="#__codelineno-0-2704">2704</a></span>
+<span class="normal"><a href="#__codelineno-0-2705">2705</a></span>
+<span class="normal"><a href="#__codelineno-0-2706">2706</a></span>
+<span class="normal"><a href="#__codelineno-0-2707">2707</a></span>
+<span class="normal"><a href="#__codelineno-0-2708">2708</a></span>
+<span class="normal"><a href="#__codelineno-0-2709">2709</a></span>
+<span class="normal"><a href="#__codelineno-0-2710">2710</a></span>
+<span class="normal"><a href="#__codelineno-0-2711">2711</a></span>
+<span class="normal"><a href="#__codelineno-0-2712">2712</a></span>
+<span class="normal"><a href="#__codelineno-0-2713">2713</a></span>
+<span class="normal"><a href="#__codelineno-0-2714">2714</a></span>
+<span class="normal"><a href="#__codelineno-0-2715">2715</a></span>
+<span class="normal"><a href="#__codelineno-0-2716">2716</a></span>
+<span class="normal"><a href="#__codelineno-0-2717">2717</a></span>
+<span class="normal"><a href="#__codelineno-0-2718">2718</a></span>
+<span class="normal"><a href="#__codelineno-0-2719">2719</a></span>
+<span class="normal"><a href="#__codelineno-0-2720">2720</a></span>
+<span class="normal"><a href="#__codelineno-0-2721">2721</a></span>
+<span class="normal"><a href="#__codelineno-0-2722">2722</a></span>
+<span class="normal"><a href="#__codelineno-0-2723">2723</a></span>
+<span class="normal"><a href="#__codelineno-0-2724">2724</a></span>
+<span class="normal"><a href="#__codelineno-0-2725">2725</a></span>
+<span class="normal"><a href="#__codelineno-0-2726">2726</a></span>
+<span class="normal"><a href="#__codelineno-0-2727">2727</a></span>
+<span class="normal"><a href="#__codelineno-0-2728">2728</a></span>
+<span class="normal"><a href="#__codelineno-0-2729">2729</a></span>
+<span class="normal"><a href="#__codelineno-0-2730">2730</a></span>
+<span class="normal"><a href="#__codelineno-0-2731">2731</a></span>
+<span class="normal"><a href="#__codelineno-0-2732">2732</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1252" name="__codelineno-0-1252"></a><span class="k">class</span><span class="w"> </span><span class="nc">ContextAssembler</span><span class="p">:</span>
 <a id="__codelineno-0-1253" name="__codelineno-0-1253"></a><span class="w">    </span><span class="sd">"""Orchestrates memory retrieval into a single assemble() call.</span>
 <a id="__codelineno-0-1254" name="__codelineno-0-1254"></a>
 <a id="__codelineno-0-1255" name="__codelineno-0-1255"></a><span class="sd">    Combines pull-path (query-driven) and push-path (proactive via</span>
@@ -7529,358 +7567,396 @@ is not one of <code>{"refuse", "flag"}</code>; or if
 <a id="__codelineno-0-2340" name="__codelineno-0-2340"></a>        <span class="n">graph_results</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-2341" name="__codelineno-0-2341"></a>
 <a id="__codelineno-0-2342" name="__codelineno-0-2342"></a>        <span class="c1"># --- BM25 lexical retrieval ---</span>
-<a id="__codelineno-0-2343" name="__codelineno-0-2343"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2344" name="__codelineno-0-2344"></a>            <span class="n">keyword_results</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
-<a id="__codelineno-0-2345" name="__codelineno-0-2345"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2346" name="__codelineno-0-2346"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_bm25_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-2347" name="__codelineno-0-2347"></a>                <span class="n">query_text</span><span class="p">,</span>
-<a id="__codelineno-0-2348" name="__codelineno-0-2348"></a>                <span class="n">limit</span><span class="o">=</span><span class="n">candidate_limit</span><span class="p">,</span>
-<a id="__codelineno-0-2349" name="__codelineno-0-2349"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2350" name="__codelineno-0-2350"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2351" name="__codelineno-0-2351"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"BM25 search failed in hybrid path: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2352" name="__codelineno-0-2352"></a>
-<a id="__codelineno-0-2353" name="__codelineno-0-2353"></a>        <span class="c1"># --- Vector semantic retrieval (only when an EmbeddingField is configured) ---</span>
-<a id="__codelineno-0-2354" name="__codelineno-0-2354"></a>        <span class="c1"># In "lexical" mode _embedding_field is None, so this branch is skipped</span>
-<a id="__codelineno-0-2355" name="__codelineno-0-2355"></a>        <span class="c1"># entirely — no numpy import, no embedding-provider call.</span>
-<a id="__codelineno-0-2356" name="__codelineno-0-2356"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embedding_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-2357" name="__codelineno-0-2357"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2358" name="__codelineno-0-2358"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryBuilder</span> <span class="k">as</span> <span class="n">_QueryBuilder</span>
-<a id="__codelineno-0-2359" name="__codelineno-0-2359"></a>
-<a id="__codelineno-0-2360" name="__codelineno-0-2360"></a>                <span class="n">_q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-0-2361" name="__codelineno-0-2361"></a>                <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
-<a id="__codelineno-0-2362" name="__codelineno-0-2362"></a>                    <span class="n">_qb</span> <span class="o">=</span> <span class="n">_q</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2363" name="__codelineno-0-2363"></a>                <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-2364" name="__codelineno-0-2364"></a>                    <span class="n">_qb</span> <span class="o">=</span> <span class="n">_QueryBuilder</span><span class="p">(</span><span class="n">_q</span><span class="p">)</span>
-<a id="__codelineno-0-2365" name="__codelineno-0-2365"></a>                <span class="n">vector_results</span> <span class="o">=</span> <span class="n">_qb</span><span class="o">.</span><span class="n">_get_vector_scores</span><span class="p">(</span>
-<a id="__codelineno-0-2366" name="__codelineno-0-2366"></a>                    <span class="n">query_text</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">candidate_limit</span>
-<a id="__codelineno-0-2367" name="__codelineno-0-2367"></a>                <span class="p">)</span>
-<a id="__codelineno-0-2368" name="__codelineno-0-2368"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2369" name="__codelineno-0-2369"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Vector search failed in hybrid path: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2370" name="__codelineno-0-2370"></a>
-<a id="__codelineno-0-2371" name="__codelineno-0-2371"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">keyword_results</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">vector_results</span><span class="p">:</span>
-<a id="__codelineno-0-2372" name="__codelineno-0-2372"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-2373" name="__codelineno-0-2373"></a>                <span class="s2">"</span><span class="si">%s</span><span class="s2"> retrieval for </span><span class="si">%s</span><span class="s2"> collected no query signal — BM25 returned 0 "</span>
-<a id="__codelineno-0-2374" name="__codelineno-0-2374"></a>                <span class="s2">"hits</span><span class="si">%s</span><span class="s2"> (query has no lexical overlap OR the BM25 index is empty; "</span>
-<a id="__codelineno-0-2375" name="__codelineno-0-2375"></a>                <span class="s2">"re-save existing records to backfill the index — see the recipe "</span>
-<a id="__codelineno-0-2376" name="__codelineno-0-2376"></a>                <span class="s2">"reindex caveat). Falling back to composite (query-blind)."</span><span class="p">,</span>
-<a id="__codelineno-0-2377" name="__codelineno-0-2377"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_effective_mode</span><span class="p">,</span>
-<a id="__codelineno-0-2378" name="__codelineno-0-2378"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-2379" name="__codelineno-0-2379"></a>                <span class="p">(</span>
-<a id="__codelineno-0-2380" name="__codelineno-0-2380"></a>                    <span class="s2">" and the vector search returned none"</span>
-<a id="__codelineno-0-2381" name="__codelineno-0-2381"></a>                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embedding_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-2382" name="__codelineno-0-2382"></a>                    <span class="k">else</span> <span class="s2">""</span>
-<a id="__codelineno-0-2383" name="__codelineno-0-2383"></a>                <span class="p">),</span>
-<a id="__codelineno-0-2384" name="__codelineno-0-2384"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2385" name="__codelineno-0-2385"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pull_path_composite</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2386" name="__codelineno-0-2386"></a>
-<a id="__codelineno-0-2387" name="__codelineno-0-2387"></a>        <span class="c1"># --- Graph propagation (+ optional RelationshipField traversal,</span>
-<a id="__codelineno-0-2388" name="__codelineno-0-2388"></a>        <span class="c1"># #462), seeds from BM25 top results ---</span>
-<a id="__codelineno-0-2389" name="__codelineno-0-2389"></a>        <span class="k">if</span> <span class="p">(</span>
-<a id="__codelineno-0-2390" name="__codelineno-0-2390"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_co_occurrence_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-2391" name="__codelineno-0-2391"></a>            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_traversal_relationship_fields</span>
-<a id="__codelineno-0-2392" name="__codelineno-0-2392"></a>        <span class="p">)</span> <span class="ow">and</span> <span class="n">keyword_results</span><span class="p">:</span>
-<a id="__codelineno-0-2393" name="__codelineno-0-2393"></a>            <span class="n">seed_pks</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">keyword_results</span><span class="p">[:</span><span class="mi">5</span><span class="p">]]</span>
-<a id="__codelineno-0-2394" name="__codelineno-0-2394"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2395" name="__codelineno-0-2395"></a>                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_traversal_relationship_fields</span><span class="p">:</span>
-<a id="__codelineno-0-2396" name="__codelineno-0-2396"></a>                    <span class="kn">from</span><span class="w"> </span><span class="nn">.graph_traversal</span><span class="w"> </span><span class="kn">import</span> <span class="n">traverse</span> <span class="k">as</span> <span class="n">_graph_traverse</span>
+<a id="__codelineno-0-2343" name="__codelineno-0-2343"></a>        <span class="c1"># The BM25 index is corpus-wide, so the caller's scope (agent_id and</span>
+<a id="__codelineno-0-2344" name="__codelineno-0-2344"></a>        <span class="c1"># friends) has to be handed to search() rather than applied afterwards:</span>
+<a id="__codelineno-0-2345" name="__codelineno-0-2345"></a>        <span class="c1"># filtering a bounded fetch lets other agents' records crowd the window</span>
+<a id="__codelineno-0-2346" name="__codelineno-0-2346"></a>        <span class="c1"># and starve this one (#576).</span>
+<a id="__codelineno-0-2347" name="__codelineno-0-2347"></a>        <span class="n">allowed_keys</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-2348" name="__codelineno-0-2348"></a>        <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+<a id="__codelineno-0-2349" name="__codelineno-0-2349"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2350" name="__codelineno-0-2350"></a>                <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
+<a id="__codelineno-0-2351" name="__codelineno-0-2351"></a>                <span class="n">allowed_keys</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter_for_keys_set</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2352" name="__codelineno-0-2352"></a>                <span class="n">pending</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="s2">"_pending_client_filters"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-2353" name="__codelineno-0-2353"></a>                <span class="k">if</span> <span class="n">pending</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">pending</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">filters</span><span class="p">):</span>
+<a id="__codelineno-0-2354" name="__codelineno-0-2354"></a>                    <span class="c1"># Every field in the scope is a plain (unindexed) Field, so</span>
+<a id="__codelineno-0-2355" name="__codelineno-0-2355"></a>                    <span class="c1"># there was no index to resolve and filter_for_keys_set()</span>
+<a id="__codelineno-0-2356" name="__codelineno-0-2356"></a>                    <span class="c1"># handed back every key of the model. Passing that on would</span>
+<a id="__codelineno-0-2357" name="__codelineno-0-2357"></a>                    <span class="c1"># decode the whole keyspace per query to express "no scope</span>
+<a id="__codelineno-0-2358" name="__codelineno-0-2358"></a>                    <span class="c1"># at all". Drop it: fuse() applies the same predicate to the</span>
+<a id="__codelineno-0-2359" name="__codelineno-0-2359"></a>                    <span class="c1"># fused set, so the result is still correctly scoped -- only</span>
+<a id="__codelineno-0-2360" name="__codelineno-0-2360"></a>                    <span class="c1"># the candidate window is unnarrowed, which costs recall</span>
+<a id="__codelineno-0-2361" name="__codelineno-0-2361"></a>                    <span class="c1"># under crowding, not isolation.</span>
+<a id="__codelineno-0-2362" name="__codelineno-0-2362"></a>                    <span class="c1">#</span>
+<a id="__codelineno-0-2363" name="__codelineno-0-2363"></a>                    <span class="c1"># A MIXED scope is different and must not take this branch.</span>
+<a id="__codelineno-0-2364" name="__codelineno-0-2364"></a>                    <span class="c1"># There, the indexed fields did resolve and the returned set</span>
+<a id="__codelineno-0-2365" name="__codelineno-0-2365"></a>                    <span class="c1"># is their intersection -- a correct superset of the true</span>
+<a id="__codelineno-0-2366" name="__codelineno-0-2366"></a>                    <span class="c1"># scope. Dropping it would leave BM25 fetching corpus-wide</span>
+<a id="__codelineno-0-2367" name="__codelineno-0-2367"></a>                    <span class="c1"># while fuse() filters the window down to nothing: silent</span>
+<a id="__codelineno-0-2368" name="__codelineno-0-2368"></a>                    <span class="c1"># starvation, the failure this scoping exists to prevent.</span>
+<a id="__codelineno-0-2369" name="__codelineno-0-2369"></a>                    <span class="n">allowed_keys</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-2370" name="__codelineno-0-2370"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2371" name="__codelineno-0-2371"></a>                <span class="c1"># Fail closed: an unscoped BM25 signal fused under a filtered</span>
+<a id="__codelineno-0-2372" name="__codelineno-0-2372"></a>                <span class="c1"># query is exactly the cross-agent leak this guards against.</span>
+<a id="__codelineno-0-2373" name="__codelineno-0-2373"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-2374" name="__codelineno-0-2374"></a>                    <span class="s2">"Could not resolve retrieval scope </span><span class="si">%s</span><span class="s2">, skipping the lexical "</span>
+<a id="__codelineno-0-2375" name="__codelineno-0-2375"></a>                    <span class="s2">"signal: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-2376" name="__codelineno-0-2376"></a>                    <span class="n">filters</span><span class="p">,</span>
+<a id="__codelineno-0-2377" name="__codelineno-0-2377"></a>                    <span class="n">e</span><span class="p">,</span>
+<a id="__codelineno-0-2378" name="__codelineno-0-2378"></a>                <span class="p">)</span>
+<a id="__codelineno-0-2379" name="__codelineno-0-2379"></a>                <span class="n">allowed_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-2380" name="__codelineno-0-2380"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2381" name="__codelineno-0-2381"></a>            <span class="n">keyword_results</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
+<a id="__codelineno-0-2382" name="__codelineno-0-2382"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2383" name="__codelineno-0-2383"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_bm25_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2384" name="__codelineno-0-2384"></a>                <span class="n">query_text</span><span class="p">,</span>
+<a id="__codelineno-0-2385" name="__codelineno-0-2385"></a>                <span class="n">limit</span><span class="o">=</span><span class="n">candidate_limit</span><span class="p">,</span>
+<a id="__codelineno-0-2386" name="__codelineno-0-2386"></a>                <span class="n">allowed_keys</span><span class="o">=</span><span class="n">allowed_keys</span><span class="p">,</span>
+<a id="__codelineno-0-2387" name="__codelineno-0-2387"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2388" name="__codelineno-0-2388"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2389" name="__codelineno-0-2389"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"BM25 search failed in hybrid path: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2390" name="__codelineno-0-2390"></a>
+<a id="__codelineno-0-2391" name="__codelineno-0-2391"></a>        <span class="c1"># --- Vector semantic retrieval (only when an EmbeddingField is configured) ---</span>
+<a id="__codelineno-0-2392" name="__codelineno-0-2392"></a>        <span class="c1"># In "lexical" mode _embedding_field is None, so this branch is skipped</span>
+<a id="__codelineno-0-2393" name="__codelineno-0-2393"></a>        <span class="c1"># entirely — no numpy import, no embedding-provider call.</span>
+<a id="__codelineno-0-2394" name="__codelineno-0-2394"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embedding_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-2395" name="__codelineno-0-2395"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2396" name="__codelineno-0-2396"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryBuilder</span> <span class="k">as</span> <span class="n">_QueryBuilder</span>
 <a id="__codelineno-0-2397" name="__codelineno-0-2397"></a>
-<a id="__codelineno-0-2398" name="__codelineno-0-2398"></a>                    <span class="n">graph_results</span> <span class="o">=</span> <span class="n">_graph_traverse</span><span class="p">(</span>
-<a id="__codelineno-0-2399" name="__codelineno-0-2399"></a>                        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2400" name="__codelineno-0-2400"></a>                        <span class="n">seed_pks</span><span class="p">,</span>
-<a id="__codelineno-0-2401" name="__codelineno-0-2401"></a>                        <span class="n">co_occurrence_field</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_co_occurrence_field</span><span class="p">,</span>
-<a id="__codelineno-0-2402" name="__codelineno-0-2402"></a>                        <span class="n">relationship_field_names</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-2403" name="__codelineno-0-2403"></a>                            <span class="bp">self</span><span class="o">.</span><span class="n">_graph_traversal_relationship_fields</span>
-<a id="__codelineno-0-2404" name="__codelineno-0-2404"></a>                        <span class="p">),</span>
-<a id="__codelineno-0-2405" name="__codelineno-0-2405"></a>                        <span class="n">depth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">propagation_depth</span><span class="p">,</span>
-<a id="__codelineno-0-2406" name="__codelineno-0-2406"></a>                        <span class="n">decay_per_hop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-0-2407" name="__codelineno-0-2407"></a>                        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
-<a id="__codelineno-0-2408" name="__codelineno-0-2408"></a>                        <span class="n">confidence_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-2409" name="__codelineno-0-2409"></a>                        <span class="n">decay_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_decaying_sorted_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-2410" name="__codelineno-0-2410"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-2411" name="__codelineno-0-2411"></a>                <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-2412" name="__codelineno-0-2412"></a>                    <span class="n">propagated</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_co_occurrence_field</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span>
-<a id="__codelineno-0-2413" name="__codelineno-0-2413"></a>                        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2414" name="__codelineno-0-2414"></a>                        <span class="n">seed_pks</span><span class="p">,</span>
-<a id="__codelineno-0-2415" name="__codelineno-0-2415"></a>                        <span class="n">depth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">propagation_depth</span><span class="p">,</span>
-<a id="__codelineno-0-2416" name="__codelineno-0-2416"></a>                        <span class="n">decay_per_hop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-0-2417" name="__codelineno-0-2417"></a>                        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
-<a id="__codelineno-0-2418" name="__codelineno-0-2418"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-2419" name="__codelineno-0-2419"></a>                    <span class="n">graph_results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">propagated</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
-<a id="__codelineno-0-2420" name="__codelineno-0-2420"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2421" name="__codelineno-0-2421"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Graph propagation failed in hybrid path: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2422" name="__codelineno-0-2422"></a>
-<a id="__codelineno-0-2423" name="__codelineno-0-2423"></a>        <span class="c1"># --- RRF fusion ---</span>
-<a id="__codelineno-0-2424" name="__codelineno-0-2424"></a>        <span class="n">fuse_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-2425" name="__codelineno-0-2425"></a>        <span class="k">if</span> <span class="n">keyword_results</span><span class="p">:</span>
-<a id="__codelineno-0-2426" name="__codelineno-0-2426"></a>            <span class="n">fuse_kwargs</span><span class="p">[</span><span class="s2">"keyword"</span><span class="p">]</span> <span class="o">=</span> <span class="n">keyword_results</span>
-<a id="__codelineno-0-2427" name="__codelineno-0-2427"></a>        <span class="k">if</span> <span class="n">vector_results</span><span class="p">:</span>
-<a id="__codelineno-0-2428" name="__codelineno-0-2428"></a>            <span class="n">fuse_kwargs</span><span class="p">[</span><span class="s2">"vector"</span><span class="p">]</span> <span class="o">=</span> <span class="n">vector_results</span>
-<a id="__codelineno-0-2429" name="__codelineno-0-2429"></a>        <span class="k">if</span> <span class="n">graph_results</span><span class="p">:</span>
-<a id="__codelineno-0-2430" name="__codelineno-0-2430"></a>            <span class="n">fuse_kwargs</span><span class="p">[</span><span class="s2">"graph"</span><span class="p">]</span> <span class="o">=</span> <span class="n">graph_results</span>
-<a id="__codelineno-0-2431" name="__codelineno-0-2431"></a>
-<a id="__codelineno-0-2432" name="__codelineno-0-2432"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2433" name="__codelineno-0-2433"></a>            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-0-2434" name="__codelineno-0-2434"></a>            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
-<a id="__codelineno-0-2435" name="__codelineno-0-2435"></a>                <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2436" name="__codelineno-0-2436"></a>            <span class="n">fusion_weights</span> <span class="o">=</span> <span class="n">_fusion_weights</span><span class="p">(</span><span class="n">query_text</span><span class="p">)</span>
-<a id="__codelineno-0-2437" name="__codelineno-0-2437"></a>            <span class="n">fusion_weights</span><span class="p">[</span><span class="s2">"graph"</span><span class="p">]</span> <span class="o">=</span> <span class="n">FUSION_WEIGHT_GRAPH</span>
-<a id="__codelineno-0-2438" name="__codelineno-0-2438"></a>            <span class="n">candidates</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span>
-<a id="__codelineno-0-2439" name="__codelineno-0-2439"></a>                <span class="n">k</span><span class="o">=</span><span class="n">RRF_K</span><span class="p">,</span>
-<a id="__codelineno-0-2440" name="__codelineno-0-2440"></a>                <span class="n">limit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_fetch_limit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_items</span> <span class="o">*</span> <span class="mi">2</span><span class="p">),</span>
-<a id="__codelineno-0-2441" name="__codelineno-0-2441"></a>                <span class="n">weights</span><span class="o">=</span><span class="n">fusion_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2442" name="__codelineno-0-2442"></a>                <span class="o">**</span><span class="n">fuse_kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-2443" name="__codelineno-0-2443"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2444" name="__codelineno-0-2444"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2445" name="__codelineno-0-2445"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"RRF fusion failed, falling back to composite: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2446" name="__codelineno-0-2446"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pull_path_composite</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2447" name="__codelineno-0-2447"></a>
-<a id="__codelineno-0-2448" name="__codelineno-0-2448"></a>        <span class="n">all_candidates</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2449" name="__codelineno-0-2449"></a>        <span class="k">return</span> <span class="n">candidates</span><span class="p">,</span> <span class="n">all_candidates</span>
-<a id="__codelineno-0-2450" name="__codelineno-0-2450"></a>
-<a id="__codelineno-0-2451" name="__codelineno-0-2451"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_push_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filters</span><span class="p">):</span>
-<a id="__codelineno-0-2452" name="__codelineno-0-2452"></a><span class="w">        </span><span class="sd">"""Execute push-path retrieval via CyclicDecayField.</span>
-<a id="__codelineno-0-2453" name="__codelineno-0-2453"></a>
-<a id="__codelineno-0-2454" name="__codelineno-0-2454"></a><span class="sd">        Uses composite_score with min_score for threshold filtering instead</span>
-<a id="__codelineno-0-2455" name="__codelineno-0-2455"></a><span class="sd">        of top_by_decay, since composite_score supports server-side score</span>
-<a id="__codelineno-0-2456" name="__codelineno-0-2456"></a><span class="sd">        thresholds via ZREVRANGEBYSCORE.</span>
-<a id="__codelineno-0-2457" name="__codelineno-0-2457"></a><span class="sd">        """</span>
-<a id="__codelineno-0-2458" name="__codelineno-0-2458"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2459" name="__codelineno-0-2459"></a>            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-0-2460" name="__codelineno-0-2460"></a>            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
-<a id="__codelineno-0-2461" name="__codelineno-0-2461"></a>                <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2462" name="__codelineno-0-2462"></a>
-<a id="__codelineno-0-2463" name="__codelineno-0-2463"></a>            <span class="c1"># Build weights using only the CyclicDecayField for push-path scoring</span>
-<a id="__codelineno-0-2464" name="__codelineno-0-2464"></a>            <span class="n">push_weights</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_cyclic_decay_field_name</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
-<a id="__codelineno-0-2465" name="__codelineno-0-2465"></a>
-<a id="__codelineno-0-2466" name="__codelineno-0-2466"></a>            <span class="n">results</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
-<a id="__codelineno-0-2467" name="__codelineno-0-2467"></a>                <span class="n">indexes</span><span class="o">=</span><span class="n">push_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2468" name="__codelineno-0-2468"></a>                <span class="n">limit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_fetch_limit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_items</span><span class="p">),</span>
-<a id="__codelineno-0-2469" name="__codelineno-0-2469"></a>                <span class="n">min_score</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-2470" name="__codelineno-0-2470"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-2471" name="__codelineno-0-2471"></a>                <span class="p">),</span>
-<a id="__codelineno-0-2472" name="__codelineno-0-2472"></a>                <span class="n">as_of</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_assembly_as_of</span><span class="p">,</span>
-<a id="__codelineno-0-2473" name="__codelineno-0-2473"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2474" name="__codelineno-0-2474"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2475" name="__codelineno-0-2475"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Push path failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2476" name="__codelineno-0-2476"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-2477" name="__codelineno-0-2477"></a>
-<a id="__codelineno-0-2478" name="__codelineno-0-2478"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-0-2479" name="__codelineno-0-2479"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"Push path: 0 records above surfacing threshold"</span><span class="p">)</span>
-<a id="__codelineno-0-2480" name="__codelineno-0-2480"></a>
-<a id="__codelineno-0-2481" name="__codelineno-0-2481"></a>        <span class="k">return</span> <span class="n">results</span>
-<a id="__codelineno-0-2482" name="__codelineno-0-2482"></a>
-<a id="__codelineno-0-2483" name="__codelineno-0-2483"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_post_effects</span><span class="p">(</span>
-<a id="__codelineno-0-2484" name="__codelineno-0-2484"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">selected</span><span class="p">,</span> <span class="n">pull_keys</span><span class="p">,</span> <span class="n">push_keys</span><span class="p">,</span> <span class="n">all_pull_candidates</span><span class="p">,</span> <span class="n">agent_id</span>
-<a id="__codelineno-0-2485" name="__codelineno-0-2485"></a>    <span class="p">):</span>
-<a id="__codelineno-0-2486" name="__codelineno-0-2486"></a><span class="w">        </span><span class="sd">"""Apply post-retrieval effects using Redis pipeline."""</span>
-<a id="__codelineno-0-2487" name="__codelineno-0-2487"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">selected</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">all_pull_candidates</span><span class="p">:</span>
-<a id="__codelineno-0-2488" name="__codelineno-0-2488"></a>            <span class="k">return</span>
-<a id="__codelineno-0-2489" name="__codelineno-0-2489"></a>
-<a id="__codelineno-0-2490" name="__codelineno-0-2490"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-2398" name="__codelineno-0-2398"></a>                <span class="n">_q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
+<a id="__codelineno-0-2399" name="__codelineno-0-2399"></a>                <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+<a id="__codelineno-0-2400" name="__codelineno-0-2400"></a>                    <span class="n">_qb</span> <span class="o">=</span> <span class="n">_q</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2401" name="__codelineno-0-2401"></a>                <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-2402" name="__codelineno-0-2402"></a>                    <span class="n">_qb</span> <span class="o">=</span> <span class="n">_QueryBuilder</span><span class="p">(</span><span class="n">_q</span><span class="p">)</span>
+<a id="__codelineno-0-2403" name="__codelineno-0-2403"></a>                <span class="n">vector_results</span> <span class="o">=</span> <span class="n">_qb</span><span class="o">.</span><span class="n">_get_vector_scores</span><span class="p">(</span>
+<a id="__codelineno-0-2404" name="__codelineno-0-2404"></a>                    <span class="n">query_text</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">candidate_limit</span>
+<a id="__codelineno-0-2405" name="__codelineno-0-2405"></a>                <span class="p">)</span>
+<a id="__codelineno-0-2406" name="__codelineno-0-2406"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2407" name="__codelineno-0-2407"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Vector search failed in hybrid path: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2408" name="__codelineno-0-2408"></a>
+<a id="__codelineno-0-2409" name="__codelineno-0-2409"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">keyword_results</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">vector_results</span><span class="p">:</span>
+<a id="__codelineno-0-2410" name="__codelineno-0-2410"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-2411" name="__codelineno-0-2411"></a>                <span class="s2">"</span><span class="si">%s</span><span class="s2"> retrieval for </span><span class="si">%s</span><span class="s2"> collected no query signal — BM25 returned 0 "</span>
+<a id="__codelineno-0-2412" name="__codelineno-0-2412"></a>                <span class="s2">"hits</span><span class="si">%s</span><span class="s2"> (query has no lexical overlap OR the BM25 index is empty; "</span>
+<a id="__codelineno-0-2413" name="__codelineno-0-2413"></a>                <span class="s2">"re-save existing records to backfill the index — see the recipe "</span>
+<a id="__codelineno-0-2414" name="__codelineno-0-2414"></a>                <span class="s2">"reindex caveat). Falling back to composite (query-blind)."</span><span class="p">,</span>
+<a id="__codelineno-0-2415" name="__codelineno-0-2415"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_effective_mode</span><span class="p">,</span>
+<a id="__codelineno-0-2416" name="__codelineno-0-2416"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-2417" name="__codelineno-0-2417"></a>                <span class="p">(</span>
+<a id="__codelineno-0-2418" name="__codelineno-0-2418"></a>                    <span class="s2">" and the vector search returned none"</span>
+<a id="__codelineno-0-2419" name="__codelineno-0-2419"></a>                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embedding_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-2420" name="__codelineno-0-2420"></a>                    <span class="k">else</span> <span class="s2">""</span>
+<a id="__codelineno-0-2421" name="__codelineno-0-2421"></a>                <span class="p">),</span>
+<a id="__codelineno-0-2422" name="__codelineno-0-2422"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2423" name="__codelineno-0-2423"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pull_path_composite</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2424" name="__codelineno-0-2424"></a>
+<a id="__codelineno-0-2425" name="__codelineno-0-2425"></a>        <span class="c1"># --- Graph propagation (+ optional RelationshipField traversal,</span>
+<a id="__codelineno-0-2426" name="__codelineno-0-2426"></a>        <span class="c1"># #462), seeds from BM25 top results ---</span>
+<a id="__codelineno-0-2427" name="__codelineno-0-2427"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-0-2428" name="__codelineno-0-2428"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_co_occurrence_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-2429" name="__codelineno-0-2429"></a>            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_traversal_relationship_fields</span>
+<a id="__codelineno-0-2430" name="__codelineno-0-2430"></a>        <span class="p">)</span> <span class="ow">and</span> <span class="n">keyword_results</span><span class="p">:</span>
+<a id="__codelineno-0-2431" name="__codelineno-0-2431"></a>            <span class="n">seed_pks</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">keyword_results</span><span class="p">[:</span><span class="mi">5</span><span class="p">]]</span>
+<a id="__codelineno-0-2432" name="__codelineno-0-2432"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2433" name="__codelineno-0-2433"></a>                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_traversal_relationship_fields</span><span class="p">:</span>
+<a id="__codelineno-0-2434" name="__codelineno-0-2434"></a>                    <span class="kn">from</span><span class="w"> </span><span class="nn">.graph_traversal</span><span class="w"> </span><span class="kn">import</span> <span class="n">traverse</span> <span class="k">as</span> <span class="n">_graph_traverse</span>
+<a id="__codelineno-0-2435" name="__codelineno-0-2435"></a>
+<a id="__codelineno-0-2436" name="__codelineno-0-2436"></a>                    <span class="n">graph_results</span> <span class="o">=</span> <span class="n">_graph_traverse</span><span class="p">(</span>
+<a id="__codelineno-0-2437" name="__codelineno-0-2437"></a>                        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2438" name="__codelineno-0-2438"></a>                        <span class="n">seed_pks</span><span class="p">,</span>
+<a id="__codelineno-0-2439" name="__codelineno-0-2439"></a>                        <span class="n">co_occurrence_field</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_co_occurrence_field</span><span class="p">,</span>
+<a id="__codelineno-0-2440" name="__codelineno-0-2440"></a>                        <span class="n">relationship_field_names</span><span class="o">=</span><span class="p">(</span>
+<a id="__codelineno-0-2441" name="__codelineno-0-2441"></a>                            <span class="bp">self</span><span class="o">.</span><span class="n">_graph_traversal_relationship_fields</span>
+<a id="__codelineno-0-2442" name="__codelineno-0-2442"></a>                        <span class="p">),</span>
+<a id="__codelineno-0-2443" name="__codelineno-0-2443"></a>                        <span class="n">depth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">propagation_depth</span><span class="p">,</span>
+<a id="__codelineno-0-2444" name="__codelineno-0-2444"></a>                        <span class="n">decay_per_hop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-2445" name="__codelineno-0-2445"></a>                        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-0-2446" name="__codelineno-0-2446"></a>                        <span class="n">confidence_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2447" name="__codelineno-0-2447"></a>                        <span class="n">decay_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_decaying_sorted_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2448" name="__codelineno-0-2448"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-2449" name="__codelineno-0-2449"></a>                <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-2450" name="__codelineno-0-2450"></a>                    <span class="n">propagated</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_co_occurrence_field</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span>
+<a id="__codelineno-0-2451" name="__codelineno-0-2451"></a>                        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2452" name="__codelineno-0-2452"></a>                        <span class="n">seed_pks</span><span class="p">,</span>
+<a id="__codelineno-0-2453" name="__codelineno-0-2453"></a>                        <span class="n">depth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">propagation_depth</span><span class="p">,</span>
+<a id="__codelineno-0-2454" name="__codelineno-0-2454"></a>                        <span class="n">decay_per_hop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-2455" name="__codelineno-0-2455"></a>                        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-0-2456" name="__codelineno-0-2456"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-2457" name="__codelineno-0-2457"></a>                    <span class="n">graph_results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">propagated</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+<a id="__codelineno-0-2458" name="__codelineno-0-2458"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2459" name="__codelineno-0-2459"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Graph propagation failed in hybrid path: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2460" name="__codelineno-0-2460"></a>
+<a id="__codelineno-0-2461" name="__codelineno-0-2461"></a>        <span class="c1"># --- RRF fusion ---</span>
+<a id="__codelineno-0-2462" name="__codelineno-0-2462"></a>        <span class="n">fuse_kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-2463" name="__codelineno-0-2463"></a>        <span class="k">if</span> <span class="n">keyword_results</span><span class="p">:</span>
+<a id="__codelineno-0-2464" name="__codelineno-0-2464"></a>            <span class="n">fuse_kwargs</span><span class="p">[</span><span class="s2">"keyword"</span><span class="p">]</span> <span class="o">=</span> <span class="n">keyword_results</span>
+<a id="__codelineno-0-2465" name="__codelineno-0-2465"></a>        <span class="k">if</span> <span class="n">vector_results</span><span class="p">:</span>
+<a id="__codelineno-0-2466" name="__codelineno-0-2466"></a>            <span class="n">fuse_kwargs</span><span class="p">[</span><span class="s2">"vector"</span><span class="p">]</span> <span class="o">=</span> <span class="n">vector_results</span>
+<a id="__codelineno-0-2467" name="__codelineno-0-2467"></a>        <span class="k">if</span> <span class="n">graph_results</span><span class="p">:</span>
+<a id="__codelineno-0-2468" name="__codelineno-0-2468"></a>            <span class="n">fuse_kwargs</span><span class="p">[</span><span class="s2">"graph"</span><span class="p">]</span> <span class="o">=</span> <span class="n">graph_results</span>
+<a id="__codelineno-0-2469" name="__codelineno-0-2469"></a>
+<a id="__codelineno-0-2470" name="__codelineno-0-2470"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2471" name="__codelineno-0-2471"></a>            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
+<a id="__codelineno-0-2472" name="__codelineno-0-2472"></a>            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+<a id="__codelineno-0-2473" name="__codelineno-0-2473"></a>                <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2474" name="__codelineno-0-2474"></a>            <span class="n">fusion_weights</span> <span class="o">=</span> <span class="n">_fusion_weights</span><span class="p">(</span><span class="n">query_text</span><span class="p">)</span>
+<a id="__codelineno-0-2475" name="__codelineno-0-2475"></a>            <span class="n">fusion_weights</span><span class="p">[</span><span class="s2">"graph"</span><span class="p">]</span> <span class="o">=</span> <span class="n">FUSION_WEIGHT_GRAPH</span>
+<a id="__codelineno-0-2476" name="__codelineno-0-2476"></a>            <span class="n">candidates</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span>
+<a id="__codelineno-0-2477" name="__codelineno-0-2477"></a>                <span class="n">k</span><span class="o">=</span><span class="n">RRF_K</span><span class="p">,</span>
+<a id="__codelineno-0-2478" name="__codelineno-0-2478"></a>                <span class="n">limit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_fetch_limit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_items</span> <span class="o">*</span> <span class="mi">2</span><span class="p">),</span>
+<a id="__codelineno-0-2479" name="__codelineno-0-2479"></a>                <span class="n">weights</span><span class="o">=</span><span class="n">fusion_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2480" name="__codelineno-0-2480"></a>                <span class="o">**</span><span class="n">fuse_kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-2481" name="__codelineno-0-2481"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2482" name="__codelineno-0-2482"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2483" name="__codelineno-0-2483"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"RRF fusion failed, falling back to composite: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2484" name="__codelineno-0-2484"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pull_path_composite</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2485" name="__codelineno-0-2485"></a>
+<a id="__codelineno-0-2486" name="__codelineno-0-2486"></a>        <span class="n">all_candidates</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2487" name="__codelineno-0-2487"></a>        <span class="k">return</span> <span class="n">candidates</span><span class="p">,</span> <span class="n">all_candidates</span>
+<a id="__codelineno-0-2488" name="__codelineno-0-2488"></a>
+<a id="__codelineno-0-2489" name="__codelineno-0-2489"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_push_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filters</span><span class="p">):</span>
+<a id="__codelineno-0-2490" name="__codelineno-0-2490"></a><span class="w">        </span><span class="sd">"""Execute push-path retrieval via CyclicDecayField.</span>
 <a id="__codelineno-0-2491" name="__codelineno-0-2491"></a>
-<a id="__codelineno-0-2492" name="__codelineno-0-2492"></a>        <span class="c1"># on_read for pull-path selected records</span>
-<a id="__codelineno-0-2493" name="__codelineno-0-2493"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">selected</span><span class="p">:</span>
-<a id="__codelineno-0-2494" name="__codelineno-0-2494"></a>            <span class="k">if</span> <span class="n">_get_key</span><span class="p">(</span><span class="n">record</span><span class="p">)</span> <span class="ow">in</span> <span class="n">pull_keys</span><span class="p">:</span>
-<a id="__codelineno-0-2495" name="__codelineno-0-2495"></a>                <span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_read</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
-<a id="__codelineno-0-2496" name="__codelineno-0-2496"></a>
-<a id="__codelineno-0-2497" name="__codelineno-0-2497"></a>        <span class="c1"># on_surfaced for push-path selected records</span>
-<a id="__codelineno-0-2498" name="__codelineno-0-2498"></a>        <span class="n">proactive_records</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">selected</span> <span class="k">if</span> <span class="n">_get_key</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="ow">in</span> <span class="n">push_keys</span><span class="p">]</span>
-<a id="__codelineno-0-2499" name="__codelineno-0-2499"></a>        <span class="k">if</span> <span class="n">proactive_records</span><span class="p">:</span>
-<a id="__codelineno-0-2500" name="__codelineno-0-2500"></a>            <span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_surfaced</span><span class="p">(</span>
-<a id="__codelineno-0-2501" name="__codelineno-0-2501"></a>                <span class="n">proactive_records</span><span class="p">,</span>
-<a id="__codelineno-0-2502" name="__codelineno-0-2502"></a>                <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">,</span>
-<a id="__codelineno-0-2503" name="__codelineno-0-2503"></a>                <span class="n">partition</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-2504" name="__codelineno-0-2504"></a>                <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span>
-<a id="__codelineno-0-2505" name="__codelineno-0-2505"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2506" name="__codelineno-0-2506"></a>
-<a id="__codelineno-0-2507" name="__codelineno-0-2507"></a>        <span class="c1"># Competitive suppression for non-selected pull candidates</span>
-<a id="__codelineno-0-2508" name="__codelineno-0-2508"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-2509" name="__codelineno-0-2509"></a>            <span class="n">selected_keys</span> <span class="o">=</span> <span class="p">{</span><span class="n">_get_key</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">selected</span><span class="p">}</span>
-<a id="__codelineno-0-2510" name="__codelineno-0-2510"></a>            <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="n">all_pull_candidates</span><span class="p">:</span>
-<a id="__codelineno-0-2511" name="__codelineno-0-2511"></a>                <span class="k">if</span> <span class="n">_get_key</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">selected_keys</span><span class="p">:</span>
-<a id="__codelineno-0-2512" name="__codelineno-0-2512"></a>                    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2513" name="__codelineno-0-2513"></a>                        <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span>
-<a id="__codelineno-0-2514" name="__codelineno-0-2514"></a>                            <span class="n">candidate</span><span class="p">,</span>
-<a id="__codelineno-0-2515" name="__codelineno-0-2515"></a>                            <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-2516" name="__codelineno-0-2516"></a>                            <span class="n">signal</span><span class="o">=</span><span class="n">COMPETITIVE_SUPPRESSION_SIGNAL</span><span class="p">,</span>
-<a id="__codelineno-0-2517" name="__codelineno-0-2517"></a>                        <span class="p">)</span>
-<a id="__codelineno-0-2518" name="__codelineno-0-2518"></a>                    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
-<a id="__codelineno-0-2519" name="__codelineno-0-2519"></a>                        <span class="k">pass</span>  <span class="c1"># Model may not have confidence on this instance</span>
+<a id="__codelineno-0-2492" name="__codelineno-0-2492"></a><span class="sd">        Uses composite_score with min_score for threshold filtering instead</span>
+<a id="__codelineno-0-2493" name="__codelineno-0-2493"></a><span class="sd">        of top_by_decay, since composite_score supports server-side score</span>
+<a id="__codelineno-0-2494" name="__codelineno-0-2494"></a><span class="sd">        thresholds via ZREVRANGEBYSCORE.</span>
+<a id="__codelineno-0-2495" name="__codelineno-0-2495"></a><span class="sd">        """</span>
+<a id="__codelineno-0-2496" name="__codelineno-0-2496"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2497" name="__codelineno-0-2497"></a>            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
+<a id="__codelineno-0-2498" name="__codelineno-0-2498"></a>            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+<a id="__codelineno-0-2499" name="__codelineno-0-2499"></a>                <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2500" name="__codelineno-0-2500"></a>
+<a id="__codelineno-0-2501" name="__codelineno-0-2501"></a>            <span class="c1"># Build weights using only the CyclicDecayField for push-path scoring</span>
+<a id="__codelineno-0-2502" name="__codelineno-0-2502"></a>            <span class="n">push_weights</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_cyclic_decay_field_name</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
+<a id="__codelineno-0-2503" name="__codelineno-0-2503"></a>
+<a id="__codelineno-0-2504" name="__codelineno-0-2504"></a>            <span class="n">results</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
+<a id="__codelineno-0-2505" name="__codelineno-0-2505"></a>                <span class="n">indexes</span><span class="o">=</span><span class="n">push_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2506" name="__codelineno-0-2506"></a>                <span class="n">limit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_fetch_limit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_items</span><span class="p">),</span>
+<a id="__codelineno-0-2507" name="__codelineno-0-2507"></a>                <span class="n">min_score</span><span class="o">=</span><span class="p">(</span>
+<a id="__codelineno-0-2508" name="__codelineno-0-2508"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-2509" name="__codelineno-0-2509"></a>                <span class="p">),</span>
+<a id="__codelineno-0-2510" name="__codelineno-0-2510"></a>                <span class="n">as_of</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_assembly_as_of</span><span class="p">,</span>
+<a id="__codelineno-0-2511" name="__codelineno-0-2511"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2512" name="__codelineno-0-2512"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2513" name="__codelineno-0-2513"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Push path failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2514" name="__codelineno-0-2514"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-2515" name="__codelineno-0-2515"></a>
+<a id="__codelineno-0-2516" name="__codelineno-0-2516"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
+<a id="__codelineno-0-2517" name="__codelineno-0-2517"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"Push path: 0 records above surfacing threshold"</span><span class="p">)</span>
+<a id="__codelineno-0-2518" name="__codelineno-0-2518"></a>
+<a id="__codelineno-0-2519" name="__codelineno-0-2519"></a>        <span class="k">return</span> <span class="n">results</span>
 <a id="__codelineno-0-2520" name="__codelineno-0-2520"></a>
-<a id="__codelineno-0-2521" name="__codelineno-0-2521"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2522" name="__codelineno-0-2522"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-2523" name="__codelineno-0-2523"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2524" name="__codelineno-0-2524"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Post-effects pipeline failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2525" name="__codelineno-0-2525"></a>
-<a id="__codelineno-0-2526" name="__codelineno-0-2526"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-2527" name="__codelineno-0-2527"></a>    <span class="c1"># Metacognitive layer: RetrievalQuality helpers + public assess()</span>
-<a id="__codelineno-0-2528" name="__codelineno-0-2528"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-2521" name="__codelineno-0-2521"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_post_effects</span><span class="p">(</span>
+<a id="__codelineno-0-2522" name="__codelineno-0-2522"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">selected</span><span class="p">,</span> <span class="n">pull_keys</span><span class="p">,</span> <span class="n">push_keys</span><span class="p">,</span> <span class="n">all_pull_candidates</span><span class="p">,</span> <span class="n">agent_id</span>
+<a id="__codelineno-0-2523" name="__codelineno-0-2523"></a>    <span class="p">):</span>
+<a id="__codelineno-0-2524" name="__codelineno-0-2524"></a><span class="w">        </span><span class="sd">"""Apply post-retrieval effects using Redis pipeline."""</span>
+<a id="__codelineno-0-2525" name="__codelineno-0-2525"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">selected</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">all_pull_candidates</span><span class="p">:</span>
+<a id="__codelineno-0-2526" name="__codelineno-0-2526"></a>            <span class="k">return</span>
+<a id="__codelineno-0-2527" name="__codelineno-0-2527"></a>
+<a id="__codelineno-0-2528" name="__codelineno-0-2528"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
 <a id="__codelineno-0-2529" name="__codelineno-0-2529"></a>
-<a id="__codelineno-0-2530" name="__codelineno-0-2530"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_cue_familiarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cue_value</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-2531" name="__codelineno-0-2531"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_cue_familiarity`.</span>
-<a id="__codelineno-0-2532" name="__codelineno-0-2532"></a>
-<a id="__codelineno-0-2533" name="__codelineno-0-2533"></a><span class="sd">        Introspects ``self`` exactly once and forwards explicit kwargs so</span>
-<a id="__codelineno-0-2534" name="__codelineno-0-2534"></a><span class="sd">        the pure helper is the single source of truth (issue #370 C2).</span>
-<a id="__codelineno-0-2535" name="__codelineno-0-2535"></a><span class="sd">        """</span>
-<a id="__codelineno-0-2536" name="__codelineno-0-2536"></a>        <span class="k">return</span> <span class="n">_cue_familiarity</span><span class="p">(</span>
-<a id="__codelineno-0-2537" name="__codelineno-0-2537"></a>            <span class="n">cue_value</span><span class="p">,</span>
-<a id="__codelineno-0-2538" name="__codelineno-0-2538"></a>            <span class="n">existence_filter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="p">,</span>
-<a id="__codelineno-0-2539" name="__codelineno-0-2539"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2540" name="__codelineno-0-2540"></a>        <span class="p">)</span>
-<a id="__codelineno-0-2541" name="__codelineno-0-2541"></a>
-<a id="__codelineno-0-2542" name="__codelineno-0-2542"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_fok</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="p">,</span> <span class="n">pull_candidates</span><span class="p">):</span>
-<a id="__codelineno-0-2543" name="__codelineno-0-2543"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_compute_fok`."""</span>
-<a id="__codelineno-0-2544" name="__codelineno-0-2544"></a>        <span class="k">return</span> <span class="n">_compute_fok</span><span class="p">(</span>
-<a id="__codelineno-0-2545" name="__codelineno-0-2545"></a>            <span class="n">query_cues</span><span class="p">,</span>
-<a id="__codelineno-0-2546" name="__codelineno-0-2546"></a>            <span class="n">pull_candidates</span><span class="p">,</span>
-<a id="__codelineno-0-2547" name="__codelineno-0-2547"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2548" name="__codelineno-0-2548"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2549" name="__codelineno-0-2549"></a>            <span class="n">max_items</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_items</span><span class="p">,</span>
-<a id="__codelineno-0-2550" name="__codelineno-0-2550"></a>            <span class="n">surfacing_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span><span class="p">,</span>
-<a id="__codelineno-0-2551" name="__codelineno-0-2551"></a>            <span class="n">existence_filter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="p">,</span>
-<a id="__codelineno-0-2552" name="__codelineno-0-2552"></a>        <span class="p">)</span>
-<a id="__codelineno-0-2553" name="__codelineno-0-2553"></a>
-<a id="__codelineno-0-2554" name="__codelineno-0-2554"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_score_proxy_for_records</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
-<a id="__codelineno-0-2555" name="__codelineno-0-2555"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level</span>
-<a id="__codelineno-0-2556" name="__codelineno-0-2556"></a><span class="sd">        :func:`_score_proxy_for_records`.</span>
-<a id="__codelineno-0-2557" name="__codelineno-0-2557"></a><span class="sd">        """</span>
-<a id="__codelineno-0-2558" name="__codelineno-0-2558"></a>        <span class="k">return</span> <span class="n">_score_proxy_for_records</span><span class="p">(</span>
-<a id="__codelineno-0-2559" name="__codelineno-0-2559"></a>            <span class="n">records</span><span class="p">,</span>
-<a id="__codelineno-0-2560" name="__codelineno-0-2560"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2561" name="__codelineno-0-2561"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2562" name="__codelineno-0-2562"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2530" name="__codelineno-0-2530"></a>        <span class="c1"># on_read for pull-path selected records</span>
+<a id="__codelineno-0-2531" name="__codelineno-0-2531"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">selected</span><span class="p">:</span>
+<a id="__codelineno-0-2532" name="__codelineno-0-2532"></a>            <span class="k">if</span> <span class="n">_get_key</span><span class="p">(</span><span class="n">record</span><span class="p">)</span> <span class="ow">in</span> <span class="n">pull_keys</span><span class="p">:</span>
+<a id="__codelineno-0-2533" name="__codelineno-0-2533"></a>                <span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_read</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
+<a id="__codelineno-0-2534" name="__codelineno-0-2534"></a>
+<a id="__codelineno-0-2535" name="__codelineno-0-2535"></a>        <span class="c1"># on_surfaced for push-path selected records</span>
+<a id="__codelineno-0-2536" name="__codelineno-0-2536"></a>        <span class="n">proactive_records</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">selected</span> <span class="k">if</span> <span class="n">_get_key</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="ow">in</span> <span class="n">push_keys</span><span class="p">]</span>
+<a id="__codelineno-0-2537" name="__codelineno-0-2537"></a>        <span class="k">if</span> <span class="n">proactive_records</span><span class="p">:</span>
+<a id="__codelineno-0-2538" name="__codelineno-0-2538"></a>            <span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_surfaced</span><span class="p">(</span>
+<a id="__codelineno-0-2539" name="__codelineno-0-2539"></a>                <span class="n">proactive_records</span><span class="p">,</span>
+<a id="__codelineno-0-2540" name="__codelineno-0-2540"></a>                <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">,</span>
+<a id="__codelineno-0-2541" name="__codelineno-0-2541"></a>                <span class="n">partition</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="__codelineno-0-2542" name="__codelineno-0-2542"></a>                <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span>
+<a id="__codelineno-0-2543" name="__codelineno-0-2543"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2544" name="__codelineno-0-2544"></a>
+<a id="__codelineno-0-2545" name="__codelineno-0-2545"></a>        <span class="c1"># Competitive suppression for non-selected pull candidates</span>
+<a id="__codelineno-0-2546" name="__codelineno-0-2546"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-2547" name="__codelineno-0-2547"></a>            <span class="n">selected_keys</span> <span class="o">=</span> <span class="p">{</span><span class="n">_get_key</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">selected</span><span class="p">}</span>
+<a id="__codelineno-0-2548" name="__codelineno-0-2548"></a>            <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="n">all_pull_candidates</span><span class="p">:</span>
+<a id="__codelineno-0-2549" name="__codelineno-0-2549"></a>                <span class="k">if</span> <span class="n">_get_key</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">selected_keys</span><span class="p">:</span>
+<a id="__codelineno-0-2550" name="__codelineno-0-2550"></a>                    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2551" name="__codelineno-0-2551"></a>                        <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span>
+<a id="__codelineno-0-2552" name="__codelineno-0-2552"></a>                            <span class="n">candidate</span><span class="p">,</span>
+<a id="__codelineno-0-2553" name="__codelineno-0-2553"></a>                            <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2554" name="__codelineno-0-2554"></a>                            <span class="n">signal</span><span class="o">=</span><span class="n">COMPETITIVE_SUPPRESSION_SIGNAL</span><span class="p">,</span>
+<a id="__codelineno-0-2555" name="__codelineno-0-2555"></a>                        <span class="p">)</span>
+<a id="__codelineno-0-2556" name="__codelineno-0-2556"></a>                    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+<a id="__codelineno-0-2557" name="__codelineno-0-2557"></a>                        <span class="k">pass</span>  <span class="c1"># Model may not have confidence on this instance</span>
+<a id="__codelineno-0-2558" name="__codelineno-0-2558"></a>
+<a id="__codelineno-0-2559" name="__codelineno-0-2559"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2560" name="__codelineno-0-2560"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-2561" name="__codelineno-0-2561"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2562" name="__codelineno-0-2562"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"Post-effects pipeline failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 <a id="__codelineno-0-2563" name="__codelineno-0-2563"></a>
-<a id="__codelineno-0-2564" name="__codelineno-0-2564"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_score_spread</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
-<a id="__codelineno-0-2565" name="__codelineno-0-2565"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level</span>
-<a id="__codelineno-0-2566" name="__codelineno-0-2566"></a><span class="sd">        :func:`_compute_score_spread`.</span>
-<a id="__codelineno-0-2567" name="__codelineno-0-2567"></a><span class="sd">        """</span>
-<a id="__codelineno-0-2568" name="__codelineno-0-2568"></a>        <span class="k">return</span> <span class="n">_compute_score_spread</span><span class="p">(</span>
-<a id="__codelineno-0-2569" name="__codelineno-0-2569"></a>            <span class="n">records</span><span class="p">,</span>
-<a id="__codelineno-0-2570" name="__codelineno-0-2570"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2571" name="__codelineno-0-2571"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2572" name="__codelineno-0-2572"></a>        <span class="p">)</span>
-<a id="__codelineno-0-2573" name="__codelineno-0-2573"></a>
-<a id="__codelineno-0-2574" name="__codelineno-0-2574"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_avg_confidence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
-<a id="__codelineno-0-2575" name="__codelineno-0-2575"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_avg_confidence`."""</span>
-<a id="__codelineno-0-2576" name="__codelineno-0-2576"></a>        <span class="k">return</span> <span class="n">_avg_confidence</span><span class="p">(</span>
-<a id="__codelineno-0-2577" name="__codelineno-0-2577"></a>            <span class="n">records</span><span class="p">,</span>
-<a id="__codelineno-0-2578" name="__codelineno-0-2578"></a>            <span class="n">confidence_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span><span class="p">,</span>
-<a id="__codelineno-0-2579" name="__codelineno-0-2579"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2580" name="__codelineno-0-2580"></a>        <span class="p">)</span>
-<a id="__codelineno-0-2581" name="__codelineno-0-2581"></a>
-<a id="__codelineno-0-2582" name="__codelineno-0-2582"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_staleness_ratio</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
-<a id="__codelineno-0-2583" name="__codelineno-0-2583"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_staleness_ratio`."""</span>
-<a id="__codelineno-0-2584" name="__codelineno-0-2584"></a>        <span class="k">return</span> <span class="n">_staleness_ratio</span><span class="p">(</span>
-<a id="__codelineno-0-2585" name="__codelineno-0-2585"></a>            <span class="n">records</span><span class="p">,</span>
-<a id="__codelineno-0-2586" name="__codelineno-0-2586"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-2587" name="__codelineno-0-2587"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2564" name="__codelineno-0-2564"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-2565" name="__codelineno-0-2565"></a>    <span class="c1"># Metacognitive layer: RetrievalQuality helpers + public assess()</span>
+<a id="__codelineno-0-2566" name="__codelineno-0-2566"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-2567" name="__codelineno-0-2567"></a>
+<a id="__codelineno-0-2568" name="__codelineno-0-2568"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_cue_familiarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cue_value</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-2569" name="__codelineno-0-2569"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_cue_familiarity`.</span>
+<a id="__codelineno-0-2570" name="__codelineno-0-2570"></a>
+<a id="__codelineno-0-2571" name="__codelineno-0-2571"></a><span class="sd">        Introspects ``self`` exactly once and forwards explicit kwargs so</span>
+<a id="__codelineno-0-2572" name="__codelineno-0-2572"></a><span class="sd">        the pure helper is the single source of truth (issue #370 C2).</span>
+<a id="__codelineno-0-2573" name="__codelineno-0-2573"></a><span class="sd">        """</span>
+<a id="__codelineno-0-2574" name="__codelineno-0-2574"></a>        <span class="k">return</span> <span class="n">_cue_familiarity</span><span class="p">(</span>
+<a id="__codelineno-0-2575" name="__codelineno-0-2575"></a>            <span class="n">cue_value</span><span class="p">,</span>
+<a id="__codelineno-0-2576" name="__codelineno-0-2576"></a>            <span class="n">existence_filter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="p">,</span>
+<a id="__codelineno-0-2577" name="__codelineno-0-2577"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2578" name="__codelineno-0-2578"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2579" name="__codelineno-0-2579"></a>
+<a id="__codelineno-0-2580" name="__codelineno-0-2580"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_fok</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="p">,</span> <span class="n">pull_candidates</span><span class="p">):</span>
+<a id="__codelineno-0-2581" name="__codelineno-0-2581"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_compute_fok`."""</span>
+<a id="__codelineno-0-2582" name="__codelineno-0-2582"></a>        <span class="k">return</span> <span class="n">_compute_fok</span><span class="p">(</span>
+<a id="__codelineno-0-2583" name="__codelineno-0-2583"></a>            <span class="n">query_cues</span><span class="p">,</span>
+<a id="__codelineno-0-2584" name="__codelineno-0-2584"></a>            <span class="n">pull_candidates</span><span class="p">,</span>
+<a id="__codelineno-0-2585" name="__codelineno-0-2585"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2586" name="__codelineno-0-2586"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2587" name="__codelineno-0-2587"></a>            <span class="n">max_items</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_items</span><span class="p">,</span>
 <a id="__codelineno-0-2588" name="__codelineno-0-2588"></a>            <span class="n">surfacing_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span><span class="p">,</span>
-<a id="__codelineno-0-2589" name="__codelineno-0-2589"></a>            <span class="n">decaying_sorted_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_decaying_sorted_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2589" name="__codelineno-0-2589"></a>            <span class="n">existence_filter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="p">,</span>
 <a id="__codelineno-0-2590" name="__codelineno-0-2590"></a>        <span class="p">)</span>
 <a id="__codelineno-0-2591" name="__codelineno-0-2591"></a>
-<a id="__codelineno-0-2592" name="__codelineno-0-2592"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_quality</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selected</span><span class="p">,</span> <span class="n">all_pull_candidates</span><span class="p">,</span> <span class="n">query_cues</span><span class="p">):</span>
-<a id="__codelineno-0-2593" name="__codelineno-0-2593"></a><span class="w">        </span><span class="sd">"""Assemble a RetrievalQuality over the selected records.</span>
-<a id="__codelineno-0-2594" name="__codelineno-0-2594"></a>
-<a id="__codelineno-0-2595" name="__codelineno-0-2595"></a><span class="sd">        Side-effect-free; reads from ConfidenceField, ExistenceFilter, and</span>
-<a id="__codelineno-0-2596" name="__codelineno-0-2596"></a><span class="sd">        sorted-set indexes via their existing public APIs. Intended for</span>
-<a id="__codelineno-0-2597" name="__codelineno-0-2597"></a><span class="sd">        calls at the end of ``assemble()`` (post selection) and from the</span>
-<a id="__codelineno-0-2598" name="__codelineno-0-2598"></a><span class="sd">        standalone ``assess()`` probe.</span>
-<a id="__codelineno-0-2599" name="__codelineno-0-2599"></a><span class="sd">        """</span>
-<a id="__codelineno-0-2600" name="__codelineno-0-2600"></a>        <span class="n">avg_conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_avg_confidence</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
-<a id="__codelineno-0-2601" name="__codelineno-0-2601"></a>        <span class="n">score_spread</span><span class="p">,</span> <span class="n">distribution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_score_spread</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
-<a id="__codelineno-0-2602" name="__codelineno-0-2602"></a>        <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">all_pull_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2603" name="__codelineno-0-2603"></a>        <span class="n">staleness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staleness_ratio</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
-<a id="__codelineno-0-2604" name="__codelineno-0-2604"></a>        <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
-<a id="__codelineno-0-2605" name="__codelineno-0-2605"></a>            <span class="n">avg_confidence</span><span class="o">=</span><span class="n">avg_conf</span><span class="p">,</span>
-<a id="__codelineno-0-2606" name="__codelineno-0-2606"></a>            <span class="n">score_spread</span><span class="o">=</span><span class="n">score_spread</span><span class="p">,</span>
-<a id="__codelineno-0-2607" name="__codelineno-0-2607"></a>            <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
-<a id="__codelineno-0-2608" name="__codelineno-0-2608"></a>            <span class="n">staleness_ratio</span><span class="o">=</span><span class="n">staleness</span><span class="p">,</span>
-<a id="__codelineno-0-2609" name="__codelineno-0-2609"></a>            <span class="n">score_distribution</span><span class="o">=</span><span class="n">distribution</span><span class="p">,</span>
-<a id="__codelineno-0-2610" name="__codelineno-0-2610"></a>            <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
-<a id="__codelineno-0-2611" name="__codelineno-0-2611"></a>        <span class="p">)</span>
-<a id="__codelineno-0-2612" name="__codelineno-0-2612"></a>
-<a id="__codelineno-0-2613" name="__codelineno-0-2613"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">partition_filters</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">probe_limit</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-2614" name="__codelineno-0-2614"></a><span class="w">        </span><span class="sd">"""Probe retrieval quality without running the full pipeline.</span>
-<a id="__codelineno-0-2615" name="__codelineno-0-2615"></a>
-<a id="__codelineno-0-2616" name="__codelineno-0-2616"></a><span class="sd">        Runs a cheap pre-retrieval check: ExistenceFilter lookups for</span>
-<a id="__codelineno-0-2617" name="__codelineno-0-2617"></a><span class="sd">        cue_familiarity + a single low-limit composite_score probe to</span>
-<a id="__codelineno-0-2618" name="__codelineno-0-2618"></a><span class="sd">        gather pull candidates for FOK computation. Does NOT run</span>
-<a id="__codelineno-0-2619" name="__codelineno-0-2619"></a><span class="sd">        CoOccurrence propagation, does NOT run the push path, does NOT</span>
-<a id="__codelineno-0-2620" name="__codelineno-0-2620"></a><span class="sd">        apply post-effects.</span>
-<a id="__codelineno-0-2621" name="__codelineno-0-2621"></a>
-<a id="__codelineno-0-2622" name="__codelineno-0-2622"></a><span class="sd">        Intended use: call ``assess()`` before ``assemble()`` to decide</span>
-<a id="__codelineno-0-2623" name="__codelineno-0-2623"></a><span class="sd">        whether the full retrieval is worth the round-trip cost. When</span>
-<a id="__codelineno-0-2624" name="__codelineno-0-2624"></a><span class="sd">        ``assess().fok_score &lt; some_threshold``, the agent can skip the</span>
-<a id="__codelineno-0-2625" name="__codelineno-0-2625"></a><span class="sd">        retrieval entirely and widen the cue or caveat its answer.</span>
-<a id="__codelineno-0-2626" name="__codelineno-0-2626"></a>
-<a id="__codelineno-0-2627" name="__codelineno-0-2627"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-2628" name="__codelineno-0-2628"></a><span class="sd">            query_cues: Optional dict of query cues. When empty, all</span>
-<a id="__codelineno-0-2629" name="__codelineno-0-2629"></a><span class="sd">                metrics default to 0.0 with a logged warning.</span>
-<a id="__codelineno-0-2630" name="__codelineno-0-2630"></a><span class="sd">            partition_filters: Optional dict of partition filters. Same</span>
-<a id="__codelineno-0-2631" name="__codelineno-0-2631"></a><span class="sd">                semantics as ``assemble()``.</span>
-<a id="__codelineno-0-2632" name="__codelineno-0-2632"></a><span class="sd">            probe_limit: Optional cap on the number of candidates fetched</span>
-<a id="__codelineno-0-2633" name="__codelineno-0-2633"></a><span class="sd">                for the probe. Defaults to ``self.max_items``.</span>
-<a id="__codelineno-0-2634" name="__codelineno-0-2634"></a>
-<a id="__codelineno-0-2635" name="__codelineno-0-2635"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-2636" name="__codelineno-0-2636"></a><span class="sd">            RetrievalQuality. ``selected`` is treated as empty; the quality</span>
-<a id="__codelineno-0-2637" name="__codelineno-0-2637"></a><span class="sd">            reflects what's *available* for retrieval, not what was</span>
-<a id="__codelineno-0-2638" name="__codelineno-0-2638"></a><span class="sd">            actually retrieved.</span>
-<a id="__codelineno-0-2639" name="__codelineno-0-2639"></a><span class="sd">        """</span>
-<a id="__codelineno-0-2640" name="__codelineno-0-2640"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">partition_filters</span> <span class="ow">or</span> <span class="p">{})</span>
-<a id="__codelineno-0-2641" name="__codelineno-0-2641"></a>
-<a id="__codelineno-0-2642" name="__codelineno-0-2642"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">query_cues</span><span class="p">:</span>
-<a id="__codelineno-0-2643" name="__codelineno-0-2643"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() called with no query_cues"</span><span class="p">)</span>
-<a id="__codelineno-0-2644" name="__codelineno-0-2644"></a>            <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">()</span>
-<a id="__codelineno-0-2645" name="__codelineno-0-2645"></a>
-<a id="__codelineno-0-2646" name="__codelineno-0-2646"></a>        <span class="n">limit</span> <span class="o">=</span> <span class="n">probe_limit</span> <span class="k">if</span> <span class="n">probe_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_items</span>
-<a id="__codelineno-0-2647" name="__codelineno-0-2647"></a>        <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-2648" name="__codelineno-0-2648"></a>
-<a id="__codelineno-0-2649" name="__codelineno-0-2649"></a>        <span class="c1"># ExistenceFilter pre-check — same short-circuit as _pull_path.</span>
-<a id="__codelineno-0-2650" name="__codelineno-0-2650"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-2651" name="__codelineno-0-2651"></a>            <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-2652" name="__codelineno-0-2652"></a>            <span class="k">for</span> <span class="n">cue_value</span> <span class="ow">in</span> <span class="n">query_cues</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-<a id="__codelineno-0-2653" name="__codelineno-0-2653"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span>
-<a id="__codelineno-0-2654" name="__codelineno-0-2654"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">cue_value</span><span class="p">)</span>
-<a id="__codelineno-0-2655" name="__codelineno-0-2655"></a>                <span class="p">):</span>
-<a id="__codelineno-0-2656" name="__codelineno-0-2656"></a>                    <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-2657" name="__codelineno-0-2657"></a>                    <span class="k">break</span>
-<a id="__codelineno-0-2658" name="__codelineno-0-2658"></a>            <span class="k">if</span> <span class="n">all_missing</span><span class="p">:</span>
-<a id="__codelineno-0-2659" name="__codelineno-0-2659"></a>                <span class="c1"># No probe — everything is definitely absent.</span>
-<a id="__codelineno-0-2660" name="__codelineno-0-2660"></a>                <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="p">[])</span>
-<a id="__codelineno-0-2661" name="__codelineno-0-2661"></a>                <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
-<a id="__codelineno-0-2662" name="__codelineno-0-2662"></a>                    <span class="n">avg_confidence</span><span class="o">=</span><span class="mf">1.0</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span> <span class="k">else</span> <span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-0-2663" name="__codelineno-0-2663"></a>                    <span class="n">score_spread</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-2664" name="__codelineno-0-2664"></a>                    <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
-<a id="__codelineno-0-2665" name="__codelineno-0-2665"></a>                    <span class="n">staleness_ratio</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-2666" name="__codelineno-0-2666"></a>                    <span class="n">score_distribution</span><span class="o">=</span><span class="p">[],</span>
-<a id="__codelineno-0-2667" name="__codelineno-0-2667"></a>                    <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
-<a id="__codelineno-0-2668" name="__codelineno-0-2668"></a>                <span class="p">)</span>
-<a id="__codelineno-0-2669" name="__codelineno-0-2669"></a>
-<a id="__codelineno-0-2670" name="__codelineno-0-2670"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2671" name="__codelineno-0-2671"></a>            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-0-2672" name="__codelineno-0-2672"></a>            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
-<a id="__codelineno-0-2673" name="__codelineno-0-2673"></a>                <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2674" name="__codelineno-0-2674"></a>            <span class="n">probe_candidates</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
-<a id="__codelineno-0-2675" name="__codelineno-0-2675"></a>                <span class="n">indexes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2676" name="__codelineno-0-2676"></a>                <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
-<a id="__codelineno-0-2677" name="__codelineno-0-2677"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2678" name="__codelineno-0-2678"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2679" name="__codelineno-0-2679"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() composite_score probe failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2680" name="__codelineno-0-2680"></a>            <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-2681" name="__codelineno-0-2681"></a>
-<a id="__codelineno-0-2682" name="__codelineno-0-2682"></a>        <span class="n">avg_conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_avg_confidence</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2683" name="__codelineno-0-2683"></a>        <span class="n">score_spread</span><span class="p">,</span> <span class="n">distribution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_score_spread</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2684" name="__codelineno-0-2684"></a>        <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">probe_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2685" name="__codelineno-0-2685"></a>        <span class="n">staleness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staleness_ratio</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2592" name="__codelineno-0-2592"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_score_proxy_for_records</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
+<a id="__codelineno-0-2593" name="__codelineno-0-2593"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level</span>
+<a id="__codelineno-0-2594" name="__codelineno-0-2594"></a><span class="sd">        :func:`_score_proxy_for_records`.</span>
+<a id="__codelineno-0-2595" name="__codelineno-0-2595"></a><span class="sd">        """</span>
+<a id="__codelineno-0-2596" name="__codelineno-0-2596"></a>        <span class="k">return</span> <span class="n">_score_proxy_for_records</span><span class="p">(</span>
+<a id="__codelineno-0-2597" name="__codelineno-0-2597"></a>            <span class="n">records</span><span class="p">,</span>
+<a id="__codelineno-0-2598" name="__codelineno-0-2598"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2599" name="__codelineno-0-2599"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2600" name="__codelineno-0-2600"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2601" name="__codelineno-0-2601"></a>
+<a id="__codelineno-0-2602" name="__codelineno-0-2602"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_score_spread</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
+<a id="__codelineno-0-2603" name="__codelineno-0-2603"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level</span>
+<a id="__codelineno-0-2604" name="__codelineno-0-2604"></a><span class="sd">        :func:`_compute_score_spread`.</span>
+<a id="__codelineno-0-2605" name="__codelineno-0-2605"></a><span class="sd">        """</span>
+<a id="__codelineno-0-2606" name="__codelineno-0-2606"></a>        <span class="k">return</span> <span class="n">_compute_score_spread</span><span class="p">(</span>
+<a id="__codelineno-0-2607" name="__codelineno-0-2607"></a>            <span class="n">records</span><span class="p">,</span>
+<a id="__codelineno-0-2608" name="__codelineno-0-2608"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2609" name="__codelineno-0-2609"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2610" name="__codelineno-0-2610"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2611" name="__codelineno-0-2611"></a>
+<a id="__codelineno-0-2612" name="__codelineno-0-2612"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_avg_confidence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
+<a id="__codelineno-0-2613" name="__codelineno-0-2613"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_avg_confidence`."""</span>
+<a id="__codelineno-0-2614" name="__codelineno-0-2614"></a>        <span class="k">return</span> <span class="n">_avg_confidence</span><span class="p">(</span>
+<a id="__codelineno-0-2615" name="__codelineno-0-2615"></a>            <span class="n">records</span><span class="p">,</span>
+<a id="__codelineno-0-2616" name="__codelineno-0-2616"></a>            <span class="n">confidence_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2617" name="__codelineno-0-2617"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2618" name="__codelineno-0-2618"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2619" name="__codelineno-0-2619"></a>
+<a id="__codelineno-0-2620" name="__codelineno-0-2620"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_staleness_ratio</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
+<a id="__codelineno-0-2621" name="__codelineno-0-2621"></a><span class="w">        </span><span class="sd">"""Thin wrapper around the module-level :func:`_staleness_ratio`."""</span>
+<a id="__codelineno-0-2622" name="__codelineno-0-2622"></a>        <span class="k">return</span> <span class="n">_staleness_ratio</span><span class="p">(</span>
+<a id="__codelineno-0-2623" name="__codelineno-0-2623"></a>            <span class="n">records</span><span class="p">,</span>
+<a id="__codelineno-0-2624" name="__codelineno-0-2624"></a>            <span class="n">model_class</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-2625" name="__codelineno-0-2625"></a>            <span class="n">score_weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2626" name="__codelineno-0-2626"></a>            <span class="n">surfacing_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">surfacing_threshold</span><span class="p">,</span>
+<a id="__codelineno-0-2627" name="__codelineno-0-2627"></a>            <span class="n">decaying_sorted_field_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_decaying_sorted_field_name</span><span class="p">,</span>
+<a id="__codelineno-0-2628" name="__codelineno-0-2628"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2629" name="__codelineno-0-2629"></a>
+<a id="__codelineno-0-2630" name="__codelineno-0-2630"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_quality</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selected</span><span class="p">,</span> <span class="n">all_pull_candidates</span><span class="p">,</span> <span class="n">query_cues</span><span class="p">):</span>
+<a id="__codelineno-0-2631" name="__codelineno-0-2631"></a><span class="w">        </span><span class="sd">"""Assemble a RetrievalQuality over the selected records.</span>
+<a id="__codelineno-0-2632" name="__codelineno-0-2632"></a>
+<a id="__codelineno-0-2633" name="__codelineno-0-2633"></a><span class="sd">        Side-effect-free; reads from ConfidenceField, ExistenceFilter, and</span>
+<a id="__codelineno-0-2634" name="__codelineno-0-2634"></a><span class="sd">        sorted-set indexes via their existing public APIs. Intended for</span>
+<a id="__codelineno-0-2635" name="__codelineno-0-2635"></a><span class="sd">        calls at the end of ``assemble()`` (post selection) and from the</span>
+<a id="__codelineno-0-2636" name="__codelineno-0-2636"></a><span class="sd">        standalone ``assess()`` probe.</span>
+<a id="__codelineno-0-2637" name="__codelineno-0-2637"></a><span class="sd">        """</span>
+<a id="__codelineno-0-2638" name="__codelineno-0-2638"></a>        <span class="n">avg_conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_avg_confidence</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
+<a id="__codelineno-0-2639" name="__codelineno-0-2639"></a>        <span class="n">score_spread</span><span class="p">,</span> <span class="n">distribution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_score_spread</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
+<a id="__codelineno-0-2640" name="__codelineno-0-2640"></a>        <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">all_pull_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2641" name="__codelineno-0-2641"></a>        <span class="n">staleness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staleness_ratio</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
+<a id="__codelineno-0-2642" name="__codelineno-0-2642"></a>        <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
+<a id="__codelineno-0-2643" name="__codelineno-0-2643"></a>            <span class="n">avg_confidence</span><span class="o">=</span><span class="n">avg_conf</span><span class="p">,</span>
+<a id="__codelineno-0-2644" name="__codelineno-0-2644"></a>            <span class="n">score_spread</span><span class="o">=</span><span class="n">score_spread</span><span class="p">,</span>
+<a id="__codelineno-0-2645" name="__codelineno-0-2645"></a>            <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
+<a id="__codelineno-0-2646" name="__codelineno-0-2646"></a>            <span class="n">staleness_ratio</span><span class="o">=</span><span class="n">staleness</span><span class="p">,</span>
+<a id="__codelineno-0-2647" name="__codelineno-0-2647"></a>            <span class="n">score_distribution</span><span class="o">=</span><span class="n">distribution</span><span class="p">,</span>
+<a id="__codelineno-0-2648" name="__codelineno-0-2648"></a>            <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
+<a id="__codelineno-0-2649" name="__codelineno-0-2649"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2650" name="__codelineno-0-2650"></a>
+<a id="__codelineno-0-2651" name="__codelineno-0-2651"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">partition_filters</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">probe_limit</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-2652" name="__codelineno-0-2652"></a><span class="w">        </span><span class="sd">"""Probe retrieval quality without running the full pipeline.</span>
+<a id="__codelineno-0-2653" name="__codelineno-0-2653"></a>
+<a id="__codelineno-0-2654" name="__codelineno-0-2654"></a><span class="sd">        Runs a cheap pre-retrieval check: ExistenceFilter lookups for</span>
+<a id="__codelineno-0-2655" name="__codelineno-0-2655"></a><span class="sd">        cue_familiarity + a single low-limit composite_score probe to</span>
+<a id="__codelineno-0-2656" name="__codelineno-0-2656"></a><span class="sd">        gather pull candidates for FOK computation. Does NOT run</span>
+<a id="__codelineno-0-2657" name="__codelineno-0-2657"></a><span class="sd">        CoOccurrence propagation, does NOT run the push path, does NOT</span>
+<a id="__codelineno-0-2658" name="__codelineno-0-2658"></a><span class="sd">        apply post-effects.</span>
+<a id="__codelineno-0-2659" name="__codelineno-0-2659"></a>
+<a id="__codelineno-0-2660" name="__codelineno-0-2660"></a><span class="sd">        Intended use: call ``assess()`` before ``assemble()`` to decide</span>
+<a id="__codelineno-0-2661" name="__codelineno-0-2661"></a><span class="sd">        whether the full retrieval is worth the round-trip cost. When</span>
+<a id="__codelineno-0-2662" name="__codelineno-0-2662"></a><span class="sd">        ``assess().fok_score &lt; some_threshold``, the agent can skip the</span>
+<a id="__codelineno-0-2663" name="__codelineno-0-2663"></a><span class="sd">        retrieval entirely and widen the cue or caveat its answer.</span>
+<a id="__codelineno-0-2664" name="__codelineno-0-2664"></a>
+<a id="__codelineno-0-2665" name="__codelineno-0-2665"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-2666" name="__codelineno-0-2666"></a><span class="sd">            query_cues: Optional dict of query cues. When empty, all</span>
+<a id="__codelineno-0-2667" name="__codelineno-0-2667"></a><span class="sd">                metrics default to 0.0 with a logged warning.</span>
+<a id="__codelineno-0-2668" name="__codelineno-0-2668"></a><span class="sd">            partition_filters: Optional dict of partition filters. Same</span>
+<a id="__codelineno-0-2669" name="__codelineno-0-2669"></a><span class="sd">                semantics as ``assemble()``.</span>
+<a id="__codelineno-0-2670" name="__codelineno-0-2670"></a><span class="sd">            probe_limit: Optional cap on the number of candidates fetched</span>
+<a id="__codelineno-0-2671" name="__codelineno-0-2671"></a><span class="sd">                for the probe. Defaults to ``self.max_items``.</span>
+<a id="__codelineno-0-2672" name="__codelineno-0-2672"></a>
+<a id="__codelineno-0-2673" name="__codelineno-0-2673"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-2674" name="__codelineno-0-2674"></a><span class="sd">            RetrievalQuality. ``selected`` is treated as empty; the quality</span>
+<a id="__codelineno-0-2675" name="__codelineno-0-2675"></a><span class="sd">            reflects what's *available* for retrieval, not what was</span>
+<a id="__codelineno-0-2676" name="__codelineno-0-2676"></a><span class="sd">            actually retrieved.</span>
+<a id="__codelineno-0-2677" name="__codelineno-0-2677"></a><span class="sd">        """</span>
+<a id="__codelineno-0-2678" name="__codelineno-0-2678"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">partition_filters</span> <span class="ow">or</span> <span class="p">{})</span>
+<a id="__codelineno-0-2679" name="__codelineno-0-2679"></a>
+<a id="__codelineno-0-2680" name="__codelineno-0-2680"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">query_cues</span><span class="p">:</span>
+<a id="__codelineno-0-2681" name="__codelineno-0-2681"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() called with no query_cues"</span><span class="p">)</span>
+<a id="__codelineno-0-2682" name="__codelineno-0-2682"></a>            <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">()</span>
+<a id="__codelineno-0-2683" name="__codelineno-0-2683"></a>
+<a id="__codelineno-0-2684" name="__codelineno-0-2684"></a>        <span class="n">limit</span> <span class="o">=</span> <span class="n">probe_limit</span> <span class="k">if</span> <span class="n">probe_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_items</span>
+<a id="__codelineno-0-2685" name="__codelineno-0-2685"></a>        <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-2686" name="__codelineno-0-2686"></a>
-<a id="__codelineno-0-2687" name="__codelineno-0-2687"></a>        <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
-<a id="__codelineno-0-2688" name="__codelineno-0-2688"></a>            <span class="n">avg_confidence</span><span class="o">=</span><span class="n">avg_conf</span><span class="p">,</span>
-<a id="__codelineno-0-2689" name="__codelineno-0-2689"></a>            <span class="n">score_spread</span><span class="o">=</span><span class="n">score_spread</span><span class="p">,</span>
-<a id="__codelineno-0-2690" name="__codelineno-0-2690"></a>            <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
-<a id="__codelineno-0-2691" name="__codelineno-0-2691"></a>            <span class="n">staleness_ratio</span><span class="o">=</span><span class="n">staleness</span><span class="p">,</span>
-<a id="__codelineno-0-2692" name="__codelineno-0-2692"></a>            <span class="n">score_distribution</span><span class="o">=</span><span class="n">distribution</span><span class="p">,</span>
-<a id="__codelineno-0-2693" name="__codelineno-0-2693"></a>            <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
-<a id="__codelineno-0-2694" name="__codelineno-0-2694"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2687" name="__codelineno-0-2687"></a>        <span class="c1"># ExistenceFilter pre-check — same short-circuit as _pull_path.</span>
+<a id="__codelineno-0-2688" name="__codelineno-0-2688"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-2689" name="__codelineno-0-2689"></a>            <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-2690" name="__codelineno-0-2690"></a>            <span class="k">for</span> <span class="n">cue_value</span> <span class="ow">in</span> <span class="n">query_cues</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<a id="__codelineno-0-2691" name="__codelineno-0-2691"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span>
+<a id="__codelineno-0-2692" name="__codelineno-0-2692"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">cue_value</span><span class="p">)</span>
+<a id="__codelineno-0-2693" name="__codelineno-0-2693"></a>                <span class="p">):</span>
+<a id="__codelineno-0-2694" name="__codelineno-0-2694"></a>                    <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-2695" name="__codelineno-0-2695"></a>                    <span class="k">break</span>
+<a id="__codelineno-0-2696" name="__codelineno-0-2696"></a>            <span class="k">if</span> <span class="n">all_missing</span><span class="p">:</span>
+<a id="__codelineno-0-2697" name="__codelineno-0-2697"></a>                <span class="c1"># No probe — everything is definitely absent.</span>
+<a id="__codelineno-0-2698" name="__codelineno-0-2698"></a>                <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="p">[])</span>
+<a id="__codelineno-0-2699" name="__codelineno-0-2699"></a>                <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
+<a id="__codelineno-0-2700" name="__codelineno-0-2700"></a>                    <span class="n">avg_confidence</span><span class="o">=</span><span class="mf">1.0</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span> <span class="k">else</span> <span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-2701" name="__codelineno-0-2701"></a>                    <span class="n">score_spread</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-2702" name="__codelineno-0-2702"></a>                    <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
+<a id="__codelineno-0-2703" name="__codelineno-0-2703"></a>                    <span class="n">staleness_ratio</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-2704" name="__codelineno-0-2704"></a>                    <span class="n">score_distribution</span><span class="o">=</span><span class="p">[],</span>
+<a id="__codelineno-0-2705" name="__codelineno-0-2705"></a>                    <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
+<a id="__codelineno-0-2706" name="__codelineno-0-2706"></a>                <span class="p">)</span>
+<a id="__codelineno-0-2707" name="__codelineno-0-2707"></a>
+<a id="__codelineno-0-2708" name="__codelineno-0-2708"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2709" name="__codelineno-0-2709"></a>            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
+<a id="__codelineno-0-2710" name="__codelineno-0-2710"></a>            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+<a id="__codelineno-0-2711" name="__codelineno-0-2711"></a>                <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2712" name="__codelineno-0-2712"></a>            <span class="n">probe_candidates</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
+<a id="__codelineno-0-2713" name="__codelineno-0-2713"></a>                <span class="n">indexes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2714" name="__codelineno-0-2714"></a>                <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+<a id="__codelineno-0-2715" name="__codelineno-0-2715"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2716" name="__codelineno-0-2716"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2717" name="__codelineno-0-2717"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() composite_score probe failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2718" name="__codelineno-0-2718"></a>            <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-2719" name="__codelineno-0-2719"></a>
+<a id="__codelineno-0-2720" name="__codelineno-0-2720"></a>        <span class="n">avg_conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_avg_confidence</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2721" name="__codelineno-0-2721"></a>        <span class="n">score_spread</span><span class="p">,</span> <span class="n">distribution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_score_spread</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2722" name="__codelineno-0-2722"></a>        <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2723" name="__codelineno-0-2723"></a>        <span class="n">staleness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staleness_ratio</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2724" name="__codelineno-0-2724"></a>
+<a id="__codelineno-0-2725" name="__codelineno-0-2725"></a>        <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
+<a id="__codelineno-0-2726" name="__codelineno-0-2726"></a>            <span class="n">avg_confidence</span><span class="o">=</span><span class="n">avg_conf</span><span class="p">,</span>
+<a id="__codelineno-0-2727" name="__codelineno-0-2727"></a>            <span class="n">score_spread</span><span class="o">=</span><span class="n">score_spread</span><span class="p">,</span>
+<a id="__codelineno-0-2728" name="__codelineno-0-2728"></a>            <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
+<a id="__codelineno-0-2729" name="__codelineno-0-2729"></a>            <span class="n">staleness_ratio</span><span class="o">=</span><span class="n">staleness</span><span class="p">,</span>
+<a id="__codelineno-0-2730" name="__codelineno-0-2730"></a>            <span class="n">score_distribution</span><span class="o">=</span><span class="n">distribution</span><span class="p">,</span>
+<a id="__codelineno-0-2731" name="__codelineno-0-2731"></a>            <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
+<a id="__codelineno-0-2732" name="__codelineno-0-2732"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -9004,45 +9080,7 @@ for the probe. Defaults to <code>self.max_items</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/context_assembler.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-2613">2613</a></span>
-<span class="normal"><a href="#__codelineno-0-2614">2614</a></span>
-<span class="normal"><a href="#__codelineno-0-2615">2615</a></span>
-<span class="normal"><a href="#__codelineno-0-2616">2616</a></span>
-<span class="normal"><a href="#__codelineno-0-2617">2617</a></span>
-<span class="normal"><a href="#__codelineno-0-2618">2618</a></span>
-<span class="normal"><a href="#__codelineno-0-2619">2619</a></span>
-<span class="normal"><a href="#__codelineno-0-2620">2620</a></span>
-<span class="normal"><a href="#__codelineno-0-2621">2621</a></span>
-<span class="normal"><a href="#__codelineno-0-2622">2622</a></span>
-<span class="normal"><a href="#__codelineno-0-2623">2623</a></span>
-<span class="normal"><a href="#__codelineno-0-2624">2624</a></span>
-<span class="normal"><a href="#__codelineno-0-2625">2625</a></span>
-<span class="normal"><a href="#__codelineno-0-2626">2626</a></span>
-<span class="normal"><a href="#__codelineno-0-2627">2627</a></span>
-<span class="normal"><a href="#__codelineno-0-2628">2628</a></span>
-<span class="normal"><a href="#__codelineno-0-2629">2629</a></span>
-<span class="normal"><a href="#__codelineno-0-2630">2630</a></span>
-<span class="normal"><a href="#__codelineno-0-2631">2631</a></span>
-<span class="normal"><a href="#__codelineno-0-2632">2632</a></span>
-<span class="normal"><a href="#__codelineno-0-2633">2633</a></span>
-<span class="normal"><a href="#__codelineno-0-2634">2634</a></span>
-<span class="normal"><a href="#__codelineno-0-2635">2635</a></span>
-<span class="normal"><a href="#__codelineno-0-2636">2636</a></span>
-<span class="normal"><a href="#__codelineno-0-2637">2637</a></span>
-<span class="normal"><a href="#__codelineno-0-2638">2638</a></span>
-<span class="normal"><a href="#__codelineno-0-2639">2639</a></span>
-<span class="normal"><a href="#__codelineno-0-2640">2640</a></span>
-<span class="normal"><a href="#__codelineno-0-2641">2641</a></span>
-<span class="normal"><a href="#__codelineno-0-2642">2642</a></span>
-<span class="normal"><a href="#__codelineno-0-2643">2643</a></span>
-<span class="normal"><a href="#__codelineno-0-2644">2644</a></span>
-<span class="normal"><a href="#__codelineno-0-2645">2645</a></span>
-<span class="normal"><a href="#__codelineno-0-2646">2646</a></span>
-<span class="normal"><a href="#__codelineno-0-2647">2647</a></span>
-<span class="normal"><a href="#__codelineno-0-2648">2648</a></span>
-<span class="normal"><a href="#__codelineno-0-2649">2649</a></span>
-<span class="normal"><a href="#__codelineno-0-2650">2650</a></span>
-<span class="normal"><a href="#__codelineno-0-2651">2651</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-2651">2651</a></span>
 <span class="normal"><a href="#__codelineno-0-2652">2652</a></span>
 <span class="normal"><a href="#__codelineno-0-2653">2653</a></span>
 <span class="normal"><a href="#__codelineno-0-2654">2654</a></span>
@@ -9085,88 +9123,126 @@ for the probe. Defaults to <code>self.max_items</code>.</p>
 <span class="normal"><a href="#__codelineno-0-2691">2691</a></span>
 <span class="normal"><a href="#__codelineno-0-2692">2692</a></span>
 <span class="normal"><a href="#__codelineno-0-2693">2693</a></span>
-<span class="normal"><a href="#__codelineno-0-2694">2694</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-2613" name="__codelineno-0-2613"></a><span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">partition_filters</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">probe_limit</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-2614" name="__codelineno-0-2614"></a><span class="w">    </span><span class="sd">"""Probe retrieval quality without running the full pipeline.</span>
-<a id="__codelineno-0-2615" name="__codelineno-0-2615"></a>
-<a id="__codelineno-0-2616" name="__codelineno-0-2616"></a><span class="sd">    Runs a cheap pre-retrieval check: ExistenceFilter lookups for</span>
-<a id="__codelineno-0-2617" name="__codelineno-0-2617"></a><span class="sd">    cue_familiarity + a single low-limit composite_score probe to</span>
-<a id="__codelineno-0-2618" name="__codelineno-0-2618"></a><span class="sd">    gather pull candidates for FOK computation. Does NOT run</span>
-<a id="__codelineno-0-2619" name="__codelineno-0-2619"></a><span class="sd">    CoOccurrence propagation, does NOT run the push path, does NOT</span>
-<a id="__codelineno-0-2620" name="__codelineno-0-2620"></a><span class="sd">    apply post-effects.</span>
-<a id="__codelineno-0-2621" name="__codelineno-0-2621"></a>
-<a id="__codelineno-0-2622" name="__codelineno-0-2622"></a><span class="sd">    Intended use: call ``assess()`` before ``assemble()`` to decide</span>
-<a id="__codelineno-0-2623" name="__codelineno-0-2623"></a><span class="sd">    whether the full retrieval is worth the round-trip cost. When</span>
-<a id="__codelineno-0-2624" name="__codelineno-0-2624"></a><span class="sd">    ``assess().fok_score &lt; some_threshold``, the agent can skip the</span>
-<a id="__codelineno-0-2625" name="__codelineno-0-2625"></a><span class="sd">    retrieval entirely and widen the cue or caveat its answer.</span>
-<a id="__codelineno-0-2626" name="__codelineno-0-2626"></a>
-<a id="__codelineno-0-2627" name="__codelineno-0-2627"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-2628" name="__codelineno-0-2628"></a><span class="sd">        query_cues: Optional dict of query cues. When empty, all</span>
-<a id="__codelineno-0-2629" name="__codelineno-0-2629"></a><span class="sd">            metrics default to 0.0 with a logged warning.</span>
-<a id="__codelineno-0-2630" name="__codelineno-0-2630"></a><span class="sd">        partition_filters: Optional dict of partition filters. Same</span>
-<a id="__codelineno-0-2631" name="__codelineno-0-2631"></a><span class="sd">            semantics as ``assemble()``.</span>
-<a id="__codelineno-0-2632" name="__codelineno-0-2632"></a><span class="sd">        probe_limit: Optional cap on the number of candidates fetched</span>
-<a id="__codelineno-0-2633" name="__codelineno-0-2633"></a><span class="sd">            for the probe. Defaults to ``self.max_items``.</span>
-<a id="__codelineno-0-2634" name="__codelineno-0-2634"></a>
-<a id="__codelineno-0-2635" name="__codelineno-0-2635"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-2636" name="__codelineno-0-2636"></a><span class="sd">        RetrievalQuality. ``selected`` is treated as empty; the quality</span>
-<a id="__codelineno-0-2637" name="__codelineno-0-2637"></a><span class="sd">        reflects what's *available* for retrieval, not what was</span>
-<a id="__codelineno-0-2638" name="__codelineno-0-2638"></a><span class="sd">        actually retrieved.</span>
-<a id="__codelineno-0-2639" name="__codelineno-0-2639"></a><span class="sd">    """</span>
-<a id="__codelineno-0-2640" name="__codelineno-0-2640"></a>    <span class="n">filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">partition_filters</span> <span class="ow">or</span> <span class="p">{})</span>
-<a id="__codelineno-0-2641" name="__codelineno-0-2641"></a>
-<a id="__codelineno-0-2642" name="__codelineno-0-2642"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">query_cues</span><span class="p">:</span>
-<a id="__codelineno-0-2643" name="__codelineno-0-2643"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() called with no query_cues"</span><span class="p">)</span>
-<a id="__codelineno-0-2644" name="__codelineno-0-2644"></a>        <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">()</span>
-<a id="__codelineno-0-2645" name="__codelineno-0-2645"></a>
-<a id="__codelineno-0-2646" name="__codelineno-0-2646"></a>    <span class="n">limit</span> <span class="o">=</span> <span class="n">probe_limit</span> <span class="k">if</span> <span class="n">probe_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_items</span>
-<a id="__codelineno-0-2647" name="__codelineno-0-2647"></a>    <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-2648" name="__codelineno-0-2648"></a>
-<a id="__codelineno-0-2649" name="__codelineno-0-2649"></a>    <span class="c1"># ExistenceFilter pre-check — same short-circuit as _pull_path.</span>
-<a id="__codelineno-0-2650" name="__codelineno-0-2650"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-2651" name="__codelineno-0-2651"></a>        <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-2652" name="__codelineno-0-2652"></a>        <span class="k">for</span> <span class="n">cue_value</span> <span class="ow">in</span> <span class="n">query_cues</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-<a id="__codelineno-0-2653" name="__codelineno-0-2653"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span>
-<a id="__codelineno-0-2654" name="__codelineno-0-2654"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">cue_value</span><span class="p">)</span>
-<a id="__codelineno-0-2655" name="__codelineno-0-2655"></a>            <span class="p">):</span>
-<a id="__codelineno-0-2656" name="__codelineno-0-2656"></a>                <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-2657" name="__codelineno-0-2657"></a>                <span class="k">break</span>
-<a id="__codelineno-0-2658" name="__codelineno-0-2658"></a>        <span class="k">if</span> <span class="n">all_missing</span><span class="p">:</span>
-<a id="__codelineno-0-2659" name="__codelineno-0-2659"></a>            <span class="c1"># No probe — everything is definitely absent.</span>
-<a id="__codelineno-0-2660" name="__codelineno-0-2660"></a>            <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="p">[])</span>
-<a id="__codelineno-0-2661" name="__codelineno-0-2661"></a>            <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
-<a id="__codelineno-0-2662" name="__codelineno-0-2662"></a>                <span class="n">avg_confidence</span><span class="o">=</span><span class="mf">1.0</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span> <span class="k">else</span> <span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-0-2663" name="__codelineno-0-2663"></a>                <span class="n">score_spread</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-2664" name="__codelineno-0-2664"></a>                <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
-<a id="__codelineno-0-2665" name="__codelineno-0-2665"></a>                <span class="n">staleness_ratio</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-2666" name="__codelineno-0-2666"></a>                <span class="n">score_distribution</span><span class="o">=</span><span class="p">[],</span>
-<a id="__codelineno-0-2667" name="__codelineno-0-2667"></a>                <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
-<a id="__codelineno-0-2668" name="__codelineno-0-2668"></a>            <span class="p">)</span>
-<a id="__codelineno-0-2669" name="__codelineno-0-2669"></a>
-<a id="__codelineno-0-2670" name="__codelineno-0-2670"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-2671" name="__codelineno-0-2671"></a>        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
-<a id="__codelineno-0-2672" name="__codelineno-0-2672"></a>        <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
-<a id="__codelineno-0-2673" name="__codelineno-0-2673"></a>            <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-2674" name="__codelineno-0-2674"></a>        <span class="n">probe_candidates</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
-<a id="__codelineno-0-2675" name="__codelineno-0-2675"></a>            <span class="n">indexes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
-<a id="__codelineno-0-2676" name="__codelineno-0-2676"></a>            <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
-<a id="__codelineno-0-2677" name="__codelineno-0-2677"></a>        <span class="p">)</span>
-<a id="__codelineno-0-2678" name="__codelineno-0-2678"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-2679" name="__codelineno-0-2679"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() composite_score probe failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-0-2680" name="__codelineno-0-2680"></a>        <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-2681" name="__codelineno-0-2681"></a>
-<a id="__codelineno-0-2682" name="__codelineno-0-2682"></a>    <span class="n">avg_conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_avg_confidence</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2683" name="__codelineno-0-2683"></a>    <span class="n">score_spread</span><span class="p">,</span> <span class="n">distribution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_score_spread</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2684" name="__codelineno-0-2684"></a>    <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">probe_candidates</span><span class="p">)</span>
-<a id="__codelineno-0-2685" name="__codelineno-0-2685"></a>    <span class="n">staleness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staleness_ratio</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-2694">2694</a></span>
+<span class="normal"><a href="#__codelineno-0-2695">2695</a></span>
+<span class="normal"><a href="#__codelineno-0-2696">2696</a></span>
+<span class="normal"><a href="#__codelineno-0-2697">2697</a></span>
+<span class="normal"><a href="#__codelineno-0-2698">2698</a></span>
+<span class="normal"><a href="#__codelineno-0-2699">2699</a></span>
+<span class="normal"><a href="#__codelineno-0-2700">2700</a></span>
+<span class="normal"><a href="#__codelineno-0-2701">2701</a></span>
+<span class="normal"><a href="#__codelineno-0-2702">2702</a></span>
+<span class="normal"><a href="#__codelineno-0-2703">2703</a></span>
+<span class="normal"><a href="#__codelineno-0-2704">2704</a></span>
+<span class="normal"><a href="#__codelineno-0-2705">2705</a></span>
+<span class="normal"><a href="#__codelineno-0-2706">2706</a></span>
+<span class="normal"><a href="#__codelineno-0-2707">2707</a></span>
+<span class="normal"><a href="#__codelineno-0-2708">2708</a></span>
+<span class="normal"><a href="#__codelineno-0-2709">2709</a></span>
+<span class="normal"><a href="#__codelineno-0-2710">2710</a></span>
+<span class="normal"><a href="#__codelineno-0-2711">2711</a></span>
+<span class="normal"><a href="#__codelineno-0-2712">2712</a></span>
+<span class="normal"><a href="#__codelineno-0-2713">2713</a></span>
+<span class="normal"><a href="#__codelineno-0-2714">2714</a></span>
+<span class="normal"><a href="#__codelineno-0-2715">2715</a></span>
+<span class="normal"><a href="#__codelineno-0-2716">2716</a></span>
+<span class="normal"><a href="#__codelineno-0-2717">2717</a></span>
+<span class="normal"><a href="#__codelineno-0-2718">2718</a></span>
+<span class="normal"><a href="#__codelineno-0-2719">2719</a></span>
+<span class="normal"><a href="#__codelineno-0-2720">2720</a></span>
+<span class="normal"><a href="#__codelineno-0-2721">2721</a></span>
+<span class="normal"><a href="#__codelineno-0-2722">2722</a></span>
+<span class="normal"><a href="#__codelineno-0-2723">2723</a></span>
+<span class="normal"><a href="#__codelineno-0-2724">2724</a></span>
+<span class="normal"><a href="#__codelineno-0-2725">2725</a></span>
+<span class="normal"><a href="#__codelineno-0-2726">2726</a></span>
+<span class="normal"><a href="#__codelineno-0-2727">2727</a></span>
+<span class="normal"><a href="#__codelineno-0-2728">2728</a></span>
+<span class="normal"><a href="#__codelineno-0-2729">2729</a></span>
+<span class="normal"><a href="#__codelineno-0-2730">2730</a></span>
+<span class="normal"><a href="#__codelineno-0-2731">2731</a></span>
+<span class="normal"><a href="#__codelineno-0-2732">2732</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-2651" name="__codelineno-0-2651"></a><span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">partition_filters</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">probe_limit</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-2652" name="__codelineno-0-2652"></a><span class="w">    </span><span class="sd">"""Probe retrieval quality without running the full pipeline.</span>
+<a id="__codelineno-0-2653" name="__codelineno-0-2653"></a>
+<a id="__codelineno-0-2654" name="__codelineno-0-2654"></a><span class="sd">    Runs a cheap pre-retrieval check: ExistenceFilter lookups for</span>
+<a id="__codelineno-0-2655" name="__codelineno-0-2655"></a><span class="sd">    cue_familiarity + a single low-limit composite_score probe to</span>
+<a id="__codelineno-0-2656" name="__codelineno-0-2656"></a><span class="sd">    gather pull candidates for FOK computation. Does NOT run</span>
+<a id="__codelineno-0-2657" name="__codelineno-0-2657"></a><span class="sd">    CoOccurrence propagation, does NOT run the push path, does NOT</span>
+<a id="__codelineno-0-2658" name="__codelineno-0-2658"></a><span class="sd">    apply post-effects.</span>
+<a id="__codelineno-0-2659" name="__codelineno-0-2659"></a>
+<a id="__codelineno-0-2660" name="__codelineno-0-2660"></a><span class="sd">    Intended use: call ``assess()`` before ``assemble()`` to decide</span>
+<a id="__codelineno-0-2661" name="__codelineno-0-2661"></a><span class="sd">    whether the full retrieval is worth the round-trip cost. When</span>
+<a id="__codelineno-0-2662" name="__codelineno-0-2662"></a><span class="sd">    ``assess().fok_score &lt; some_threshold``, the agent can skip the</span>
+<a id="__codelineno-0-2663" name="__codelineno-0-2663"></a><span class="sd">    retrieval entirely and widen the cue or caveat its answer.</span>
+<a id="__codelineno-0-2664" name="__codelineno-0-2664"></a>
+<a id="__codelineno-0-2665" name="__codelineno-0-2665"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-2666" name="__codelineno-0-2666"></a><span class="sd">        query_cues: Optional dict of query cues. When empty, all</span>
+<a id="__codelineno-0-2667" name="__codelineno-0-2667"></a><span class="sd">            metrics default to 0.0 with a logged warning.</span>
+<a id="__codelineno-0-2668" name="__codelineno-0-2668"></a><span class="sd">        partition_filters: Optional dict of partition filters. Same</span>
+<a id="__codelineno-0-2669" name="__codelineno-0-2669"></a><span class="sd">            semantics as ``assemble()``.</span>
+<a id="__codelineno-0-2670" name="__codelineno-0-2670"></a><span class="sd">        probe_limit: Optional cap on the number of candidates fetched</span>
+<a id="__codelineno-0-2671" name="__codelineno-0-2671"></a><span class="sd">            for the probe. Defaults to ``self.max_items``.</span>
+<a id="__codelineno-0-2672" name="__codelineno-0-2672"></a>
+<a id="__codelineno-0-2673" name="__codelineno-0-2673"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-2674" name="__codelineno-0-2674"></a><span class="sd">        RetrievalQuality. ``selected`` is treated as empty; the quality</span>
+<a id="__codelineno-0-2675" name="__codelineno-0-2675"></a><span class="sd">        reflects what's *available* for retrieval, not what was</span>
+<a id="__codelineno-0-2676" name="__codelineno-0-2676"></a><span class="sd">        actually retrieved.</span>
+<a id="__codelineno-0-2677" name="__codelineno-0-2677"></a><span class="sd">    """</span>
+<a id="__codelineno-0-2678" name="__codelineno-0-2678"></a>    <span class="n">filters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">partition_filters</span> <span class="ow">or</span> <span class="p">{})</span>
+<a id="__codelineno-0-2679" name="__codelineno-0-2679"></a>
+<a id="__codelineno-0-2680" name="__codelineno-0-2680"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">query_cues</span><span class="p">:</span>
+<a id="__codelineno-0-2681" name="__codelineno-0-2681"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() called with no query_cues"</span><span class="p">)</span>
+<a id="__codelineno-0-2682" name="__codelineno-0-2682"></a>        <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">()</span>
+<a id="__codelineno-0-2683" name="__codelineno-0-2683"></a>
+<a id="__codelineno-0-2684" name="__codelineno-0-2684"></a>    <span class="n">limit</span> <span class="o">=</span> <span class="n">probe_limit</span> <span class="k">if</span> <span class="n">probe_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_items</span>
+<a id="__codelineno-0-2685" name="__codelineno-0-2685"></a>    <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-2686" name="__codelineno-0-2686"></a>
-<a id="__codelineno-0-2687" name="__codelineno-0-2687"></a>    <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
-<a id="__codelineno-0-2688" name="__codelineno-0-2688"></a>        <span class="n">avg_confidence</span><span class="o">=</span><span class="n">avg_conf</span><span class="p">,</span>
-<a id="__codelineno-0-2689" name="__codelineno-0-2689"></a>        <span class="n">score_spread</span><span class="o">=</span><span class="n">score_spread</span><span class="p">,</span>
-<a id="__codelineno-0-2690" name="__codelineno-0-2690"></a>        <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
-<a id="__codelineno-0-2691" name="__codelineno-0-2691"></a>        <span class="n">staleness_ratio</span><span class="o">=</span><span class="n">staleness</span><span class="p">,</span>
-<a id="__codelineno-0-2692" name="__codelineno-0-2692"></a>        <span class="n">score_distribution</span><span class="o">=</span><span class="n">distribution</span><span class="p">,</span>
-<a id="__codelineno-0-2693" name="__codelineno-0-2693"></a>        <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
-<a id="__codelineno-0-2694" name="__codelineno-0-2694"></a>    <span class="p">)</span>
+<a id="__codelineno-0-2687" name="__codelineno-0-2687"></a>    <span class="c1"># ExistenceFilter pre-check — same short-circuit as _pull_path.</span>
+<a id="__codelineno-0-2688" name="__codelineno-0-2688"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-2689" name="__codelineno-0-2689"></a>        <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-2690" name="__codelineno-0-2690"></a>        <span class="k">for</span> <span class="n">cue_value</span> <span class="ow">in</span> <span class="n">query_cues</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<a id="__codelineno-0-2691" name="__codelineno-0-2691"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_existence_filter</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span>
+<a id="__codelineno-0-2692" name="__codelineno-0-2692"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">cue_value</span><span class="p">)</span>
+<a id="__codelineno-0-2693" name="__codelineno-0-2693"></a>            <span class="p">):</span>
+<a id="__codelineno-0-2694" name="__codelineno-0-2694"></a>                <span class="n">all_missing</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-2695" name="__codelineno-0-2695"></a>                <span class="k">break</span>
+<a id="__codelineno-0-2696" name="__codelineno-0-2696"></a>        <span class="k">if</span> <span class="n">all_missing</span><span class="p">:</span>
+<a id="__codelineno-0-2697" name="__codelineno-0-2697"></a>            <span class="c1"># No probe — everything is definitely absent.</span>
+<a id="__codelineno-0-2698" name="__codelineno-0-2698"></a>            <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="p">[])</span>
+<a id="__codelineno-0-2699" name="__codelineno-0-2699"></a>            <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
+<a id="__codelineno-0-2700" name="__codelineno-0-2700"></a>                <span class="n">avg_confidence</span><span class="o">=</span><span class="mf">1.0</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field_name</span> <span class="k">else</span> <span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-2701" name="__codelineno-0-2701"></a>                <span class="n">score_spread</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-2702" name="__codelineno-0-2702"></a>                <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
+<a id="__codelineno-0-2703" name="__codelineno-0-2703"></a>                <span class="n">staleness_ratio</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-2704" name="__codelineno-0-2704"></a>                <span class="n">score_distribution</span><span class="o">=</span><span class="p">[],</span>
+<a id="__codelineno-0-2705" name="__codelineno-0-2705"></a>                <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
+<a id="__codelineno-0-2706" name="__codelineno-0-2706"></a>            <span class="p">)</span>
+<a id="__codelineno-0-2707" name="__codelineno-0-2707"></a>
+<a id="__codelineno-0-2708" name="__codelineno-0-2708"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-2709" name="__codelineno-0-2709"></a>        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span>
+<a id="__codelineno-0-2710" name="__codelineno-0-2710"></a>        <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+<a id="__codelineno-0-2711" name="__codelineno-0-2711"></a>            <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-2712" name="__codelineno-0-2712"></a>        <span class="n">probe_candidates</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
+<a id="__codelineno-0-2713" name="__codelineno-0-2713"></a>            <span class="n">indexes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span><span class="p">,</span>
+<a id="__codelineno-0-2714" name="__codelineno-0-2714"></a>            <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+<a id="__codelineno-0-2715" name="__codelineno-0-2715"></a>        <span class="p">)</span>
+<a id="__codelineno-0-2716" name="__codelineno-0-2716"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-2717" name="__codelineno-0-2717"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"assess() composite_score probe failed: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-2718" name="__codelineno-0-2718"></a>        <span class="n">probe_candidates</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-2719" name="__codelineno-0-2719"></a>
+<a id="__codelineno-0-2720" name="__codelineno-0-2720"></a>    <span class="n">avg_conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_avg_confidence</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2721" name="__codelineno-0-2721"></a>    <span class="n">score_spread</span><span class="p">,</span> <span class="n">distribution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_score_spread</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2722" name="__codelineno-0-2722"></a>    <span class="n">fok_score</span><span class="p">,</span> <span class="n">per_cue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_fok</span><span class="p">(</span><span class="n">query_cues</span><span class="p">,</span> <span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2723" name="__codelineno-0-2723"></a>    <span class="n">staleness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staleness_ratio</span><span class="p">(</span><span class="n">probe_candidates</span><span class="p">)</span>
+<a id="__codelineno-0-2724" name="__codelineno-0-2724"></a>
+<a id="__codelineno-0-2725" name="__codelineno-0-2725"></a>    <span class="k">return</span> <span class="n">RetrievalQuality</span><span class="p">(</span>
+<a id="__codelineno-0-2726" name="__codelineno-0-2726"></a>        <span class="n">avg_confidence</span><span class="o">=</span><span class="n">avg_conf</span><span class="p">,</span>
+<a id="__codelineno-0-2727" name="__codelineno-0-2727"></a>        <span class="n">score_spread</span><span class="o">=</span><span class="n">score_spread</span><span class="p">,</span>
+<a id="__codelineno-0-2728" name="__codelineno-0-2728"></a>        <span class="n">fok_score</span><span class="o">=</span><span class="n">fok_score</span><span class="p">,</span>
+<a id="__codelineno-0-2729" name="__codelineno-0-2729"></a>        <span class="n">staleness_ratio</span><span class="o">=</span><span class="n">staleness</span><span class="p">,</span>
+<a id="__codelineno-0-2730" name="__codelineno-0-2730"></a>        <span class="n">score_distribution</span><span class="o">=</span><span class="n">distribution</span><span class="p">,</span>
+<a id="__codelineno-0-2731" name="__codelineno-0-2731"></a>        <span class="n">per_cue_fok</span><span class="o">=</span><span class="n">per_cue</span><span class="p">,</span>
+<a id="__codelineno-0-2732" name="__codelineno-0-2732"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
