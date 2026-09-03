@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/571
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-03T10:17:26Z
 ---
 
 # #571 — async_filter must apply the SortedField limit pushdown (bound parity with sync)
@@ -314,18 +316,57 @@ Each failure mode gets a test that fails without the fix:
 
 ## Step by Step Tasks
 
-1. Extract the sync pushdown arm/disarm + short-result guard into helpers if a clean seam
-   exists; otherwise mirror with heavy cross-references.
-2. Wire `async_filter` per Solution 1–3, including adding the `_allow_pushdown: bool = True`
-   keyword to `async_filter`'s signature so the short-result guard can re-read unbounded.
-3. Tests in `tests/test_sorted_range_pushdown.py` (async section): bounded async read issues a
-   bounded, direction-correct range call and hydrates ≤ limit + overfetch margin (command-count
-   assertion mirroring the sync suite's technique); async/sync result parity on the same data;
-   orphan-density case on the async path (re-read guard returns full results); async pushdown
-   declines when client-side plain-field filters are pending (returns correct rows, no
-   truncation — the #594 regression shape); descending order issues `zrevrangebyscore`.
-4. If #559's xfail exists on main by build time, convert it to a hard assertion in this PR.
-5. CHANGELOG entry (perf/fixed).
+1. **Add `_PushdownState` + `_short_result_action` + the per-loop lock helper** (Solution 0, 3,
+   and `## Race Conditions`). `_short_result_action` is a pure decision-and-log function: it
+   emits both existing warning texts verbatim and returns `bool` (re-read needed). Rewire the
+   sync call site at query.py:2940–2977 to use it, keeping its own
+   `return self._execute_filter(..., _allow_pushdown=False, **kwargs)` recursion. This is a
+   **mechanical extraction with zero behavior change** — the decision is settled, not left to
+   build time.
+   Validate: `POPOTO_TEST_DB=11 pytest tests/test_sorted_range_pushdown.py -q` — all green,
+   including the four caplog assertions at lines 398/434/457/485, with no edits to that file yet.
+
+2. **Add `_filter_keys_with_pushdown` and thread `state` through `_bound_keys_before_hydration`**
+   (Solution 1–2). `state` is keyword-only, defaults to `None` = today's `self` behavior.
+   Validate: same command as Task 1 — still green (sync path untouched by construction).
+
+3. **Wire `async_filter`** (Solution 1–3): keyword-only `_allow_pushdown: bool = True`, lock-held
+   `to_thread(self._filter_keys_with_pushdown, ...)`, all post-await reads re-pointed at the
+   state object, `_bound_keys_before_hydration(db_keys_set, None, _allow_pushdown, kwargs, state=state)`,
+   `_short_result_action` + `return await self.async_filter(_allow_pushdown=False, **kwargs)`.
+   Validate: `POPOTO_TEST_DB=11 pytest tests/test_async.py -q` — green (no async pushdown tests
+   yet; this proves nothing regressed).
+
+4. **Add the async test section** to `tests/test_sorted_range_pushdown.py` — six tests, each
+   `@pytest.mark.asyncio`, each reusing `tests/test_async.py:14–26`'s async-connection-reset
+   autouse fixture:
+   - **(a) Hydration is bounded.** Add an `AsyncHydrationCounter` alongside the existing
+     `HydrationCounter` (tests/test_sorted_range_pushdown.py:63–80): patch
+     `redis.asyncio.client.Pipeline.hgetall`, **not** `redis.client.Pipeline.hgetall` —
+     `_async_get_many_objects` hydrates on the async pipeline (query.py:3686–3688), so the sync
+     counter records **0** and a bare `assert count < POPULATION` would pass whether or not the
+     bound fires. Assert **both** bounds:
+     `limit <= counter.count <= limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`. The lower
+     bound is what makes the headline criterion falsifiable.
+   - **(b) Range call is bounded and direction-correct.** The range read is issued on the *sync*
+     client inside `to_thread`, so patch `redis.client.Redis.zrangebyscore` /
+     `zrevrangebyscore`. Assert a descending query hits `zrevrangebyscore` with a `num` bound,
+     and that the ascending case hits `zrangebyscore`.
+   - **(c) Async/sync result parity** on identical data across limits and directions.
+   - **(d) Orphan density.** Delete hashes out from under index members so the bounded read comes
+     up short; assert the full correct row set is returned and the re-read warning is logged.
+   - **(e) #594 suppression.** A pending unindexed plain-field filter: assert correct rows and no
+     truncation.
+   - **(f) Concurrency.** The `asyncio.gather` regression test from `## Race Conditions`.
+   Validate: `POPOTO_TEST_DB=11 pytest tests/test_sorted_range_pushdown.py -q`.
+
+5. If #559's xfail exists on `main` by build time, convert it to a hard assertion in this PR and
+   remove the marker. (Conditional — absent at `d72d393`.)
+
+6. **File the follow-up issue** named in `## Race Conditions` (sync-path bookkeeping off shared
+   instance state) and link it from the PR body.
+
+7. CHANGELOG entry (perf/fixed).
 
 ## No-Gos
 
@@ -334,28 +375,84 @@ Each failure mode gets a test that fails without the fix:
 
 ## Risks / Rabbit Holes
 
-- **Shared-state flags on `self`**: `_pushdown_allowed` etc. are instance state on a
-  class-level `Model.query` object (see the audit's maintainability hazard). Do not attempt to
-  fix that here — mirror the sync convention (set/reset in try/finally) and move on.
+- **Shared-state flags on `self`** — *no longer a "move on" item; it is the blocker this plan
+  resolves.* `_pushdown_allowed` and the seven bookkeeping attributes are instance state on a
+  class-level `Model.query` object (`models/base.py:505`). The sync try/finally convention is
+  only sound because sync has no await between write and read; copying it onto the async path
+  produces silent short results. The design is pinned in `## Race Conditions` — snapshot into a
+  `_PushdownState` inside the single `to_thread` hop, serialize that hop with a per-running-loop
+  `asyncio.Lock`, never read `self._pushdown_*` after an await. Residual sync-vs-async exposure
+  is documented there and gets a follow-up issue (Task 6), not silence.
+- **Lock construction is the sharp edge.** An `asyncio.Lock()` built at import or
+  class-definition time binds one loop and raises on any other — `redis_db.py:100` has exactly
+  that shape and needs `tests/test_async.py:14–26` to paper over it. Build lazily, keyed by the
+  running loop, in a `WeakKeyDictionary` guarded by a `threading.Lock`.
+- **Extraction touches live sync code.** `_short_result_action` rewrites query.py:2940–2977,
+  which the No-Gos declare off-limits for *behavior* change. The extraction is mechanical and its
+  tripwire is the four caplog assertions (tests/test_sorted_range_pushdown.py:398/434/457/485) —
+  if any warning text drifts by a character, they fail. Do Task 1 and confirm green *before*
+  touching the async path.
 - **Event-loop discipline**: the helpers run inside `to_thread` on the sync client; keep the
-  async client usage confined to `_async_get_many_objects` as today.
+  async client usage confined to `_async_get_many_objects` as today. Consequence for tests:
+  hydration counts are on `redis.asyncio.client.Pipeline`, range calls are on `redis.client.Redis`
+  — patching the wrong one is the vacuous-assertion trap in Task 4(a).
 
 ## Success Criteria
 
-- New async pushdown tests green; full non-slow suite green; `black src/ tests/` clean;
-  `ruff check src/` exits 0 (per CLAUDE.md; note `docs/sdlc/do-sdlc.md` claims ruff is absent —
-  CLAUDE.md and `.github/workflows/lint.yml` are authoritative, run it); mypy delta 0 vs main
-  measured in the *same* environment and redis-py major version (see CLAUDE.md's worktree
-  verification notes — a bare error count is not a delta).
-- Command-count assertion proves the async bound fires (hydration count drops from full
-  partition to bounded).
+- All six new async tests green (Task 4), and each demonstrably fails against the unfixed code —
+  a test that passes both ways proves nothing.
+- **Falsifiable hydration bound:** `AsyncHydrationCounter` patching `redis.asyncio.client.Pipeline.hgetall`
+  reports `limit <= count <= limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN` for a bounded
+  async query against a population much larger than `limit`. Both bounds asserted; a 0-count
+  no-op must fail. (The previous single-sided `count < POPULATION` form was unfalsifiable — the
+  sync counter reads 0 on the async path regardless.)
+- Descending async query issues `zrevrangebyscore` (asserted on `redis.client.Redis`, where the
+  range read actually happens).
+- Concurrency regression test (`asyncio.gather`, Task 4f) green, and confirmed failing against an
+  un-snapshotted variant.
+- Sync suite unchanged: `tests/test_sorted_range_pushdown.py` and `tests/test_async.py` pass with
+  no edits to existing sync assertions, including the four caplog checks.
+- Full non-slow suite green; `black src/ tests/` clean; `ruff check src/` exits 0 (per CLAUDE.md;
+  note `docs/sdlc/do-sdlc.md` claims ruff is absent — CLAUDE.md and `.github/workflows/lint.yml`
+  are authoritative, run it); mypy delta 0 vs main measured in the *same* environment and
+  redis-py major version, with the version recorded alongside the number (see CLAUDE.md's
+  worktree verification notes — a bare error count is not a delta).
 - Test runs use `POPOTO_TEST_DB=11` in this pipeline (three pipelines share this machine; DB 15
   contention produces phantom failures). Never DB 0 — live agent store.
+
+## Verification
+
+Run in the worktree `/Users/valorengels/src/popoto/.worktrees/sdlc-571`, after
+`pip install -e '.[dev,embeddings,benchmark,mcp]'` and confirming the editable install resolves
+to *this* checkout (CLAUDE.md, worktree hazard 1):
+
+```bash
+# 1. Targeted suites (the gate for Tasks 1-4)
+POPOTO_TEST_DB=11 pytest tests/test_sorted_range_pushdown.py tests/test_async.py -q
+
+# 2. Full non-slow suite
+POPOTO_TEST_DB=11 pytest -q -m "not slow"
+
+# 3. Lint + format
+ruff check src/          # must exit 0
+black --check src/ tests/
+
+# 4. mypy delta — base vs branch, SAME env, record the redis-py version
+python -c "import redis; print('redis-py', redis.__version__)"
+mypy src/ 2>&1 | tail -1                      # branch
+git stash && git checkout main && mypy src/ 2>&1 | tail -1   # base, same venv
+```
+
+Report every count with its environment and redis-py version attached; a bare number is not a
+result (CLAUDE.md). Reproduce any subagent-reported metric before relaying it.
 
 ## Documentation
 
 - CHANGELOG.md. `docs/query.md`'s pushdown/perf notes if they state the async caveat (check
   and update).
+- `docs/async.md` — the `asyncio.gather` worker pattern at lines 327–342 is now explicitly
+  supported for bounded `async_filter`; if the page carries any caveat about concurrent
+  `async_filter` or about limits not applying, update it.
 
 ## Critique Results
 
@@ -372,14 +469,27 @@ references re-checked and confirmed.
 | CONCERN | history | Plan omits the repo's standard `## Race Conditions`, `## Test Impact` / `## Failure Path Test Strategy`, and `## Verification` sections that sibling plans carry (`computed_sort.md`, `bm25_first_class_retrieval_mode.md`). No task carries a runnable validation command, and Success Criteria state outcomes without the commands/environment that produce them — the measurement-provenance problem CLAUDE.md calls out. | Needs revision: document structure | Add all three; Race Conditions is where the blocker above is resolved. Verification commands: `pytest tests/test_sorted_range_pushdown.py tests/test_async.py -q` with `POPOTO_TEST_DB=11`, `ruff check src/`, and a base-vs-branch `mypy src/` in the same redis-py minor version, recording the version alongside the number. |
 | NIT | history | Freshness Check's final bullet asks the builder to re-verify something already settled: `_sorted_pushdown_args` condition 5 (`query.py:2317–2323`) declines whenever an unindexed plain-field param survives, and `_bound_keys_before_hydration` independently bails on `_pending_client_filters` (`query.py:2217–2218`). Both suppressions are unconditional on the helper, so reusing the helpers gets #594's semantics for free. | Optional cleanup | Drop the "verify condition 5 covers it" ask; keep the test that confirms the reused helpers fire. |
 
+### Revision Response (2026-09-03, run `336cfd30`)
+
+All six findings resolved. Nothing deferred.
+
+| Severity | Finding | Resolution |
+|----------|---------|------------|
+| BLOCKER | Shared instance state read after awaits | **Resolved in the new `## Race Conditions` section.** Design chosen explicitly: (1) per-call `_PushdownState` snapshot taken inside the single `to_thread` hop by a new `_filter_keys_with_pushdown`, so `self._pushdown_*` / `_sorted_field_order` / `_pending_client_filters` are **never** read after an await — this also closes the two pre-existing post-await reads at query.py:3440/3452; (2) because two `to_thread` calls run in different worker threads concurrently and `filter_for_keys_set` releases the GIL on Redis I/O, snapshotting alone is insufficient, so arm→execute→snapshot is serialized by a **lazily created, per-running-loop** `asyncio.Lock` held in a `WeakKeyDictionary` guarded by a `threading.Lock` — never constructed at import (`redis_db.py:100` is the anti-pattern this avoids, and it needs `tests/test_async.py:14–26` to compensate). The hydration await stays outside the lock, so concurrency on the expensive leg is unaffected. The Risks bullet that said "mirror the sync convention and move on" is **deleted** and replaced with a pointer to the new section. Residual sync-vs-async and multi-loop exposure is stated explicitly with a follow-up issue as Task 6. `asyncio.gather` regression test added as Task 4(f), with the requirement that it be confirmed failing against an un-snapshotted variant. |
+| CONCERN | Command-count assertion unfalsifiable | **Resolved in Task 4(a) + Success Criteria.** New `AsyncHydrationCounter` patches `redis.asyncio.client.Pipeline.hgetall` (verified: async hydration is at query.py:3686), not the sync `redis.client.Pipeline.hgetall` the existing `HydrationCounter` uses (tests/test_sorted_range_pushdown.py:63–80). Assertion is two-sided — `limit <= count <= limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN` — so a 0-count no-op fails. Direction assertions moved to `redis.client.Redis.zrangebyscore`/`zrevrangebyscore` (Task 4b), since the range read runs on the sync client inside `to_thread`. Explicit `@pytest.mark.asyncio` and the `tests/test_async.py:14–26` connection-reset fixture required per test (no `asyncio_mode` in `pyproject.toml`). |
+| CONCERN | `async_filter` cannot take `_allow_pushdown` | **Resolved in Solution 3.** Pinned to `async def async_filter(self, *, _allow_pushdown: bool = True, **kwargs)` — keyword-only with a default, so it stays out of `**kwargs` and never reaches `filter_for_keys_set`. Retry is `return await self.async_filter(_allow_pushdown=False, **kwargs)`, and `_allow_pushdown` (never a literal `True`) is passed as `_bound_keys_before_hydration`'s third positional arg; the issue body's `..., None, True, kwargs)` one-liner is called out by name as the trap. `async_get` (query.py:3347) unaffected. Failure Path Test Strategy item 4 tests exactly this. |
+| CONCERN | Task 1 defers extract-vs-duplicate to build time | **Resolved: extraction, and it is bounded.** `_short_result_action(self, n_objects, allow_pushdown, state) -> bool` — a pure decision-and-log helper, no I/O, no retry ownership; each caller keeps its own recursion because the sync and async retries differ. Both `logger.warning` texts must be emitted verbatim, with tests/test_sorted_range_pushdown.py:398/434/457/485 named as the tripwire. Task 1 is now a standalone step ending in a green sync suite *before* the async path is touched. |
+| CONCERN | Missing standard sections / no runnable commands | **Resolved.** Added `## Race Conditions`, `## Test Impact` (incl. `### Failure Path Test Strategy`), and `## Verification`. Every task now carries a `Validate:` command with `POPOTO_TEST_DB=11`. Success Criteria restated as measurements with the commands and environment that produce them, incl. the redis-py-version-qualified mypy delta. |
+| NIT | Freshness Check asks builder to re-verify settled #594 semantics | **Resolved.** The bullet now reads "Settled at `d72d393` — no build-time re-verification needed" and states both suppression sites as fact; only the confirming test (Task 4e) remains. |
+
 ### Structural Check
 
 | Check | Status | Detail |
 |-------|--------|--------|
-| Required sections | PARTIAL | Race Conditions, Test Impact, Verification missing vs. repo convention |
+| Required sections | ~~PARTIAL~~ → PASS | Race Conditions, Test Impact + Failure Path Test Strategy, and Verification added in the revision pass |
 | Task numbering | PASS | 1–5, no gaps or cycles |
 | File paths exist | PASS | 4 of 4 |
 | Line references | PASS | All Freshness Check line numbers verified verbatim against `main` |
-| Task validation commands | FAIL | No task carries a runnable validation command |
+| Task validation commands | ~~FAIL~~ → PASS | Every task in the revised list carries a `Validate:` command; `## Verification` carries the full gate sequence |
 | Cross-references | PASS | Every Success Criterion maps to a task |
 | Prior art status | PASS | #517 MERGED, #594 MERGED, #559 OPEN with branch unmerged — matches plan wording |
