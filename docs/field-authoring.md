@@ -55,32 +55,29 @@ converted in 1.9.0.
 `run_lua` accepts a pipeline as its client, so the pipelined and immediate
 branches of an `on_save` keep the shape they already have.
 
-## Your field's index namespace changed in 1.9.0
+## Your field's index namespace, and why it cannot collide
 
 `field_class_key` — the `$<Stem>F` prefix your field's internal keys live
-under — is derived from the class name with a trailing `"Field"` removed.
-Before 1.9.0 the derivation was `str.strip("Field")`, which strips a
-character *set* rather than a suffix: `FloatField` became `$oatF`, and two
-different class names could collapse onto one namespace.
+under — is derived from the class name with `str.strip("Field")`. That
+strips a character *set*, not a suffix: `FloatField` lives under `$oatF`,
+`SortedField` under `$SortF`. The spelling is on disk for every deployment,
+yours included, so it is frozen; 1.9.0 does not change it.
 
-The 14 shipped field classes pin their old spelling explicitly, so nothing
-Popoto writes moves. **A field class you wrote yourself is not pinned**, and
-if its name ends in any of the characters `F`, `i`, `e`, `l`, `d` beyond the
-`Field` suffix, its namespace changes on upgrade — `MyCacheField` was
-`$MyCachF` and becomes `$MyCacheF`. Existing keys under the old prefix stay
-on disk and stop being read.
-
-If that applies to a field with data on disk, pin the old spelling on the
-class before upgrading:
+What 1.9.0 does change is that two class names can no longer fold onto one
+namespace silently. `ModelField` and `MoField` both strip to `$MoF`; defining
+the second one now raises `TypeError` naming the class that already owns the
+namespace, instead of letting both write into the same index keys. If you
+hit that, give the newcomer an explicit namespace:
 
 ```python
 from popoto.models.db_key import DB_key
 
-class MyCacheField(Field):
-    field_class_key = DB_key("$MyCachF")   # pre-1.9.0 spelling
+class MoField(Field):
+    field_class_key = DB_key("$MoF2")
 ```
 
-Or migrate the keys and let the new derivation apply.
+An explicit `field_class_key` is honored as-is and is the right tool
+whenever the derived spelling is undesirable for a new class.
 
 ## The round-trip obligation
 
