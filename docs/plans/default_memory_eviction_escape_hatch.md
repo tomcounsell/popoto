@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/596
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-03T09:39:07Z
+revision_applied_at: 2026-09-03T09:50:58Z
 ---
 
 # #596 — DefaultMemory eviction: deploy-level kill switch, loud first eviction, data-loss docs
@@ -178,6 +178,17 @@ Small.
    $popoto_memory:counter:{agent_id}:evicted   += excess
    ```
 
+   *The counter counts records **selected** for eviction, not records deleted (round-2 C2).* The
+   `INCRBY` is fixed at `excess` and fires before the loop (the timing property of the previous
+   paragraph is load-bearing and must not be traded away). The loop can legitimately delete fewer
+   than `excess`: it `continue`s when `victim == own_key` (`default_memory.py:164-166`), it routes a
+   missing hash to `_purge_orphan_keys` (an index repair, not a memory deletion), and a mid-loop
+   exception aborts it after fewer deletes. So the counter's contract — stated in the
+   `EVICTION_COUNTER_PREFIX` docstring, the doctor line, and the docs — is "records the cap selected
+   for eviction", and the invariant is `counter >= records actually deleted`, with equality on the
+   clean path. Do **not** "fix" this by moving the `INCRBY` after the loop; that reintroduces the
+   round-1 timing concern.
+
    This is the exact shape of the existing one-time notice precedent
    (`MemoryService._warn_heuristic_cost`, `service.py:703-716`, which `SETNX`s
    `{COUNTER_KEY_PREFIX}:{agent_id}:heuristic_notice`). Choosing the *counter* prefix means
@@ -187,12 +198,25 @@ Small.
    swaps the pool in place on the shared client (`config.py:376-382`), so the recipe's
    `POPOTO_REDIS_DB` writes and doctor's reads hit the same database.
 
+   *But both renderers would mislabel it as a failure (round-2 C1).* `cli.py:290` builds
+   `failures = {k: v for k, v in counters.items() if not k.endswith("_ok")}` and prints them under
+   `FAILURES`; `mcp_server.py:281` applies the identical filter and prints `failures: {...}`. Left
+   alone, the data-loss report ships as `FAILURES evicted=12` / `failures: {"evicted": 12}` —
+   mislabeled as an integration error and duplicated alongside the new doctor line. So this plan
+   *does* make one addition to `service.py`: a shared
+   `NON_FAILURE_COUNTERS = frozenset({"evicted", "heuristic_notice"})` beside `COUNTER_KEY_PREFIX`
+   (`service.py:49`), imported by both renderers and subtracted from both `failures`
+   comprehensions. `heuristic_notice` is included because the `SETNX` precedent this design copies
+   is already mis-bucketed the same way; fixing only `evicted` would leave the two renderers
+   inconsistent. (`_read_counters()` itself still needs no change.)
+
    Layering: `recipes/` must not import from `integrations/`, so `default_memory.py` defines its
    own `EVICTION_COUNTER_PREFIX = "$popoto_memory:counter"` with a docstring cross-referencing
    `service.COUNTER_KEY_PREFIX`, and a test asserts the two strings are equal so the coupling
    cannot drift silently. The `INCRBY` goes inside the existing `try/except` — a counter failure
    must never fail a save. `cli.py::_cmd_doctor` gains one line: when `counters["evicted"]` is
-   non-zero, print a data-loss line naming the count and `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`.
+   non-zero, print a data-loss line naming the count ("N records selected for eviction") and
+   `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`.
 
 3. **Docs prominence** — the file list is verified, not guessed (see Documentation section):
    the env-var table in `docs/configuration.md`, the existing cap paragraphs in `docs/recipes.md`
@@ -210,8 +234,11 @@ Every task carries its own green signal; run it before moving on.
    `_WARNED_BAD_ENV: set[str]` to `src/popoto/fields/constants.py`, beside the existing `_read_*`
    switch helpers. Integer parse first, then `_FALSY`, then malformed→dedupe-warn→`None`. Docstring
    cites #596, states the parse order, states why `_TRUTHY` is not used (`"1"` is ambiguous), and
-   states why it is not a `Defaults` attribute.
-   → `python -c "import os,popoto.fields.constants as c; [os.environ.__setitem__('POPOTO_DEFAULT_MEMORY_MAX_RECORDS',v) or print(v, c._read_default_memory_max_records()) for v in ('','0','1','5','off','FALSE','no','1k','-3')]"`
+   states why it is not a `Defaults` attribute. The docstring's first line leads with the scope:
+   "Cap on records **per `agent_id`** kept by `DefaultMemory`; `0`/`off` disables eviction" — the
+   env var name omits `PER_AGENT` for table brevity, so the scope must be stated in prose (round-2
+   nit).
+   → `REDIS_URL=redis://localhost:6379/15 python -c "import os,popoto.fields.constants as c; [os.environ.__setitem__('POPOTO_DEFAULT_MEMORY_MAX_RECORDS',v) or print(v, c._read_default_memory_max_records()) for v in ('','0','1','5','off','FALSE','no','1k','-3')]"`
    (expect `None,0,1,5,0,0,0,None,None` and exactly two warnings).
 2. In `src/popoto/recipes/default_memory.py:153`, replace `cap = self._max_records_per_agent` with
    the asymmetric resolution block from Solution §1 (falsy class attribute short-circuits before
@@ -224,11 +251,19 @@ Every task carries its own green signal; run it before moving on.
    `EVICTION_COUNTER_PREFIX` and the `INCRBY …:{agent_id}:evicted` by `excess`, inside the existing
    `try/except`.
    → `pytest tests/test_default_memory_eviction.py -k "notice or counter"` (after task 5)
-4. Add the doctor surface: in `src/popoto/integrations/cli.py::_cmd_doctor`, when
-   `info["counters"].get("evicted")` is non-zero, print a data-loss line with the count and
-   `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`. No change to `service.py` — `_read_counters()` already
-   scans the prefix.
-   → `pytest tests/ -k "doctor" -q`
+4. Add the doctor surface, and stop both renderers filing it under failures (round-2 C1):
+   - add `NON_FAILURE_COUNTERS = frozenset({"evicted", "heuristic_notice"})` beside
+     `COUNTER_KEY_PREFIX` in `src/popoto/integrations/service.py:49`, with a docstring saying these
+     are reports, not integration errors;
+   - subtract it from the `failures` comprehension at `cli.py:290` **and** the identical one at
+     `mcp_server.py:281` (import the set from `service`; do not re-spell the literal in two places);
+   - in `cli.py::_cmd_doctor`, when `info["counters"].get("evicted")` is non-zero, print a data-loss
+     line with the count ("N records selected for eviction") and
+     `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`.
+   `_read_counters()` still needs no change — it already scans the prefix.
+   → `pytest tests/ -k "doctor or memory_status" -q`, plus an assertion that with `evicted`
+   non-zero the doctor output shows the data-loss line and `evicted` does **not** appear in the
+   `FAILURES` line (nor in the MCP `failures:` payload).
 5. New `tests/test_default_memory_eviction.py` (in-process, `monkeypatch.setenv`/`delenv`, fixture
    clearing `_EVICTION_WARNED` and `_WARNED_BAD_ENV`):
    - env unset → cap 1000 enforced;
@@ -245,7 +280,11 @@ Every task carries its own green signal; run it before moving on.
      import-time binding);
    - notice fires once per `(class, agent_id)` (`caplog`), a different agent warns again, and it is
      emitted even when the delete loop raises mid-way (monkeypatch `zrange`/`delete` to raise);
-   - the `…:{agent_id}:evicted` counter equals the number of records evicted;
+   - the `…:{agent_id}:evicted` counter reports records *selected* for eviction (round-2 C2):
+     assert `counter == excess` on the clean path, `counter >= records actually deleted` always,
+     an explicit case where the saving record's own key falls inside the eviction window (loop
+     `continue`s, so deleted `< counter`), and the mid-loop-raise case (deleted `< counter`, counter
+     still incremented). Do not assert exact counter/deleted equality in general;
    - `default_memory.EVICTION_COUNTER_PREFIX == service.COUNTER_KEY_PREFIX`.
    → `pytest tests/test_default_memory_eviction.py -q`
 6. Subprocess test proving the switch works with no Python seam, modeled on
@@ -259,8 +298,13 @@ Every task carries its own green signal; run it before moving on.
    (line ~540): it hardcodes `cap = 1000`, so an operator or CI box with the new env var exported
    would silently change what that contract asserts. Add `monkeypatch.delenv("POPOTO_DEFAULT_MEMORY_MAX_RECORDS",
    raising=False)` so the contract keeps testing the default.
-   → `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=5 pytest tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded -q`
-   (must still pass with the env var exported — that is the point of the task).
+   Optionally also assert inside the test that the resolved cap is 1000, so a *smaller* ambient
+   value cannot make the contract vacuous.
+   → `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0 pytest tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded -q`
+   — `=0` is the discriminating value (round-2 C3): with eviction disabled and no `delenv` the store
+   holds 1100 > 1000, the assertion fires and the test fails; with the `delenv` it passes. A value
+   of `=5` does **not** discriminate: the test only asserts when `count > 1000`, so under a cap of 5
+   it passes with or without the fix.
 8. Docs + CHANGELOG per the Documentation section, including the asymmetric-precedence rule stated
    explicitly in each place the falsy-subclass escape hatch is currently documented.
    → `mkdocs build --strict`
@@ -280,8 +324,15 @@ Every task carries its own green signal; run it before moving on.
   the import-time-binding defect the repo has already written down twice
   (`VALIDITY_GATING_ENABLED`, `POPOTO_NEVER_RECORD_DISABLE` notes) and makes every test need a
   cache-clear. A dict lookup per save is noise beside the `ZCARD`.
-- **Contract-test coupling**: `test_default_memory_growth_is_bounded` hardcodes 1000. Task 5 exists
+- **Contract-test coupling**: `test_default_memory_growth_is_bounded` hardcodes 1000. Task 7 exists
   because leaving it alone makes the new switch able to silently disarm a production contract test.
+  The task's green signal must use `=0` (not `=5`), or the check passes with and without the fix.
+- **The `evicted` counter is a report, not a failure.** Both `cli.py:290` and `mcp_server.py:281`
+  bucket every non-`_ok` counter under failures; without `NON_FAILURE_COUNTERS` the data-loss
+  signal ships mislabeled as an integration error in two surfaces at once.
+- **`counter == deleted` is false by construction.** Own-key `continue`, orphan purges, and
+  mid-loop aborts all make deletions fewer than `excess`. The counter means "selected for
+  eviction"; asserting exact equality produces a flaky test.
 - **`test_defaults_sync.py` allowlist**: only needs an entry if a *new* `Defaults` constant is
   added. This plan adds none — the reader is a module-level function — so the file should not need
   touching. If the build ends up adding a constant anyway, the allowlist entry is mandatory or that
@@ -324,10 +375,13 @@ Every task carries its own green signal; run it before moving on.
   `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=5000` (Task 5).
 - The first-eviction WARNING is present in `caplog` even when the delete loop raises after the
   first victim (Task 5).
-- `popoto-memory doctor` reports a non-zero `evicted` count and names the env var after an
-  over-cap save (Task 4).
-- `test_default_memory_growth_is_bounded` still asserts the 1000 default regardless of ambient env
-  (verified by running it *with* the env var exported, Task 7).
+- `popoto-memory doctor` reports a non-zero `evicted` count ("selected for eviction") and names the
+  env var after an over-cap save, and `evicted` appears in **neither** doctor's `FAILURES` line nor
+  the MCP `memory_status` `failures:` payload (Task 4).
+- The `evicted` counter equals `excess` on the clean path and is `>=` the number of records actually
+  deleted in the own-key and mid-loop-raise cases (Task 5).
+- `test_default_memory_growth_is_bounded` still asserts the 1000 default regardless of ambient env,
+  verified with the discriminating `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` exported (Task 7).
 
 ## Data Flow
 
@@ -344,15 +398,19 @@ eviction block stays inside `except Exception: logger.warning(...)` so no new fa
 a save — which is precisely why the notice is emitted before the loop rather than after it.
 
 Read-back path: `MemoryService._read_counters()` scans `$popoto_memory:counter:{agent_id}:*` →
-`status()["counters"]["evicted"]` → `popoto-memory doctor` line **[new]** and the MCP
-`memory_status` tool (no change needed there).
+`status()["counters"]["evicted"]` → `popoto-memory doctor` data-loss line **[new]** and the MCP
+`memory_status` tool. Both renderers first subtract the **[new]** `service.NON_FAILURE_COUNTERS`
+from their `failures` comprehension (`cli.py:290`, `mcp_server.py:281`) so the count is reported as
+data loss, not as an integration failure.
 
 ## Documentation
 
 Verified targets (each already contains cap text that will otherwise contradict the new switch):
 
 - `docs/configuration.md` — new row in the environment-variable table (~line 402), alongside
-  `POPOTO_NEVER_RECORD_DISABLE` and `POPOTO_JOURNAL_COUPLING_DISABLE`.
+  `POPOTO_NEVER_RECORD_DISABLE` and `POPOTO_JOURNAL_COUPLING_DISABLE`. The row's description leads
+  with the scope, since the name omits it: "Cap on records **per `agent_id`** kept by
+  `DefaultMemory`; `0`/`off` disables eviction."
 - `docs/recipes.md` (~529–532) — currently says "set `_max_records_per_agent` falsy on your
   subclass"; add the env var and a data-loss admonition about the first save after upgrading.
 - `docs/features/harness-integration.md` (~407–417) — same correction, this is the doc hook users
@@ -370,7 +428,8 @@ guarantee and the new switch agree.
 
 Also document the `evicted` counter where `doctor`'s output is described (`docs/features/harness-integration.md`
 doctor section and any `memory_status` field list), so an operator can find the data-loss signal
-without reading logs.
+without reading logs — worded as "records **selected for eviction**", and noted as a report rather
+than a failure counter.
 
 `docs/guides/harness-claude-code.md` / `harness-codex.md` mention `DefaultMemory` but not the cap;
 touch them only if the build finds cap-relevant text there.
@@ -414,6 +473,24 @@ The round-1 BLOCKER is verified addressed (asymmetric precedence: truth table + 
 | NIT | history-consistency | Stale task number in Risks: the "Contract-test coupling" bullet says "Task 5 exists because leaving it alone…", but the contract-test hardening is Task 7 (Task 5 is the new test module). Left over from the round-1 renumbering. | Change "Task 5 exists" to "Task 7 exists" in the second Risks bullet. |
 | NIT | risk-robustness | Task 1's validation one-liner imports popoto with no `REDIS_URL` pinned, so it binds the live DB-0 store (CLAUDE.md / #577). It only reads env and prints — no writes — but the repo's own rule is that ad-hoc scripts pin the DB before `import popoto`. | Prefix the command with `REDIS_URL=redis://localhost:6379/15`. |
 | NIT | scope-value | The env var is `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` while the cap it overrides is *per `agent_id`* (`DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`). An operator reading `=5000` can reasonably take it for a whole-store cap. | Keep the name (shorter is better in a table) but make the `docs/configuration.md` row and the reader docstring lead with "per `agent_id`", e.g. "Cap on records **per agent_id** kept by `DefaultMemory`; `0`/`off` disables eviction." |
+
+**Round-2 revision pass (2026-09-03)**: all 3 concerns and all 3 nits above are folded in; no
+round-2 blockers existed and no settled round-1 design was reopened.
+
+| Round-2 finding | Addressed by |
+|---|---|
+| C1 — `evicted` renders under FAILURES in both `cli.py:290` and `mcp_server.py:281` | Solution §2 *But both renderers would mislabel it as a failure*; Task 4 rewritten (shared `service.NON_FAILURE_COUNTERS`, subtracted in both comprehensions, doctor line, assertion that `evicted` is absent from FAILURES / MCP `failures:`); Data Flow read-back path; new Risks bullet; new Success Criteria bullet. Task 4's former "no change to `service.py`" claim is withdrawn — one constant is added there. |
+| C2 — pre-loop `INCRBY excess` ≠ records deleted, so Task 5's equality assertion is wrong | Solution §2 *The counter counts records selected for eviction*; Task 5 counter bullet restated (`== excess` on the clean path, `>= deleted` always, explicit own-key and mid-loop-raise cases); Risks bullet; Success Criteria bullet; doctor/docs wording changed to "selected for eviction". Increment stays pre-loop. |
+| C3 — Task 7's `=5` validation command cannot fail | Task 7's command changed to `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0 …`, with the reason recorded inline; optional in-test assertion that the resolved cap is 1000; Risks and Success Criteria updated. |
+| NIT — stale "Task 5 exists" in Risks | Corrected to "Task 7 exists". |
+| NIT — Task 1's one-liner imports popoto against live DB 0 | Command prefixed with `REDIS_URL=redis://localhost:6379/15`. |
+| NIT — env-var name omits the per-`agent_id` scope | Task 1 docstring requirement and the `docs/configuration.md` row now lead with "per `agent_id`"; name unchanged. |
+
+Source anchors re-verified against main for this pass: `cli.py:290-291` (failure/success
+comprehensions), `mcp_server.py:279-282` (identical filter), `service.py:49` (`COUNTER_KEY_PREFIX`,
+where `NON_FAILURE_COUNTERS` will sit), `service.py:705` (`heuristic_notice` marker),
+`default_memory.py:153-180` (cap read, `excess`, own-key `continue`, `_purge_orphan_keys`,
+enclosing `except`).
 
 **Structural checks (round 2)**: required sections PASS (15 present, non-empty); task numbering PASS (1–8, no gaps); dependencies PASS (none declared); per-task validation commands PASS (8 of 8 — see the Task 7 concern for one that does not discriminate); file paths PASS (all exist except `tests/test_default_memory_eviction.py`, intentionally new); line anchors PASS — re-verified `default_memory.py:137,153`, `constants.py:25,292`, `service.py:49,678,703`, `config.py:364-386`, `cli.py:206`, `mcp_server.py:281`, `test_defaults_sync.py:105-108`, `test_production_contracts.py:540`, `recipes.md:532`, `harness-integration.md:417-419`, `subconscious-memory-recipe.md:74`, `configuration.md:402`, `tuning-magic-numbers.md:85-87`, `CHANGELOG.md:16`; prerequisites PASS (#594 merged `16aa702`, 2026-09-03T09:17Z); cross-references PASS (every Success Criteria bullet maps to a numbered task; No-Gos and Rabbit Holes absent from planned work).
 
