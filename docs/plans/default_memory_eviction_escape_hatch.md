@@ -17,8 +17,12 @@ revision_applied_at: 2026-09-03T09:50:58Z
 PR #594 gave `DefaultMemory` a per-agent record cap (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`
 = 1000): after every successful non-pipelined save, records past the cap are deleted — stalest by
 relevance-decay timestamp — via full `delete()` (index-clean, no tombstone). For a deployment
-already above 1000 records per agent, the first save after upgrading silently deletes memories and
-keeps deleting one per save. There is no deploy-level override, no distinguishable first-eviction
+already above 1000 records per agent, the first save after upgrading silently deletes the *entire*
+excess in one synchronous burst — `default_memory.py:161-165` computes `excess = zcard - cap` and
+calls a full `delete()` on every record in `zrange(zset_key, 0, excess - 1)` inside that single
+`save()`, not one record per save. An agent 50k over the cap therefore does 50k blocking `hgetall`
+plus index deletes in one hook call, so the operator's reaction window is zero rather than gradual.
+There is no deploy-level override, no distinguishable first-eviction
 signal, and no docs callout. The stated escape hatch (subclass and override
 `_max_records_per_agent`) does not reach the population most at risk: hook users on the shipped
 Claude Code / Codex integrations use `DefaultMemory` directly and cannot edit model code — the
@@ -306,7 +310,10 @@ Every task carries its own green signal; run it before moving on.
    of `=5` does **not** discriminate: the test only asserts when `count > 1000`, so under a cap of 5
    it passes with or without the fix.
 8. Docs + CHANGELOG per the Documentation section, including the asymmetric-precedence rule stated
-   explicitly in each place the falsy-subclass escape hatch is currently documented.
+   explicitly in each place the falsy-subclass escape hatch is currently documented. The `!!! danger`
+   admonition must state that the first save on an over-cap deployment deletes the entire excess at
+   once — synchronously, inside that one save — rather than trimming gradually, so a reader sizes
+   the exposure as "everything above the cap, now" and not "one record per save".
    → `mkdocs build --strict`
 
 ## No-Gos
@@ -337,6 +344,13 @@ Every task carries its own green signal; run it before moving on.
   added. This plan adds none — the reader is a module-level function — so the file should not need
   touching. If the build ends up adding a constant anyway, the allowlist entry is mandatory or that
   test fails.
+- **The first eviction is an unbounded synchronous burst, not a trickle.** `excess = zcard - cap`
+  is deleted in full inside one `save()`, so an agent far above the cap blocks that save for
+  roughly 0.7 ms per record (measured) — ~35 s at 50k over — inside a hook the same release caps
+  at 10 s (`CHANGELOG.md:16`). The docs warning must describe this burst, not a gradual drain;
+  understating it is the difference between an operator who can react and one who cannot. Fixing
+  the burst itself (batching, throttling) is **out of scope** — it is an eviction-policy change
+  owned by the maintainer discussion and #494.
 - **Warning set growth**: bounded by distinct `(class, agent_id)` pairs per process — fine for a
   hook process; a long-lived multi-tenant server with unbounded agent ids would grow it slowly.
   Acceptable at this appetite; note it in the code comment rather than adding an LRU.
