@@ -5,7 +5,7 @@ appetite: Medium
 owner: Valor Engels
 created: 2026-09-02
 tracking: https://github.com/tomcounsell/popoto/issues/588
-last_comment_id: maintainer-decision-2026-09-02
+last_comment_id: 5508044139
 revision_applied: true
 revision_applied_at: 2026-09-02
 ---
