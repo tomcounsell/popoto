@@ -186,6 +186,132 @@ time. See `## Race Conditions` for the reasoning.
 
 4. `async_count` stays untouched (verified correct: full match count).
 
+## Race Conditions
+
+### The hazard
+
+`Query` is instantiated **once per model class** — `new_class.objects = new_class.query = Query(new_class)`
+(`src/popoto/models/base.py:505`). Every call to `Model.query.async_filter(...)` therefore shares
+one `self`. `filter_for_keys_set` resets and then populates its bookkeeping on that shared object:
+`_sorted_field_order` / `_sorted_field_name` / `_pending_client_filters` / `_pushdown_limit` /
+`_pushdown_requested` / `_pushdown_fetched` / `_pushdown_partition` (query.py:2346–2352 reset,
+2411–2414 populate).
+
+The sync guard at query.py:2940–2977 reads those attributes with **no yield point** between the
+write and the read, so on the sync path the convention is sound by accident of straight-line
+execution. The async port has two awaits in between — `to_thread(...)` (query.py:3432) and
+`_async_get_many_objects(...)` (query.py:3456) — so a second coroutine can run to completion in
+the gap and overwrite all seven fields. The failure modes:
+
+- Coroutine A's `_pushdown_limit` is cleared or lowered by B ⇒ `short` computes False ⇒ **A skips
+  the re-read and silently returns short results** — the precise regression this plan exists to
+  prevent.
+- Coroutine A reads B's larger `_pushdown_limit` ⇒ spurious full-range re-read (a silent perf
+  cliff, plus a misleading warning naming the wrong field).
+- `_sorted_field_order` swapped mid-flight ⇒ A hydrates B's key list ⇒ **wrong rows**.
+
+This is not hypothetical: `docs/async.md:327–342` promotes exactly the concurrency pattern that
+triggers it (an `asyncio.gather` worker loop over `async_filter` results). Two of the seven reads
+(`_sorted_field_order` at query.py:3440, `_pending_client_filters` at query.py:3452) already
+happen after the await **today**, so a narrower version of this bug is already live on the async
+path; this plan closes it rather than widening it.
+
+### The fix (two parts, both required)
+
+**1. Snapshot into locals — never read `self._pushdown_*` after an await.**
+`_filter_keys_with_pushdown` (Solution 1) returns `(db_keys, _PushdownState)` from inside the
+single `to_thread` hop. Every downstream consumer — `_bound_keys_before_hydration`,
+`_short_result_action`, the order-by and client-filter branches — takes the state object, not
+`self`. After the first await, `async_filter` never touches `self._pushdown_*`,
+`self._sorted_field_order`, or `self._pending_client_filters` again.
+
+**2. Serialize arm-through-snapshot with a per-loop `asyncio.Lock`.**
+Snapshotting alone is insufficient: two coroutines' `to_thread` calls run in *different worker
+threads concurrently*, and `filter_for_keys_set` does blocking Redis I/O that releases the GIL, so
+B's reset (query.py:2346–2352) can land between A's populate and A's snapshot. The critical
+section is arm → `filter_for_keys_set` → snapshot, i.e. the entire body of
+`_filter_keys_with_pushdown`. Hold the lock across the single `await to_thread(...)` and release
+immediately after; the second await (`_async_get_many_objects`) is outside it and stays fully
+concurrent, so throughput on the hydration leg — the expensive leg — is unaffected.
+
+**Lock construction: per running loop, created lazily, never at import.**
+A `Lock()` created at class-definition or import time binds the loop it is first awaited on and
+raises on any other. This repo already has that exact bug's workaround: `redis_db.py:100` builds
+`_async_redis_lock` at import, and `tests/test_async.py:14–26` carries an autouse fixture that
+reassigns it per test because pytest-asyncio creates a fresh loop each test. Do not add a second
+thing that needs that fixture. Instead key the lock by the running loop, guarded for
+thread-safety by a plain `threading.Lock` (no I/O under it, so the cost is a few hundred ns):
+
+```python
+# module level in query.py
+_PUSHDOWN_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = (
+    weakref.WeakKeyDictionary()
+)
+_PUSHDOWN_LOCKS_GUARD = threading.Lock()
+
+def _pushdown_lock_for_running_loop() -> "asyncio.Lock":
+    loop = asyncio.get_running_loop()
+    with _PUSHDOWN_LOCKS_GUARD:
+        lock = _PUSHDOWN_LOCKS.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            _PUSHDOWN_LOCKS[loop] = lock
+        return lock
+```
+
+The `WeakKeyDictionary` self-cleans as loops are collected, so a per-test loop leaves nothing
+behind and no fixture is required. Scope note: this is a module-level lock, not per-`Query`.
+Per-`Query` would be finer-grained but has to live on the shared instance and gains little — the
+critical section is short and the contended case (many concurrent `async_filter` calls on one
+model) is exactly the case a per-`Query` lock would serialize anyway.
+
+### Residual exposure (stated, not deferred silently)
+
+- **Sync-vs-async.** A synchronous `Model.query.filter(...)` running on another thread
+  concurrently with an `async_filter` can still clobber the shared attributes mid-flight. The
+  async lock cannot cover it, because the sync path does not take it. Closing this requires
+  moving the sync path's bookkeeping off `self` as well — a behavior-affecting change to
+  `_execute_filter` that this plan's No-Gos forbid. **Action: file a follow-up issue** ("move
+  `Query` pushdown bookkeeping off shared instance state on the sync path") and link it from the
+  PR body. The exposure is unchanged from today's `main`; this plan does not widen it.
+- **Multiple event loops in separate threads.** Each loop gets its own lock, so coroutines on
+  loop A and loop B are not mutually serialized. Same residual as above, same follow-up. Popoto
+  has no documented multi-loop pattern, so this is theoretical.
+- **Not covered:** cross-process concurrency needs no coverage here — `self` is per-process.
+
+### Regression test
+
+`asyncio.gather` of N concurrent `async_filter` calls on the *same model* with **different**
+partitions and limits, over a dataset seeded with orphaned index members so the short-result
+guard is live. Assert each coroutine gets exactly its own correct rows and its own full count.
+Run it with enough iterations to be meaningfully load-bearing rather than incidentally passing,
+and confirm it **fails** against a deliberately un-snapshotted variant before accepting it.
+
+## Test Impact
+
+| Test | Impact |
+|------|--------|
+| `tests/test_sorted_range_pushdown.py:398/434/457/485` (caplog assertions on both warning texts) | Must pass **unchanged**. The `_short_result_action` extraction has to emit both messages verbatim; these four are the tripwire for that. |
+| Rest of `tests/test_sorted_range_pushdown.py` (sync) | Must pass unchanged — No-Gos forbid sync behavior change. `_bound_keys_before_hydration` keeps its `state=None` → read/write `self` path for exactly this reason. |
+| `tests/test_async.py` | Must pass unchanged; `async_get` (query.py:3347) is the only internal `async_filter` caller and gets `_allow_pushdown`'s default. |
+| New async section in `tests/test_sorted_range_pushdown.py` | 6 tests — see Task 3. Each needs an explicit `@pytest.mark.asyncio` (`pyproject.toml` declares no `asyncio_mode`; house pattern is `tests/test_async.py:38`) and the async-connection-reset autouse fixture from `tests/test_async.py:14–26`, or the cached async client leaks across loops. |
+| #559's `xfail(strict=True)` on async hydration count | Not on `main` at `d72d393`. If it lands before build, convert to a hard assertion (Task 4). |
+
+### Failure Path Test Strategy
+
+Each failure mode gets a test that fails without the fix:
+
+1. **Bound never fires** → async hydration count assertion with a **lower** bound (see Task 3);
+   a vacuous 0-count cannot pass.
+2. **Wrong direction** → assert `zrevrangebyscore` (not `zrangebyscore`) is the call issued.
+3. **Short result from orphans** → orphan-density dataset; assert full correct row set returned
+   and the re-read warning logged.
+4. **Retry re-applies the bound** → assert the retry path returns the complete set, not the same
+   short answer (guards against passing a literal `True` for `allow_pushdown`).
+5. **Concurrent clobber** → the `gather` test above.
+6. **#594 suppression lost** → pending plain-field client filter; assert correct rows, no
+   truncation.
+
 ## Step by Step Tasks
 
 1. Extract the sync pushdown arm/disarm + short-result guard into helpers if a clean seam
