@@ -2935,10 +2935,12 @@ one reviewer, one verdict.</p>
 (<code>tests stress docs build lock guard</code>). <code>--fast</code> is tests only. There is no
 <code>ruff</code> here — formatting is <code>black</code> (line length 88, isort at 79).</p>
 <h2 id="test-isolation-contract-and-the-expected-failure-set">Test isolation contract, and the expected-failure set<a class="headerlink" href="#test-isolation-contract-and-the-expected-failure-set" title="Permanent link">&para;</a></h2>
-<p><code>pytest</code> auto-isolates onto <strong>Redis DB 15</strong> via the <code>popoto.pytest_plugin</code>
-entry point (both <code>import popoto</code> and <code>import src.popoto</code> collapse onto one
-canonical module and connection). Override with <code>POPOTO_TEST_DB=&lt;n&gt;</code>; DB 0 is
-rejected outright to prevent production data loss.</p>
+<p><code>pytest</code> isolates onto <strong>Redis DB 15</strong> via the <code>popoto.pytest_plugin</code> entry
+point (both <code>import popoto</code> and <code>import src.popoto</code> collapse onto one
+canonical module and connection). The plugin is opt-in; this repo opts in
+with <code>popoto_test_db = "15"</code> in <code>pyproject.toml</code>. Override with
+<code>POPOTO_TEST_DB=&lt;n&gt;</code>; DB 0 is rejected outright to prevent production data
+loss.</p>
 <p><strong>Five tests hardcode <code>assert db == 15</code> and therefore fail by construction
 under any non-15 DB.</strong> This is not a regression — it is the expected result of
 running with <code>POPOTO_TEST_DB</code> set to anything else (which reviewers running

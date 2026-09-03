@@ -35,11 +35,12 @@ sm.extract_memories(answer, importance=0.6)        # post-turn: save what was le
 sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
 ```
 
-`agent_id` is the only required argument. It partitions every index, and an
-explicit `.filter(agent_id=...)` query always honors that partition — but
-`inject_context`'s default retrieval path (lexical/BM25) does not yet filter
-by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis via the default loop can
-retrieve each other's memories. Leaving `model_class`
+`agent_id` is the only required argument. It partitions every index, and both
+an explicit `.filter(agent_id=...)` query and `inject_context`'s default
+retrieval path (lexical/BM25) honor that partition — the latter only since
+1.9.0 ([#576](https://github.com/tomcounsell/popoto/issues/576); before
+that, two agents sharing one Redis via the default loop could retrieve each
+other's memories). Leaving `model_class`
 unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
 an association graph.
@@ -187,10 +188,11 @@ sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what wa
 That is a working memory loop with query-sensitive retrieval on by default.
 `agent_id` is the only required argument; it partitions every index, and an
 explicit `.filter(agent_id=...)` query (Levels 1+ below) always honors that
-partition. `inject_context`'s default retrieval path (lexical/BM25) does not
-yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so at Level 0 two agents sharing one Redis can
-retrieve each other's memories — a distinct Redis database per agent is the
-actual isolation boundary until that lands.
+partition, and since 1.9.0 so does `inject_context`'s default retrieval path
+(lexical/BM25) ([#576](https://github.com/tomcounsell/popoto/issues/576)).
+On 1.8.2 and earlier, two agents sharing one Redis at Level 0 could retrieve
+each other's memories; a distinct Redis database per agent was the workaround
+and is still the boundary Redis itself enforces.
 
 This is also the configuration the published benchmarks run. If you take
 nothing else from this page, take this.
@@ -676,7 +678,7 @@ sm.extract_memories(answer, importance=0.6)        # post-turn
 sm.report_outcomes(assembly, outcome="acted")      # feedback
 ```
 
-That is the whole loop. `agent_id` is the only required argument — it partitions every index, and an explicit `.filter(agent_id=...)` query always honors that partition. `inject_context`'s default retrieval path (lexical/BM25) does not yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis through the default loop can retrieve each other's memories; a distinct Redis database per agent is the actual isolation boundary today.
+That is the whole loop. `agent_id` is the only required argument — it partitions every index, and an explicit `.filter(agent_id=...)` query always honors that partition. Since 1.9.0 `inject_context`'s default retrieval path (lexical/BM25) honors it too ([#576](https://github.com/tomcounsell/popoto/issues/576)); on 1.8.2 and earlier two agents sharing one Redis through the default loop could retrieve each other's memories, and a distinct Redis database per agent was the workaround.
 
 ### What the defaults give you
 
@@ -701,6 +703,8 @@ The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` reso
 `DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filtering-noise-and-tracking-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
 
 Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
+
+`DefaultMemory` also caps itself at **1000 records per `agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`, 1.9.0). Past the cap each save deletes the stalest record by `relevance` decay timestamp — a full `delete()`, so indexes are cleaned and the record is gone for good. Nothing evicted before 1.9.0, so a long-lived corpus grew one record per turn forever; if yours is already over the cap, the first save after upgrading starts deleting. Subclass and set `_max_records_per_agent` to change the number, or a falsy value to turn eviction off.
 
 ### Bringing your own model
 
@@ -908,6 +912,23 @@ Reported outcomes are not only a ranking nudge -- they set how fast a memory lea
 Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. Set `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` to take confidence out of the ranking entirely, without touching model code.
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
+
+### Redis outages raise
+
+Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not.
+
+Wrap the call at your application's turn boundary if a turn must survive an outage:
+
+```python
+from popoto.redis_db import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError, not the builtins
+
+try:
+    assembly = sm.inject_context(query)
+except OUTAGE_ERRORS:
+    assembly = None    # serve the turn without memory, and alert
+```
+
+Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index.
 
 ## Tuning
 
@@ -1223,6 +1244,8 @@ The model and prompt are pinned module constants (`EXTRACTION_MODEL`, `EXTRACTIO
 **`popoto.extraction.claude` is imported lazily.** `import popoto` and `import popoto.extraction` never import the `anthropic` package; only importing `popoto.extraction.claude` itself does. Constructing `ClaudeExtractionProvider` without `anthropic` installed raises `ImportError` with an install hint.
 
 **Fail-open on API/parse errors.** If the API call or response parsing fails for any reason, `extract()` logs a warning and returns an empty list rather than raising -- a flaky extraction call never crashes the caller's turn loop.
+
+This is the *extraction provider's* contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 `SubconsciousMemory.extract_memories` re-raises `redis.exceptions.ConnectionError`/`TimeoutError`, because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see [Redis outages raise](../guides/subconscious-memory-recipe.md#redis-outages-raise).
 
 ## Seeding `confidence_field` and `co_occurrence_field`
 
@@ -1588,23 +1611,56 @@ variables below.
 
 ## Configuration
 
-Every variable is optional. The zero-configuration path is "local Redis or
-Valkey on the default port, memories tagged with this project's agent id" —
-see the scoping caveat on `POPOTO_MEMORY_AGENT_ID` below before wiring the
-hook into more than one project on one database.
+Every variable is optional, with one exception you will hit on a fresh
+install: **the database must not be 0.** Name a database and the path is
+"local Redis or Valkey on the default port, memories tagged with this
+project's agent id".
 
 | Variable | Default | Notes |
 |---|---|---|
-| `POPOTO_MEMORY_URL` | `REDIS_URL`, else `redis://localhost:6379/0` | Valkey URLs are identical |
-| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Tags writes and is honored as a read filter on the composite-score retrieval path. The shipped default is the lexical/BM25 path, which does **not** yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)) — a project's memories can be retrieved by another `agent_id` on the same database. Not a project-isolation boundary today; use a distinct `POPOTO_MEMORY_URL` database per project for that instead |
+| `POPOTO_MEMORY_URL` | `REDIS_URL`, else `redis://localhost:6379/0` | Valkey URLs are identical. **Database 0 is refused** — see below |
+| `POPOTO_MEMORY_ALLOW_DB0` | unset | Set to `1` to write agent memory to database 0 anyway. Deploy-level opt-in, deliberately an environment variable: a hook is a bare command string with nowhere to pass Python arguments |
+| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Tags writes and is honored as a read filter on every shipped retrieval path, lexical/BM25 included ([#576](https://github.com/tomcounsell/popoto/issues/576), fixed in 1.9.0). Before 1.9.0 the BM25 path ignored it and one project's memories could surface in another's turns on the same database |
 | `POPOTO_MEMORY_MAX_ITEMS` | `5` | Diverges from the benchmark; see below |
 | `POPOTO_MEMORY_MAX_TOKENS` | `800` | Under Codex's 2500-token `additionalContextLimit` |
 | `POPOTO_MEMORY_INGEST` | `raw` | `raw` or `heuristic` |
 | `POPOTO_MEMORY_ENABLED` | `1` | Kill switch that needs no config edit |
 | `POPOTO_MEMORY_LOG` | `~/.popoto/memory.log` | Where swallowed errors land |
 
-A malformed value falls back to its default rather than raising. A typo in a
-harness config must not break a turn.
+A malformed value falls back to its default rather than raising: a typo in a
+harness config must not break a turn. The database number is the exception —
+both a database-0 target and a URL with no database at all (`redis://host:6379/`,
+which is *not* database 0) raise, because the alternative is writing your
+memories somewhere you did not ask for.
+
+### Database 0 is refused
+
+`MemoryService` raises `Db0RefusedError` when the database it would write to
+is 0. The error names the variable to change and suggests an empty database
+it found on your server.
+
+Database 0 is where a bare `redis-cli`, a scratch script, and most other
+local tooling land by default, so it is the database most likely to already
+hold something you care about — and the one most likely to be flushed by
+someone debugging an unrelated problem. Popoto's own test plugin has always
+refused it for the same reason; the library refusing it while steering users
+into it was the contradiction ([#584](https://github.com/tomcounsell/popoto/issues/584)).
+
+Pick any other database:
+
+```bash
+export POPOTO_MEMORY_URL=redis://localhost:6379/1
+```
+
+`Db0RefusedError` subclasses `ValueError`, and every entry point renders it
+rather than tracebacking: `doctor` prints it and exits 1, the MCP tools
+return it as an error result, and the hook logs it and exits 0 so the turn
+survives. If database 0 really is where this corpus belongs,
+`POPOTO_MEMORY_ALLOW_DB0=1` opts in at deploy time.
+
+`POPOTO_MEMORY_ENABLED=0` short-circuits the check entirely. A disabled
+memory layer writes to no database, so there is nothing to refuse — the kill
+switch stays a clean no-op on a database-0 host, with no log line per turn.
 
 ### The one deliberate divergence from the benchmarked configuration
 
@@ -1629,7 +1685,8 @@ $ popoto-memory doctor
 popoto-memory doctor
 
   status         enabled
-  redis url      redis://localhost:6379/0
+  redis url      redis://localhost:6379/1
+  url source     POPOTO_MEMORY_URL
   redis          reachable, valkey 9.1.0, ping 4.91 ms
   agent id       my-project
   model          DefaultMemory
@@ -1655,7 +1712,13 @@ What to read:
 - **`failures`** counts swallowed exceptions per operation. Every one of
   them also wrote a line to the log, and the last five lines are printed
   underneath.
+- **`url source`** says which variable produced the URL — `POPOTO_MEMORY_URL`,
+  `REDIS_URL`, or `default`. It is the fastest way to find out that the
+  memories you are looking for went to a database you did not intend. Any
+  password in the URL is redacted to `***`; `doctor` output ends up pasted
+  into transcripts.
 - **Redis unreachable** exits 1 and prints the command to fix it.
+- **Database 0** exits 1 before connecting, with the refusal message.
 
 `popoto-memory doctor --json` emits the same data machine-readably.
 
@@ -1670,10 +1733,20 @@ best-effort against the same client that just failed: when the failure is
 Redis being unreachable, the counter does not get incremented, which is
 exactly when `doctor` has nothing to read back anyway.
 
+**An outage costs one attempt, not five.** The integration binds its
+connection with a 1-second connect and socket timeout and no redis-py
+retries (the default is 10), and once a `ConnectionError`/`TimeoutError` has
+been recorded, every later Redis operation in that hook process is skipped
+outright. The shipped Claude Code and Codex hook configs also carry an
+explicit `"timeout": 10`. Against a server that accepts connections and
+never answers, this is the difference between roughly 25 seconds on the
+user's prompt and under 2.
+
 | Situation | Behavior |
 |---|---|
-| Redis down, read hook | exit 0, no stdout, one log line, four lines on stderr, counter not incremented (same client is down) |
+| Redis down, read hook | exit 0, no stdout, one log line, counter not incremented (same client is down). One connection attempt, ~1 s, not one per operation |
 | Redis down, write hook | exit 0, turn dropped, logged. No retry queue |
+| Database 0 with no opt-in | `Db0RefusedError` from `MemoryService` construction: `doctor` prints it and exits 1, MCP tools return an error result, the read hook logs it and exits 0 — once per turn until the URL changes. `POPOTO_MEMORY_ENABLED=0` skips the check and logs nothing |
 | Healthy Redis, empty corpus (fresh DB / first run) | exit 0, no stdout, one stderr line -- a BM25 advisory that it collected no query signal and fell back to composite (query-blind). Expected on a user's first turn after install; stderr goes quiet and stdout carries content once the corpus is seeded. See [Query-Blind Retrieval](../guides/query-blind-retrieval.md). |
 | Malformed JSON on stdin | exit 0, no output, logged as `hook_decode` |
 | Empty prompt | no retrieval attempted, no output |
@@ -1754,10 +1827,24 @@ working directory's basename, so corpora are per-project rather than global,
 and `doctor` reports the record count. `POPOTO_MEMORY_ENABLED=0` stops
 writes without editing any harness config.
 
-Popoto's decay primitives rank stale memories down over time.
-[`MemoryLifecycle`](../recipes.md) can hard-delete them, but it requires a
-`tier` KeyField that `DefaultMemory` does not declare, so it is not wired
-into the harness path; running it needs a model of your own.
+Popoto's decay primitives rank stale memories down over time, and since
+1.9.0 `DefaultMemory` also **caps the corpus at 1000 records per
+`agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`). Past the
+cap, each save deletes the stalest record by decay timestamp — a full
+`delete()`, so every index is cleaned and nothing is recoverable
+afterwards. Staleness is the `relevance` decay clock, so a memory that keeps
+getting recalled or acted on stays; one nobody has touched goes first.
+
+The cap exists because nothing on the default path evicted before: a
+long-lived install grew one record per turn, forever. **If your corpus is
+already above 1000 records for an agent, the first save after upgrading
+starts deleting.** Check with `doctor` before you upgrade. To change the
+cap, subclass `DefaultMemory` and set `_max_records_per_agent` (`0` or
+`None` disables eviction entirely).
+
+[`MemoryLifecycle`](../recipes.md) remains the tiered alternative, but it
+requires a `tier` KeyField that `DefaultMemory` does not declare, so it is
+not wired into the harness path; running it needs a model of your own.
 
 ## Try it without a harness
 
@@ -2152,11 +2239,14 @@ health check.
 ## What is stored, and where
 
 In your Redis or Valkey, in the `DefaultMemory:*` keyspace, tagged with an
-`agent_id` that defaults to the basename of your working directory. That tag
-is honored as a read filter only on the composite-score retrieval path; the
-shipped default lexical/BM25 path does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two
-projects on one Redis can retrieve each other's memories. Use a distinct
-`POPOTO_MEMORY_URL` database per project for real isolation.
+`agent_id` that defaults to the basename of your working directory. Since
+1.9.0 that tag is honored as a read filter on every shipped retrieval path,
+the default lexical/BM25 one included ([#576](https://github.com/tomcounsell/popoto/issues/576)).
+On 1.8.2 and earlier it was honored only on the composite-score path, so two
+projects on one Redis could retrieve each other's memories; a distinct
+`POPOTO_MEMORY_URL` database per project was the workaround, and remains the
+stronger boundary if you want one enforced by Redis rather than by a query
+filter.
 
 One turn becomes one record, verbatim. Issue #489 measured
 sentence-splitting extraction at 0.2078 judged accuracy against 0.3636 for
@@ -2332,17 +2422,20 @@ This was reproduced first-hand against codex-cli 0.144.4: with a project
 
 Install at `~/.codex/hooks.json` instead.
 
-`POPOTO_MEMORY_AGENT_ID` tags writes and is honored as a read filter only on
-the composite-score retrieval path — the shipped default lexical/BM25 path
-does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so setting it per project does **not**
-isolate one project's memories from another's on the same database:
+`POPOTO_MEMORY_AGENT_ID` tags writes and is honored as a read filter on
+every shipped retrieval path since 1.9.0, the default lexical/BM25 one
+included ([#576](https://github.com/tomcounsell/popoto/issues/576)). On
+1.8.2 and earlier it was honored only on the composite-score path, so setting
+it per project did **not** isolate one project's memories from another's on
+the same database:
 
 ```bash
 export POPOTO_MEMORY_AGENT_ID=my-project
 ```
 
-If you need real per-project isolation today, point each project at its own
-`POPOTO_MEMORY_URL` database instead.
+For a boundary enforced by Redis rather than by a query filter, point each
+project at its own `POPOTO_MEMORY_URL` database (any database but 0, which
+is refused — see [Harness Integration](../features/harness-integration.md#database-0-is-refused)).
 
 ## Context limit
 
@@ -3405,13 +3498,29 @@ The comparison uses an epsilon guard: discharge fires only when `conf < 0.1 - 1e
 
 ## API Reference
 
-### `ConfidenceField.update_confidence(instance, field_name, signal)`
+### `ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)`
 
 Atomically update confidence using the capped-evidence Bayesian formula.
 
 - **signal**: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
-- **Returns**: The new confidence value.
+- **pipeline**: Optional Redis pipeline to queue the update on.
+- **Returns**: The new confidence value — or `None` when queued on a pipeline.
 - **Raises**: `TypeError` if unsaved or wrong field type; `ValueError` if signal out of range.
+
+**Pipeline mode (1.9.0)** changes three things, because the result does not
+exist until `execute()`:
+
+- the return value is `None` rather than the new confidence;
+- the instance attribute is **not** synced;
+- an unsaved instance is skipped server-side by the script's `EXISTS` guard
+  instead of raising `TypeError` — the round trip that raised is what the
+  batching removes.
+
+Before 1.9.0 the `pipeline` argument was accepted and ignored: every update
+ran immediately, one round trip each. Competitive suppression across N
+records is now one `execute()` (`inject_context` went from 25 round trips per
+turn to 8). If you passed `pipeline=` before and relied on the returned
+float, read the value back with `get_confidence` after `execute()`.
 
 > **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.
 
@@ -6258,6 +6367,35 @@ Two behaviors worth knowing:
   indexed and unindexed fields keeps the indexed narrowing. **Scope by an indexed
   field** (`KeyField`/`SortedField`) for reliable recall under load.
 
+### Outages are raised, not swallowed
+
+Every retrieval path re-raises `redis.exceptions.ConnectionError` and
+`TimeoutError` instead of logging them and returning an empty
+`AssemblyResult`. Before 1.9.0 a dead server was indistinguishable from "no
+relevant memories" — the assembler returned nothing, the caller injected
+nothing, and the only trace was a log line nobody was reading.
+
+Retrieval-*quality* failures still degrade as before: a zero-hit BM25 query
+falls back to composite ranking, a missing index is skipped. Only the two
+connection exceptions propagate.
+
+This is a behavior change for direct callers. If your application calls
+`assemble()` on a request path, wrap it — the harness boundary
+(`hooks.run`, the MCP dispatcher) already does:
+
+```python
+from popoto.redis_db import OUTAGE_ERRORS   # (redis ConnectionError, TimeoutError)
+
+try:
+    result = assembler.assemble(query_cues=..., agent_id=...)
+except OUTAGE_ERRORS:
+    result = None   # serve the turn without memory, and log it
+```
+
+Note these are `redis.exceptions.ConnectionError`/`TimeoutError`, not the
+builtins of the same name — catching the builtins will not catch these.
+`OUTAGE_ERRORS` is the exact tuple the recipes test against.
+
 ### Push Path
 
 1. **CyclicDecayField scan**: Find records whose cyclic + pressure score exceeds `DEFAULT_SURFACING_THRESHOLD`.
@@ -8741,6 +8879,16 @@ lifecycle = MemoryLifecycle(
 `MemoryLifecycle` is an independent policy layer — it composes *alongside*
 `SubconsciousMemory`, not as a replacement:
 
+!!! note "`DefaultMemory` evicts on its own since 1.9.0"
+
+    If the model below is `DefaultMemory`, it already caps itself at 1000
+    records per `agent_id` and hard-deletes the stalest past that
+    (`_max_records_per_agent`). That is a blunt floor, not a substitute for
+    this layer: `MemoryLifecycle` tombstones restorably and reads tier and
+    evidence before forgetting, while the cap only reads the decay clock.
+    Set `_max_records_per_agent` falsy on your subclass if you want
+    lifecycle policy to be the only thing that removes records.
+
 ```python
 from popoto.recipes import DefaultMemory, MemoryLifecycle, SubconsciousMemory
 
@@ -10981,7 +11129,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for ContentField filesystem storage and EmbeddingField `.npy` files. |
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
-| `POPOTO_TEST_DB` | `15` | Redis DB number used by the pytest plugin for test isolation. Overrides the `popoto_test_db` ini option. DB 0 is rejected to prevent accidental production data loss. |
+| `POPOTO_TEST_DB` | unset | Redis DB number used by the pytest plugin for test isolation, and one of the two ways to activate the plugin at all (the other is the `popoto_test_db` ini option, which this overrides). Unset with no ini option, the plugin does nothing. DB 0 is rejected to prevent accidental production data loss. See [Testing](testing.md). |
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
@@ -15808,9 +15956,17 @@ session.save()
 ### What Happens When a Key Expires
 
 When Redis removes an expired key, subsequent `load()` or `query.get()` calls
-return `None`. Popoto handles orphaned secondary index entries gracefully
-during queries. For proactive cleanup of orphaned index entries left behind by
-expired keys, use [`Model.clean_indexes()`](recipes.md#index-maintenance).
+return `None`. Orphaned secondary index entries — an index still naming a key
+whose hash is gone — are skipped during queries, and since 1.9.0 they are also
+**purged on read** for every index derivable from the key alone: the class
+set, non-auto `KeyField` sets, and sorted sets partitioned by key fields.
+A query that walks past an orphan removes it, so a TTL'd model no longer
+accumulates permanent index ghosts.
+
+Indexes that cannot be derived from the key (a `SortedField` scored by a
+non-key value, for example) still need the sweep: use
+[`Model.clean_indexes()`](recipes.md#index-maintenance) for those, and for
+cleanup you would rather not wait for a read to trigger.
 
 ## Per-Instance TTL Override
 
@@ -17636,6 +17792,51 @@ sufficient. A plain re-save (construct a new instance with the same values and c
 `save()`) fully reconstructs that structure. This is the common case, and it is
 exactly what `roundtrip_policy = "rebuild"` (the default) declares.
 
+## Lua scripts: use `run_lua`, not `client.eval`
+
+A field that needs atomicity should run its script through
+`popoto.redis_db.run_lua`, which takes the same arguments `client.eval` does:
+
+```python
+from popoto.redis_db import POPOTO_REDIS_DB, run_lua
+
+run_lua(pipeline or POPOTO_REDIS_DB, MY_LUA, 2, key_a, key_b, arg_1)
+```
+
+`run_lua` caches a redis-py `Script` per script text and sends `EVALSHA`,
+falling back to loading the source only when the server does not know the
+hash. Calling `client.eval` directly still works, but it ships the whole
+script body on every invocation — for a field whose hook runs on every save,
+that is the script's byte size added to every write. Every shipped field was
+converted in 1.9.0.
+
+`run_lua` accepts a pipeline as its client, so the pipelined and immediate
+branches of an `on_save` keep the shape they already have.
+
+## Your field's index namespace, and why it cannot collide
+
+`field_class_key` — the `$<Stem>F` prefix your field's internal keys live
+under — is derived from the class name with `str.strip("Field")`. That
+strips a character *set*, not a suffix: `FloatField` lives under `$oatF`,
+`SortedField` under `$SortF`. The spelling is on disk for every deployment,
+yours included, so it is frozen; 1.9.0 does not change it.
+
+What 1.9.0 does change is that two class names can no longer fold onto one
+namespace silently. `ModelField` and `MoField` both strip to `$MoF`; defining
+the second one now raises `TypeError` naming the class that already owns the
+namespace, instead of letting both write into the same index keys. If you
+hit that, give the newcomer an explicit namespace:
+
+```python
+from popoto.models.db_key import DB_key
+
+class MoField(Field):
+    field_class_key = DB_key("$MoF2")
+```
+
+An explicit `field_class_key` is honored as-is and is the right tool
+whenever the derived spelling is undesirable for a new class.
+
 ## The round-trip obligation
 
 Some fields maintain state that is *not* derivable from the field's stored value
@@ -17757,9 +17958,15 @@ an export/import and reading the resulting report.
 
 Popoto includes a pytest plugin that automatically isolates tests in a dedicated Redis DB. It is the recommended way to run a project's test suite against Popoto models without contaminating development or production data.
 
-## Pytest Plugin (auto-registered)
+## Pytest Plugin (opt-in)
 
-The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others) and loads automatically when Popoto is installed. No configuration is required.
+The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others), so pytest loads it wherever Popoto is installed. It stays inert until you name a test database: set `popoto_test_db` in your pytest ini options or export `POPOTO_TEST_DB`. A project that merely depends on Popoto and never opts in keeps every database untouched, including DB 15.
+
+```ini
+# pyproject.toml
+[tool.pytest.ini_options]
+popoto_test_db = "15"
+```
 
 **What the plugin does:**
 
@@ -17777,7 +17984,8 @@ The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](http
 
 1. `POPOTO_TEST_DB` environment variable
 2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
-3. Default: `15`
+
+With neither set the plugin does nothing.
 
 DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
 

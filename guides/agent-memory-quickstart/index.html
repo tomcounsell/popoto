@@ -3128,10 +3128,11 @@ wraps it into a per-turn loop:</p>
 <p>That is a working memory loop with query-sensitive retrieval on by default.
 <code>agent_id</code> is the only required argument; it partitions every index, and an
 explicit <code>.filter(agent_id=...)</code> query (Levels 1+ below) always honors that
-partition. <code>inject_context</code>'s default retrieval path (lexical/BM25) does not
-yet filter by it (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>), so at Level 0 two agents sharing one Redis can
-retrieve each other's memories — a distinct Redis database per agent is the
-actual isolation boundary until that lands.</p>
+partition, and since 1.9.0 so does <code>inject_context</code>'s default retrieval path
+(lexical/BM25) (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>).
+On 1.8.2 and earlier, two agents sharing one Redis at Level 0 could retrieve
+each other's memories; a distinct Redis database per agent was the workaround
+and is still the boundary Redis itself enforces.</p>
 <p>This is also the configuration the published benchmarks run. If you take
 nothing else from this page, take this.</p>
 <p><code>DefaultMemory</code> also carries <code>NeverRecordMixin</code>, so credential- and

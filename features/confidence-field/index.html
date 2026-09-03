@@ -1260,10 +1260,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal" class="md-nav__link">
+  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ConfidenceField.update_confidence(instance, field_name, signal)
+        ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)
       
     </span>
   </a>
@@ -3219,10 +3219,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal" class="md-nav__link">
+  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ConfidenceField.update_confidence(instance, field_name, signal)
+        ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)
       
     </span>
   </a>
@@ -3510,13 +3510,28 @@
 <p>When confidence drops strictly below <code>AUTO_DISCHARGE_CONFIDENCE_THRESHOLD</code> (0.1), homeostatic pressure on any <code>CyclicDecayField</code> is automatically resolved (discharged). This prevents low-confidence memories from building urgency.</p>
 <p>The comparison uses an epsilon guard: discharge fires only when <code>conf &lt; 0.1 - 1e-9</code>. A confidence value that rounds to exactly 0.1 in display but is stored as <code>0.09999999999999998</code> (a common IEEE-754 artifact on the first contradiction from a default prior) does <strong>not</strong> trigger discharge. A genuine drop — one clearly below the threshold by more than epsilon — still does.</p>
 <h2 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h2>
-<h3 id="confidencefieldupdate_confidenceinstance-field_name-signal"><code>ConfidenceField.update_confidence(instance, field_name, signal)</code><a class="headerlink" href="#confidencefieldupdate_confidenceinstance-field_name-signal" title="Permanent link">&para;</a></h3>
+<h3 id="confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone"><code>ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)</code><a class="headerlink" href="#confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone" title="Permanent link">&para;</a></h3>
 <p>Atomically update confidence using the capped-evidence Bayesian formula.</p>
 <ul>
 <li><strong>signal</strong>: Float 0-1. Values &gt;= 0.5 corroborate, &lt; 0.5 contradict.</li>
-<li><strong>Returns</strong>: The new confidence value.</li>
+<li><strong>pipeline</strong>: Optional Redis pipeline to queue the update on.</li>
+<li><strong>Returns</strong>: The new confidence value — or <code>None</code> when queued on a pipeline.</li>
 <li><strong>Raises</strong>: <code>TypeError</code> if unsaved or wrong field type; <code>ValueError</code> if signal out of range.</li>
 </ul>
+<p><strong>Pipeline mode (1.9.0)</strong> changes three things, because the result does not
+exist until <code>execute()</code>:</p>
+<ul>
+<li>the return value is <code>None</code> rather than the new confidence;</li>
+<li>the instance attribute is <strong>not</strong> synced;</li>
+<li>an unsaved instance is skipped server-side by the script's <code>EXISTS</code> guard
+  instead of raising <code>TypeError</code> — the round trip that raised is what the
+  batching removes.</li>
+</ul>
+<p>Before 1.9.0 the <code>pipeline</code> argument was accepted and ignored: every update
+ran immediately, one round trip each. Competitive suppression across N
+records is now one <code>execute()</code> (<code>inject_context</code> went from 25 round trips per
+turn to 8). If you passed <code>pipeline=</code> before and relied on the returned
+float, read the value back with <code>get_confidence</code> after <code>execute()</code>.</p>
 <blockquote>
 <p><strong>Warning</strong>: All processes calling <code>update_confidence</code> on the same companion hash entry must use identical <code>evidence_cap</code> values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.</p>
 </blockquote>

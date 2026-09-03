@@ -3119,9 +3119,16 @@ If a periodic job calls <code>save()</code> on a session, that session may never
 </div>
 <h3 id="what-happens-when-a-key-expires">What Happens When a Key Expires<a class="headerlink" href="#what-happens-when-a-key-expires" title="Permanent link">&para;</a></h3>
 <p>When Redis removes an expired key, subsequent <code>load()</code> or <code>query.get()</code> calls
-return <code>None</code>. Popoto handles orphaned secondary index entries gracefully
-during queries. For proactive cleanup of orphaned index entries left behind by
-expired keys, use <a href="../recipes/#index-maintenance"><code>Model.clean_indexes()</code></a>.</p>
+return <code>None</code>. Orphaned secondary index entries — an index still naming a key
+whose hash is gone — are skipped during queries, and since 1.9.0 they are also
+<strong>purged on read</strong> for every index derivable from the key alone: the class
+set, non-auto <code>KeyField</code> sets, and sorted sets partitioned by key fields.
+A query that walks past an orphan removes it, so a TTL'd model no longer
+accumulates permanent index ghosts.</p>
+<p>Indexes that cannot be derived from the key (a <code>SortedField</code> scored by a
+non-key value, for example) still need the sweep: use
+<a href="../recipes/#index-maintenance"><code>Model.clean_indexes()</code></a> for those, and for
+cleanup you would rather not wait for a read to trigger.</p>
 <h2 id="per-instance-ttl-override">Per-Instance TTL Override<a class="headerlink" href="#per-instance-ttl-override" title="Permanent link">&para;</a></h2>
 <p>Override the model-level TTL for a specific instance by setting the <code>_ttl</code>
 attribute before saving:</p>

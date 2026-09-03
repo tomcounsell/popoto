@@ -3056,14 +3056,17 @@ never happens.</p>
 <code>.codex/hooks.json</code> and <code>codex exec --enable hooks
 --dangerously-bypass-hook-trust</code>, no hook ran and nothing was reported.</p>
 <p>Install at <code>~/.codex/hooks.json</code> instead.</p>
-<p><code>POPOTO_MEMORY_AGENT_ID</code> tags writes and is honored as a read filter only on
-the composite-score retrieval path — the shipped default lexical/BM25 path
-does not filter by it yet (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>), so setting it per project does <strong>not</strong>
-isolate one project's memories from another's on the same database:</p>
+<p><code>POPOTO_MEMORY_AGENT_ID</code> tags writes and is honored as a read filter on
+every shipped retrieval path since 1.9.0, the default lexical/BM25 one
+included (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>). On
+1.8.2 and earlier it was honored only on the composite-score path, so setting
+it per project did <strong>not</strong> isolate one project's memories from another's on
+the same database:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_MEMORY_AGENT_ID</span><span class="o">=</span>my-project
 </code></pre></div>
-<p>If you need real per-project isolation today, point each project at its own
-<code>POPOTO_MEMORY_URL</code> database instead.</p>
+<p>For a boundary enforced by Redis rather than by a query filter, point each
+project at its own <code>POPOTO_MEMORY_URL</code> database (any database but 0, which
+is refused — see <a href="../../features/harness-integration/#database-0-is-refused">Harness Integration</a>).</p>
 <h2 id="context-limit">Context limit<a class="headerlink" href="#context-limit" title="Permanent link">&para;</a></h2>
 <p>Codex caps injected context at 2500 tokens (<code>additionalContextLimit</code>). The
 default <code>POPOTO_MEMORY_MAX_TOKENS</code> is 800, comfortably under it. If you

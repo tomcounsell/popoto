@@ -2973,11 +2973,12 @@ Point it at Redis or Valkey on <code>localhost:6379</code> and you are running.<
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>        <span class="c1"># post-turn: save what was learned</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">"acted"</span><span class="p">)</span>      <span class="c1"># feedback: reinforce what was used</span>
 </code></pre></div>
-<p><code>agent_id</code> is the only required argument. It partitions every index, and an
-explicit <code>.filter(agent_id=...)</code> query always honors that partition — but
-<code>inject_context</code>'s default retrieval path (lexical/BM25) does not yet filter
-by it (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>), so two agents sharing one Redis via the default loop can
-retrieve each other's memories. Leaving <code>model_class</code>
+<p><code>agent_id</code> is the only required argument. It partitions every index, and both
+an explicit <code>.filter(agent_id=...)</code> query and <code>inject_context</code>'s default
+retrieval path (lexical/BM25) honor that partition — the latter only since
+1.9.0 (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>; before
+that, two agents sharing one Redis via the default loop could retrieve each
+other's memories). Leaving <code>model_class</code>
 unset selects <code>DefaultMemory</code>, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
 an association graph.</p>

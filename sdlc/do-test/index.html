@@ -2843,10 +2843,14 @@ Valkey is deliberately not run locally: redis-py talks to Redis and Valkey
 identically and the project forbids Redis modules, so local Redis covers the
 same ground; GitHub runs the real Valkey job on PR.</p>
 <h2 id="test-isolation-db-15-and-the-six-expected-failures">Test isolation: DB 15, and the six expected failures<a class="headerlink" href="#test-isolation-db-15-and-the-six-expected-failures" title="Permanent link">&para;</a></h2>
-<p>The suite auto-isolates onto <strong>Redis DB 15</strong> through the <code>popoto.pytest_plugin</code>
+<p>The suite isolates onto <strong>Redis DB 15</strong> through the <code>popoto.pytest_plugin</code>
 entry point (both <code>import popoto</code> and <code>import src.popoto</code> collapse onto one
-canonical module and connection). <code>POPOTO_TEST_DB=&lt;n&gt;</code> overrides it; DB 0 is
-rejected to prevent production data loss.</p>
+canonical module and connection). The plugin is opt-in and this repo opts in
+with <code>popoto_test_db = "15"</code> in <code>pyproject.toml</code>; <code>POPOTO_TEST_DB=&lt;n&gt;</code>
+overrides that, and DB 0 is rejected to prevent production data loss. A
+checkout whose <code>pyproject.toml</code> lost that line gets no isolation and no
+warning — if flush-dependent tests start failing in a worktree, check it
+first.</p>
 <p>Because every worktree shares DB 15, concurrent pipelines collide there and
 have produced 73–158 phantom failures. Setting <code>POPOTO_TEST_DB=&lt;n&gt;</code> avoids the
 collision but introduces a fixed, known failure set — <strong>six tests fail by

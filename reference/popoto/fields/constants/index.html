@@ -3275,7 +3275,16 @@ ignores <code>Defaults.DECAY_RATE</code>.</p>
 <span class="normal"><a href="#__codelineno-0-369">369</a></span>
 <span class="normal"><a href="#__codelineno-0-370">370</a></span>
 <span class="normal"><a href="#__codelineno-0-371">371</a></span>
-<span class="normal"><a href="#__codelineno-0-372">372</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="k">class</span><span class="w"> </span><span class="nc">Defaults</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-372">372</a></span>
+<span class="normal"><a href="#__codelineno-0-373">373</a></span>
+<span class="normal"><a href="#__codelineno-0-374">374</a></span>
+<span class="normal"><a href="#__codelineno-0-375">375</a></span>
+<span class="normal"><a href="#__codelineno-0-376">376</a></span>
+<span class="normal"><a href="#__codelineno-0-377">377</a></span>
+<span class="normal"><a href="#__codelineno-0-378">378</a></span>
+<span class="normal"><a href="#__codelineno-0-379">379</a></span>
+<span class="normal"><a href="#__codelineno-0-380">380</a></span>
+<span class="normal"><a href="#__codelineno-0-381">381</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="k">class</span><span class="w"> </span><span class="nc">Defaults</span><span class="p">:</span>
 <a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">"""Central registry of tunable behavioral constants (Category 1).</span>
 <a id="__codelineno-0-55" name="__codelineno-0-55"></a>
 <a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    Override any constant before model definition or at runtime::</span>
@@ -3508,93 +3517,102 @@ ignores <code>Defaults.DECAY_RATE</code>.</p>
 <a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="c1"># without meaningfully enlarging a 5-row query.</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a>    <span class="n">SORTED_PUSHDOWN_OVERFETCH_MARGIN</span> <span class="o">=</span> <span class="mi">8</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="c1"># -- Extraction (extraction/) ---------------------------------------------</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="c1"># Experimental tuning constants for the pluggable LLM-extraction path</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="c1"># (popoto.extraction). Not yet swept -- initial values set by design,</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="c1"># per issue #461 / docs/plans/llm_memory_extraction_path.md.</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="n">EXTRACTION_DEFAULT_IMPORTANCE</span> <span class="o">=</span> <span class="mf">0.5</span>  <span class="c1"># aligns with SubconsciousMemory.extract_memories()'s current flat importance default</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="n">EXTRACTION_DEFAULT_CONFIDENCE</span> <span class="o">=</span> <span class="mf">0.7</span>  <span class="c1"># signal applied when a provider asserts a fact but returns no explicit confidence</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="n">EXTRACTION_ENTITY_PAIR_LINK_WEIGHT</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c1"># matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay &lt;= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a>    <span class="n">EXTRACTION_MAX_ENTITIES_PER_FACT</span> <span class="o">=</span> <span class="mi">12</span>  <span class="c1"># cap on deduped entities paired per fact; combinations grow O(n^2), so a malformed/adversarial extraction with many entities can't blow up co-occurrence writes</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="c1"># --- DefaultMemory eviction ---</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="c1"># Memories per agent partition kept by popoto.recipes.DefaultMemory. On</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="c1"># every save past the cap, the stalest records by decay timestamp are</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="c1"># deleted with full index cleanup. Nothing else on the default path</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="c1"># evicts, so without this the store grows one record per turn forever.</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="c1"># Not a tuning constant so much as a safety rail; raise it in a subclass</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="c1"># by overriding ``_max_records_per_agent``.</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>    <span class="n">DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT</span> <span class="o">=</span> <span class="mi">1000</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="c1"># -- datetime KeyField identity (models/canonical_key.py, #537/#538) -------</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. When True,</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="c1"># ``canonical_key_str`` falls back to ``str(value)`` for datetimes, which</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="c1"># reproduces 1.8.2 key bytes exactly. Default is False (canonicalization</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="c1"># ON) per the repo's default-on doctrine; the switch exists so an adopter</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="c1"># can roll readers forward to &gt;= 1.9.0 *before* any key byte moves, then</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="c1"># run the migration, then lift it. Read from the environment at import so</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="c1"># it can be set without editing model code; assign it directly to override</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="c1"># at runtime. See migration cookbook recipe 19.</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="n">DATETIME_KEY_LEGACY</span> <span class="o">=</span> <span class="n">_read_legacy_datetime_key_switch</span><span class="p">()</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="c1"># -- never-record firewall (privacy/never_record.py, #561) ----------------</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="c1"># Shortest whitespace token the entropy backstop will consider. Below 20</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="c1"># chars, ordinary base64-ish words (identifiers, hashes-of-hashes in</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="c1"># prose) dominate and the detector becomes noise rather than a backstop.</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">NR_ENTROPY_MIN_TOKEN_LEN</span> <span class="o">=</span> <span class="mi">20</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="c1"># Shannon entropy in bits/char at or above which a credential-charset</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="c1"># token is treated as an unknown-prefix secret. Random base64 sits near</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="c1"># 5.5-6.0 and random hex near 4.0; English text over the same alphabet</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="c1"># sits well below 3.5. Not corpus-tuned -- deliberately conservative in</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="c1"># the over-blocking direction, per #561 ("over-blocking accepted").</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="n">NR_ENTROPY_MIN_BITS</span> <span class="o">=</span> <span class="mf">3.5</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="c1"># Shortest value after ``password=``/``token:`` that counts as a secret.</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="c1"># Also the shortest URL-userinfo password.</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">NR_ASSIGNMENT_MIN_VALUE_LEN</span> <span class="o">=</span> <span class="mi">6</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="c1"># Cap on the capped-LIST audit log of content-free drop tombstones. The</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="c1"># HASH counters are unbounded and authoritative; this list is a recent</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="c1"># window for eyeballing drop cadence.</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="n">NR_TOMBSTONE_LOG_MAX</span> <span class="o">=</span> <span class="mi">1000</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. False disables the</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="c1"># never-record firewall entirely. Default is enabled per the repo's</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="c1"># default-on doctrine; the switch exists because a PyPI adopter cannot</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="c1"># always edit model code to remove a mixin. Read from the environment at</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="c1"># import (``POPOTO_NEVER_RECORD_DISABLE``); assign directly to override</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="c1"># at runtime.</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="n">NEVER_RECORD_ENABLED</span> <span class="o">=</span> <span class="n">_read_never_record_switch</span><span class="p">()</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="c1"># -- provenance journal (recipes/provenance_journal.py, #560) -------------</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. When True (the default),</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="c1"># a ``supersede``/``retract`` annotation closes its target's validity</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="c1"># interval in the same MULTI/EXEC that appends the annotation, so the</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="c1"># target leaves ``validity__current`` membership immediately. When False,</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="c1"># the annotation entry is still appended and still carries its ``target``,</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="c1"># but the target's interval is left open: membership degrades to</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="c1"># "everything ever appended", which is pre-#560 behavior. The degraded mode</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="c1"># is observable without reading Redis --</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="c1"># ``AnnotationResult.target_closed`` is False and</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>    <span class="c1"># ``AnnotationResult.coupling_enabled`` is False -- specifically so this</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="c1"># switch cannot reproduce #588's silent-no-op shape. Read from the</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="c1"># environment at import (``POPOTO_JOURNAL_COUPLING_DISABLE``) because a</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="c1"># PyPI adopter cannot always edit model code; assign directly to override</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="c1"># at runtime. Boolean, not swept.</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="n">JOURNAL_VALIDITY_COUPLING_ENABLED</span> <span class="o">=</span> <span class="n">_read_journal_coupling_switch</span><span class="p">()</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="c1"># Core annotation-kind vocabulary for ``JournalEntry.kind``. Not a</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="c1"># tunable: changing it reclassifies already-stored entries. ``assert`` is</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="c1"># an original capture and carries no target; the other three are</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="c1"># annotations and each names exactly one target entry. Downstream modules</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="c1"># that need more kinds (M5 merge/equivalence, M7 queueing, M8 exposure)</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="c1"># extend via ``JournalEntry.register_kind(name, targetless=, closing=)``,</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="c1"># which adds to the vocabulary in place rather than editing this tuple.</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="c1"># (Registration rather than a model subclass because Popoto's ModelBase</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>    <span class="c1"># metaclass does not inherit Field attributes, so a JournalEntry subclass</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>    <span class="c1"># has an empty field set.) Reader rule: an entry whose ``kind`` a reader</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="c1"># does not recognize is inert for membership -- never silently treated as</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="c1"># ``supersede`` or ``retract``.</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="n">JOURNAL_KINDS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"assert"</span><span class="p">,</span> <span class="s2">"confirm"</span><span class="p">,</span> <span class="s2">"supersede"</span><span class="p">,</span> <span class="s2">"retract"</span><span class="p">)</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="c1"># -- auditable extraction (extraction/decision_log.py, #562) --------------</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="c1"># Lifetime of the assembly claim one runner takes on a candidate before</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="c1"># writing to the provenance journal, in milliseconds. A **liveness** bound,</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>    <span class="c1"># not a correctness one: long enough that the common case never expires</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>    <span class="c1"># mid-flight, finite so a crashed runner's claim cannot wedge a candidate</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>    <span class="c1"># forever. Correctness under a claim that does expire mid-flight comes from</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="c1"># the identity probe on the ``cand:`` subject tag, which makes the residual</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="c1"># race converge on the existing entry instead of duplicating it. Pinned</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="c1"># in-repo rather than exposed on ``AuditableExtractionConfig``, per the</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="c1"># magic-number rule.</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="n">M3_ASSEMBLY_CLAIM_TTL_MS</span> <span class="o">=</span> <span class="mi">30_000</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="c1"># -- Extraction (extraction/) ---------------------------------------------</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>    <span class="c1"># Experimental tuning constants for the pluggable LLM-extraction path</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="c1"># (popoto.extraction). Not yet swept -- initial values set by design,</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="c1"># per issue #461 / docs/plans/llm_memory_extraction_path.md.</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="n">EXTRACTION_DEFAULT_IMPORTANCE</span> <span class="o">=</span> <span class="mf">0.5</span>  <span class="c1"># aligns with SubconsciousMemory.extract_memories()'s current flat importance default</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="n">EXTRACTION_DEFAULT_CONFIDENCE</span> <span class="o">=</span> <span class="mf">0.7</span>  <span class="c1"># signal applied when a provider asserts a fact but returns no explicit confidence</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="n">EXTRACTION_ENTITY_PAIR_LINK_WEIGHT</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c1"># matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay &lt;= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="n">EXTRACTION_MAX_ENTITIES_PER_FACT</span> <span class="o">=</span> <span class="mi">12</span>  <span class="c1"># cap on deduped entities paired per fact; combinations grow O(n^2), so a malformed/adversarial extraction with many entities can't blow up co-occurrence writes</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="c1"># -- datetime KeyField identity (models/canonical_key.py, #537/#538) -------</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. When True,</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="c1"># ``canonical_key_str`` falls back to ``str(value)`` for datetimes, which</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="c1"># reproduces 1.8.2 key bytes exactly. Default is False (canonicalization</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="c1"># ON) per the repo's default-on doctrine; the switch exists so an adopter</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="c1"># can roll readers forward to &gt;= 1.9.0 *before* any key byte moves, then</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="c1"># run the migration, then lift it. Read from the environment at import so</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="c1"># it can be set without editing model code; assign it directly to override</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="c1"># at runtime. See migration cookbook recipe 19.</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="n">DATETIME_KEY_LEGACY</span> <span class="o">=</span> <span class="n">_read_legacy_datetime_key_switch</span><span class="p">()</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="c1"># -- never-record firewall (privacy/never_record.py, #561) ----------------</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="c1"># Shortest whitespace token the entropy backstop will consider. Below 20</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="c1"># chars, ordinary base64-ish words (identifiers, hashes-of-hashes in</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="c1"># prose) dominate and the detector becomes noise rather than a backstop.</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">NR_ENTROPY_MIN_TOKEN_LEN</span> <span class="o">=</span> <span class="mi">20</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="c1"># Shannon entropy in bits/char at or above which a credential-charset</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="c1"># token is treated as an unknown-prefix secret. Random base64 sits near</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="c1"># 5.5-6.0 and random hex near 4.0; English text over the same alphabet</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="c1"># sits well below 3.5. Not corpus-tuned -- deliberately conservative in</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="c1"># the over-blocking direction, per #561 ("over-blocking accepted").</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="n">NR_ENTROPY_MIN_BITS</span> <span class="o">=</span> <span class="mf">3.5</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="c1"># Shortest value after ``password=``/``token:`` that counts as a secret.</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="c1"># Also the shortest URL-userinfo password.</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="n">NR_ASSIGNMENT_MIN_VALUE_LEN</span> <span class="o">=</span> <span class="mi">6</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="c1"># Cap on the capped-LIST audit log of content-free drop tombstones. The</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="c1"># HASH counters are unbounded and authoritative; this list is a recent</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="c1"># window for eyeballing drop cadence.</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="n">NR_TOMBSTONE_LOG_MAX</span> <span class="o">=</span> <span class="mi">1000</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. False disables the</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="c1"># never-record firewall entirely. Default is enabled per the repo's</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="c1"># default-on doctrine; the switch exists because a PyPI adopter cannot</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="c1"># always edit model code to remove a mixin. Read from the environment at</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="c1"># import (``POPOTO_NEVER_RECORD_DISABLE``); assign directly to override</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="c1"># at runtime.</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="n">NEVER_RECORD_ENABLED</span> <span class="o">=</span> <span class="n">_read_never_record_switch</span><span class="p">()</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="c1"># -- provenance journal (recipes/provenance_journal.py, #560) -------------</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. When True (the default),</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="c1"># a ``supersede``/``retract`` annotation closes its target's validity</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="c1"># interval in the same MULTI/EXEC that appends the annotation, so the</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="c1"># target leaves ``validity__current`` membership immediately. When False,</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="c1"># the annotation entry is still appended and still carries its ``target``,</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="c1"># but the target's interval is left open: membership degrades to</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="c1"># "everything ever appended", which is pre-#560 behavior. The degraded mode</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="c1"># is observable without reading Redis --</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="c1"># ``AnnotationResult.target_closed`` is False and</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="c1"># ``AnnotationResult.coupling_enabled`` is False -- specifically so this</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="c1"># switch cannot reproduce #588's silent-no-op shape. Read from the</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="c1"># environment at import (``POPOTO_JOURNAL_COUPLING_DISABLE``) because a</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="c1"># PyPI adopter cannot always edit model code; assign directly to override</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="c1"># at runtime. Boolean, not swept.</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>    <span class="n">JOURNAL_VALIDITY_COUPLING_ENABLED</span> <span class="o">=</span> <span class="n">_read_journal_coupling_switch</span><span class="p">()</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>    <span class="c1"># Core annotation-kind vocabulary for ``JournalEntry.kind``. Not a</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="c1"># tunable: changing it reclassifies already-stored entries. ``assert`` is</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="c1"># an original capture and carries no target; the other three are</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="c1"># annotations and each names exactly one target entry. Downstream modules</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="c1"># that need more kinds (M5 merge/equivalence, M7 queueing, M8 exposure)</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="c1"># extend via ``JournalEntry.register_kind(name, targetless=, closing=)``,</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="c1"># which adds to the vocabulary in place rather than editing this tuple.</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="c1"># (Registration rather than a model subclass because Popoto's ModelBase</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>    <span class="c1"># metaclass does not inherit Field attributes, so a JournalEntry subclass</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>    <span class="c1"># has an empty field set.) Reader rule: an entry whose ``kind`` a reader</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>    <span class="c1"># does not recognize is inert for membership -- never silently treated as</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="c1"># ``supersede`` or ``retract``.</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="n">JOURNAL_KINDS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"assert"</span><span class="p">,</span> <span class="s2">"confirm"</span><span class="p">,</span> <span class="s2">"supersede"</span><span class="p">,</span> <span class="s2">"retract"</span><span class="p">)</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="c1"># -- auditable extraction (extraction/decision_log.py, #562) --------------</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="c1"># Lifetime of the assembly claim one runner takes on a candidate before</span>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="c1"># writing to the provenance journal, in milliseconds. A **liveness** bound,</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="c1"># not a correctness one: long enough that the common case never expires</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="c1"># mid-flight, finite so a crashed runner's claim cannot wedge a candidate</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="c1"># forever. Correctness under a claim that does expire mid-flight comes from</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="c1"># the identity probe on the ``cand:`` subject tag, which makes the residual</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a>    <span class="c1"># race converge on the existing entry instead of duplicating it. Pinned</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>    <span class="c1"># in-repo rather than exposed on ``AuditableExtractionConfig``, per the</span>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>    <span class="c1"># magic-number rule.</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="n">M3_ASSEMBLY_CLAIM_TTL_MS</span> <span class="o">=</span> <span class="mi">30_000</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3654,37 +3672,37 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-375">375</a></span>
-<span class="normal"><a href="#__codelineno-0-376">376</a></span>
-<span class="normal"><a href="#__codelineno-0-377">377</a></span>
-<span class="normal"><a href="#__codelineno-0-378">378</a></span>
-<span class="normal"><a href="#__codelineno-0-379">379</a></span>
-<span class="normal"><a href="#__codelineno-0-380">380</a></span>
-<span class="normal"><a href="#__codelineno-0-381">381</a></span>
-<span class="normal"><a href="#__codelineno-0-382">382</a></span>
-<span class="normal"><a href="#__codelineno-0-383">383</a></span>
-<span class="normal"><a href="#__codelineno-0-384">384</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-384">384</a></span>
 <span class="normal"><a href="#__codelineno-0-385">385</a></span>
 <span class="normal"><a href="#__codelineno-0-386">386</a></span>
 <span class="normal"><a href="#__codelineno-0-387">387</a></span>
 <span class="normal"><a href="#__codelineno-0-388">388</a></span>
 <span class="normal"><a href="#__codelineno-0-389">389</a></span>
-<span class="normal"><a href="#__codelineno-0-390">390</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalPeriod</span><span class="p">:</span>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a><span class="w">    </span><span class="sd">"""Named constants for common temporal cycle periods in seconds.</span>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="sd">    These values represent the approximate duration of each period:</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a><span class="sd">        DAILY     = 86,400 seconds (24 hours)</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="sd">        WEEKLY    = 604,800 seconds (7 days)</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">        MONTHLY   = 2,592,000 seconds (30 days)</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">        QUARTERLY = 7,776,000 seconds (90 days)</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">        YEARLY    = 31,536,000 seconds (365 days)</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a><span class="sd">    """</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>    <span class="n">DAILY</span> <span class="o">=</span> <span class="mi">86_400</span>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a>    <span class="n">WEEKLY</span> <span class="o">=</span> <span class="mi">604_800</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>    <span class="n">MONTHLY</span> <span class="o">=</span> <span class="mi">2_592_000</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>    <span class="n">QUARTERLY</span> <span class="o">=</span> <span class="mi">7_776_000</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a>    <span class="n">YEARLY</span> <span class="o">=</span> <span class="mi">31_536_000</span>
+<span class="normal"><a href="#__codelineno-0-390">390</a></span>
+<span class="normal"><a href="#__codelineno-0-391">391</a></span>
+<span class="normal"><a href="#__codelineno-0-392">392</a></span>
+<span class="normal"><a href="#__codelineno-0-393">393</a></span>
+<span class="normal"><a href="#__codelineno-0-394">394</a></span>
+<span class="normal"><a href="#__codelineno-0-395">395</a></span>
+<span class="normal"><a href="#__codelineno-0-396">396</a></span>
+<span class="normal"><a href="#__codelineno-0-397">397</a></span>
+<span class="normal"><a href="#__codelineno-0-398">398</a></span>
+<span class="normal"><a href="#__codelineno-0-399">399</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-384" name="__codelineno-0-384"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalPeriod</span><span class="p">:</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="w">    </span><span class="sd">"""Named constants for common temporal cycle periods in seconds.</span>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a>
+<a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">    These values represent the approximate duration of each period:</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">        DAILY     = 86,400 seconds (24 hours)</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        WEEKLY    = 604,800 seconds (7 days)</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">        MONTHLY   = 2,592,000 seconds (30 days)</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="sd">        QUARTERLY = 7,776,000 seconds (90 days)</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a><span class="sd">        YEARLY    = 31,536,000 seconds (365 days)</span>
+<a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">    """</span>
+<a id="__codelineno-0-394" name="__codelineno-0-394"></a>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a>    <span class="n">DAILY</span> <span class="o">=</span> <span class="mi">86_400</span>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a>    <span class="n">WEEKLY</span> <span class="o">=</span> <span class="mi">604_800</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="n">MONTHLY</span> <span class="o">=</span> <span class="mi">2_592_000</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>    <span class="n">QUARTERLY</span> <span class="o">=</span> <span class="mi">7_776_000</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a>    <span class="n">YEARLY</span> <span class="o">=</span> <span class="mi">31_536_000</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3739,16 +3757,7 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-393">393</a></span>
-<span class="normal"><a href="#__codelineno-0-394">394</a></span>
-<span class="normal"><a href="#__codelineno-0-395">395</a></span>
-<span class="normal"><a href="#__codelineno-0-396">396</a></span>
-<span class="normal"><a href="#__codelineno-0-397">397</a></span>
-<span class="normal"><a href="#__codelineno-0-398">398</a></span>
-<span class="normal"><a href="#__codelineno-0-399">399</a></span>
-<span class="normal"><a href="#__codelineno-0-400">400</a></span>
-<span class="normal"><a href="#__codelineno-0-401">401</a></span>
-<span class="normal"><a href="#__codelineno-0-402">402</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-402">402</a></span>
 <span class="normal"><a href="#__codelineno-0-403">403</a></span>
 <span class="normal"><a href="#__codelineno-0-404">404</a></span>
 <span class="normal"><a href="#__codelineno-0-405">405</a></span>
@@ -3766,34 +3775,43 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 <span class="normal"><a href="#__codelineno-0-417">417</a></span>
 <span class="normal"><a href="#__codelineno-0-418">418</a></span>
 <span class="normal"><a href="#__codelineno-0-419">419</a></span>
-<span class="normal"><a href="#__codelineno-0-420">420</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="k">class</span><span class="w"> </span><span class="nc">InteractionWeight</span><span class="p">:</span>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="w">    </span><span class="sd">"""Weight constants for source/role-based importance scoring.</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="sd">    Two axes combined by addition:</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">    With decay_rate=0.5, effective lifetime ~ score^2 days.</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    """</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>    <span class="n">HUMAN</span> <span class="o">=</span> <span class="mf">6.0</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>    <span class="n">AGENT</span> <span class="o">=</span> <span class="mf">1.0</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a>    <span class="n">SYSTEM</span> <span class="o">=</span> <span class="mf">0.2</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a>    <span class="n">EXECUTIVE</span> <span class="o">=</span> <span class="mf">44.0</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>    <span class="n">MANAGER</span> <span class="o">=</span> <span class="mf">16.0</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>    <span class="n">PEER</span> <span class="o">=</span> <span class="mf">6.0</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a>    <span class="n">SUBORDINATE</span> <span class="o">=</span> <span class="mf">1.0</span>
+<span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span>
+<span class="normal"><a href="#__codelineno-0-424">424</a></span>
+<span class="normal"><a href="#__codelineno-0-425">425</a></span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="k">class</span><span class="w"> </span><span class="nc">InteractionWeight</span><span class="p">:</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="w">    </span><span class="sd">"""Weight constants for source/role-based importance scoring.</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    Two axes combined by addition:</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    With decay_rate=0.5, effective lifetime ~ score^2 days.</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">    """</span>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="w">        </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>    <span class="n">HUMAN</span> <span class="o">=</span> <span class="mf">6.0</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="n">AGENT</span> <span class="o">=</span> <span class="mf">1.0</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>    <span class="n">SYSTEM</span> <span class="o">=</span> <span class="mf">0.2</span>
 <a id="__codelineno-0-415" name="__codelineno-0-415"></a>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">        interaction yields weight 2.0.</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">        """</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>    <span class="n">EXECUTIVE</span> <span class="o">=</span> <span class="mf">44.0</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>    <span class="n">MANAGER</span> <span class="o">=</span> <span class="mf">16.0</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a>    <span class="n">PEER</span> <span class="o">=</span> <span class="mf">6.0</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="n">SUBORDINATE</span> <span class="o">=</span> <span class="mf">1.0</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">        </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        interaction yields weight 2.0.</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        """</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3833,23 +3851,23 @@ interaction yields weight 2.0.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-412">412</a></span>
-<span class="normal"><a href="#__codelineno-0-413">413</a></span>
-<span class="normal"><a href="#__codelineno-0-414">414</a></span>
-<span class="normal"><a href="#__codelineno-0-415">415</a></span>
-<span class="normal"><a href="#__codelineno-0-416">416</a></span>
-<span class="normal"><a href="#__codelineno-0-417">417</a></span>
-<span class="normal"><a href="#__codelineno-0-418">418</a></span>
-<span class="normal"><a href="#__codelineno-0-419">419</a></span>
-<span class="normal"><a href="#__codelineno-0-420">420</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="nd">@staticmethod</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="w">    </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">    The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">    yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">    interaction yields weight 2.0.</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">    """</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>    <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span>
+<span class="normal"><a href="#__codelineno-0-424">424</a></span>
+<span class="normal"><a href="#__codelineno-0-425">425</a></span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="nd">@staticmethod</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">    </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    interaction yields weight 2.0.</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    """</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>    <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

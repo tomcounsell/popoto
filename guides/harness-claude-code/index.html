@@ -3165,11 +3165,14 @@ climbing, and <code>failures</code> reads <code>none</code>. Those three lines a
 health check.</p>
 <h2 id="what-is-stored-and-where">What is stored, and where<a class="headerlink" href="#what-is-stored-and-where" title="Permanent link">&para;</a></h2>
 <p>In your Redis or Valkey, in the <code>DefaultMemory:*</code> keyspace, tagged with an
-<code>agent_id</code> that defaults to the basename of your working directory. That tag
-is honored as a read filter only on the composite-score retrieval path; the
-shipped default lexical/BM25 path does not filter by it yet (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>), so two
-projects on one Redis can retrieve each other's memories. Use a distinct
-<code>POPOTO_MEMORY_URL</code> database per project for real isolation.</p>
+<code>agent_id</code> that defaults to the basename of your working directory. Since
+1.9.0 that tag is honored as a read filter on every shipped retrieval path,
+the default lexical/BM25 one included (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>).
+On 1.8.2 and earlier it was honored only on the composite-score path, so two
+projects on one Redis could retrieve each other's memories; a distinct
+<code>POPOTO_MEMORY_URL</code> database per project was the workaround, and remains the
+stronger boundary if you want one enforced by Redis rather than by a query
+filter.</p>
 <p>One turn becomes one record, verbatim. Issue #489 measured
 sentence-splitting extraction at 0.2078 judged accuracy against 0.3636 for
 raw ingestion on the same slice, so raw is the default here.</p>

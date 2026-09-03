@@ -3605,9 +3605,9 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>            <span class="c1"># Fallback: add the raw fingerprint lowercased (handles empty strings,</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>            <span class="c1"># short tokens, redis keys, etc.)</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>            <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BLOOM_ADD_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>            <span class="n">run_lua</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">BLOOM_ADD_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BLOOM_ADD_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span><span class="p">)</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="n">run_lua</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">BLOOM_ADD_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span><span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a>    <span class="nd">@classmethod</span>
@@ -3655,13 +3655,13 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>            <span class="c1"># Fallback: check the raw lowercased query (matches on_save fallback)</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                <span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>            <span class="p">)</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>            <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="c1"># Check if ANY token is in the bloom filter</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="p">):</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>                <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>        <span class="k">return</span> <span class="kc">False</span>
@@ -3749,8 +3749,8 @@ Memory.bloom.definitely_missing(Memory, "new-topic")  # True</p>
 <a id="__codelineno-0-571" name="__codelineno-0-571"></a>            <span class="k">return</span> <span class="p">{</span><span class="n">fp</span><span class="p">:</span> <span class="kc">False</span> <span class="k">for</span> <span class="n">fp</span> <span class="ow">in</span> <span class="n">fingerprint_order</span><span class="p">}</span>
 <a id="__codelineno-0-572" name="__codelineno-0-572"></a>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="c1"># Single Lua EVAL for all tokens</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="n">raw_results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="n">BLOOM_EXISTS_BATCH_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">all_tokens</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="n">raw_results</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BLOOM_EXISTS_BATCH_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">all_tokens</span>
 <a id="__codelineno-0-576" name="__codelineno-0-576"></a>        <span class="p">)</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="c1"># Map token results back to fingerprints (ANY token hit = fingerprint hit)</span>
@@ -4005,9 +4005,9 @@ produces no tokens, falls back to adding the raw fingerprint.</p>
 <a id="__codelineno-0-427" name="__codelineno-0-427"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
 <a id="__codelineno-0-428" name="__codelineno-0-428"></a>        <span class="c1"># Fallback: add the raw fingerprint lowercased (handles empty strings,</span>
 <a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="c1"># short tokens, redis keys, etc.)</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BLOOM_ADD_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="n">run_lua</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">BLOOM_ADD_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
 <a id="__codelineno-0-431" name="__codelineno-0-431"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a>        <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BLOOM_ADD_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span><span class="p">)</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a>        <span class="n">run_lua</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">BLOOM_ADD_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span><span class="p">)</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4252,13 +4252,13 @@ positive). Returns False if the fingerprint is definitely not in the set
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>        <span class="c1"># Fallback: check the raw lowercased query (matches on_save fallback)</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>            <span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="p">)</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="c1"># Check if ANY token is in the bloom filter</span>
 <a id="__codelineno-0-485" name="__codelineno-0-485"></a>    <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BLOOM_EXISTS_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
 <a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="p">):</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>            <span class="k">return</span> <span class="kc">True</span>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a>    <span class="k">return</span> <span class="kc">False</span>
@@ -4694,8 +4694,8 @@ Returns empty dict for empty input list.</p>
 <a id="__codelineno-0-571" name="__codelineno-0-571"></a>        <span class="k">return</span> <span class="p">{</span><span class="n">fp</span><span class="p">:</span> <span class="kc">False</span> <span class="k">for</span> <span class="n">fp</span> <span class="ow">in</span> <span class="n">fingerprint_order</span><span class="p">}</span>
 <a id="__codelineno-0-572" name="__codelineno-0-572"></a>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>    <span class="c1"># Single Lua EVAL for all tokens</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="n">raw_results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="n">BLOOM_EXISTS_BATCH_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">all_tokens</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="n">raw_results</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BLOOM_EXISTS_BATCH_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="o">*</span><span class="n">all_tokens</span>
 <a id="__codelineno-0-576" name="__codelineno-0-576"></a>    <span class="p">)</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="c1"># Map token results back to fingerprints (ANY token hit = fingerprint hit)</span>
@@ -5132,7 +5132,21 @@ memory.save()  # increment again</p>
 <span class="normal"><a href="#__codelineno-0-778">778</a></span>
 <span class="normal"><a href="#__codelineno-0-779">779</a></span>
 <span class="normal"><a href="#__codelineno-0-780">780</a></span>
-<span class="normal"><a href="#__codelineno-0-781">781</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-603" name="__codelineno-0-603"></a><span class="k">class</span><span class="w"> </span><span class="nc">FrequencySketch</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-781">781</a></span>
+<span class="normal"><a href="#__codelineno-0-782">782</a></span>
+<span class="normal"><a href="#__codelineno-0-783">783</a></span>
+<span class="normal"><a href="#__codelineno-0-784">784</a></span>
+<span class="normal"><a href="#__codelineno-0-785">785</a></span>
+<span class="normal"><a href="#__codelineno-0-786">786</a></span>
+<span class="normal"><a href="#__codelineno-0-787">787</a></span>
+<span class="normal"><a href="#__codelineno-0-788">788</a></span>
+<span class="normal"><a href="#__codelineno-0-789">789</a></span>
+<span class="normal"><a href="#__codelineno-0-790">790</a></span>
+<span class="normal"><a href="#__codelineno-0-791">791</a></span>
+<span class="normal"><a href="#__codelineno-0-792">792</a></span>
+<span class="normal"><a href="#__codelineno-0-793">793</a></span>
+<span class="normal"><a href="#__codelineno-0-794">794</a></span>
+<span class="normal"><a href="#__codelineno-0-795">795</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-603" name="__codelineno-0-603"></a><span class="k">class</span><span class="w"> </span><span class="nc">FrequencySketch</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
 <a id="__codelineno-0-604" name="__codelineno-0-604"></a><span class="w">    </span><span class="sd">"""Count-Min Sketch for approximate frequency queries.</span>
 <a id="__codelineno-0-605" name="__codelineno-0-605"></a>
 <a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="sd">    Implemented with Redis hashes and Lua scripts.</span>
@@ -5247,70 +5261,84 @@ memory.save()  # increment again</p>
 <a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-716" name="__codelineno-0-716"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
 <a id="__codelineno-0-717" name="__codelineno-0-717"></a>            <span class="c1"># Fallback: increment the raw fingerprint lowercased</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>            <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>                <span class="n">CMS_INCR_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">depth</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>            <span class="p">)</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>            <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">CMS_INCR_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span><span class="p">)</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">model_instance</span><span class="p">,</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a>        <span class="n">field_name</span><span class="p">,</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a>    <span class="p">):</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="w">        </span><span class="sd">"""No-op. Count-Min Sketch does not support decrement.</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">        CMS counters are monotonically increasing. Decrementing would</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">        violate the "never undercount" guarantee.</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">            The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">        """</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>            <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>                <span class="n">client</span><span class="p">,</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>                <span class="n">CMS_INCR_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>                <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a>                <span class="n">key</span><span class="p">,</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>                <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>                <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>                <span class="n">field</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a>            <span class="p">)</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>            <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a>                <span class="n">client</span><span class="p">,</span> <span class="n">CMS_INCR_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>            <span class="p">)</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a>        <span class="n">model_instance</span><span class="p">,</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>        <span class="n">field_name</span><span class="p">,</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>        <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>    <span class="p">):</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="w">        </span><span class="sd">"""No-op. Count-Min Sketch does not support decrement.</span>
 <a id="__codelineno-0-743" name="__codelineno-0-743"></a>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_frequency</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="w">        </span><span class="sd">"""Query the approximate frequency of a fingerprint.</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">        CMS counters are monotonically increasing. Decrementing would</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">        violate the "never undercount" guarantee.</span>
 <a id="__codelineno-0-746" name="__codelineno-0-746"></a>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        The query is tokenized using the same rules as on_save(). If the query</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">        produces tokens, returns the minimum frequency across those tokens</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">        (conservative estimate). If tokenization produces no tokens, queries</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">        the raw lowercased fingerprint (matching the on_save fallback).</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">            The pipeline if provided, otherwise None.</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">        """</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-751" name="__codelineno-0-751"></a>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">        Returns the Count-Min Sketch estimate. This value may overcount</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">        but never undercounts.</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_frequency</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="w">        </span><span class="sd">"""Query the approximate frequency of a fingerprint.</span>
 <a id="__codelineno-0-754" name="__codelineno-0-754"></a>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">            model_class: The Model class to query against.</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">            fingerprint: The fingerprint string to look up.</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">            int: Approximate frequency count. Returns 0 if the fingerprint</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">                has never been seen or the CMS key doesn't exist yet.</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        """</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="c1"># Fallback: query the raw lowercased fingerprint</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>                <span class="n">CMS_QUERY_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>            <span class="p">)</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="c1"># For multi-token queries, return min frequency (conservative)</span>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="n">min_freq</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>                <span class="n">CMS_QUERY_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a>            <span class="p">)</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a>            <span class="n">freq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>            <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">freq</span> <span class="o">&lt;</span> <span class="n">min_freq</span><span class="p">:</span>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a>                <span class="n">min_freq</span> <span class="o">=</span> <span class="n">freq</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a>        <span class="k">return</span> <span class="n">min_freq</span> <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">        The query is tokenized using the same rules as on_save(). If the query</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">        produces tokens, returns the minimum frequency across those tokens</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">        (conservative estimate). If tokenization produces no tokens, queries</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">        the raw lowercased fingerprint (matching the on_save fallback).</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">        Returns the Count-Min Sketch estimate. This value may overcount</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">        but never undercounts.</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">            model_class: The Model class to query against.</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">            fingerprint: The fingerprint string to look up.</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">            int: Approximate frequency count. Returns 0 if the fingerprint</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">                has never been seen or the CMS key doesn't exist yet.</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a><span class="sd">        """</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>            <span class="c1"># Fallback: query the raw lowercased fingerprint</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a>                <span class="n">CMS_QUERY_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>                <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a>                <span class="n">key</span><span class="p">,</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>                <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>            <span class="p">)</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>        <span class="c1"># For multi-token queries, return min frequency (conservative)</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>        <span class="n">min_freq</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">CMS_QUERY_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>            <span class="p">)</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>            <span class="n">freq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>            <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">freq</span> <span class="o">&lt;</span> <span class="n">min_freq</span><span class="p">:</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a>                <span class="n">min_freq</span> <span class="o">=</span> <span class="n">freq</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>        <span class="k">return</span> <span class="n">min_freq</span> <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -5501,7 +5529,15 @@ If tokenization produces no tokens, falls back to the raw fingerprint.</p>
 <span class="normal"><a href="#__codelineno-0-720">720</a></span>
 <span class="normal"><a href="#__codelineno-0-721">721</a></span>
 <span class="normal"><a href="#__codelineno-0-722">722</a></span>
-<span class="normal"><a href="#__codelineno-0-723">723</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="nd">@classmethod</span>
+<span class="normal"><a href="#__codelineno-0-723">723</a></span>
+<span class="normal"><a href="#__codelineno-0-724">724</a></span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span>
+<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+<span class="normal"><a href="#__codelineno-0-727">727</a></span>
+<span class="normal"><a href="#__codelineno-0-728">728</a></span>
+<span class="normal"><a href="#__codelineno-0-729">729</a></span>
+<span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
 <a id="__codelineno-0-686" name="__codelineno-0-686"></a>    <span class="bp">cls</span><span class="p">,</span>
 <a id="__codelineno-0-687" name="__codelineno-0-687"></a>    <span class="n">model_instance</span><span class="p">,</span>
@@ -5535,12 +5571,20 @@ If tokenization produces no tokens, falls back to the raw fingerprint.</p>
 <a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
 <a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
 <a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="c1"># Fallback: increment the raw fingerprint lowercased</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>            <span class="n">CMS_INCR_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">depth</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>        <span class="p">)</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>        <span class="n">client</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">CMS_INCR_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span><span class="p">)</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>            <span class="n">client</span><span class="p">,</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>            <span class="n">CMS_INCR_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>            <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a>            <span class="n">key</span><span class="p">,</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>            <span class="n">fingerprint</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>            <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>            <span class="n">field</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="p">)</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a>            <span class="n">client</span><span class="p">,</span> <span class="n">CMS_INCR_MULTI_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span> <span class="o">*</span><span class="n">tokens</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="p">)</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5591,15 +5635,7 @@ violate the "never undercount" guarantee.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/existence_filter.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-725">725</a></span>
-<span class="normal"><a href="#__codelineno-0-726">726</a></span>
-<span class="normal"><a href="#__codelineno-0-727">727</a></span>
-<span class="normal"><a href="#__codelineno-0-728">728</a></span>
-<span class="normal"><a href="#__codelineno-0-729">729</a></span>
-<span class="normal"><a href="#__codelineno-0-730">730</a></span>
-<span class="normal"><a href="#__codelineno-0-731">731</a></span>
-<span class="normal"><a href="#__codelineno-0-732">732</a></span>
-<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-733">733</a></span>
 <span class="normal"><a href="#__codelineno-0-734">734</a></span>
 <span class="normal"><a href="#__codelineno-0-735">735</a></span>
 <span class="normal"><a href="#__codelineno-0-736">736</a></span>
@@ -5608,24 +5644,32 @@ violate the "never undercount" guarantee.</p>
 <span class="normal"><a href="#__codelineno-0-739">739</a></span>
 <span class="normal"><a href="#__codelineno-0-740">740</a></span>
 <span class="normal"><a href="#__codelineno-0-741">741</a></span>
-<span class="normal"><a href="#__codelineno-0-742">742</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>    <span class="n">model_instance</span><span class="p">,</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a>    <span class="n">field_name</span><span class="p">,</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a>    <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="p">):</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="w">    </span><span class="sd">"""No-op. Count-Min Sketch does not support decrement.</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">    CMS counters are monotonically increasing. Decrementing would</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">    violate the "never undercount" guarantee.</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">        The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">    """</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<span class="normal"><a href="#__codelineno-0-742">742</a></span>
+<span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a>    <span class="n">model_instance</span><span class="p">,</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>    <span class="n">field_name</span><span class="p">,</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>    <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="p">):</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="w">    </span><span class="sd">"""No-op. Count-Min Sketch does not support decrement.</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">    CMS counters are monotonically increasing. Decrementing would</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">    violate the "never undercount" guarantee.</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">        The pipeline if provided, otherwise None.</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">    """</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5722,15 +5766,7 @@ has never been seen or the CMS key doesn't exist yet.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/existence_filter.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-744">744</a></span>
-<span class="normal"><a href="#__codelineno-0-745">745</a></span>
-<span class="normal"><a href="#__codelineno-0-746">746</a></span>
-<span class="normal"><a href="#__codelineno-0-747">747</a></span>
-<span class="normal"><a href="#__codelineno-0-748">748</a></span>
-<span class="normal"><a href="#__codelineno-0-749">749</a></span>
-<span class="normal"><a href="#__codelineno-0-750">750</a></span>
-<span class="normal"><a href="#__codelineno-0-751">751</a></span>
-<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-752">752</a></span>
 <span class="normal"><a href="#__codelineno-0-753">753</a></span>
 <span class="normal"><a href="#__codelineno-0-754">754</a></span>
 <span class="normal"><a href="#__codelineno-0-755">755</a></span>
@@ -5759,44 +5795,64 @@ has never been seen or the CMS key doesn't exist yet.</p>
 <span class="normal"><a href="#__codelineno-0-778">778</a></span>
 <span class="normal"><a href="#__codelineno-0-779">779</a></span>
 <span class="normal"><a href="#__codelineno-0-780">780</a></span>
-<span class="normal"><a href="#__codelineno-0-781">781</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_frequency</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="w">    </span><span class="sd">"""Query the approximate frequency of a fingerprint.</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">    The query is tokenized using the same rules as on_save(). If the query</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">    produces tokens, returns the minimum frequency across those tokens</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">    (conservative estimate). If tokenization produces no tokens, queries</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">    the raw lowercased fingerprint (matching the on_save fallback).</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">    Returns the Count-Min Sketch estimate. This value may overcount</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    but never undercounts.</span>
+<span class="normal"><a href="#__codelineno-0-781">781</a></span>
+<span class="normal"><a href="#__codelineno-0-782">782</a></span>
+<span class="normal"><a href="#__codelineno-0-783">783</a></span>
+<span class="normal"><a href="#__codelineno-0-784">784</a></span>
+<span class="normal"><a href="#__codelineno-0-785">785</a></span>
+<span class="normal"><a href="#__codelineno-0-786">786</a></span>
+<span class="normal"><a href="#__codelineno-0-787">787</a></span>
+<span class="normal"><a href="#__codelineno-0-788">788</a></span>
+<span class="normal"><a href="#__codelineno-0-789">789</a></span>
+<span class="normal"><a href="#__codelineno-0-790">790</a></span>
+<span class="normal"><a href="#__codelineno-0-791">791</a></span>
+<span class="normal"><a href="#__codelineno-0-792">792</a></span>
+<span class="normal"><a href="#__codelineno-0-793">793</a></span>
+<span class="normal"><a href="#__codelineno-0-794">794</a></span>
+<span class="normal"><a href="#__codelineno-0-795">795</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_frequency</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">):</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="w">    </span><span class="sd">"""Query the approximate frequency of a fingerprint.</span>
 <a id="__codelineno-0-754" name="__codelineno-0-754"></a>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">        model_class: The Model class to query against.</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">        fingerprint: The fingerprint string to look up.</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">        int: Approximate frequency count. Returns 0 if the fingerprint</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">            has never been seen or the CMS key doesn't exist yet.</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">    """</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="c1"># Fallback: query the raw lowercased fingerprint</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>            <span class="n">CMS_QUERY_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>        <span class="p">)</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>    <span class="c1"># For multi-token queries, return min frequency (conservative)</span>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a>    <span class="n">min_freq</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a>    <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>            <span class="n">CMS_QUERY_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a>        <span class="p">)</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a>        <span class="n">freq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">freq</span> <span class="o">&lt;</span> <span class="n">min_freq</span><span class="p">:</span>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a>            <span class="n">min_freq</span> <span class="o">=</span> <span class="n">freq</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a>    <span class="k">return</span> <span class="n">min_freq</span> <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    The query is tokenized using the same rules as on_save(). If the query</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    produces tokens, returns the minimum frequency across those tokens</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">    (conservative estimate). If tokenization produces no tokens, queries</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">    the raw lowercased fingerprint (matching the on_save fallback).</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">    Returns the Count-Min Sketch estimate. This value may overcount</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">    but never undercounts.</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">        model_class: The Model class to query against.</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">        fingerprint: The fingerprint string to look up.</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">        int: Approximate frequency count. Returns 0 if the fingerprint</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">            has never been seen or the CMS key doesn't exist yet.</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a><span class="sd">    """</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$FS:</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>    <span class="n">query_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">query_str</span><span class="p">)</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="c1"># Fallback: query the raw lowercased fingerprint</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a>            <span class="n">CMS_QUERY_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>            <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a>            <span class="n">key</span><span class="p">,</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>            <span class="n">query_str</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">depth</span><span class="p">,</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>        <span class="p">)</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>    <span class="c1"># For multi-token queries, return min frequency (conservative)</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>    <span class="n">min_freq</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>    <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">CMS_QUERY_LUA</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">depth</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>        <span class="p">)</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="n">freq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="k">if</span> <span class="n">result</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>        <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">freq</span> <span class="o">&lt;</span> <span class="n">min_freq</span><span class="p">:</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a>            <span class="n">min_freq</span> <span class="o">=</span> <span class="n">freq</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>    <span class="k">return</span> <span class="n">min_freq</span> <span class="k">if</span> <span class="n">min_freq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

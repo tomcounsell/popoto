@@ -3985,8 +3985,8 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 </tr>
 <tr>
 <td><code>POPOTO_TEST_DB</code></td>
-<td><code>15</code></td>
-<td>Redis DB number used by the pytest plugin for test isolation. Overrides the <code>popoto_test_db</code> ini option. DB 0 is rejected to prevent accidental production data loss.</td>
+<td>unset</td>
+<td>Redis DB number used by the pytest plugin for test isolation, and one of the two ways to activate the plugin at all (the other is the <code>popoto_test_db</code> ini option, which this overrides). Unset with no ini option, the plugin does nothing. DB 0 is rejected to prevent accidental production data loss. See <a href="../testing/">Testing</a>.</td>
 </tr>
 <tr>
 <td><code>POPOTO_ASYNC_MAX_CONNECTIONS</code></td>

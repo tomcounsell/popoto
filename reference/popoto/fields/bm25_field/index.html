@@ -3569,10 +3569,7 @@ m.save()</p>
 <span class="normal"><a href="#__codelineno-0-765">765</a></span>
 <span class="normal"><a href="#__codelineno-0-766">766</a></span>
 <span class="normal"><a href="#__codelineno-0-767">767</a></span>
-<span class="normal"><a href="#__codelineno-0-768">768</a></span>
-<span class="normal"><a href="#__codelineno-0-769">769</a></span>
-<span class="normal"><a href="#__codelineno-0-770">770</a></span>
-<span class="normal"><a href="#__codelineno-0-771">771</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="k">class</span><span class="w"> </span><span class="nc">BM25Field</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="k">class</span><span class="w"> </span><span class="nc">BM25Field</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="w">    </span><span class="sd">"""BM25 ranked keyword search field backed by Redis sorted sets.</span>
 <a id="__codelineno-0-332" name="__codelineno-0-332"></a>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    Maintains an inverted index and corpus statistics (tf, df, dl, n, avgdl)</span>
@@ -3706,7 +3703,7 @@ m.save()</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">tf_key</span><span class="p">,</span> <span class="n">df_key</span><span class="p">,</span> <span class="n">dl_key</span><span class="p">,</span> <span class="n">n_key</span><span class="p">,</span> <span class="n">avgdl_key</span><span class="p">]</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>        <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span><span class="n">doc_key</span><span class="p">,</span> <span class="n">inv_prefix</span><span class="p">]</span> <span class="o">+</span> <span class="n">tokens</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BM25_SAVE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>        <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BM25_SAVE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>
@@ -3753,7 +3750,7 @@ m.save()</p>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">tf_key</span><span class="p">,</span> <span class="n">df_key</span><span class="p">,</span> <span class="n">dl_key</span><span class="p">,</span> <span class="n">n_key</span><span class="p">,</span> <span class="n">avgdl_key</span><span class="p">]</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span><span class="n">doc_key</span><span class="p">,</span> <span class="n">inv_prefix</span><span class="p">]</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BM25_DELETE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BM25_DELETE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>
@@ -3817,203 +3814,200 @@ m.save()</p>
 <a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">df_key</span><span class="p">,</span> <span class="n">dl_key</span><span class="p">,</span> <span class="n">n_key</span><span class="p">,</span> <span class="n">avgdl_key</span><span class="p">]</span>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="k">if</span> <span class="n">allowed_keys</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="n">allowed_keys</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>                <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">allowed_keys</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>            <span class="p">}</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>                <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>            <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>                <span class="n">inv_prefix</span><span class="p">,</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>                <span class="n">fetch_limit</span><span class="p">,</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a>                <span class="n">field</span><span class="o">.</span><span class="n">BM25_K1</span><span class="p">,</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a>                <span class="n">field</span><span class="o">.</span><span class="n">BM25_B</span><span class="p">,</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>            <span class="p">]</span> <span class="o">+</span> <span class="n">query_tokens</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BM25_SEARCH_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>                <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>            <span class="c1"># Parse flat array: [key1, score1, key2, score2, ...]</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>            <span class="n">scored</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="mi">2</span><span class="p">):</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>                <span class="n">score</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>                    <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>                    <span class="n">score</span> <span class="o">=</span> <span class="n">score</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a>                <span class="n">scored</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">)))</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>            <span class="k">return</span> <span class="n">scored</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="n">allowed_keys</span> <span class="o">=</span> <span class="n">normalize_redis_keys</span><span class="p">(</span><span class="n">allowed_keys</span><span class="p">)</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>            <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>                <span class="n">inv_prefix</span><span class="p">,</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>                <span class="n">fetch_limit</span><span class="p">,</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>                <span class="n">field</span><span class="o">.</span><span class="n">BM25_K1</span><span class="p">,</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>                <span class="n">field</span><span class="o">.</span><span class="n">BM25_B</span><span class="p">,</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>            <span class="p">]</span> <span class="o">+</span> <span class="n">query_tokens</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BM25_SEARCH_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>                <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>            <span class="c1"># Parse flat array: [key1, score1, key2, score2, ...]</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>            <span class="n">scored</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="mi">2</span><span class="p">):</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                <span class="n">score</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>                    <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>                    <span class="n">score</span> <span class="o">=</span> <span class="n">score</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>                <span class="n">scored</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">)))</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>            <span class="k">return</span> <span class="n">scored</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>        <span class="k">if</span> <span class="n">allowed_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>            <span class="k">return</span> <span class="n">_run</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>        <span class="k">if</span> <span class="n">allowed_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="k">return</span> <span class="n">_run</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a>        <span class="c1"># Widen the fetch window until `limit` in-scope hits are found or the</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>        <span class="c1"># whole corpus has been scanned. Capped so a caller whose scope holds</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>        <span class="c1"># almost nothing cannot walk an unbounded corpus on every query; at the</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>        <span class="c1"># cap the result is honestly short rather than silently empty.</span>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>        <span class="c1">#</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="c1"># Each pass re-runs BM25_SEARCH_LUA from scratch rather than extending</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>        <span class="c1"># the previous window, so the cost is the sum of the passes, not the</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a>        <span class="c1"># final width. Worst case is a fully starved scope: at limit=10 and</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a>        <span class="c1"># SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -&gt; 40 -&gt; 160 -&gt; 640 -&gt; 2560</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a>        <span class="c1"># -&gt; 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="c1"># widen factor trades passes for wasted scoring width.</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>        <span class="n">raw_n</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a>            <span class="n">corpus_n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw_n</span><span class="p">)</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>            <span class="n">corpus_n</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="n">ceiling</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">corpus_n</span><span class="p">,</span> <span class="n">limit</span><span class="p">),</span> <span class="n">SCOPED_SEARCH_FETCH_CAP</span><span class="p">)</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="n">fetch_limit</span> <span class="o">=</span> <span class="n">limit</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="n">scored</span> <span class="o">=</span> <span class="n">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">)</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="n">in_scope</span> <span class="o">=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">scored</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">allowed_keys</span><span class="p">]</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>            <span class="k">if</span> <span class="p">(</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">in_scope</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">limit</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>                <span class="ow">or</span> <span class="n">fetch_limit</span> <span class="o">&gt;=</span> <span class="n">ceiling</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>                <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">scored</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">fetch_limit</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>            <span class="p">):</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>                <span class="k">return</span> <span class="n">in_scope</span><span class="p">[:</span><span class="n">limit</span><span class="p">]</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>            <span class="n">fetch_limit</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">fetch_limit</span> <span class="o">*</span> <span class="n">SCOPED_SEARCH_WIDEN_FACTOR</span><span class="p">,</span> <span class="n">ceiling</span><span class="p">)</span>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">recompute_stats</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="w">        </span><span class="sd">"""Recompute avgdl from scratch to correct floating-point drift.</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>        <span class="c1"># Widen the fetch window until `limit` in-scope hits are found or the</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>        <span class="c1"># whole corpus has been scanned. Capped so a caller whose scope holds</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>        <span class="c1"># almost nothing cannot walk an unbounded corpus on every query; at the</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>        <span class="c1"># cap the result is honestly short rather than silently empty.</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>        <span class="c1">#</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>        <span class="c1"># Each pass re-runs BM25_SEARCH_LUA from scratch rather than extending</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>        <span class="c1"># the previous window, so the cost is the sum of the passes, not the</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>        <span class="c1"># final width. Worst case is a fully starved scope: at limit=10 and</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="c1"># SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -&gt; 40 -&gt; 160 -&gt; 640 -&gt; 2560</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>        <span class="c1"># -&gt; 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>        <span class="c1"># widen factor trades passes for wasted scoring width.</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>        <span class="n">raw_n</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>            <span class="n">corpus_n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw_n</span><span class="p">)</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a>            <span class="n">corpus_n</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="n">ceiling</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">corpus_n</span><span class="p">,</span> <span class="n">limit</span><span class="p">),</span> <span class="n">SCOPED_SEARCH_FETCH_CAP</span><span class="p">)</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">fetch_limit</span> <span class="o">=</span> <span class="n">limit</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="n">scored</span> <span class="o">=</span> <span class="n">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">)</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="n">in_scope</span> <span class="o">=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">scored</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">allowed_keys</span><span class="p">]</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>            <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">in_scope</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">limit</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>                <span class="ow">or</span> <span class="n">fetch_limit</span> <span class="o">&gt;=</span> <span class="n">ceiling</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">scored</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">fetch_limit</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>            <span class="p">):</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>                <span class="k">return</span> <span class="n">in_scope</span><span class="p">[:</span><span class="n">limit</span><span class="p">]</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="n">fetch_limit</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">fetch_limit</span> <span class="o">*</span> <span class="n">SCOPED_SEARCH_WIDEN_FACTOR</span><span class="p">,</span> <span class="n">ceiling</span><span class="p">)</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">recompute_stats</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="w">        </span><span class="sd">"""Recompute avgdl from scratch to correct floating-point drift.</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        Reads all document lengths from the dl sorted set and recomputes</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">        the average. Also verifies n matches the actual document count.</span>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">        Reads all document lengths from the dl sorted set and recomputes</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        the average. Also verifies n matches the actual document count.</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">            model_class: The Model class.</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">            field_name: Name of the BM25Field on the model.</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">        """</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>            <span class="k">return</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>        <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>        <span class="n">dl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:dl"</span>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a>        <span class="n">avgdl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:avgdl"</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">            model_class: The Model class.</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">            field_name: Name of the BM25Field on the model.</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">        """</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>            <span class="k">return</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>        <span class="n">dl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:dl"</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>        <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>        <span class="n">avgdl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:avgdl"</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="c1"># Get all document lengths</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>        <span class="n">all_dl</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">dl_key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="s2">"+inf"</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-656" name="__codelineno-0-656"></a>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>        <span class="c1"># Get all document lengths</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="n">all_dl</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">dl_key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="s2">"+inf"</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>        <span class="n">actual_n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_dl</span><span class="p">)</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="n">total_dl</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">score</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">all_dl</span><span class="p">)</span>
 <a id="__codelineno-0-659" name="__codelineno-0-659"></a>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">actual_n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_dl</span><span class="p">)</span>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="n">total_dl</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">score</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">all_dl</span><span class="p">)</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">n_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">actual_n</span><span class="p">))</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="k">if</span> <span class="n">actual_n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">total_dl</span> <span class="o">/</span> <span class="n">actual_n</span><span class="p">))</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="s2">"0"</span><span class="p">)</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_idf</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="w">        </span><span class="sd">"""Get IDF scores for tokens without running a full search.</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">        Reads document frequency from the existing BM25 df sorted set</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">        and total doc count. Computes standard BM25 IDF:</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">            idf = log((N - df + 0.5) / (df + 0.5) + 1)</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">n_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">actual_n</span><span class="p">))</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="k">if</span> <span class="n">actual_n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">total_dl</span> <span class="o">/</span> <span class="n">actual_n</span><span class="p">))</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="s2">"0"</span><span class="p">)</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_idf</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="w">        </span><span class="sd">"""Get IDF scores for tokens without running a full search.</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="sd">        Reads document frequency from the existing BM25 df sorted set</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">        and total doc count. Computes standard BM25 IDF:</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">            idf = log((N - df + 0.5) / (df + 0.5) + 1)</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">        Uses ZMSCORE (Redis &gt;= 6.2, Valkey compatible) for batch df lookup.</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">        Falls back to individual ZSCORE calls if ZMSCORE is unavailable.</span>
 <a id="__codelineno-0-676" name="__codelineno-0-676"></a>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">        Uses ZMSCORE (Redis &gt;= 6.2, Valkey compatible) for batch df lookup.</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">        Falls back to individual ZSCORE calls if ZMSCORE is unavailable.</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">            model_class: The Model class.</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">            field_name: Name of the BM25Field.</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">            tokens: Single token string or list of token strings.</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">            dict[str, float]: Mapping of token -&gt; IDF score. Tokens not in</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">                the corpus get maximum IDF (log(N + 1) when df=0).</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">                Returns empty dict for empty token list.</span>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">                Returns {token: 0.0} for all tokens when corpus is empty (N=0).</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        """</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a>            <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a>                <span class="sa">f</span><span class="s2">"get_idf() requires a BM25Field. "</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a>                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">' is "</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">'not found'</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>            <span class="p">)</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="c1"># Normalize single token to list</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>            <span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">tokens</span><span class="p">]</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a>            <span class="k">return</span> <span class="p">{}</span>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="n">df_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:df"</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a>        <span class="c1"># Read total doc count</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="n">n_raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a>        <span class="n">N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">n_raw</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">            model_class: The Model class.</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">            field_name: Name of the BM25Field.</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">            tokens: Single token string or list of token strings.</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">            dict[str, float]: Mapping of token -&gt; IDF score. Tokens not in</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="sd">                the corpus get maximum IDF (log(N + 1) when df=0).</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="sd">                Returns empty dict for empty token list.</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">                Returns {token: 0.0} for all tokens when corpus is empty (N=0).</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">        """</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>            <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a>                <span class="sa">f</span><span class="s2">"get_idf() requires a BM25Field. "</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">' is "</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">'not found'</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a>            <span class="p">)</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a>        <span class="c1"># Normalize single token to list</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a>            <span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">tokens</span><span class="p">]</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>            <span class="k">return</span> <span class="p">{}</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a>        <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="n">df_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:df"</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="c1"># Read total doc count</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="n">n_raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="n">N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">n_raw</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="k">if</span> <span class="n">N</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>            <span class="k">return</span> <span class="p">{</span><span class="n">token</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">}</span>
 <a id="__codelineno-0-714" name="__codelineno-0-714"></a>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="k">if</span> <span class="n">N</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a>            <span class="k">return</span> <span class="p">{</span><span class="n">token</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">}</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="c1"># Batch df lookup via ZMSCORE (Redis &gt;= 6.2) with ZSCORE fallback</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>        <span class="n">df_values</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_batch_zscore</span><span class="p">(</span><span class="n">df_key</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
 <a id="__codelineno-0-717" name="__codelineno-0-717"></a>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="c1"># Batch df lookup via ZMSCORE (Redis &gt;= 6.2) with ZSCORE fallback</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>        <span class="n">df_values</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_batch_zscore</span><span class="p">(</span><span class="n">df_key</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>        <span class="c1"># Compute IDF for each token</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>        <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="k">for</span> <span class="n">token</span><span class="p">,</span> <span class="n">df_raw</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">df_values</span><span class="p">):</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a>            <span class="n">df</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">df_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">df_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>            <span class="n">idf</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">((</span><span class="n">N</span> <span class="o">-</span> <span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>            <span class="n">result</span><span class="p">[</span><span class="n">token</span><span class="p">]</span> <span class="o">=</span> <span class="n">idf</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="k">return</span> <span class="n">result</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_batch_zscore</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">):</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="w">        </span><span class="sd">"""Batch-read sorted set scores using ZMSCORE with ZSCORE fallback.</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="c1"># Compute IDF for each token</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>        <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>        <span class="k">for</span> <span class="n">token</span><span class="p">,</span> <span class="n">df_raw</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">df_values</span><span class="p">):</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>            <span class="n">df</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">df_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">df_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a>            <span class="n">idf</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">((</span><span class="n">N</span> <span class="o">-</span> <span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>            <span class="n">result</span><span class="p">[</span><span class="n">token</span><span class="p">]</span> <span class="o">=</span> <span class="n">idf</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>        <span class="k">return</span> <span class="n">result</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_batch_zscore</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">):</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="w">        </span><span class="sd">"""Batch-read sorted set scores using ZMSCORE with ZSCORE fallback.</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">        ZMSCORE was added in Redis 6.2 and is supported by Valkey.</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">        Falls back to individual ZSCORE calls if ZMSCORE is unavailable.</span>
 <a id="__codelineno-0-733" name="__codelineno-0-733"></a>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">        ZMSCORE was added in Redis 6.2 and is supported by Valkey.</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">        Falls back to individual ZSCORE calls if ZMSCORE is unavailable.</span>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">            key: Redis sorted set key.</span>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">            members: List of member strings to look up.</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">            list: Scores for each member (None if member not in set).</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">        """</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zmscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">)</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a>            <span class="c1"># ZMSCORE not available -- fall back to individual ZSCORE</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a>            <span class="k">return</span> <span class="p">[</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">members</span><span class="p">]</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_selective_tokens</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">min_idf</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="w">        </span><span class="sd">"""Filter tokens to only those with IDF above a threshold.</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">        Useful for pre-filtering keywords before running search().</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">        Tokens not in the corpus are considered maximally selective</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">        and included.</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">            model_class: The Model class.</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">            field_name: Name of the BM25Field.</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">            tokens: List of token strings.</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">            min_idf: Minimum IDF score to keep. Default 1.0.</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">            list[str]: Tokens with IDF &gt;= min_idf, preserving original order.</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">        """</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>        <span class="n">idf_scores</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_idf</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tokens</span> <span class="k">if</span> <span class="n">idf_scores</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_idf</span><span class="p">]</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">            key: Redis sorted set key.</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">            members: List of member strings to look up.</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">            list: Scores for each member (None if member not in set).</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">        """</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zmscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">)</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a>            <span class="c1"># ZMSCORE not available -- fall back to individual ZSCORE</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="k">return</span> <span class="p">[</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">members</span><span class="p">]</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_selective_tokens</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">min_idf</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="w">        </span><span class="sd">"""Filter tokens to only those with IDF above a threshold.</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">        Useful for pre-filtering keywords before running search().</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">        Tokens not in the corpus are considered maximally selective</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">        and included.</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">            model_class: The Model class.</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">            field_name: Name of the BM25Field.</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">            tokens: List of token strings.</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">            min_idf: Minimum IDF score to keep. Default 1.0.</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">            list[str]: Tokens with IDF &gt;= min_idf, preserving original order.</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">        """</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="n">idf_scores</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_idf</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tokens</span> <span class="k">if</span> <span class="n">idf_scores</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_idf</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -4295,7 +4289,7 @@ via a single Lua script.</p>
 <a id="__codelineno-0-461" name="__codelineno-0-461"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">tf_key</span><span class="p">,</span> <span class="n">df_key</span><span class="p">,</span> <span class="n">dl_key</span><span class="p">,</span> <span class="n">n_key</span><span class="p">,</span> <span class="n">avgdl_key</span><span class="p">]</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>    <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span><span class="n">doc_key</span><span class="p">,</span> <span class="n">inv_prefix</span><span class="p">]</span> <span class="o">+</span> <span class="n">tokens</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BM25_SAVE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>    <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BM25_SAVE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
 <a id="__codelineno-0-465" name="__codelineno-0-465"></a>
 <a id="__codelineno-0-466" name="__codelineno-0-466"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
@@ -4527,7 +4521,7 @@ and recomputes avgdl.</p>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">tf_key</span><span class="p">,</span> <span class="n">df_key</span><span class="p">,</span> <span class="n">dl_key</span><span class="p">,</span> <span class="n">n_key</span><span class="p">,</span> <span class="n">avgdl_key</span><span class="p">]</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>    <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span><span class="n">doc_key</span><span class="p">,</span> <span class="n">inv_prefix</span><span class="p">]</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BM25_DELETE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>    <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BM25_DELETE_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
@@ -4829,10 +4823,7 @@ applying to the same set.</p>
 <span class="normal"><a href="#__codelineno-0-629">629</a></span>
 <span class="normal"><a href="#__codelineno-0-630">630</a></span>
 <span class="normal"><a href="#__codelineno-0-631">631</a></span>
-<span class="normal"><a href="#__codelineno-0-632">632</a></span>
-<span class="normal"><a href="#__codelineno-0-633">633</a></span>
-<span class="normal"><a href="#__codelineno-0-634">634</a></span>
-<span class="normal"><a href="#__codelineno-0-635">635</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="nd">@classmethod</span>
+<span class="normal"><a href="#__codelineno-0-632">632</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a><span class="k">def</span><span class="w"> </span><span class="nf">search</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">query_text</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">allowed_keys</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="w">    </span><span class="sd">"""Search the BM25 index and return ranked results.</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>
@@ -4892,67 +4883,64 @@ applying to the same set.</p>
 <a id="__codelineno-0-572" name="__codelineno-0-572"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">df_key</span><span class="p">,</span> <span class="n">dl_key</span><span class="p">,</span> <span class="n">n_key</span><span class="p">,</span> <span class="n">avgdl_key</span><span class="p">]</span>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="k">if</span> <span class="n">allowed_keys</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="n">allowed_keys</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">allowed_keys</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="p">}</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="n">inv_prefix</span><span class="p">,</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>            <span class="n">fetch_limit</span><span class="p">,</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a>            <span class="n">field</span><span class="o">.</span><span class="n">BM25_K1</span><span class="p">,</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a>            <span class="n">field</span><span class="o">.</span><span class="n">BM25_B</span><span class="p">,</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="p">]</span> <span class="o">+</span> <span class="n">query_tokens</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">BM25_SEARCH_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>        <span class="c1"># Parse flat array: [key1, score1, key2, score2, ...]</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>        <span class="n">scored</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="mi">2</span><span class="p">):</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>            <span class="n">key</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>            <span class="n">score</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>                <span class="n">score</span> <span class="o">=</span> <span class="n">score</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a>            <span class="n">scored</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">)))</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>        <span class="k">return</span> <span class="n">scored</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="n">allowed_keys</span> <span class="o">=</span> <span class="n">normalize_redis_keys</span><span class="p">(</span><span class="n">allowed_keys</span><span class="p">)</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="n">argv</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>            <span class="n">inv_prefix</span><span class="p">,</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>            <span class="n">fetch_limit</span><span class="p">,</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>            <span class="n">field</span><span class="o">.</span><span class="n">BM25_K1</span><span class="p">,</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="n">field</span><span class="o">.</span><span class="n">BM25_B</span><span class="p">,</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>        <span class="p">]</span> <span class="o">+</span> <span class="n">query_tokens</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">BM25_SEARCH_LUA</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="o">*</span><span class="n">argv</span><span class="p">)</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="c1"># Parse flat array: [key1, score1, key2, score2, ...]</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="n">scored</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="mi">2</span><span class="p">):</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>            <span class="n">key</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>            <span class="n">score</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>                <span class="n">score</span> <span class="o">=</span> <span class="n">score</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>            <span class="n">scored</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">score</span><span class="p">)))</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>        <span class="k">return</span> <span class="n">scored</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>    <span class="k">if</span> <span class="n">allowed_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>        <span class="k">return</span> <span class="n">_run</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
 <a id="__codelineno-0-603" name="__codelineno-0-603"></a>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>    <span class="k">if</span> <span class="n">allowed_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>        <span class="k">return</span> <span class="n">_run</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="c1"># Widen the fetch window until `limit` in-scope hits are found or the</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="c1"># whole corpus has been scanned. Capped so a caller whose scope holds</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>    <span class="c1"># almost nothing cannot walk an unbounded corpus on every query; at the</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="c1"># cap the result is honestly short rather than silently empty.</span>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="c1">#</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>    <span class="c1"># Each pass re-runs BM25_SEARCH_LUA from scratch rather than extending</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>    <span class="c1"># the previous window, so the cost is the sum of the passes, not the</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a>    <span class="c1"># final width. Worst case is a fully starved scope: at limit=10 and</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a>    <span class="c1"># SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -&gt; 40 -&gt; 160 -&gt; 640 -&gt; 2560</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a>    <span class="c1"># -&gt; 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>    <span class="c1"># widen factor trades passes for wasted scoring width.</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>    <span class="n">raw_n</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="n">corpus_n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw_n</span><span class="p">)</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">corpus_n</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="n">ceiling</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">corpus_n</span><span class="p">,</span> <span class="n">limit</span><span class="p">),</span> <span class="n">SCOPED_SEARCH_FETCH_CAP</span><span class="p">)</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>    <span class="n">fetch_limit</span> <span class="o">=</span> <span class="n">limit</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">scored</span> <span class="o">=</span> <span class="n">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">)</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="n">in_scope</span> <span class="o">=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">scored</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">allowed_keys</span><span class="p">]</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="k">if</span> <span class="p">(</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>            <span class="nb">len</span><span class="p">(</span><span class="n">in_scope</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">limit</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="ow">or</span> <span class="n">fetch_limit</span> <span class="o">&gt;=</span> <span class="n">ceiling</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">scored</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">fetch_limit</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="p">):</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>            <span class="k">return</span> <span class="n">in_scope</span><span class="p">[:</span><span class="n">limit</span><span class="p">]</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>        <span class="n">fetch_limit</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">fetch_limit</span> <span class="o">*</span> <span class="n">SCOPED_SEARCH_WIDEN_FACTOR</span><span class="p">,</span> <span class="n">ceiling</span><span class="p">)</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>    <span class="c1"># Widen the fetch window until `limit` in-scope hits are found or the</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>    <span class="c1"># whole corpus has been scanned. Capped so a caller whose scope holds</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>    <span class="c1"># almost nothing cannot walk an unbounded corpus on every query; at the</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="c1"># cap the result is honestly short rather than silently empty.</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="c1">#</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>    <span class="c1"># Each pass re-runs BM25_SEARCH_LUA from scratch rather than extending</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="c1"># the previous window, so the cost is the sum of the passes, not the</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="c1"># final width. Worst case is a fully starved scope: at limit=10 and</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>    <span class="c1"># SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -&gt; 40 -&gt; 160 -&gt; 640 -&gt; 2560</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>    <span class="c1"># -&gt; 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>    <span class="c1"># widen factor trades passes for wasted scoring width.</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>    <span class="n">raw_n</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="n">corpus_n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw_n</span><span class="p">)</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a>        <span class="n">corpus_n</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>    <span class="n">ceiling</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">corpus_n</span><span class="p">,</span> <span class="n">limit</span><span class="p">),</span> <span class="n">SCOPED_SEARCH_FETCH_CAP</span><span class="p">)</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="n">fetch_limit</span> <span class="o">=</span> <span class="n">limit</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="n">scored</span> <span class="o">=</span> <span class="n">_run</span><span class="p">(</span><span class="n">fetch_limit</span><span class="p">)</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="n">in_scope</span> <span class="o">=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">scored</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">allowed_keys</span><span class="p">]</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="nb">len</span><span class="p">(</span><span class="n">in_scope</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">limit</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="ow">or</span> <span class="n">fetch_limit</span> <span class="o">&gt;=</span> <span class="n">ceiling</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>            <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">scored</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">fetch_limit</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="p">):</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="k">return</span> <span class="n">in_scope</span><span class="p">[:</span><span class="n">limit</span><span class="p">]</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>        <span class="n">fetch_limit</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">fetch_limit</span> <span class="o">*</span> <span class="n">SCOPED_SEARCH_WIDEN_FACTOR</span><span class="p">,</span> <span class="n">ceiling</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5026,7 +5014,10 @@ the average. Also verifies n matches the actual document count.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/bm25_field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-637">637</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
 <span class="normal"><a href="#__codelineno-0-638">638</a></span>
 <span class="normal"><a href="#__codelineno-0-639">639</a></span>
 <span class="normal"><a href="#__codelineno-0-640">640</a></span>
@@ -5053,40 +5044,37 @@ the average. Also verifies n matches the actual document count.</p>
 <span class="normal"><a href="#__codelineno-0-661">661</a></span>
 <span class="normal"><a href="#__codelineno-0-662">662</a></span>
 <span class="normal"><a href="#__codelineno-0-663">663</a></span>
-<span class="normal"><a href="#__codelineno-0-664">664</a></span>
-<span class="normal"><a href="#__codelineno-0-665">665</a></span>
-<span class="normal"><a href="#__codelineno-0-666">666</a></span>
-<span class="normal"><a href="#__codelineno-0-667">667</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="k">def</span><span class="w"> </span><span class="nf">recompute_stats</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="w">    </span><span class="sd">"""Recompute avgdl from scratch to correct floating-point drift.</span>
+<span class="normal"><a href="#__codelineno-0-664">664</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="k">def</span><span class="w"> </span><span class="nf">recompute_stats</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="w">    </span><span class="sd">"""Recompute avgdl from scratch to correct floating-point drift.</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">    Reads all document lengths from the dl sorted set and recomputes</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">    the average. Also verifies n matches the actual document count.</span>
 <a id="__codelineno-0-640" name="__codelineno-0-640"></a>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">    Reads all document lengths from the dl sorted set and recomputes</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">    the average. Also verifies n matches the actual document count.</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">        model_class: The Model class.</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">        field_name: Name of the BM25Field on the model.</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">    """</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>        <span class="k">return</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>    <span class="n">dl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:dl"</span>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a>    <span class="n">avgdl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:avgdl"</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        model_class: The Model class.</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">        field_name: Name of the BM25Field on the model.</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">    """</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>        <span class="k">return</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>    <span class="n">dl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:dl"</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="n">avgdl_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:avgdl"</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="c1"># Get all document lengths</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>    <span class="n">all_dl</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">dl_key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="s2">"+inf"</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-656" name="__codelineno-0-656"></a>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="c1"># Get all document lengths</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>    <span class="n">all_dl</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">dl_key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="s2">"+inf"</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="n">actual_n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_dl</span><span class="p">)</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>    <span class="n">total_dl</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">score</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">all_dl</span><span class="p">)</span>
 <a id="__codelineno-0-659" name="__codelineno-0-659"></a>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>    <span class="n">actual_n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_dl</span><span class="p">)</span>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a>    <span class="n">total_dl</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">score</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">all_dl</span><span class="p">)</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">n_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">actual_n</span><span class="p">))</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a>    <span class="k">if</span> <span class="n">actual_n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">total_dl</span> <span class="o">/</span> <span class="n">actual_n</span><span class="p">))</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="s2">"0"</span><span class="p">)</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">n_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">actual_n</span><span class="p">))</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>    <span class="k">if</span> <span class="n">actual_n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">total_dl</span> <span class="o">/</span> <span class="n">actual_n</span><span class="p">))</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">avgdl_key</span><span class="p">,</span> <span class="s2">"0"</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5203,7 +5191,10 @@ Returns {token: 0.0} for all tokens when corpus is empty (N=0).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/bm25_field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-669">669</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span>
 <span class="normal"><a href="#__codelineno-0-670">670</a></span>
 <span class="normal"><a href="#__codelineno-0-671">671</a></span>
 <span class="normal"><a href="#__codelineno-0-672">672</a></span>
@@ -5259,69 +5250,66 @@ Returns {token: 0.0} for all tokens when corpus is empty (N=0).</p>
 <span class="normal"><a href="#__codelineno-0-722">722</a></span>
 <span class="normal"><a href="#__codelineno-0-723">723</a></span>
 <span class="normal"><a href="#__codelineno-0-724">724</a></span>
-<span class="normal"><a href="#__codelineno-0-725">725</a></span>
-<span class="normal"><a href="#__codelineno-0-726">726</a></span>
-<span class="normal"><a href="#__codelineno-0-727">727</a></span>
-<span class="normal"><a href="#__codelineno-0-728">728</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_idf</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="w">    </span><span class="sd">"""Get IDF scores for tokens without running a full search.</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">    Reads document frequency from the existing BM25 df sorted set</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">    and total doc count. Computes standard BM25 IDF:</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">        idf = log((N - df + 0.5) / (df + 0.5) + 1)</span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_idf</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="w">    </span><span class="sd">"""Get IDF scores for tokens without running a full search.</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="sd">    Reads document frequency from the existing BM25 df sorted set</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">    and total doc count. Computes standard BM25 IDF:</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">        idf = log((N - df + 0.5) / (df + 0.5) + 1)</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">    Uses ZMSCORE (Redis &gt;= 6.2, Valkey compatible) for batch df lookup.</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">    Falls back to individual ZSCORE calls if ZMSCORE is unavailable.</span>
 <a id="__codelineno-0-676" name="__codelineno-0-676"></a>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">    Uses ZMSCORE (Redis &gt;= 6.2, Valkey compatible) for batch df lookup.</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">    Falls back to individual ZSCORE calls if ZMSCORE is unavailable.</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">        model_class: The Model class.</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        field_name: Name of the BM25Field.</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        tokens: Single token string or list of token strings.</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">        dict[str, float]: Mapping of token -&gt; IDF score. Tokens not in</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">            the corpus get maximum IDF (log(N + 1) when df=0).</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">            Returns empty dict for empty token list.</span>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">            Returns {token: 0.0} for all tokens when corpus is empty (N=0).</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">    """</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a>        <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a>            <span class="sa">f</span><span class="s2">"get_idf() requires a BM25Field. "</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a>            <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">' is "</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">'not found'</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>        <span class="p">)</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a>    <span class="c1"># Normalize single token to list</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">tokens</span><span class="p">]</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a>        <span class="k">return</span> <span class="p">{}</span>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="n">df_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:df"</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a>    <span class="c1"># Read total doc count</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a>    <span class="n">n_raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a>    <span class="n">N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">n_raw</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">        model_class: The Model class.</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">        field_name: Name of the BM25Field.</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        tokens: Single token string or list of token strings.</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        dict[str, float]: Mapping of token -&gt; IDF score. Tokens not in</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="sd">            the corpus get maximum IDF (log(N + 1) when df=0).</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="sd">            Returns empty dict for empty token list.</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">            Returns {token: 0.0} for all tokens when corpus is empty (N=0).</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">    """</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">BM25Field</span><span class="p">):</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a>            <span class="sa">f</span><span class="s2">"get_idf() requires a BM25Field. "</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>            <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">' is "</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">field</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">'not found'</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="p">)</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a>    <span class="c1"># Normalize single token to list</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">tokens</span><span class="p">]</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>        <span class="k">return</span> <span class="p">{}</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a>    <span class="n">n_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:n"</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>    <span class="n">df_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">:df"</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="c1"># Read total doc count</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="n">n_raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_key</span><span class="p">)</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="n">N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">n_raw</span> <span class="k">else</span> <span class="mi">0</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>    <span class="k">if</span> <span class="n">N</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>        <span class="k">return</span> <span class="p">{</span><span class="n">token</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">}</span>
 <a id="__codelineno-0-714" name="__codelineno-0-714"></a>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="k">if</span> <span class="n">N</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a>        <span class="k">return</span> <span class="p">{</span><span class="n">token</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">}</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="c1"># Batch df lookup via ZMSCORE (Redis &gt;= 6.2) with ZSCORE fallback</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="n">df_values</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_batch_zscore</span><span class="p">(</span><span class="n">df_key</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
 <a id="__codelineno-0-717" name="__codelineno-0-717"></a>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="c1"># Batch df lookup via ZMSCORE (Redis &gt;= 6.2) with ZSCORE fallback</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="n">df_values</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_batch_zscore</span><span class="p">(</span><span class="n">df_key</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>    <span class="c1"># Compute IDF for each token</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>    <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>    <span class="k">for</span> <span class="n">token</span><span class="p">,</span> <span class="n">df_raw</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">df_values</span><span class="p">):</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a>        <span class="n">df</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">df_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">df_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>        <span class="n">idf</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">((</span><span class="n">N</span> <span class="o">-</span> <span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="n">result</span><span class="p">[</span><span class="n">token</span><span class="p">]</span> <span class="o">=</span> <span class="n">idf</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>    <span class="k">return</span> <span class="n">result</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="c1"># Compute IDF for each token</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>    <span class="k">for</span> <span class="n">token</span><span class="p">,</span> <span class="n">df_raw</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">df_values</span><span class="p">):</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>        <span class="n">df</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">df_raw</span><span class="p">)</span> <span class="k">if</span> <span class="n">df_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a>        <span class="n">idf</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">((</span><span class="n">N</span> <span class="o">-</span> <span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">df</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="n">result</span><span class="p">[</span><span class="n">token</span><span class="p">]</span> <span class="o">=</span> <span class="n">idf</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5448,7 +5436,10 @@ and included.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/bm25_field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-750">750</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
 <span class="normal"><a href="#__codelineno-0-751">751</a></span>
 <span class="normal"><a href="#__codelineno-0-752">752</a></span>
 <span class="normal"><a href="#__codelineno-0-753">753</a></span>
@@ -5466,31 +5457,28 @@ and included.</p>
 <span class="normal"><a href="#__codelineno-0-765">765</a></span>
 <span class="normal"><a href="#__codelineno-0-766">766</a></span>
 <span class="normal"><a href="#__codelineno-0-767">767</a></span>
-<span class="normal"><a href="#__codelineno-0-768">768</a></span>
-<span class="normal"><a href="#__codelineno-0-769">769</a></span>
-<span class="normal"><a href="#__codelineno-0-770">770</a></span>
-<span class="normal"><a href="#__codelineno-0-771">771</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_selective_tokens</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">min_idf</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="w">    </span><span class="sd">"""Filter tokens to only those with IDF above a threshold.</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">    Useful for pre-filtering keywords before running search().</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    Tokens not in the corpus are considered maximally selective</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    and included.</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">        model_class: The Model class.</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">        field_name: Name of the BM25Field.</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">        tokens: List of token strings.</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        min_idf: Minimum IDF score to keep. Default 1.0.</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">        list[str]: Tokens with IDF &gt;= min_idf, preserving original order.</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">    """</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="n">idf_scores</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_idf</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tokens</span> <span class="k">if</span> <span class="n">idf_scores</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_idf</span><span class="p">]</span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_selective_tokens</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">min_idf</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="w">    </span><span class="sd">"""Filter tokens to only those with IDF above a threshold.</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">    Useful for pre-filtering keywords before running search().</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">    Tokens not in the corpus are considered maximally selective</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    and included.</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">        model_class: The Model class.</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">        field_name: Name of the BM25Field.</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">        tokens: List of token strings.</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">        min_idf: Minimum IDF score to keep. Default 1.0.</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        list[str]: Tokens with IDF &gt;= min_idf, preserving original order.</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    """</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">:</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>    <span class="n">idf_scores</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_idf</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tokens</span> <span class="k">if</span> <span class="n">idf_scores</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_idf</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

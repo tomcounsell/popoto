@@ -4140,6 +4140,16 @@ removal, so a crash between the two steps loses nothing.</p>
 <h3 id="composing-with-subconsciousmemory">Composing with SubconsciousMemory<a class="headerlink" href="#composing-with-subconsciousmemory" title="Permanent link">&para;</a></h3>
 <p><code>MemoryLifecycle</code> is an independent policy layer — it composes <em>alongside</em>
 <code>SubconsciousMemory</code>, not as a replacement:</p>
+<div class="admonition note">
+<p class="admonition-title"><code>DefaultMemory</code> evicts on its own since 1.9.0</p>
+<p>If the model below is <code>DefaultMemory</code>, it already caps itself at 1000
+records per <code>agent_id</code> and hard-deletes the stalest past that
+(<code>_max_records_per_agent</code>). That is a blunt floor, not a substitute for
+this layer: <code>MemoryLifecycle</code> tombstones restorably and reads tier and
+evidence before forgetting, while the cap only reads the decay clock.
+Set <code>_max_records_per_agent</code> falsy on your subclass if you want
+lifecycle policy to be the only thing that removes records.</p>
+</div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">DefaultMemory</span><span class="p">,</span> <span class="n">MemoryLifecycle</span><span class="p">,</span> <span class="n">SubconsciousMemory</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
 <a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">Memory</span> <span class="o">=</span> <span class="n">DefaultMemory</span>  <span class="c1"># or your own model class</span>
