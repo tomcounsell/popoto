@@ -493,3 +493,35 @@ All six findings resolved. Nothing deferred.
 | Task validation commands | ~~FAIL~~ → PASS | Every task in the revised list carries a `Validate:` command; `## Verification` carries the full gate sequence |
 | Cross-references | PASS | Every Success Criterion maps to a task |
 | Prior art status | PASS | #517 MERGED, #594 MERGED, #559 OPEN with branch unmerged — matches plan wording |
+
+### Critique Round 2 — Verification Pass (2026-09-03, run `336cfd30`)
+
+Verdict: **READY TO BUILD (with concerns)**. Scope was verification of the round-1 findings only,
+not a new design pass. Every claim below was re-read from source in the worktree
+`.worktrees/sdlc-571` at `24a04ff` (not from the main checkout, which is on `session/sdlc-596`
+and carries a stale 5.5 KB copy of this plan).
+
+| Round-1 finding | Status | Verification |
+|---|---|---|
+| BLOCKER — shared instance state read across awaits | **RESOLVED** | `models/base.py:505` confirms one `Query` per model class. `## Race Conditions` pins the fix concretely: `_PushdownState` snapshot taken inside a single `to_thread` hop, arm→execute→snapshot serialized by a per-running-loop `asyncio.Lock` in a `WeakKeyDictionary` guarded by a `threading.Lock`, never built at import. The anti-pattern it avoids is real and cited correctly — `redis_db.py:100` builds `_async_redis_lock` at import and `tests/test_async.py:14–26` exists solely to reassign it per test. Residual sync-vs-async and multi-loop exposure is stated, not deferred silently, with Task 6 filing the follow-up. Regression test 4(f) must be confirmed failing against an un-snapshotted variant. |
+| CONCERN — command count unfalsifiable | **RESOLVED** | Confirmed `HydrationCounter` (tests/test_sorted_range_pushdown.py:63–83) patches the **sync** `redis.client.Pipeline.hgetall`, while async hydration runs `pipeline.hgetall` on the async pipeline (query.py:3686). Task 4(a) now patches `redis.asyncio.client.Pipeline.hgetall` with a two-sided bound, so a 0-count no-op fails. |
+| CONCERN — `_allow_pushdown` cannot travel through `**kwargs` | **RESOLVED** | Confirmed `async_filter` is `async def async_filter(self, **kwargs)` (query.py:3403) today, and that `_bound_keys_before_hydration`'s third positional parameter is `allow_pushdown` (query.py:2197–2203). Plan pins keyword-only `*, _allow_pushdown: bool = True` and names the literal-`True` trap explicitly. |
+| CONCERN — extract-vs-duplicate deferred to build | **RESOLVED** | Extraction chosen and bounded to decision-and-log. Both `logger.warning` texts confirmed at query.py:2949–2977, and the four caplog tests confirmed at tests/test_sorted_range_pushdown.py:398/434/457/485. All seven attributes the guard reads are present on `_PushdownState`. |
+| CONCERN — missing standard sections | **RESOLVED** | `## Race Conditions`, `## Test Impact` (+ `### Failure Path Test Strategy`), and `## Verification` all present; every task carries a `Validate:` command. |
+| NIT — Freshness Check re-verify ask | **RESOLVED** | Restated as settled fact at `d72d393`. |
+
+Carried into build as concerns (none blocking):
+
+1. **Fixture reuse is a copy, not an import.** `tests/test_async.py:14–26` is a module-local
+   autouse fixture; `tests/test_sorted_range_pushdown.py` has its own autouse fixture at line 39.
+   The builder must replicate the async-connection/lock reset in the pushdown file and confirm it
+   composes with the existing flush fixture rather than assuming it applies.
+2. **`AsyncHydrationCounter` covers `hgetall` only.** `_async_get_many_objects` has a separate
+   `hmget` path for `values=` (query.py:3672–3680). None of the six planned tests use `values=`,
+   so the counter is sufficient as scoped — but a later `values=` test would silently read 0.
+3. **Citation is off by one example.** The gather-over-`async_filter` pattern the Race Conditions
+   section relies on is at `docs/async.md:221–231` (two concurrent `async_filter` calls under one
+   `gather`), not `327–342`, which gathers `async_save()` calls inside a sequential loop. The
+   hazard claim is correct; the pointer should be corrected when the section is next touched.
+4. **Stale self-report.** The Structural Check row above reads "Task numbering PASS 1–5"; the task
+   list now runs 1–7. Cosmetic only.
