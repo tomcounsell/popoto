@@ -24,16 +24,45 @@ exact reasoning that made `POPOTO_MEMORY_ALLOW_DB0` an environment variable in t
 
 ## Freshness Check
 
-Verified 2026-09-03 against main `16aa702` (+2 docs commits):
+Verified 2026-09-03 against main `b9cd9b2` (re-verified after PR #594 merged at 09:17Z — the
+issue was filed at 02:58Z while #594 was still open, so the code it describes is now on main):
 
 - `src/popoto/recipes/default_memory.py:137` — `_max_records_per_agent = Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`;
-  eviction inside `save()` (lines 140–179), wrapped `except Exception` → `logger.warning`, exactly
-  as the issue describes. No env override, no first-eviction distinction.
-- `src/popoto/fields/constants.py:293` — the constant, value 1000.
+  eviction inside `save()` (lines 139–182), wrapped `except Exception` → `logger.warning`, exactly
+  as the issue describes. No env override, no first-eviction distinction. Confirmed: eviction is
+  skipped when `pipeline is not None or result is False`, and skipped entirely when `cap` is falsy.
+- `src/popoto/fields/constants.py:286–293` — the constant, value 1000, with the "safety rail, not a
+  tuning constant" comment.
 - Related: #494 (tombstones as negative prior) OPEN — hard `delete()` vs tombstone interplay is
   its concern; #584 CLOSED via #594.
+- No `xfail`/`pytest.xfail()` markers relate to this bug (searched `tests/`).
+- No other active plan in `docs/plans/` touches `default_memory.py` eviction.
 
-**Disposition: Unchanged.**
+**Disposition: Unchanged** (the only movement is #594 landing, which is the premise, not a drift).
+
+## Prior Art
+
+- **PR #594** (merged 2026-09-03) introduced the cap and, in the same PR, made
+  `POPOTO_MEMORY_ALLOW_DB0` an environment variable precisely because hook adopters have no Python
+  seam (`src/popoto/integrations/config.py:46`). That reasoning is the direct precedent here.
+- **Three existing deploy-level kill switches already establish the shape**, all in
+  `src/popoto/fields/constants.py:23–50`: `_read_legacy_datetime_key_switch`
+  (`POPOTO_DATETIME_KEY_LEGACY`, #537/#538, PR #548), `_read_journal_coupling_switch`
+  (`POPOTO_JOURNAL_COUPLING_DISABLE`, #560), `_read_never_record_switch`
+  (`POPOTO_NEVER_RECORD_DISABLE`, #561). Each is a module-level `_read_*` helper over a shared
+  `_TRUTHY` tuple, documented in the `docs/configuration.md` env-var table (lines 390–402). This
+  plan follows that convention rather than inventing a new one.
+- **`tests/benchmarks/test_defaults_sync.py:105–109`** already carries an explicit allowlist entry
+  for `DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT` ("a safety rail read as a class attribute … not a
+  swept constant"), and the neighbouring `VALIDITY_GATING_ENABLED` entry records the rule that
+  matters most here: *a module-level alias bound at import time defeats a runtime-flippable deploy
+  switch.* Hence the call-time read below.
+- No prior failed attempt at this fix exists — this is the first follow-up on #594.
+
+## Research
+
+No external research needed: the change is entirely internal (stdlib `os.environ` plus existing
+in-repo conventions), so per the skill's skip rule no WebSearch was run.
 
 ## Scope decision (recorded, not open)
 
