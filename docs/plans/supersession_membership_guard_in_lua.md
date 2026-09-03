@@ -675,7 +675,7 @@ has to happen before the save writes anything, and **where** it runs is the whol
 decision.
 
 **[corrected — the first-pass plan got this wrong.]** It is not enough to raise from
-`ValidityField.on_save`. `Model.save()` has *two* write phases, not one:
+`ValidityField.on_save`. `Model.save()` has *four* write arms and *two* write phases:
 
 1. **Eager phase** — `base.py:1581-1607` (full save) and `base.py:1384-1394` (partial save)
    run every `IndexedFieldMixin` field's `on_save` **eagerly, with `pipeline=None`, directly
@@ -693,8 +693,58 @@ entries in phase 1. `JournalEntry` (`provenance_journal.py:299-310`) declares fo
 the shipped reference model hits this exactly: a rejected declared re-save would commit four
 indexed field values and their index entries before the validity check ever ran.
 
-So the check runs as a **pre-scan, ahead of both phases**, which is the same treatment #476
-gave the unique-conflict window. A new optional field hook, defaulting to a no-op:
+**The four arms, and why the dispatch site is a single one (round-2 BLOCKER B1).** Both eager
+loops named above live inside the **`else:` arm** of an `isinstance(pipeline,
+redis.client.Pipeline)` test. Verified at `d8914fc`:
+
+| Arm | Branch test | Ends at | Eager loop? |
+|---|---|---|---|
+| partial + external pipeline | `base.py:1325` | `return pipeline` at `:1382` | **no** |
+| partial + internal pipeline | `else:` at `:1383` | `:1453` | yes, `:1388-1404` |
+| full + external pipeline | `base.py:1503` | `return pipeline` at `:1578` | **no** |
+| full + internal pipeline | `else:` at `:1580` | `:1678` | yes, `:1593-1608` |
+
+So a dispatch placed "immediately before `:1593`" and "immediately before `:1388`" — as the
+round-1 revision specified — **never runs at all when the caller supplies a pipeline**, because
+both external-pipeline arms have already returned. That would leave D5's external-pipeline
+guarantee false, make D6's own `save_and_supersede` inert (step 4 is `new_instance.save(
+pipeline=pipe)`, i.e. the external arm), and make Task 3 test 17's pipeline arm
+unimplementable.
+
+The dispatch is therefore **a single site, before the partial/full split**, immediately after
+the `pre_save` gate at `base.py:1282-1292` and before `new_db_key = DB_key(self.db_key)` at
+`:1294`:
+
+```python
+# popoto/models/base.py, immediately after the pre_save gate (:1289-1292)
+# and before `new_db_key = ...` (:1294). ONE site, deliberately: the two eager
+# indexed-field loops (:1388, :1593) both sit inside the `else:` arm of an
+# external-pipeline test that returns at :1382 / :1578, so a per-loop dispatch
+# would skip every caller-supplied-pipeline save -- including
+# SupersessionProtocol.save_and_supersede's own (#588 round-2 B1).
+_validate_names = (
+    update_fields if update_fields is not None else self._meta.fields.keys()
+)
+for field_name in _validate_names:
+    self._meta.fields[field_name].pre_save_validate(
+        self,
+        field_name=field_name,
+        field_value=getattr(self, field_name),
+        **kwargs,
+    )
+```
+
+Placing it after the `pre_save` gate (rather than at the top of `save()`) is deliberate: the
+never-record firewall (`:1260-1265`), the write filter (`:1269-1273`), and `pre_save`'s own
+early return (`:1289-1290`) all *decline* a save by returning rather than raising. A save that
+was declined must not raise a `ValidityValidFromConflictError` on its way out — declining
+comes first, validating comes second.
+
+Iterating `update_fields` on the partial-save path rather than the full field map is the
+round-2 **C1(a)** fix; see the paragraph on pre-existing divergence below.
+
+This is the same treatment #476 gave the unique-conflict window: a pre-scan ahead of both
+phases. A new optional field hook, defaulting to a no-op:
 
 ```python
 # popoto/fields/field.py — new, alongside on_save / on_delete / export_state
@@ -702,15 +752,19 @@ gave the unique-conflict window. A new optional field hook, defaulting to a no-o
 def pre_save_validate(cls, model_instance, field_name, field_value, **kwargs) -> None:
     """Raise to abort a save before ANY write is issued or queued.
 
-    Runs ahead of the eager indexed-field phase (base.py:1581-1607), which is
-    what distinguishes it from ``on_save``: a hook that raises from ``on_save``
-    has already let every ``IndexedFieldMixin`` field commit. Default: no-op.
+    Runs from ONE site in ``Model.save()`` -- after the ``pre_save`` gate
+    (base.py:1289-1292), before the partial/full split -- so it covers all
+    four save arms, including the two external-pipeline arms that return at
+    base.py:1382 / :1578 without ever reaching an eager loop. That is what
+    distinguishes it from ``on_save``, which on the internal-pipeline arms has
+    already let every ``IndexedFieldMixin`` field commit, and on the
+    external-pipeline arms runs only as a queued command. Default: no-op.
     """
 ```
 
-`Model.save()` invokes it over `self._meta.fields` immediately before the
-`_eager_indexed_fields` loop, in both the full-save and partial-save branches.
-`ValidityField` is the only implementor in this PR:
+`Model.save()` invokes it from the single site shown above — over `update_fields` on a
+partial save, over `self._meta.fields` otherwise. `ValidityField` is the only implementor in
+this PR:
 
 ```python
 # ValidityField.pre_save_validate
@@ -732,13 +786,51 @@ This is the same two-layer pattern `execute_supersede` already uses for close-be
 (`validity_field.py:764-772`): a cheap client-side pre-check for the common case and a good
 message, plus the authoritative check in the script for the race (Race 4).
 
-**The guarantee, stated exactly.** On the **non-pipeline** save path, a rejected declared
-re-save writes nothing at all — no hash field, no index entry, no interval — because the
-pre-scan raises before phase 1. On the **external-pipeline** path (`base.py:1325-1382`) there
-is no eager phase (indexed `on_save` is queued, not executed), and the pre-scan raises before
-the caller's `execute()`, so nothing is *applied* — but the caller's pipeline still holds the
-queued `HSET` and must be discarded rather than executed. That is the same contract M1
-documents for its own pre-flight, and it is stated on the method and in the feature docs.
+**The guarantee, stated exactly.** On the **non-pipeline** save path (`base.py:1383+` partial,
+`:1580+` full), a rejected declared re-save writes nothing at all — no hash field, no index
+entry, no interval — because the single pre-scan site raises before phase 1. On the
+**external-pipeline** path (`base.py:1325-1382` partial, `:1503-1578` full) the pre-scan raises
+from the *same* site, before that branch is even entered, so `save()` queues **nothing** onto
+the caller's pipeline for this call and nothing is applied. (Commands the caller queued
+*before* calling `save()` are of course still theirs to discard or execute.) This is only true
+because the dispatch is the single pre-split site of B1's fix; the per-eager-loop placement
+would have made the external-pipeline half of this sentence false.
+
+**Pre-existing divergence, and how an operator gets out of it (round-2 CONCERN C1).** The
+guarantee above is about divergence that *cannot be newly written*. Divergence already stored
+— exactly the reporter's population — needs a stated exit, or those records become permanently
+unsaveable:
+
+- **Partial saves of unrelated fields must not trip it.** The dispatch iterates `update_fields`
+  when one is supplied (see the snippet above), so `obj.save(update_fields=["speaker"])` on a
+  record whose `validity` diverges does not call `ValidityField.pre_save_validate` at all. This
+  is C1(a), and it is the difference between "one field is stuck" and "the record is bricked".
+- **A full re-save of a diverged record raises, by design, and is remediable in two lines.**
+  The declared hash value and the index score genuinely disagree; the save is the moment to
+  reconcile, not to pick a winner silently. The operator reads the *effective* start through
+  the D5 half-2 seam and either adopts it or overwrites the index:
+
+  ```python
+  # Adopt the index (the value every as_of query already answers against):
+  effective = ValidityField.get_valid_from(
+      JournalEntry, "validity", member_key=obj.db_key.redis_key
+  )
+  obj.validity = effective
+  obj.save()
+
+  # Or make the declared value authoritative -- plain ZADD, no NX, so it
+  # overwrites the score ZADD NX refused to update:
+  vf_key, _ = ValidityField.get_interval_keys(JournalEntry, "validity")
+  POPOTO_REDIS_DB.zadd(vf_key, {obj.db_key.redis_key: float(obj.validity)})
+  obj.save()
+  ```
+
+  This recipe ships in the CHANGELOG next to the adopter fix, and a test pins the failure mode
+  (Task 3, test 20) so it is a contract rather than a discovery.
+- **"No data migration" is restated precisely** in Update System: no stored key, score, or hash
+  field changes *shape*, and no backfill runs — but an existing record carrying a divergence
+  will refuse a full re-save until reconciled. That is an operational consequence, and it is
+  documented rather than papered over.
 
 **Fallback if review rejects the `base.py` hook.** If the reviewer judges a new generic field
 hook too wide a change for a bug fix (see Risk 6), the fallback is to keep the check in
