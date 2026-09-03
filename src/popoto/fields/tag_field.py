@@ -83,7 +83,7 @@ import redis.client
 
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .indexed_field_mixin import IndexedFieldMixin
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
@@ -317,9 +317,9 @@ class TagFieldMixin(IndexedFieldMixin):
             new_bytes,  # ARGV[3] packed tag list
         ]
         if isinstance(pipeline, redis.client.Pipeline):
-            pipeline.eval(TAG_SWAP_LUA, numkeys, *args)
+            run_lua(pipeline, TAG_SWAP_LUA, numkeys, *args)
             return pipeline
-        return POPOTO_REDIS_DB.eval(TAG_SWAP_LUA, numkeys, *args)
+        return run_lua(POPOTO_REDIS_DB, TAG_SWAP_LUA, numkeys, *args)
 
     @classmethod
     def on_delete(

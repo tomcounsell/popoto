@@ -39,7 +39,7 @@ from typing import Any
 
 from ._tokenizer import tokenize
 from .field import Field
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, normalize_redis_keys, run_lua
 
 logger = logging.getLogger("POPOTO.BM25Field")
 
@@ -461,7 +461,7 @@ class BM25Field(Field):
         keys = [tf_key, df_key, dl_key, n_key, avgdl_key]
         argv = [doc_key, inv_prefix] + tokens
 
-        POPOTO_REDIS_DB.eval(BM25_SAVE_LUA, len(keys), *keys, *argv)
+        run_lua(POPOTO_REDIS_DB, BM25_SAVE_LUA, len(keys), *keys, *argv)
 
         return pipeline if pipeline else None
 
@@ -508,7 +508,7 @@ class BM25Field(Field):
         keys = [tf_key, df_key, dl_key, n_key, avgdl_key]
         argv = [doc_key, inv_prefix]
 
-        POPOTO_REDIS_DB.eval(BM25_DELETE_LUA, len(keys), *keys, *argv)
+        run_lua(POPOTO_REDIS_DB, BM25_DELETE_LUA, len(keys), *keys, *argv)
 
         return pipeline if pipeline else None
 
@@ -572,10 +572,7 @@ class BM25Field(Field):
         keys = [df_key, dl_key, n_key, avgdl_key]
 
         if allowed_keys is not None:
-            allowed_keys = {
-                key.decode() if isinstance(key, bytes) else str(key)
-                for key in allowed_keys
-            }
+            allowed_keys = normalize_redis_keys(allowed_keys)
             if not allowed_keys:
                 return []
 
@@ -586,7 +583,7 @@ class BM25Field(Field):
                 field.BM25_K1,
                 field.BM25_B,
             ] + query_tokens
-            result = POPOTO_REDIS_DB.eval(BM25_SEARCH_LUA, len(keys), *keys, *argv)
+            result = run_lua(POPOTO_REDIS_DB, BM25_SEARCH_LUA, len(keys), *keys, *argv)
             if not result:
                 return []
             # Parse flat array: [key1, score1, key2, score2, ...]

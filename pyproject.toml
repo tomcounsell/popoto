@@ -118,8 +118,10 @@ markers = [
     "slow: stress and performance tests (deselect with '-m \"not slow\"')",
     "benchmark: performance benchmarking tests",
     "concurrent_mp: spawn-based multiprocess concurrency tests (skip with '-m \"not concurrent_mp\"')",
+    "contract: production contracts that stay red until their fix lands (deselect with '-m \"not contract\"')",
 ]
 addopts = "-v"
+popoto_test_db = "15"
 
 [tool.isort]
 multi_line_output = 3

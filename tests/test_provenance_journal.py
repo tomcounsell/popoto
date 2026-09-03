@@ -268,7 +268,7 @@ class _PipelineSpy:
         for stack in self.stacks:
             for entry in stack:
                 args = entry[0] if isinstance(entry, tuple) else entry
-                if not args or _as_str(args[0]).upper() != "EVAL":
+                if not args or _as_str(args[0]).upper() not in ("EVAL", "EVALSHA"):
                     continue
                 if mode is not None and _supersede_mode(args) != mode:
                     continue
@@ -280,7 +280,7 @@ class _PipelineSpy:
         for pipe, stack in zip(self.pipelines, self.stacks):
             for entry in stack:
                 args = entry[0] if isinstance(entry, tuple) else entry
-                if args and _as_str(args[0]).upper() == "EVAL":
+                if args and _as_str(args[0]).upper() in ("EVAL", "EVALSHA"):
                     if _supersede_mode(args) == mode:
                         return pipe
         return None

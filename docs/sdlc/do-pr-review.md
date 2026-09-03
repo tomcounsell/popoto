@@ -85,10 +85,12 @@ scripts/ci-local.sh       # tests + stress + docs; --all adds build/lock/guard
 
 ## Test isolation contract, and the expected-failure set
 
-`pytest` auto-isolates onto **Redis DB 15** via the `popoto.pytest_plugin`
-entry point (both `import popoto` and `import src.popoto` collapse onto one
-canonical module and connection). Override with `POPOTO_TEST_DB=<n>`; DB 0 is
-rejected outright to prevent production data loss.
+`pytest` isolates onto **Redis DB 15** via the `popoto.pytest_plugin` entry
+point (both `import popoto` and `import src.popoto` collapse onto one
+canonical module and connection). The plugin is opt-in; this repo opts in
+with `popoto_test_db = "15"` in `pyproject.toml`. Override with
+`POPOTO_TEST_DB=<n>`; DB 0 is rejected outright to prevent production data
+loss.
 
 **Five tests hardcode `assert db == 15` and therefore fail by construction
 under any non-15 DB.** This is not a regression — it is the expected result of

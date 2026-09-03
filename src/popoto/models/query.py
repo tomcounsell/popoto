@@ -60,7 +60,12 @@ if TYPE_CHECKING:
     from .base import Model, ModelOptions
     from ..fields.sorted_field_mixin import SortedFieldMixin
 
-from ..redis_db import POPOTO_REDIS_DB, get_async_redis_db
+from ..redis_db import (
+    POPOTO_REDIS_DB,
+    get_async_redis_db,
+    normalize_redis_keys,
+    run_lua,
+)
 from ..fields.constants import Defaults
 
 logger = logging.getLogger("POPOTO.Query")
@@ -442,7 +447,8 @@ class QueryBuilder:
                 model_class, field_name, *partition_values
             )
 
-            result = POPOTO_REDIS_DB.eval(
+            result = run_lua(
+                POPOTO_REDIS_DB,
                 CYCLIC_DECAY_LUA,
                 # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
                 # Passing the confidence key without bumping this would shunt
@@ -460,7 +466,8 @@ class QueryBuilder:
                 conf_c0,
             )
         else:
-            result = POPOTO_REDIS_DB.eval(
+            result = run_lua(
+                POPOTO_REDIS_DB,
                 DECAY_SCORE_LUA,
                 # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
                 # valid_from (KEYS[4]). Passing the validity keys without
@@ -1105,13 +1112,10 @@ class QueryBuilder:
                     "unscoped and would fuse across the whole keyspace. Use "
                     "keyword filters, or pass a post_filter callback."
                 )
-            # filter_for_keys_set() returns raw Redis replies (bytes), while the
-            # ranked lists carry str keys. Normalize or the intersection is
-            # empty for every input and fuse() silently returns nothing.
-            allowed_keys = {
-                key.decode() if isinstance(key, bytes) else str(key)
-                for key in self._query.filter_for_keys_set(**self._filters)
-            }
+            # filter_for_keys_set() returns bytes; the ranked lists carry str.
+            allowed_keys = normalize_redis_keys(
+                self._query.filter_for_keys_set(**self._filters)
+            )
             sorted_results = [
                 (key, score) for key, score in sorted_results if key in allowed_keys
             ]
@@ -1410,7 +1414,8 @@ class QueryBuilder:
             pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
                 model_class, field_name, *partition_values
             )
-            result = POPOTO_REDIS_DB.eval(
+            result = run_lua(
+                POPOTO_REDIS_DB,
                 CYCLIC_DECAY_LUA,
                 # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
                 4,
@@ -1426,7 +1431,8 @@ class QueryBuilder:
                 conf_c0,
             )
         else:
-            result = POPOTO_REDIS_DB.eval(
+            result = run_lua(
+                POPOTO_REDIS_DB,
                 DECAY_SCORE_LUA,
                 # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
                 # valid_from (KEYS[4]). See the Risk 1 note in top_by_decay.
@@ -1980,7 +1986,15 @@ class Query:
             _fire_on_read(self.model_class, [instance])
 
         else:
-            instances = self.filter(**kwargs)
+            # Materialize once: a QueryBuilder re-executes on every len()
+            # and index, so the previous three-step check ran the query
+            # three times. Two rows are enough to prove non-uniqueness.
+            # Safe with plain-field (client-side) filters too: _execute_filter
+            # suppresses the pre-hydration truncation whenever
+            # _pending_client_filters is non-empty, so this limit is applied
+            # only after those filters have run.
+            kwargs.setdefault("limit", 2)
+            instances = list(self.filter(**kwargs))
             if len(instances) > 1:
                 raise QueryException(
                     f"{self.model_class.__name__} found more than one unique instance. Use `query.filter()`"
@@ -2900,11 +2914,19 @@ class Query:
             db_keys_set, q_objects, _allow_pushdown, kwargs
         )
 
+        # A pending client-side filter must see every candidate before any
+        # truncation: get_many_objects slices KeyField-ordered keys to `limit`
+        # BEFORE hydration, which would cut rows the plain-field filter would
+        # have kept -- filter(kind="x", note="hit", limit=2) on a model whose
+        # Meta.order_by is a KeyField returned the first two keys, filtered
+        # them all away, and answered [] although matches existed further down.
+        # prepare_results re-applies the limit after the client filters run.
+        client_filters_pending = bool(getattr(self, "_pending_client_filters", None))
         objects = Query.get_many_objects(
             self.model_class,
             db_keys_set,
             order_by_attr_name=kwargs.get("order_by", None),
-            limit=kwargs.get("limit", None),
+            limit=None if client_filters_pending else kwargs.get("limit", None),
             values=kwargs.get("values", None),
         )
 
@@ -2933,7 +2955,7 @@ class Query:
                 f"Re-reading the full range so the answer is correct. Orphaned "
                 f"index members are the cause, and re-reading only tolerates "
                 f"them: clear them with "
-                f"{self.model_class.__name__}.repair_indexes(), or inspect "
+                f"{self.model_class.__name__}.clean_indexes(), or inspect "
                 f"with {self.model_class.__name__}.query.keys(clean=True)."
             )
             return self._execute_filter(
@@ -2951,7 +2973,7 @@ class Query:
                 f"{pushdown_limit} requested; {orphans} index members hydrated "
                 f"to nothing{partition}. The range is exhausted, so the result "
                 f"is short rather than wrong. Clear the orphans with "
-                f"{self.model_class.__name__}.repair_indexes()."
+                f"{self.model_class.__name__}.clean_indexes()."
             )
 
         # Apply client-side filters for plain (unindexed) fields
@@ -3254,8 +3276,17 @@ class Query:
             hashes_list = pipeline.execute()
 
         if {} in hashes_list:
-            logger.error(
-                "one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True)"
+            # A member whose hash is gone (Meta.ttl expiry, or an external
+            # DEL). Repair what the key alone can repair so the next read
+            # is clean; clean_indexes() covers the rest.
+            missing = [db_key for db_key, data in zip(db_keys, hashes_list) if not data]
+            purged = model._purge_orphan_keys(missing)
+            logger.info(
+                "%s: purged %d expired index member(s); run "
+                "%s.clean_indexes() for partitions this read cannot derive.",
+                model.__name__,
+                purged,
+                model.__name__,
             )
 
         return [
@@ -3418,12 +3449,15 @@ class Query:
         if sorted_field_order and not explicit_order_by:
             db_keys_set = sorted_field_order  # Use ordered list instead of set
 
-        # Use native async for bulk object loading
+        # Use native async for bulk object loading. As in _execute_filter, a
+        # pending client-side filter suppresses the pre-hydration limit so the
+        # filter sees every candidate; prepare_results re-applies the limit.
+        client_filters_pending = bool(getattr(self, "_pending_client_filters", None))
         objects = await self._async_get_many_objects(
             self.model_class,
             db_keys_set,
             order_by_attr_name=kwargs.get("order_by", None),
-            limit=kwargs.get("limit", None),
+            limit=None if client_filters_pending else kwargs.get("limit", None),
             values=kwargs.get("values", None),
         )
 

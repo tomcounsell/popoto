@@ -2,9 +2,15 @@
 
 Popoto includes a pytest plugin that automatically isolates tests in a dedicated Redis DB. It is the recommended way to run a project's test suite against Popoto models without contaminating development or production data.
 
-## Pytest Plugin (auto-registered)
+## Pytest Plugin (opt-in)
 
-The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others) and loads automatically when Popoto is installed. No configuration is required.
+The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others), so pytest loads it wherever Popoto is installed. It stays inert until you name a test database: set `popoto_test_db` in your pytest ini options or export `POPOTO_TEST_DB`. A project that merely depends on Popoto and never opts in keeps every database untouched, including DB 15.
+
+```ini
+# pyproject.toml
+[tool.pytest.ini_options]
+popoto_test_db = "15"
+```
 
 **What the plugin does:**
 
@@ -22,7 +28,8 @@ The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](http
 
 1. `POPOTO_TEST_DB` environment variable
 2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
-3. Default: `15`
+
+With neither set the plugin does nothing.
 
 DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
 

@@ -28,11 +28,12 @@ sm.extract_memories(answer, importance=0.6)        # post-turn: save what was le
 sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
 ```
 
-`agent_id` is the only required argument. It partitions every index, and an
-explicit `.filter(agent_id=...)` query always honors that partition — but
-`inject_context`'s default retrieval path (lexical/BM25) does not yet filter
-by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so two agents sharing one Redis via the default loop can
-retrieve each other's memories. Leaving `model_class`
+`agent_id` is the only required argument. It partitions every index, and both
+an explicit `.filter(agent_id=...)` query and `inject_context`'s default
+retrieval path (lexical/BM25) honor that partition — the latter only since
+1.9.0 ([#576](https://github.com/tomcounsell/popoto/issues/576); before
+that, two agents sharing one Redis via the default loop could retrieve each
+other's memories). Leaving `model_class`
 unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
 an association graph.

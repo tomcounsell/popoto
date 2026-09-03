@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "popoto-memory hook"
+            "command": "popoto-memory hook",
+            "timeout": 10
           }
         ]
       }
@@ -16,7 +17,8 @@
           {
             "type": "command",
             "command": "popoto-memory hook",
-            "async": true
+            "async": true,
+            "timeout": 10
           }
         ]
       }

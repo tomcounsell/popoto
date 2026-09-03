@@ -33,7 +33,7 @@ Example:
 import json
 import logging
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
@@ -373,7 +373,8 @@ class CoOccurrenceField(Field):
             )
 
         source_key = self.get_edge_key(model_class, source_pk)
-        result = POPOTO_REDIS_DB.eval(
+        result = run_lua(
+            POPOTO_REDIS_DB,
             LINK_WITH_PRUNE_LUA,
             1,
             source_key,
@@ -384,7 +385,8 @@ class CoOccurrenceField(Field):
 
         if self.symmetric:
             target_key = self.get_edge_key(model_class, target_pk)
-            POPOTO_REDIS_DB.eval(
+            run_lua(
+                POPOTO_REDIS_DB,
                 LINK_WITH_PRUNE_LUA,
                 1,
                 target_key,
@@ -435,7 +437,8 @@ class CoOccurrenceField(Field):
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
         source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else POPOTO_REDIS_DB
-        new_weight = db.eval(
+        new_weight = run_lua(
+            db,
             STRENGTHEN_CLAMP_LUA,
             1,
             source_key,
@@ -446,7 +449,8 @@ class CoOccurrenceField(Field):
 
         if self.symmetric:
             target_key = self.get_edge_key(model_class, target_pk)
-            db.eval(
+            run_lua(
+                db,
                 STRENGTHEN_CLAMP_LUA,
                 1,
                 target_key,
@@ -552,7 +556,8 @@ class CoOccurrenceField(Field):
 
         # Use threshold of 0.001 for pruning
         threshold = 0.001
-        result = POPOTO_REDIS_DB.eval(
+        result = run_lua(
+            POPOTO_REDIS_DB,
             WEAKEN_ALL_LUA,
             1,
             edge_key,
@@ -655,7 +660,8 @@ class CoOccurrenceField(Field):
 
         key_prefix = self.get_edge_key_prefix(model_class)
 
-        result = POPOTO_REDIS_DB.eval(
+        result = run_lua(
+            POPOTO_REDIS_DB,
             PROPAGATE_BFS_LUA,
             1,
             key_prefix,

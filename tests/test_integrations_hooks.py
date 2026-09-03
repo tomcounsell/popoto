@@ -69,7 +69,7 @@ def _down_redis_url():
         port = sock.getsockname()[1]
     finally:
         sock.close()
-    return f"redis://127.0.0.1:{port}/0"
+    return f"redis://127.0.0.1:{port}/{SUBPROCESS_DB}"
 
 
 def make_service(tmp_path, **overrides):
@@ -379,7 +379,11 @@ def test_read_hook_with_redis_down(tmp_path):
     assert result.returncode == 0
     assert result.stdout == ""
     assert log.exists()
-    assert "assemble" in log.read_text()
+    lines = log.read_text().splitlines()
+    # One failure line, then the service stops trying: a hung server must
+    # not cost the prompt one timeout per operation.
+    assert len(lines) == 1, lines
+    assert "ConnectionError" in lines[0]
 
 
 def test_write_hook_with_redis_down(tmp_path):

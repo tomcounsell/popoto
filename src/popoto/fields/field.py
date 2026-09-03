@@ -90,6 +90,11 @@ Redis key segments (no colons, no complex nested structures).
 """
 
 
+#: Index namespace -> owning class name. Two class names that fold to the
+#: same namespace would share on-disk index keys; the metaclass refuses that.
+_FIELD_CLASS_KEYS: dict[str, str] = {}
+
+
 class FieldBase(type):
     """
     Metaclass for all Popoto Fields.
@@ -125,7 +130,25 @@ class FieldBase(type):
             return super().__new__(cls, name, bases, attrs, **kwargs)
 
         new_class = super().__new__(cls, name, bases, attrs, **kwargs)
-        new_class.field_class_key = DB_key(f"${name.strip('Field')}F")
+        if "field_class_key" not in attrs:
+            # Index namespace derives from the class name. This uses
+            # str.strip("Field"), which strips a character *set* rather than
+            # a suffix (FloatField -> "$oatF"). That spelling is on disk for
+            # every deployment, including downstream subclasses, so it is
+            # frozen. What it must not do is let two class names fold onto
+            # one namespace silently, so collisions are refused below; a
+            # class that needs a specific namespace sets ``field_class_key``
+            # explicitly.
+            new_class.field_class_key = DB_key(f"${name.strip('Field')}F")
+        key = str(getattr(new_class, "field_class_key"))
+        owner = _FIELD_CLASS_KEYS.get(key)
+        if owner is not None and owner != name:
+            raise TypeError(
+                f"Field class {name!r} derives index namespace {key!r}, which "
+                f"{owner!r} already uses. Set an explicit "
+                f"``field_class_key = DB_key('$...F')`` on {name!r}."
+            )
+        _FIELD_CLASS_KEYS[key] = name
         return new_class
 
 

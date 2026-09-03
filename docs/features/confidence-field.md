@@ -109,13 +109,29 @@ The comparison uses an epsilon guard: discharge fires only when `conf < 0.1 - 1e
 
 ## API Reference
 
-### `ConfidenceField.update_confidence(instance, field_name, signal)`
+### `ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)`
 
 Atomically update confidence using the capped-evidence Bayesian formula.
 
 - **signal**: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
-- **Returns**: The new confidence value.
+- **pipeline**: Optional Redis pipeline to queue the update on.
+- **Returns**: The new confidence value — or `None` when queued on a pipeline.
 - **Raises**: `TypeError` if unsaved or wrong field type; `ValueError` if signal out of range.
+
+**Pipeline mode (1.9.0)** changes three things, because the result does not
+exist until `execute()`:
+
+- the return value is `None` rather than the new confidence;
+- the instance attribute is **not** synced;
+- an unsaved instance is skipped server-side by the script's `EXISTS` guard
+  instead of raising `TypeError` — the round trip that raised is what the
+  batching removes.
+
+Before 1.9.0 the `pipeline` argument was accepted and ignored: every update
+ran immediately, one round trip each. Competitive suppression across N
+records is now one `execute()` (`inject_context` went from 25 round trips per
+turn to 8). If you passed `pipeline=` before and relied on the returned
+float, read the value back with `get_confidence` after `execute()`.
 
 > **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.
 

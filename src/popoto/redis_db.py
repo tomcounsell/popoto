@@ -72,6 +72,8 @@ Note:
 
 import os
 import logging
+import threading
+from typing import Any
 import asyncio
 import redis
 import redis.asyncio as aioredis
@@ -560,3 +562,75 @@ class PopotoException(Exception):
     def __init__(self, message):
         self.message = message
         logger.error(message)
+
+
+# ---------------------------------------------------------------------------
+# Lua script registry
+# ---------------------------------------------------------------------------
+
+#: Exceptions that mean "the server is unreachable", as opposed to a bad
+#: query. Recipes let these propagate so an outage never masquerades as an
+#: empty retrieval; the harness boundary is where they get swallowed.
+OUTAGE_ERRORS = (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)
+
+
+def normalize_redis_keys(keys: Any) -> set[str]:
+    """Return ``keys`` as a set of ``str``.
+
+    Raw Redis replies (``SMEMBERS``, ``SCAN``, ``filter_for_keys_set()``)
+    are ``bytes``; ranked lists and ``db_key.redis_key`` are ``str``.
+    Intersecting the two directly is a silent empty set, which is how the
+    first cut of the #576 fix returned nothing for every query. Every site
+    that compares keys from both worlds goes through this one function.
+    """
+    return {key.decode() if isinstance(key, bytes) else str(key) for key in keys}
+
+
+_SCRIPTS: dict[str, Any] = {}
+_SCRIPTS_LOCK = threading.Lock()
+_LOADED_SHAS: set[str] = set()
+
+
+def lua_script(script_text: str) -> Any:
+    """Return a cached ``redis.commands.core.Script`` for ``script_text``.
+
+    A ``Script`` sends ``EVALSHA`` and falls back to loading the source only
+    when the server does not know the SHA, so a script is uploaded once per
+    server rather than on every call. Scripts are keyed by their text and
+    bound to the shared client; passing ``client=`` to the returned object
+    (a sibling client) is supported by redis-py.
+    """
+    script = _SCRIPTS.get(script_text)
+    if script is None:
+        with _SCRIPTS_LOCK:
+            script = _SCRIPTS.get(script_text)
+            if script is None:
+                script = POPOTO_REDIS_DB.register_script(script_text)
+                _SCRIPTS[script_text] = script
+    return script
+
+
+def run_lua(client: Any, script_text: str, numkeys: int, *keys_and_args: Any) -> Any:
+    """Run ``script_text`` with the ``EVAL``-style argument layout.
+
+    Drop-in replacement for ``client.eval(script, numkeys, *args)``. On a
+    plain client it goes through :func:`lua_script`, so the server sees
+    ``EVALSHA`` after the first call and a ``NOSCRIPT`` reply self-heals.
+
+    On a pipeline it queues ``EVALSHA`` directly. redis-py's ``Script``
+    would register itself on the pipeline and make ``execute()`` pay a
+    ``SCRIPT EXISTS`` round trip every time; instead the script is loaded
+    once per process (``SCRIPT LOAD`` on first use) and the SHA reused. A
+    ``SCRIPT FLUSH`` between that load and the pipeline's ``execute()``
+    surfaces as ``NoScriptError`` from ``execute()``; the next direct call
+    reloads it.
+    """
+    keys = list(keys_and_args[:numkeys])
+    args = list(keys_and_args[numkeys:])
+    script = lua_script(script_text)
+    if isinstance(client, redis.client.Pipeline):
+        if script.sha not in _LOADED_SHAS:
+            script.sha = POPOTO_REDIS_DB.script_load(script_text)
+            _LOADED_SHAS.add(script.sha)
+        return client.evalsha(script.sha, numkeys, *keys, *args)
+    return script(keys=keys, args=args, client=client)

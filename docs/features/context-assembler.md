@@ -258,6 +258,35 @@ Two behaviors worth knowing:
   indexed and unindexed fields keeps the indexed narrowing. **Scope by an indexed
   field** (`KeyField`/`SortedField`) for reliable recall under load.
 
+### Outages are raised, not swallowed
+
+Every retrieval path re-raises `redis.exceptions.ConnectionError` and
+`TimeoutError` instead of logging them and returning an empty
+`AssemblyResult`. Before 1.9.0 a dead server was indistinguishable from "no
+relevant memories" — the assembler returned nothing, the caller injected
+nothing, and the only trace was a log line nobody was reading.
+
+Retrieval-*quality* failures still degrade as before: a zero-hit BM25 query
+falls back to composite ranking, a missing index is skipped. Only the two
+connection exceptions propagate.
+
+This is a behavior change for direct callers. If your application calls
+`assemble()` on a request path, wrap it — the harness boundary
+(`hooks.run`, the MCP dispatcher) already does:
+
+```python
+from popoto.redis_db import OUTAGE_ERRORS   # (redis ConnectionError, TimeoutError)
+
+try:
+    result = assembler.assemble(query_cues=..., agent_id=...)
+except OUTAGE_ERRORS:
+    result = None   # serve the turn without memory, and log it
+```
+
+Note these are `redis.exceptions.ConnectionError`/`TimeoutError`, not the
+builtins of the same name — catching the builtins will not catch these.
+`OUTAGE_ERRORS` is the exact tuple the recipes test against.
+
 ### Push Path
 
 1. **CyclicDecayField scan**: Find records whose cyclic + pressure score exceeds `DEFAULT_SURFACING_THRESHOLD`.

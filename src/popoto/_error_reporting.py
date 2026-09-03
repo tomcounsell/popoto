@@ -115,7 +115,7 @@ def _do_enable(dsn: Optional[str]) -> None:
         traces_sample_rate=0,
         before_send=_before_send,
         release=f"popoto@{_get_popoto_version()}",
-        send_default_pii=True,
+        send_default_pii=False,
     )
 
     _enabled = True

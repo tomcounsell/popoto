@@ -66,7 +66,9 @@ export POPOTO_MEMORY_AGENT_ID=my-project
 
 Without `POPOTO_MEMORY_URL`, these scripts use whatever connection Popoto
 itself resolved, which is `REDIS_URL` if set and `localhost:6379/0`
-otherwise. The full variable table is in
+otherwise — and database 0 is refused with a `Db0RefusedError`, so on a
+default install you need one of the two variables above (or
+`POPOTO_MEMORY_ALLOW_DB0=1`). The full variable table is in
 `docs/features/harness-integration.md`.
 
 ## Wiring it into a real harness

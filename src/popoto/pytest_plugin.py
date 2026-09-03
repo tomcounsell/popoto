@@ -133,6 +133,8 @@ def _configure_test_db(config):
         test_db = _resolve_test_db(config)
     except ValueError:
         raise  # Misconfiguration (e.g. db=0) — fail loudly and early.
+    if test_db is None:
+        return  # Not opted in: leave the developer's connection alone.
 
     try:
         original_kwargs = dict(
@@ -175,18 +177,29 @@ def pytest_addoption(parser):
     """Register the ``popoto_test_db`` ini option."""
     parser.addini(
         "popoto_test_db",
-        "Redis database number to use for tests (default: 15)",
-        default="15",
+        "Redis database number to isolate Popoto tests on. Setting this (or "
+        "the POPOTO_TEST_DB environment variable) is what activates the "
+        "plugin; without either it does nothing.",
+        default="",
     )
 
 
 def _resolve_test_db(config):
     """Resolve the test DB number.
 
-    Priority: POPOTO_TEST_DB env var > ini option > default 15.
+    Priority: POPOTO_TEST_DB env var > ini option. Returns ``None`` when
+    neither is set: the plugin is installed through a ``pytest11`` entry
+    point, so it loads in every project that depends on popoto, and it
+    must not flush a database nobody asked it to touch. Opting in is one
+    line of ``pyproject.toml`` (``popoto_test_db = "15"``) or the env var.
     """
     env_db = os.environ.get("POPOTO_TEST_DB", "").strip()
-    raw_value = env_db if env_db else config.getini("popoto_test_db")
+    ini_value = config.getini("popoto_test_db")
+    if not isinstance(ini_value, str):
+        ini_value = ""
+    raw_value = env_db if env_db else ini_value.strip()
+    if not raw_value:
+        return None
     try:
         test_db = int(raw_value)
     except (ValueError, TypeError):
@@ -212,6 +225,9 @@ def _popoto_test_db(request):
     import. See #522.
     """
     test_db = _resolve_test_db(request.config)
+    if test_db is None:
+        yield None
+        return
     original_db = getattr(request.config, "_popoto_original_db", 0)
 
     # pytest_configure already swapped; re-assert in case a plugin or an
@@ -243,6 +259,9 @@ def _popoto_flush_db(_popoto_test_db):
     sync DB — would silently run against DB 0, bypassing isolation. Re-swapping
     only when the DB has drifted keeps the common path a cheap no-op.
     """
+    if _popoto_test_db is None:
+        yield
+        return
     current_db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db")
     if current_db != _popoto_test_db:
         _swap_db(_popoto_test_db)

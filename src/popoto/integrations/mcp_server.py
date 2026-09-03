@@ -176,7 +176,16 @@ def dispatch(
     if service is None:
         from .service import MemoryService
 
-        service = MemoryService()
+        try:
+            service = MemoryService()
+        except Exception as exc:
+            # Construction binds the connection, so it is a real failure
+            # surface, not plumbing: a DB 0 refusal, a URL with no database
+            # number, an unreachable server. Outside this handler it left
+            # dispatch as an uncaught traceback rather than a tool error,
+            # which is the one thing an MCP tool must never do. The message
+            # carries the remediation, so pass it through whole.
+            return _error(f"{name} failed: {type(exc).__name__}: {exc}")
 
     try:
         if name == "memory_search":

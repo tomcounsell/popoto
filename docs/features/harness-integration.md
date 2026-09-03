@@ -186,23 +186,56 @@ variables below.
 
 ## Configuration
 
-Every variable is optional. The zero-configuration path is "local Redis or
-Valkey on the default port, memories tagged with this project's agent id" —
-see the scoping caveat on `POPOTO_MEMORY_AGENT_ID` below before wiring the
-hook into more than one project on one database.
+Every variable is optional, with one exception you will hit on a fresh
+install: **the database must not be 0.** Name a database and the path is
+"local Redis or Valkey on the default port, memories tagged with this
+project's agent id".
 
 | Variable | Default | Notes |
 |---|---|---|
-| `POPOTO_MEMORY_URL` | `REDIS_URL`, else `redis://localhost:6379/0` | Valkey URLs are identical |
-| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Tags writes and is honored as a read filter on the composite-score retrieval path. The shipped default is the lexical/BM25 path, which does **not** yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)) — a project's memories can be retrieved by another `agent_id` on the same database. Not a project-isolation boundary today; use a distinct `POPOTO_MEMORY_URL` database per project for that instead |
+| `POPOTO_MEMORY_URL` | `REDIS_URL`, else `redis://localhost:6379/0` | Valkey URLs are identical. **Database 0 is refused** — see below |
+| `POPOTO_MEMORY_ALLOW_DB0` | unset | Set to `1` to write agent memory to database 0 anyway. Deploy-level opt-in, deliberately an environment variable: a hook is a bare command string with nowhere to pass Python arguments |
+| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Tags writes and is honored as a read filter on every shipped retrieval path, lexical/BM25 included ([#576](https://github.com/tomcounsell/popoto/issues/576), fixed in 1.9.0). Before 1.9.0 the BM25 path ignored it and one project's memories could surface in another's turns on the same database |
 | `POPOTO_MEMORY_MAX_ITEMS` | `5` | Diverges from the benchmark; see below |
 | `POPOTO_MEMORY_MAX_TOKENS` | `800` | Under Codex's 2500-token `additionalContextLimit` |
 | `POPOTO_MEMORY_INGEST` | `raw` | `raw` or `heuristic` |
 | `POPOTO_MEMORY_ENABLED` | `1` | Kill switch that needs no config edit |
 | `POPOTO_MEMORY_LOG` | `~/.popoto/memory.log` | Where swallowed errors land |
 
-A malformed value falls back to its default rather than raising. A typo in a
-harness config must not break a turn.
+A malformed value falls back to its default rather than raising: a typo in a
+harness config must not break a turn. The database number is the exception —
+both a database-0 target and a URL with no database at all (`redis://host:6379/`,
+which is *not* database 0) raise, because the alternative is writing your
+memories somewhere you did not ask for.
+
+### Database 0 is refused
+
+`MemoryService` raises `Db0RefusedError` when the database it would write to
+is 0. The error names the variable to change and suggests an empty database
+it found on your server.
+
+Database 0 is where a bare `redis-cli`, a scratch script, and most other
+local tooling land by default, so it is the database most likely to already
+hold something you care about — and the one most likely to be flushed by
+someone debugging an unrelated problem. Popoto's own test plugin has always
+refused it for the same reason; the library refusing it while steering users
+into it was the contradiction ([#584](https://github.com/tomcounsell/popoto/issues/584)).
+
+Pick any other database:
+
+```bash
+export POPOTO_MEMORY_URL=redis://localhost:6379/1
+```
+
+`Db0RefusedError` subclasses `ValueError`, and every entry point renders it
+rather than tracebacking: `doctor` prints it and exits 1, the MCP tools
+return it as an error result, and the hook logs it and exits 0 so the turn
+survives. If database 0 really is where this corpus belongs,
+`POPOTO_MEMORY_ALLOW_DB0=1` opts in at deploy time.
+
+`POPOTO_MEMORY_ENABLED=0` short-circuits the check entirely. A disabled
+memory layer writes to no database, so there is nothing to refuse — the kill
+switch stays a clean no-op on a database-0 host, with no log line per turn.
 
 ### The one deliberate divergence from the benchmarked configuration
 
@@ -227,7 +260,8 @@ $ popoto-memory doctor
 popoto-memory doctor
 
   status         enabled
-  redis url      redis://localhost:6379/0
+  redis url      redis://localhost:6379/1
+  url source     POPOTO_MEMORY_URL
   redis          reachable, valkey 9.1.0, ping 4.91 ms
   agent id       my-project
   model          DefaultMemory
@@ -253,7 +287,13 @@ What to read:
 - **`failures`** counts swallowed exceptions per operation. Every one of
   them also wrote a line to the log, and the last five lines are printed
   underneath.
+- **`url source`** says which variable produced the URL — `POPOTO_MEMORY_URL`,
+  `REDIS_URL`, or `default`. It is the fastest way to find out that the
+  memories you are looking for went to a database you did not intend. Any
+  password in the URL is redacted to `***`; `doctor` output ends up pasted
+  into transcripts.
 - **Redis unreachable** exits 1 and prints the command to fix it.
+- **Database 0** exits 1 before connecting, with the refusal message.
 
 `popoto-memory doctor --json` emits the same data machine-readably.
 
@@ -268,10 +308,20 @@ best-effort against the same client that just failed: when the failure is
 Redis being unreachable, the counter does not get incremented, which is
 exactly when `doctor` has nothing to read back anyway.
 
+**An outage costs one attempt, not five.** The integration binds its
+connection with a 1-second connect and socket timeout and no redis-py
+retries (the default is 10), and once a `ConnectionError`/`TimeoutError` has
+been recorded, every later Redis operation in that hook process is skipped
+outright. The shipped Claude Code and Codex hook configs also carry an
+explicit `"timeout": 10`. Against a server that accepts connections and
+never answers, this is the difference between roughly 25 seconds on the
+user's prompt and under 2.
+
 | Situation | Behavior |
 |---|---|
-| Redis down, read hook | exit 0, no stdout, one log line, four lines on stderr, counter not incremented (same client is down) |
+| Redis down, read hook | exit 0, no stdout, one log line, counter not incremented (same client is down). One connection attempt, ~1 s, not one per operation |
 | Redis down, write hook | exit 0, turn dropped, logged. No retry queue |
+| Database 0 with no opt-in | `Db0RefusedError` from `MemoryService` construction: `doctor` prints it and exits 1, MCP tools return an error result, the read hook logs it and exits 0 — once per turn until the URL changes. `POPOTO_MEMORY_ENABLED=0` skips the check and logs nothing |
 | Healthy Redis, empty corpus (fresh DB / first run) | exit 0, no stdout, one stderr line -- a BM25 advisory that it collected no query signal and fell back to composite (query-blind). Expected on a user's first turn after install; stderr goes quiet and stdout carries content once the corpus is seeded. See [Query-Blind Retrieval](../guides/query-blind-retrieval.md). |
 | Malformed JSON on stdin | exit 0, no output, logged as `hook_decode` |
 | Empty prompt | no retrieval attempted, no output |
@@ -352,10 +402,24 @@ working directory's basename, so corpora are per-project rather than global,
 and `doctor` reports the record count. `POPOTO_MEMORY_ENABLED=0` stops
 writes without editing any harness config.
 
-Popoto's decay primitives rank stale memories down over time.
-[`MemoryLifecycle`](../recipes.md) can hard-delete them, but it requires a
-`tier` KeyField that `DefaultMemory` does not declare, so it is not wired
-into the harness path; running it needs a model of your own.
+Popoto's decay primitives rank stale memories down over time, and since
+1.9.0 `DefaultMemory` also **caps the corpus at 1000 records per
+`agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`). Past the
+cap, each save deletes the stalest record by decay timestamp — a full
+`delete()`, so every index is cleaned and nothing is recoverable
+afterwards. Staleness is the `relevance` decay clock, so a memory that keeps
+getting recalled or acted on stays; one nobody has touched goes first.
+
+The cap exists because nothing on the default path evicted before: a
+long-lived install grew one record per turn, forever. **If your corpus is
+already above 1000 records for an agent, the first save after upgrading
+starts deleting.** Check with `doctor` before you upgrade. To change the
+cap, subclass `DefaultMemory` and set `_max_records_per_agent` (`0` or
+`None` disables eviction entirely).
+
+[`MemoryLifecycle`](../recipes.md) remains the tiered alternative, but it
+requires a `tier` KeyField that `DefaultMemory` does not declare, so it is
+not wired into the harness path; running it needs a model of your own.
 
 ## Try it without a harness
 

@@ -41,7 +41,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
-from .config import PENDING_TTL_SECONDS, MemoryConfig, bind_connection
+from ..redis_db import OUTAGE_ERRORS
+from .config import redact_url, PENDING_TTL_SECONDS, MemoryConfig, bind_connection
 
 logger = logging.getLogger("POPOTO.integrations")
 
@@ -91,6 +92,11 @@ class MemoryService:
         self.config = config or MemoryConfig.from_env()
         self._memory: Any = None
         self._model: Any = None
+        # Set by _record_failure on the first connection/timeout error.
+        # Every later Redis-touching operation in this process is skipped:
+        # a hook that already waited on a dead server once must not wait
+        # four more times before the user's prompt goes through.
+        self._redis_down: bool = False
         # The single place the connection is bound. Every entry point --
         # the hook, the MCP server, doctor, demo, the examples, the Hermes
         # handler -- reaches Redis through a MemoryService, so binding here
@@ -191,12 +197,17 @@ class MemoryService:
         """
         if not self.config.enabled or not query or not query.strip():
             return ""
+        if self._redis_down:
+            return ""
 
+        exclude_keys = self._injected_keys(session_id)
+        if self._redis_down:
+            return ""
         try:
             result = self.memory.assembler.assemble(
                 query_cues={"topic": query.strip()},
                 agent_id=self.config.agent_id,
-                exclude_keys=self._injected_keys(session_id),
+                exclude_keys=exclude_keys,
             )
         except Exception as exc:
             self._record_failure("assemble", exc)
@@ -416,7 +427,8 @@ class MemoryService:
         """
         info: Dict[str, Any] = {
             "enabled": self.config.enabled,
-            "redis_url": self.config.url,
+            "redis_url": redact_url(self.config.url),
+            "url_source": self.config.url_source,
             "agent_id": self.config.agent_id,
             "max_items": self.config.max_items,
             "max_tokens": self.config.max_tokens,
@@ -626,8 +638,11 @@ class MemoryService:
         user whose Redis moved needs the log line for.
         """
         logger.warning("popoto memory %s failed: %s", operation, exc)
+        if isinstance(exc, OUTAGE_ERRORS):
+            self._redis_down = True
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        line = f"{stamp} {operation} {type(exc).__name__}: {exc}\n"
+        detail = " ".join(str(exc).split())
+        line = f"{stamp} {operation} {type(exc).__name__}: {detail}\n"
         try:
             path = self.config.log_path
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -635,6 +650,8 @@ class MemoryService:
                 handle.write(line)
         except Exception:
             pass
+        if self._redis_down:
+            return
         try:
             self.redis.incr(f"{COUNTER_KEY_PREFIX}:{self.config.agent_id}:{operation}")
         except Exception:

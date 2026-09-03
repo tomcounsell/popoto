@@ -638,21 +638,33 @@ class TestAtomicity:
         SupersessionProtocol.supersede(old, identity_key=identity)
         new = _save(ValidFact, name="enterprise")
 
-        counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
+        counter = _CallCounter(
+            monkeypatch, ["eval", "evalsha"] + MUTATING_CLIENT_METHODS
+        )
         closed = SupersessionProtocol.supersede(new, identity_key=identity)
 
         assert closed == old.db_key.redis_key
-        assert counter.counts["eval"] == 1, counter.counts
-        others = {k: v for k, v in counter.counts.items() if k != "eval" and v}
+        assert counter.counts["eval"] + counter.counts["evalsha"] == 1, counter.counts
+        others = {
+            k: v
+            for k, v in counter.counts.items()
+            if k not in ("eval", "evalsha") and v
+        }
         assert others == {}, f"supersede() made non-EVAL mutating calls: {others}"
 
     def test_invalidate_issues_exactly_one_mutating_call(self, monkeypatch):
         old = _save(ValidFact, name="old")
         new = _save(ValidFact, name="new")
-        counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
+        counter = _CallCounter(
+            monkeypatch, ["eval", "evalsha"] + MUTATING_CLIENT_METHODS
+        )
         SupersessionProtocol.invalidate(old, superseded_by=new)
-        assert counter.counts["eval"] == 1
-        assert {k: v for k, v in counter.counts.items() if k != "eval" and v} == {}
+        assert counter.counts["eval"] + counter.counts["evalsha"] == 1
+        assert {
+            k: v
+            for k, v in counter.counts.items()
+            if k not in ("eval", "evalsha") and v
+        } == {}
 
     def test_fault_after_eval_leaves_no_torn_state(self, monkeypatch):
         """Inject a failure the instant the EVAL returns.
@@ -665,13 +677,13 @@ class TestAtomicity:
         SupersessionProtocol.supersede(old, identity_key=identity)
         new = _save(ValidFact, name="enterprise")
 
-        real_eval = POPOTO_REDIS_DB.eval
+        real_eval = POPOTO_REDIS_DB.evalsha
 
         def exploding_eval(*args, **kwargs):
             real_eval(*args, **kwargs)
             raise RuntimeError("injected fault immediately after EVAL")
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "eval", exploding_eval)
+        monkeypatch.setattr(POPOTO_REDIS_DB, "evalsha", exploding_eval)
         with pytest.raises(RuntimeError, match="injected fault"):
             SupersessionProtocol.supersede(new, identity_key=identity)
         monkeypatch.undo()
@@ -847,7 +859,8 @@ def _decay_eval_numkeys(source):
     the check reads the actual argument rather than whatever text follows.
     """
     found = []
-    for match in re.finditer(r"eval\(\s*DECAY_SCORE_LUA\s*,", source):
+    pattern = r"(?:\beval\(|run_lua\(\s*[\w.]+\s*,)\s*DECAY_SCORE_LUA\s*,"
+    for match in re.finditer(pattern, source):
         for line in source[match.end() :].splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):

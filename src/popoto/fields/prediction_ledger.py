@@ -33,7 +33,7 @@ import time
 
 import msgpack
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.PredictionLedger")
@@ -315,7 +315,8 @@ class PredictionLedgerMixin:
         resolved_at = str(time.time())
 
         # Atomic resolution via Lua
-        result = POPOTO_REDIS_DB.eval(
+        result = run_lua(
+            POPOTO_REDIS_DB,
             RESOLVE_PREDICTION_LUA,
             2,  # number of KEYS
             meta_key,
@@ -391,7 +392,8 @@ class PredictionLedgerMixin:
         resolved_at = str(time.time())
 
         # Atomic resolution via Lua
-        result = POPOTO_REDIS_DB.eval(
+        result = run_lua(
+            POPOTO_REDIS_DB,
             RESOLVE_PREDICTION_LUA,
             2,  # number of KEYS
             meta_key,

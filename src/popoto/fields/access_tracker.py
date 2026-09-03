@@ -29,7 +29,7 @@ Example:
 import logging
 import time
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 
 logger = logging.getLogger("POPOTO.AccessTracker")
 
@@ -227,7 +227,8 @@ class AccessTrackerMixin:
         log_key = self._at_key("access_log")
         meta_key = self._at_key("meta")
 
-        count = POPOTO_REDIS_DB.eval(
+        count = run_lua(
+            POPOTO_REDIS_DB,
             CONFIRM_ACCESS_LUA,
             3,  # number of KEYS
             staged_key,

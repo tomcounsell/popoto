@@ -34,6 +34,51 @@ sufficient. A plain re-save (construct a new instance with the same values and c
 `save()`) fully reconstructs that structure. This is the common case, and it is
 exactly what `roundtrip_policy = "rebuild"` (the default) declares.
 
+## Lua scripts: use `run_lua`, not `client.eval`
+
+A field that needs atomicity should run its script through
+`popoto.redis_db.run_lua`, which takes the same arguments `client.eval` does:
+
+```python
+from popoto.redis_db import POPOTO_REDIS_DB, run_lua
+
+run_lua(pipeline or POPOTO_REDIS_DB, MY_LUA, 2, key_a, key_b, arg_1)
+```
+
+`run_lua` caches a redis-py `Script` per script text and sends `EVALSHA`,
+falling back to loading the source only when the server does not know the
+hash. Calling `client.eval` directly still works, but it ships the whole
+script body on every invocation — for a field whose hook runs on every save,
+that is the script's byte size added to every write. Every shipped field was
+converted in 1.9.0.
+
+`run_lua` accepts a pipeline as its client, so the pipelined and immediate
+branches of an `on_save` keep the shape they already have.
+
+## Your field's index namespace, and why it cannot collide
+
+`field_class_key` — the `$<Stem>F` prefix your field's internal keys live
+under — is derived from the class name with `str.strip("Field")`. That
+strips a character *set*, not a suffix: `FloatField` lives under `$oatF`,
+`SortedField` under `$SortF`. The spelling is on disk for every deployment,
+yours included, so it is frozen; 1.9.0 does not change it.
+
+What 1.9.0 does change is that two class names can no longer fold onto one
+namespace silently. `ModelField` and `MoField` both strip to `$MoF`; defining
+the second one now raises `TypeError` naming the class that already owns the
+namespace, instead of letting both write into the same index keys. If you
+hit that, give the newcomer an explicit namespace:
+
+```python
+from popoto.models.db_key import DB_key
+
+class MoField(Field):
+    field_class_key = DB_key("$MoF2")
+```
+
+An explicit `field_class_key` is honored as-is and is the right tool
+whenever the derived spelling is undesirable for a new class.
+
 ## The round-trip obligation
 
 Some fields maintain state that is *not* derivable from the field's stored value
