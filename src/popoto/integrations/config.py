@@ -400,10 +400,12 @@ def bind_connection(config: MemoryConfig) -> bool:
     if effective_db(config) == 0 and not config.allow_db0:
         raise Db0RefusedError(_db0_refusal_message(config))
 
-    if config.url_source == "default":
+    if not config.url_is_explicit and config.url_source != "REDIS_URL":
         # Neither variable set: an in-process caller (a test under the
         # pytest plugin, a host application) chose this connection. Leave
-        # it, timeouts included.
+        # it, timeouts included. ``url_is_explicit`` rather than
+        # ``url_source`` because in-process callers build MemoryConfig
+        # directly and set only the former.
         return False
 
     import redis
