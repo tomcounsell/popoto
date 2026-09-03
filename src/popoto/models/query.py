@@ -60,7 +60,12 @@ if TYPE_CHECKING:
     from .base import Model, ModelOptions
     from ..fields.sorted_field_mixin import SortedFieldMixin
 
-from ..redis_db import POPOTO_REDIS_DB, get_async_redis_db, run_lua
+from ..redis_db import (
+    POPOTO_REDIS_DB,
+    get_async_redis_db,
+    normalize_redis_keys,
+    run_lua,
+)
 from ..fields.constants import Defaults
 
 logger = logging.getLogger("POPOTO.Query")
@@ -1107,13 +1112,10 @@ class QueryBuilder:
                     "unscoped and would fuse across the whole keyspace. Use "
                     "keyword filters, or pass a post_filter callback."
                 )
-            # filter_for_keys_set() returns raw Redis replies (bytes), while the
-            # ranked lists carry str keys. Normalize or the intersection is
-            # empty for every input and fuse() silently returns nothing.
-            allowed_keys = {
-                key.decode() if isinstance(key, bytes) else str(key)
-                for key in self._query.filter_for_keys_set(**self._filters)
-            }
+            # filter_for_keys_set() returns bytes; the ranked lists carry str.
+            allowed_keys = normalize_redis_keys(
+                self._query.filter_for_keys_set(**self._filters)
+            )
             sorted_results = [
                 (key, score) for key, score in sorted_results if key in allowed_keys
             ]

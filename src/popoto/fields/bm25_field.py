@@ -39,7 +39,7 @@ from typing import Any
 
 from ._tokenizer import tokenize
 from .field import Field
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import POPOTO_REDIS_DB, normalize_redis_keys, run_lua
 
 logger = logging.getLogger("POPOTO.BM25Field")
 
@@ -572,10 +572,7 @@ class BM25Field(Field):
         keys = [df_key, dl_key, n_key, avgdl_key]
 
         if allowed_keys is not None:
-            allowed_keys = {
-                key.decode() if isinstance(key, bytes) else str(key)
-                for key in allowed_keys
-            }
+            allowed_keys = normalize_redis_keys(allowed_keys)
             if not allowed_keys:
                 return []
 

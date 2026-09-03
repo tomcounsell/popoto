@@ -572,6 +572,19 @@ class PopotoException(Exception):
 #: empty retrieval; the harness boundary is where they get swallowed.
 OUTAGE_ERRORS = (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)
 
+
+def normalize_redis_keys(keys) -> set:
+    """Return ``keys`` as a set of ``str``.
+
+    Raw Redis replies (``SMEMBERS``, ``SCAN``, ``filter_for_keys_set()``)
+    are ``bytes``; ranked lists and ``db_key.redis_key`` are ``str``.
+    Intersecting the two directly is a silent empty set, which is how the
+    first cut of the #576 fix returned nothing for every query. Every site
+    that compares keys from both worlds goes through this one function.
+    """
+    return {key.decode() if isinstance(key, bytes) else str(key) for key in keys}
+
+
 _SCRIPTS: dict = {}
 _SCRIPTS_LOCK = threading.Lock()
 
