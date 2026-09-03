@@ -155,10 +155,11 @@ Callers of `MemoryService(...)`, and what each does with the raise:
 | Caller | Site | Behavior on refusal |
 |---|---|---|
 | Hook (Claude Code, Codex, Hermes) | `hooks.py:235` via `hooks.run` | `hooks.run` catches (`hooks.py:284-289`), writes the message to the log, returns `None`. `_cmd_hook` exits 0. **The turn survives; nothing is written to DB 0.** |
-| MCP server | `mcp_server.py:177-190` | `dispatch` catches and returns `_error(str(exc))`, so the message reaches the agent as a tool error. |
+| MCP server | `mcp_server.py:176-190` | **Does NOT catch it today.** `service = MemoryService()` is at `:178`, *outside* the `try:` that opens at `:181`, so the refusal propagates out of `dispatch` and crashes the tool call. Needs a fix — see Solution §5. |
 | `popoto-memory doctor` | `cli.py:211-228` | Already catches `ValueError` and prints it (text and `--json`), exits 1. Works unchanged because the new error subclasses `ValueError`. |
-| `popoto-memory demo` | `demo.py:49-53` | **Currently unguarded — would traceback.** Task below wraps it. |
+| `popoto-memory demo` | `demo.py:63-67` | **Already guarded.** `try: service = MemoryService(config) / except ValueError as exc: ... return 1` exists today, and `Db0RefusedError` subclasses `ValueError`, so the wanted behavior is already there. No wrapping needed — but see Blocker-3 field forwarding below, which *is* needed at `demo.py:53`. |
 | In-process host app / tests | direct construction | Raises. Correct: the caller chose its connection and can see the exception. |
+| **Any caller with `POPOTO_MEMORY_ENABLED=0`** | all of the above | **Must NOT raise.** `bind_connection` runs unconditionally in `__init__` (`service.py:106`) while `config.enabled` is consulted only inside the operation methods, so a naive guard turns the kill switch into a crash. See Solution §2. |
 
 The critical asymmetry: the *config's* URL and the *live connection's*
 database are not the same thing when `POPOTO_MEMORY_URL` is unset. Under the
@@ -237,8 +238,31 @@ allow_db0=_as_bool(env.get(ALLOW_DB0_ENV), False),
 
 The guard runs inside `bind_connection`, **before** the
 `if not config.url_is_explicit: return False` early return at
-`config.py:230-231` — that early return is exactly the zero-configuration
+`config.py:232-233` — that early return is exactly the zero-configuration
 path this issue is about.
+
+**The disabled path must short-circuit first.** `MemoryService.__init__`
+calls `bind_connection(self.config)` unconditionally (`service.py:106`),
+while `config.enabled` is consulted only inside the operation methods
+(`service.py:192, 243, 303, 341, 390`). So a guard placed at the top of
+`bind_connection` with no `enabled` check turns the documented kill switch
+into a crash: an operator who sets `POPOTO_MEMORY_ENABLED=0` precisely to
+turn memory off on a DB-0 machine would get `Db0RefusedError` on every
+construction — a log line per turn from the hook, exit 1 from `doctor`, and
+an uncaught crash out of MCP `dispatch`. That directly contradicts the
+contract written at `config.py:105-107`: *"When `False` every operation is a
+no-op that still exits cleanly, so the kill switch never breaks a turn."*
+
+A disabled memory layer writes nothing to any database, so there is nothing
+to refuse. The first line of the guard is therefore:
+
+```python
+if not config.enabled:
+    return False
+```
+
+Placing it first also skips the `INFO keyspace` probe and the
+`POPOTO_REDIS_DB` import on the disabled path.
 
 ```python
 def effective_db(config: "MemoryConfig") -> int:
@@ -373,20 +397,78 @@ Do not include a stack-trace-style prefix; `doctor` prints `str(exc)` raw.
 
 ### 5. How the refusal surfaces at each entry point
 
-No entry point needs a new handler except `demo`. See the Data Flow table.
-The one change:
+Two entry points need changes, and `demo` is **not** one of them. An earlier
+draft of this plan claimed the opposite in both directions; the corrected
+survey is in the Data Flow table.
 
-`demo.py` — wrap the `MemoryConfig`/`MemoryService` construction
-(`demo.py:49-56`) in `try/except ValueError`, print `str(exc)` to `out`, and
-return 1. A demo that tracebacks on a first run teaches the wrong thing;
-printing the guidance is the whole point of the demo.
+`mcp_server.py` — **the refusal is currently uncaught.** `service =
+MemoryService()` sits at `:178`, above the `try:` at `:181`, so a
+`Db0RefusedError` from `__init__` propagates out of `dispatch` and crashes
+the tool call instead of returning a tool error. Wrap the construction in
+its own handler:
 
-`doctor` — no code change required (its `except ValueError` at `cli.py:213`
-already covers `Db0RefusedError`). Add `url_source` to `status()`'s dict and
-to the human-readable report so a healthy run also shows where the URL came
-from. This is the only additive change to `doctor`.
+```python
+if service is None:
+    from .service import MemoryService
 
-### 6. Log-line hygiene (`hooks.py`)
+    try:
+        service = MemoryService()
+    except ValueError as exc:
+        return _error(str(exc))
+```
+
+A dedicated `except ValueError` rather than relocating the block inside the
+existing `try`: that handler formats as `f"{name} failed: {type(exc).__name__}: {exc}"`,
+which would prepend a stack-trace-style prefix and violate the §4 wording
+rule. The agent should read the guidance verbatim.
+
+`demo.py` — **already guarded.** `demo.py:63-67` already wraps
+`MemoryService(config)` in `try/except ValueError`, prints `str(exc)`, and
+returns 1; `Db0RefusedError` subclasses `ValueError`, so the behavior this
+section wants exists today. Do **not** add a second handler — a literal
+reading of the old Task 8 produced either a no-op diff or a shadowing
+handler. Grep `except ValueError` in `demo.py` before touching it.
+
+What `demo.py` *does* need is field forwarding — see §6.
+
+`doctor` — no code change required for the refusal itself (its
+`except ValueError` at `cli.py:213` already covers `Db0RefusedError`). Add
+`url_source` to the **human-readable report only**, so a healthy run also
+shows where the URL came from.
+
+Deliberately **not** added to `status()`'s dict (`service.py:405-434`): that
+same object is what `doctor --json` prints *and* what the `memory_status`
+MCP tool returns, so a new key there changes the MCP tool's structured
+output — a public surface, outside this plan's Appetite and with no test
+row here to cover it. A later issue can add it together with assertions on
+both surfaces.
+
+### 6. Field forwarding: three sites rebuild `MemoryConfig` by hand
+
+`MemoryConfig` is `@dataclass(frozen=True)`, and three callers construct a
+modified copy by naming each field they carry over:
+
+- `src/popoto/integrations/demo.py:53`
+- `examples/harness_memory/verify.py:58`
+- `examples/harness_memory/seed.py:52`
+
+None of them would name the two new fields, so `url_source` and `allow_db0`
+silently revert to their defaults. The user-visible consequence is precise
+and bad: **an operator who sets `POPOTO_MEMORY_ALLOW_DB0=1` is still refused
+by `popoto-memory demo`**, because the opt-in they set is dropped between
+`from_env()` and the service.
+
+Replace all three with the idiom that is immune to the next field addition:
+
+```python
+config = dataclasses.replace(MemoryConfig.from_env(), agent_id=agent_id, enabled=True)
+```
+
+This is the fix the old Risks row misread — it looked at these sites, saw
+keyword arguments, and concluded they were safe. Keyword reconstruction is
+exactly what breaks; positional construction is what would have been fine.
+
+### 7. Log-line hygiene (`hooks.py`)
 
 `_log_hook_error` (`hooks.py:293-313`) writes
 `f"{stamp} {operation} {type(exc).__name__}: {exc}\n"`. The refusal message
@@ -465,7 +547,8 @@ New cases:
 | A hook fires every turn, so a refused configuration appends a log line per turn. | Intended: the log is the hook's only channel and `doctor` reads it. §6 keeps it to one line per failure. The log has no rotation today and gains none here; note it in the docs as the signal to fix the config. |
 | `suggest_free_db` adds an `INFO` round-trip to the error path. | Error path only, never the happy path. Guarded by the pool's existing 5s socket timeout and a blanket `except` returning `None`. |
 | `Db0RefusedError` escaping to a user who upgrades from a pre-release build and had been on DB 0. | Accepted and intended — this is the "loud failure over silent amnesia" trade the maintainer chose. `popoto.integrations` ships first in 1.9.0, so no published adopter is affected. Release notes carry the one-line opt-in. |
-| Adding fields to the frozen `MemoryConfig` dataclass breaks a positional construction somewhere. | Both fields are appended with defaults; `demo.py:53` and the tests use keywords. Grep for `MemoryConfig(` to confirm. |
+| Adding fields to the frozen `MemoryConfig` dataclass breaks a positional construction somewhere. | Both fields are appended with defaults, so positional construction is safe. **Keyword reconstruction is the real hazard, not positional** — see §6 and the three `dataclasses.replace` sites. |
+| **"Loudly" is not true on the hook path — the package's primary channel.** A refusal reaches the hook as one appended line in `~/.popoto/memory.log`: stdout empty, exit 0, nothing in the conversation. A first-time adopter running only the hook gets a permanently non-functional memory feature with no in-conversation signal, indefinitely, unless they independently run `doctor` or open the log. | **Accepted trade-off, recorded deliberately.** The exit-0 contract is what keeps a memory failure from breaking a turn, and there is no hook-reachable surface that could carry the text into the conversation without breaking it (`hooks.run` routes the exception only to `_log_hook_error`, `hooks.py:293-313`; `_cmd_hook` writes stdout only when `hooks.run` returns non-`None`, which never happens on this path). The mitigation is therefore documentation, not a new output channel: **"run `popoto-memory doctor` once after install" becomes a mandatory numbered step in the harness setup guides**, so "loud" holds for the channel an adopter is told to use. Task 13 covers it. |
 
 ## No-Gos (Out of Scope)
 
@@ -529,17 +612,34 @@ Run `/do-docs` before merge (required SDLC stage).
 6. `config.py`: add `_db0_refusal_message(config)` producing the three
    variants in §4, and call the guard at the **top** of `bind_connection`,
    before the `url_is_explicit` early return.
-7. `hooks.py`: collapse whitespace in `_log_hook_error`'s detail (§6).
-8. `demo.py`: wrap construction, print `str(exc)`, return 1 (§5).
-9. `cli.py` / `service.py`: add `url_source` to `status()` and to the
-   human-readable `doctor` report. No other change.
-10. Write the new tests in `tests/test_integrations_db0_isolation.py` per
+7. `hooks.py`: collapse whitespace in `_log_hook_error`'s detail (§7).
+8. `mcp_server.py`: wrap the `MemoryService()` construction at `:176-178`
+   in its own `except ValueError -> _error(str(exc))` per §5. It is
+   currently **outside** the `try:` at `:181`, so the refusal crashes the
+   tool call. Do not solve this by relocating the block into the existing
+   `try` — that handler prepends `"{name} failed: {type}: "`, violating the
+   §4 wording rule.
+9. `demo.py`, `examples/harness_memory/verify.py`,
+   `examples/harness_memory/seed.py`: replace the hand-rolled
+   `MemoryConfig(...)` reconstructions with `dataclasses.replace(...)` per
+   §6, so `url_source` and `allow_db0` propagate. **Do not add a
+   `try/except` to `demo.py`** — `demo.py:63-67` already has one and it
+   already covers `Db0RefusedError`. Verify with
+   `grep -n 'except ValueError' src/popoto/integrations/demo.py` before
+   editing; the expected diff at that site is zero lines.
+10. `cli.py` / `service.py`: add `url_source` to the human-readable
+    `doctor` report only. **Not** to `status()`'s dict — that same object
+    is what `doctor --json` prints and what the `memory_status` MCP tool
+    returns, so adding a key there changes the MCP tool's structured
+    output, which is outside this plan's Appetite. If a later issue wants
+    it in the JSON, it can add it with the test coverage that implies.
+11. Write the new tests in `tests/test_integrations_db0_isolation.py` per
     Test Impact, reusing `_env`, `_run`, `_db0`, `db0_unchanged`.
-11. Run the full suite on DB 15. Compare against step 2's baseline; any
+12. Run the full suite on DB 15. Compare against step 2's baseline; any
     delta beyond the new tests is a regression to fix, not to explain.
-12. Update the docs listed above; run `/do-docs`.
-13. `ruff check src/`, `black src/ tests/`, `mypy src/`.
-14. Open the PR with `Closes #584`.
+13. Update the docs listed above; run `/do-docs`.
+14. `ruff check src/`, `black src/ tests/`, `mypy src/`.
+15. Open the PR with `Closes #584`.
 
 ## Verification
 
@@ -584,22 +684,49 @@ the service without touching the memory model, so neither writes. Run them
 in a subshell, never inside a session that later runs ad-hoc Popoto scripts
 (CLAUDE.md, #577).
 
-## Open Questions
+## Resolved Questions
 
-1. **Suggestion range.** `suggest_free_db` scans databases 1..15. Servers
-   configured with `databases 1` (some managed Redis offerings) have no
-   valid target at all, and the message would fall back to suggesting `/1`,
-   which fails on connect. Should the refusal detect that case and say
-   "this server has only one database; set `POPOTO_MEMORY_ALLOW_DB0=1` or
-   use a separate server"? Planned as *not* handled (extra probe on an
-   error path for a rare deployment), but it is the one environment where
-   the guidance is actively wrong.
+Both were settled by the supervising session on 2026-09-02. Neither reopens
+the maintainer decision; both are message-level judgment calls.
 
-2. **Release-note prominence.** 1.9.0 is `popoto.integrations`' first
-   published release, so there is nothing to migrate — but a developer who
-   ran the pre-release build already has a corpus in database 0 and will
-   hit the refusal with no way to recover it except the opt-in. Should the
-   error message mention that reading an existing database-0 corpus is
-   exactly what `POPOTO_MEMORY_ALLOW_DB0=1` is for? Currently the message
-   frames the opt-in as "if database 0 really is where this corpus
-   belongs", which covers it obliquely.
+1. **Single-database servers — handle it, without an extra probe.**
+   `suggest_free_db` scans databases 1..15, and on a server configured with
+   `databases 1` (some managed Redis offerings) there is no valid target at
+   all. The concern was that suggesting `/1` there is *actively wrong*
+   guidance — it fails on connect.
+
+   **Decision: handle it, in the message only.** The objection to handling
+   it was the cost of an extra probe on an error path, but no extra probe is
+   needed: `INFO` already carries the answer. `suggest_free_db` reads
+   `INFO keyspace`; reading the `databases` figure costs nothing additional
+   because a single `INFO` call returns it alongside. When the server
+   reports one database, `suggest_free_db` returns `None` and the refusal
+   drops the "use database N instead" line, substituting:
+
+   > This server is configured with a single database, so there is no other
+   > database to move to. Either point the memory layer at a separate Redis
+   > instance, or set `POPOTO_MEMORY_ALLOW_DB0=1` to accept database 0.
+
+   A diagnostic must never be the thing that fails, so this stays inside
+   the existing blanket `except` — if the `databases` figure cannot be read,
+   the behavior is exactly today's planned fallback.
+
+2. **The error message must name corpus recovery explicitly.**
+   1.9.0 is `popoto.integrations`' first published release, so there is
+   nothing to migrate for external adopters — but a developer who ran the
+   pre-release build already has a corpus in database 0 and meets the
+   refusal with no route to it except the opt-in. The drafted message
+   covers this only obliquely ("if database 0 really is where this corpus
+   belongs").
+
+   **Decision: make it explicit.** The entire reason Option 1 was rejected
+   is that an unreachable corpus reads as amnesia; a refusal that leaves the
+   operator unable to reach an existing corpus reproduces that failure with
+   better manners. The message gains a line naming the case directly:
+
+   > If you already have agent memory in database 0 from an earlier build,
+   > `POPOTO_MEMORY_ALLOW_DB0=1` is how you keep reading it.
+
+   The same sentence belongs in the 1.9.0 release note, not only in the
+   error string — the operator who needs it most may meet the refusal in a
+   hook's stderr, where it is easy to miss.
