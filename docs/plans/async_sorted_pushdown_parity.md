@@ -21,7 +21,13 @@ sync path. Also, `_desc` is never threaded down, so a descending async query iss
 
 ## Freshness Check
 
-Verified 2026-09-03 against main after #594 (`16aa702` + docs commits). The issue's mechanism
+Re-verified 2026-09-03 against main at `d72d393` (baseline SHA). Every commit between the
+previous baseline `16aa702` and `d72d393` touches only `docs/plans/*.md` (#595, #588, #596
+planning traffic) — `git log 16aa702..d72d393 -- src/popoto/models/query.py
+tests/test_sorted_range_pushdown.py` is empty. All references below were re-read at
+`d72d393` and match exactly; no further drift.
+
+Original check (2026-09-03, against main after #594 / `16aa702`): the issue's mechanism
 holds; line numbers drifted under #594's query.py changes — corrected references:
 
 - `_pushdown_allowed` is set only in `_execute_filter` (query.py:2875–2886, with try/finally
@@ -34,10 +40,27 @@ holds; line numbers drifted under #594's query.py changes — corrected referenc
 - **New since the issue was filed (#594):** both paths now suppress the pre-hydration `limit`
   when `_pending_client_filters` is non-empty (query.py:2914–2929 sync, 3452–3461 async). The
   async pushdown must respect the same suppression — pushdown and key-slice must NOT bound when
-  client-side filters are pending (the sync `_sorted_pushdown_args` already declines via its
-  condition set; verify condition 5 covers it and mirror exactly).
+  client-side filters are pending. **Verified at `d72d393`: reusing the sync helpers gives this
+  for free, no new logic needed.** `_sorted_pushdown_args` condition 5 (query.py:2293–2300)
+  declines whenever any filter param survives the sorted field and its partitions — which is
+  exactly the case that populates `_pending_client_filters` — and
+  `_bound_keys_before_hydration` additionally has an explicit
+  `if getattr(self, "_pending_client_filters", None): return db_keys` guard at query.py:2217.
+  The build must not add a parallel check; it must confirm by test that the reused helpers fire.
+- `#559` is still **open** and its branch `test/559-pushdown-coverage` is still unmerged;
+  `grep -rn 'pytest.mark.xfail\|pytest.xfail('` over `tests/` at `d72d393` finds **no** async
+  pushdown xfail on main, so Step 4 below is still conditional, not yet actionable.
+- No other plan in `docs/plans/` touches the async pushdown path (only #559's test-only plan,
+  already in Prior Art). **No overlap.**
 
-**Disposition: Minor drift** — claims hold, references corrected above.
+**Disposition: Minor drift** — claims hold, references corrected above; nothing further has
+moved since the original check.
+
+## Research
+
+No relevant external findings — this is a pure in-repo parity fix against popoto's own
+`Query` internals, with no external library, API, or ecosystem surface involved. Proceeding
+on codebase context.
 
 ## Prior Art
 
@@ -57,19 +80,34 @@ logic):
    with the same try/finally shape and the same conditions `_execute_filter` uses (including
    threading `_desc` so descending queries issue a descending range read).
 2. After key-set resolution, call `_bound_keys_before_hydration(...)` exactly as the sync path
-   does (query.py:2913), including the #594 client-filter suppression semantics.
+   does (query.py:2913), including the #594 client-filter suppression semantics. `async_filter`
+   has no Q-object path (it calls `filter_for_keys_set(**kwargs)` directly, query.py:3432), so
+   pass `q_objects=None`; the helper's `if q_objects or not allow_pushdown` guard then reduces
+   to the `_allow_pushdown` flag alone.
 3. Port the short-result re-read guard (`_pushdown_limit` / `_pushdown_fetched` /
-   `_pushdown_requested` orphan handling — sync at ~query.py:2930–2975) so a bounded async read
+   `_pushdown_requested` orphan handling — sync at query.py:2936–2977) so a bounded async read
    cannot return short when orphaned index members eat the budget. Without this the async
    pushdown is a correctness regression, not an optimization. Prefer extracting the guard into a
-   shared helper called by both paths over copy-paste.
+   shared helper called by both paths over copy-paste — note the sync guard's two branches are
+   asymmetric: the `_allow_pushdown and short and not exhausted` branch **re-reads** (recursing
+   into `_execute_filter(..., _allow_pushdown=False)`), while the `short and orphans > 0` branch
+   only warns. A shared helper must therefore return a decision (re-read / warn-only / ok) and
+   let each caller perform its own recursion, rather than recursing itself.
+   **Signature consequence:** the sync re-read works because `_execute_filter` takes an
+   `_allow_pushdown` parameter. `async_filter` today is `async def async_filter(self, **kwargs)`
+   (query.py:3403) with no such parameter, so the build must add an underscore-prefixed
+   `_allow_pushdown: bool = True` keyword to `async_filter` and recurse through it — mirroring
+   `_execute_filter`'s convention. Field names must start lowercase (CLAUDE.md), so there is no
+   collision risk with a user filter kwarg. Public callers (`filter()`'s async twin) pass
+   nothing and get the default.
 4. `async_count` stays untouched (verified correct: full match count).
 
 ## Step by Step Tasks
 
 1. Extract the sync pushdown arm/disarm + short-result guard into helpers if a clean seam
    exists; otherwise mirror with heavy cross-references.
-2. Wire `async_filter` per Solution 1–3.
+2. Wire `async_filter` per Solution 1–3, including adding the `_allow_pushdown: bool = True`
+   keyword to `async_filter`'s signature so the short-result guard can re-read unbounded.
 3. Tests in `tests/test_sorted_range_pushdown.py` (async section): bounded async read issues a
    bounded, direction-correct range call and hydrates ≤ limit + overfetch margin (command-count
    assertion mirroring the sync suite's technique); async/sync result parity on the same data;
@@ -94,10 +132,15 @@ logic):
 
 ## Success Criteria
 
-- New async pushdown tests green; full non-slow suite green; ruff/black clean; mypy delta 0 vs
-  main (same environment).
+- New async pushdown tests green; full non-slow suite green; `black src/ tests/` clean;
+  `ruff check src/` exits 0 (per CLAUDE.md; note `docs/sdlc/do-sdlc.md` claims ruff is absent —
+  CLAUDE.md and `.github/workflows/lint.yml` are authoritative, run it); mypy delta 0 vs main
+  measured in the *same* environment and redis-py major version (see CLAUDE.md's worktree
+  verification notes — a bare error count is not a delta).
 - Command-count assertion proves the async bound fires (hydration count drops from full
   partition to bounded).
+- Test runs use `POPOTO_TEST_DB=11` in this pipeline (three pipelines share this machine; DB 15
+  contention produces phantom failures). Never DB 0 — live agent store.
 
 ## Documentation
 
