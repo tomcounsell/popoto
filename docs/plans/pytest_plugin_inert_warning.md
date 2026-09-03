@@ -132,7 +132,11 @@ as a known limit in the plugin docstring and in `docs/testing.md`.
    in-process): inert+used → exactly one `PopotoIsolationWarning`; ini opt-in → none;
    env opt-in → none; inert+unused (test imports popoto but performs no Redis op) → none.
    Subprocess Redis target must be a non-zero DB via `REDIS_URL` set before `import popoto`.
-6. Docs: `docs/testing.md` gains the warning description in the opt-in section; CHANGELOG entry.
+6. Module docstring: record the two known limits — async-only suites are not covered (no async
+   pool exists at configure time), and the warning does not survive a manual `_swap_db()` /
+   `set_REDIS_DB_settings()` pool rebind. One warning per xdist worker is expected.
+7. Docs: `docs/testing.md` gains the warning description in the opt-in section (including the
+   async limit); CHANGELOG entry under the next release.
 
 ## No-Gos
 
@@ -140,6 +144,11 @@ as a known limit in the plugin docstring and in `docs/testing.md`.
   transitive dependents is the failure mode the issue explicitly forbids.
 - No behavior change to isolation itself; the plugin stays opt-in exactly as #594 shipped it.
 - No new env var to suppress the warning — `-p no:popoto` and Python warning filters suffice.
+- No async-pool instrumentation and no changes to `src/popoto/redis_db.py` — the sync seam is
+  the whole of v1 (see Solution).
+- No changes to `_popoto_db0_tripwire`; its inert-path behavior stays exactly as #594 shipped.
+- Not fixing #549 here. That issue owes broader inert/opt-in coverage; this plan adds only the
+  four warning tests its acceptance criteria name.
 
 ## Risks / Rabbit Holes
 
