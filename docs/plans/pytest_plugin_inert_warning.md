@@ -170,27 +170,64 @@ as a known limit in the plugin docstring and in `docs/testing.md`.
 - [ ] A session where popoto is importable but unused produces none.
 - [ ] Covered in `tests/test_pytest_plugin.py` (whose inert-path coverage is also owed by #549).
 
+Added by critique (not in the issue, but required for the above to hold):
+
+- [ ] Under `filterwarnings = error` / `-W error::UserWarning`, the warning never escapes into
+      the Redis call path: the popoto operation still succeeds and the log mirror is emitted.
+
 ## Step by Step Tasks
 
-1. Define `PopotoIsolationWarning(UserWarning)` in `src/popoto/pytest_plugin.py`.
-2. In `_configure_test_db`, on the `None` path: arm the one-shot `get_connection` wrapper
-   (store the original on `config` for teardown); keep the existing early-return semantics
-   otherwise.
-3. Unwrap in `pytest_unconfigure` (add the hook) if the tripwire never fired.
+1. Define `PopotoIsolationWarning(UserWarning)` and a module-level `threading.Lock()` in
+   `src/popoto/pytest_plugin.py`.
+   *Verify:* `from popoto.pytest_plugin import PopotoIsolationWarning` and
+   `issubclass(PopotoIsolationWarning, UserWarning)`; `ruff check src/` clean.
+2. In `_configure_test_db`, on the `None` path: arm the one-shot `get_connection` wrapper on
+   the pool *instance* and store `config._popoto_tripwire = (pool, wrapper)`; keep the
+   existing early-return semantics otherwise. The wrapper body follows Solution step 2
+   verbatim — lock/fired-check/disarm, `db = pool.connection_kwargs.get("db", 0)` at trip
+   time, unguarded `logger.warning`, `try/except Exception: pass` around `warnings.warn`,
+   then unconditional `return original(*args, **kwargs)`. Never inspect, reorder, or splat
+   redis-py pool internals (Prior Art, #490/PR #500).
+   *Verify:* new subprocess tests 5a and 5e (below) pass; grep the diff for `connection_kwargs[`
+   and for any `**` splat of `connection_kwargs` — both must be absent.
+3. Add the `pytest_unconfigure` hook and disarm there with the identity check + `__dict__.pop`
+   from Solution step 4; it is a no-op if the tripwire already fired.
+   *Verify:* after an inert+unused session, `"get_connection" not in pool.__dict__` and
+   `pool.get_connection` is the plain `ConnectionPool` bound method (test 5f).
 4. Warning copy: `"popoto is writing to Redis DB {db} during this pytest session and is NOT
    isolating or flushing it (the popoto pytest plugin is installed but not opted in). Set
    popoto_test_db = \"15\" under [tool.pytest.ini_options] or export POPOTO_TEST_DB to
-   isolate, or pass -p no:popoto to silence this warning."`
+   isolate, or pass -p no:popoto to silence this warning."` — `{db}` interpolated from the
+   trip-time `pool.connection_kwargs.get("db", 0)`, not from a value captured at arm time.
+   *Verify:* test 5a asserts the message contains the actual non-zero DB number the subprocess
+   was pointed at.
 5. Tests in `tests/test_pytest_plugin.py`, subprocess-based like the existing
    `test_isolated_db_subprocess` (the plugin's configure-time behavior cannot be re-entered
-   in-process): inert+used → exactly one `PopotoIsolationWarning`; ini opt-in → none;
-   env opt-in → none; inert+unused (test imports popoto but performs no Redis op) → none.
-   Subprocess Redis target must be a non-zero DB via `REDIS_URL` set before `import popoto`.
-6. Module docstring: record the two known limits — async-only suites are not covered (no async
-   pool exists at configure time), and the warning does not survive a manual `_swap_db()` /
-   `set_REDIS_DB_settings()` pool rebind. One warning per xdist worker is expected.
+   in-process). Subprocess Redis target must be a non-zero DB via `REDIS_URL` set before
+   `import popoto`.
+   - **5a** inert + popoto used → exactly one `PopotoIsolationWarning`, naming that DB.
+   - **5b** ini opt-in (`popoto_test_db`) → none.
+   - **5c** env opt-in (`POPOTO_TEST_DB`) → none.
+   - **5d** inert + popoto importable but unused (imports popoto, defines a model, performs no
+     Redis op) → none.
+   - **5e** inert + used **under `-W error::UserWarning`** → the popoto operation still
+     succeeds (no exception escapes into the Redis call path), the subprocess exits 0, and the
+     `logger.warning` mirror line is present in the captured output. This is the blocker's
+     regression test.
+   - **5f** inert + unused → after `pytest_unconfigure`, the pool carries no instance-level
+     `get_connection` attribute (disarm left nothing behind).
+   *Verify:* all six pass; each asserts on subprocess exit code as well as output.
+6. Module docstring (`src/popoto/pytest_plugin.py:3-19`): (a) **correct the stale pre-#594
+   text** — the opening list still claims the plugin "automatically" switches/flushes and
+   documents "3. Default: 15"; rewrite it to state the plugin is inert unless `popoto_test_db`
+   or `POPOTO_TEST_DB` is set, and that it then warns once on first Redis use. (b) Record the
+   two known limits: async-only suites are not covered (no async pool exists at configure
+   time), and the warning does not survive a manual `_swap_db()` / `set_REDIS_DB_settings()`
+   pool rebind. One warning per xdist worker is expected.
+   *Verify:* the strings "automatically" and "Default: 15" no longer appear in the docstring.
 7. Docs: `docs/testing.md` gains the warning description in the opt-in section (including the
    async limit); CHANGELOG entry under the next release.
+   *Verify:* `mkdocs build` clean; CHANGELOG has an Added entry referencing #595.
 
 ## No-Gos
 
@@ -236,7 +273,9 @@ as a known limit in the plugin docstring and in `docs/testing.md`.
 
 ## Success Criteria
 
-- All four acceptance tests green in `tests/test_pytest_plugin.py`.
+- All six acceptance tests (5a–5f) green in `tests/test_pytest_plugin.py`.
+- No `PopotoIsolationWarning` can propagate out of `ConnectionPool.get_connection`: test 5e
+  passes under `-W error::UserWarning` with a zero exit code.
 - Full non-slow suite green; this repo's own suite (opted in) emits zero new warnings.
 - `ruff check src/` clean; mypy delta 0 vs main measured in the same environment.
 
