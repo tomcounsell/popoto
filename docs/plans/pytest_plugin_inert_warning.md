@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/595
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-03T09:47:17Z
+revision_applied_at: 2026-09-03T10:01:24Z
 ---
 
 # #595 — Warn once when the pytest plugin is inert but popoto is actually used
@@ -54,7 +54,7 @@ this plan proposes.
 | Ref | What it was | Lesson carried into this plan |
 |-----|-------------|-------------------------------|
 | **PR #594** (merged) | Made the plugin opt-in: `_resolve_test_db()` returns `None` with no opt-in, and `_configure_test_db` / `_popoto_test_db` / `_popoto_flush_db` all early-return. | This plan is the follow-up #594 owed. It must not re-add any implicit isolation — only an advisory warning on the already-inert path. |
-| **#549** (OPEN) | `tests/test_pytest_plugin.py` hardcodes DB 15 and does not cover the opt-in/inert paths. | Overlapping test file; this plan adds only the six warning tests (5a–5f) its own acceptance criteria name and leaves the broader coverage debt to #549 (see No-Gos). |
+| **#549** (OPEN) | `tests/test_pytest_plugin.py` hardcodes DB 15 and does not cover the opt-in/inert paths. | Overlapping test file; this plan adds only the seven warning tests (5a–5g) its own acceptance criteria name and leaves the broader coverage debt to #549 (see No-Gos). |
 | **#522** (closed) | Module-level `Model.create(...)` ran during collection, before the session fixture, and wrote to DB 0 — the reason the DB swap lives in `pytest_configure` rather than a fixture. | The tripwire must be armed in `pytest_configure` for the same reason: a fixture arms too late to catch import-time model code, which is exactly the usage most likely to surprise a downstream suite. |
 | **#490 / PR #500** (merged) | `test_isolated_db_subprocess` failed on redis-py 8 because a pool's `connection_kwargs` carries pool-internal keys (`himport_registry`, `maint_notifications_*`, `orig_*`) that `Redis.__init__` rejects when splatted. Fixed by `redis_db.sibling_client_kwargs()` (`src/popoto/redis_db.py:246`), which whitelists only standard connection params. | **Hard constraint on Task 2:** never inspect, reorder, reconstruct, or splat redis-py pool internals. The wrapper delegates `*args, **kwargs` verbatim (spike-2), and the only read from `connection_kwargs` is `.get("db", 0)` with a default — never `[...]`, never `dict(**kwargs)`. |
 | **#422 / #420** (merged / closed) | The last change that monkeypatched shared global state from this plugin (`sys.modules` aliasing for `src.popoto`). The follow-up attempt at the alias-collapse fix regressed the suite 1 → 78 failures and was held as do-not-merge. | Monkeypatching from a pytest plugin is the highest-blast-radius move available to this repo, and the prior attempt's failure mode was *silent scope creep* onto objects other suites own. Hence: patch the pool **instance**, never `ConnectionPool` the class; identity-check before unwrapping; leave nothing behind (`__dict__.pop`, not reassignment). |
@@ -381,7 +381,7 @@ Added by critique (not in the issue, but required for the above to hold):
 
 ## Success Criteria
 
-- All six acceptance tests (5a–5f) green in `tests/test_pytest_plugin.py`.
+- All seven acceptance tests (5a–5g) green in `tests/test_pytest_plugin.py`.
 - No `PopotoIsolationWarning` can propagate out of the wrapped
   `BlockingConnectionPool.get_connection`: test 5e passes under `-W error::UserWarning` with a
   zero exit code (run with `-o log_cli=true --log-cli-level=WARNING` so the mirror is visible).
