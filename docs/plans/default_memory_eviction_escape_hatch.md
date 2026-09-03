@@ -92,32 +92,105 @@ Small.
    `DefaultMemory`. It is a *value* override rather than a bare disable because the issue asks for
    both "turn it off" and "hook users can't edit model code to raise it".
 
-   Semantics:
-   - unset or empty → the class attribute (`_max_records_per_agent`, default 1000) applies, so a
-     subclass override still wins when the env var is absent;
-   - `0`, `off`, `false`, `no` → eviction disabled entirely (cap resolves falsy, `save()` returns
-     before the `ZCARD`);
-   - positive integer → that value becomes the cap, overriding both the constant and any subclass
-     attribute (a deploy-level switch outranks library code, same as the other three);
-   - anything else → one `logger.warning` naming the bad value, then fall back to the class
-     attribute. Never raises; eviction must never fail a save.
+   *Parse order (integers first — critique C4).* `_TRUTHY = ("1", "true", "yes", "on")` at
+   `constants.py:25` is an *on* set and cannot express this switch's disable words; worse, `"1"` is
+   in it and is also a valid cap of one record. The reader therefore never consults `_TRUTHY`. It
+   strips/lowercases the raw value and then, in order:
+   - unset or empty → return `None` ("no opinion"); the class attribute applies;
+   - `int(raw)` succeeds and is `>= 0` → return that integer (`0` means disabled, `1`
+     unambiguously means a cap of one record);
+   - `int(raw)` succeeds and is negative → malformed (see below);
+   - otherwise, value in a new sibling `_FALSY = ("off", "false", "no")` → return `0` (disabled);
+   - anything else → malformed: `logger.warning` naming the bad value, return `None`.
+
+   Never raises; eviction must never fail a save. Return type is `int | None` where `None` means
+   "defer to the class attribute" and `0` means "explicitly disabled" — the two must not collapse.
+
+   *Malformed-value warning is deduped without caching the env read (critique C2).* Because the
+   reader is called once per save, a typo'd value (`=1k`) would otherwise emit a WARNING on every
+   save — the exact log flood §2 exists to prevent. Guard it with a module-level
+   `_WARNED_BAD_ENV: set[str]` in `constants.py`, keyed on the raw stripped string, so each
+   distinct bad value warns once per process. Do **not** wrap the reader itself in
+   `functools.lru_cache`: that reintroduces the import-time-binding defect recorded for
+   `VALIDITY_GATING_ENABLED` in `tests/benchmarks/test_defaults_sync.py:105-118`.
+
+   *Precedence is asymmetric — a falsy class attribute is never re-armed (critique BLOCKER).*
+   Three shipped docs (`docs/recipes.md:532`, `docs/features/harness-integration.md:417`,
+   `docs/guides/subconscious-memory-recipe.md:74`) tell users that setting
+   `_max_records_per_agent` falsy on a subclass is *the* way to turn eviction off. A symmetric
+   "env value wins" rule would mean an operator exporting `=5000` merely to raise the cap
+   process-globally re-arms hard `delete()` on every subclass that deliberately opted out —
+   shipping a data-destroying regression inside the fix for a data-destroying default. So:
+
+   | class attr | env unset / malformed | env `0` / falsy word | env positive int |
+   |---|---|---|---|
+   | truthy (e.g. 1000) | class attr | **0 — disabled** | **env value** |
+   | falsy (0/None — explicit opt-out) | 0 — disabled | 0 — disabled | **0 — stays disabled** |
+
+   In words: the env var may lower, raise, or disable the *default* cap; it may also disable a
+   subclass's cap; it may **never** enable eviction on a subclass that turned it off. Resolution at
+   `default_memory.py:153`:
+
+   ```python
+   attr = self._max_records_per_agent
+   env = _read_default_memory_max_records()   # int | None
+   if not attr:
+       cap = attr                 # explicit library-author opt-out; env cannot re-arm
+   elif env is not None:
+       cap = env                  # deploy switch lowers, raises, or disables the default
+   else:
+       cap = attr
+   ```
 
    *Placement:* a module-level `_read_default_memory_max_records() -> int | None` in
-   `src/popoto/fields/constants.py`, beside the three existing `_read_*` helpers and reusing
-   `_TRUTHY`. It is **not** assigned to a `Defaults` class attribute — an import-time binding would
-   defeat a runtime-flippable deploy switch, exactly the reasoning recorded for
-   `VALIDITY_GATING_ENABLED` in `tests/benchmarks/test_defaults_sync.py`. `save()` calls it each
-   time; no `functools.lru_cache`, no memoization. One `os.environ.get` is free next to the Redis
-   `ZCARD` round-trip that follows it, and caching would reintroduce the import-time problem plus
-   test-fixture fragility.
+   `src/popoto/fields/constants.py`, beside the three existing `_read_*` helpers. It is **not**
+   assigned to a `Defaults` class attribute — an import-time binding would defeat a
+   runtime-flippable deploy switch. `save()` calls it each time; no memoization. One
+   `os.environ.get` is free next to the Redis `ZCARD` round-trip that follows it.
 
-2. **First-eviction warning, once per agent per process**: a module-level
-   `_EVICTION_WARNED: set[tuple[str, str]]` in `default_memory.py`, keyed by
-   `(model class name, agent_id)` so a subclass with a different cap warns on its own. On the first
-   eviction for a key, log at `WARNING` naming: agent_id, count deleted this call, the cap in
-   effect, and `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` as the way to change or disable it. Subsequent
-   evictions for that key log at `DEBUG`. The set is module-level so tests can clear it; expose it
-   as a private name and clear it in a fixture rather than adding a public reset API.
+2. **First-eviction notice — logged *before* the deletes, plus a durable marker.**
+
+   *Timing (critique C3).* The notice fires immediately after `excess = zcard(zset_key) - cap` and
+   the `if excess <= 0: return result` guard, **before** the `zrange` delete loop — phrased "cap
+   exceeded, deleting N". Warning only after a successful loop would (a) announce the loss of
+   records that are already unrecoverable (no tombstone) and (b) be swallowed entirely by the
+   surrounding `except Exception: logger.warning(...)` if a mid-loop error hit after some deletes —
+   the loudest case producing the quietest log. `_EVICTION_WARNED` is marked at the same point, so
+   a partial-failure path still leaves the notice behind.
+
+   *In-process dedupe.* A module-level `_EVICTION_WARNED: set[tuple[str, str]]` in
+   `default_memory.py`, keyed by `(model class name, agent_id)` so a subclass with a different cap
+   warns on its own. First sight of a key → `WARNING` naming agent_id, count about to be deleted,
+   the cap in effect, and `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` as the way to change or disable it.
+   Subsequent evictions for that key log at `DEBUG`. Private module-level name, cleared by a test
+   fixture — no public reset API.
+
+   *Durable marker (critique C3).* A log record alone does not reach the population this is written
+   for: nothing in the package configures a handler (`hooks.py:32` only calls `getLogger`), so in a
+   Claude Code / Codex hook subprocess the record goes to Python's last-resort stderr, which the
+   harness suppresses for a hook exiting 0. "Once per process" is also wrong in both directions —
+   it degrades to once-per-save in a per-invocation hook process and goes near-silent in a
+   long-lived server. So the eviction also `INCRBY`s a Redis counter:
+
+   ```
+   $popoto_memory:counter:{agent_id}:evicted   += excess
+   ```
+
+   This is the exact shape of the existing one-time notice precedent
+   (`MemoryService._warn_heuristic_cost`, `service.py:703-716`, which `SETNX`s
+   `{COUNTER_KEY_PREFIX}:{agent_id}:heuristic_notice`). Choosing the *counter* prefix means
+   `MemoryService._read_counters()` (`service.py:678-688`) already scans `…:counter:{agent_id}:*`
+   and int-parses the values, so the number surfaces in `status()`, in the MCP `memory_status`
+   tool, and in `popoto-memory doctor` **with no change to `service.py`**. `bind_connection()`
+   swaps the pool in place on the shared client (`config.py:376-382`), so the recipe's
+   `POPOTO_REDIS_DB` writes and doctor's reads hit the same database.
+
+   Layering: `recipes/` must not import from `integrations/`, so `default_memory.py` defines its
+   own `EVICTION_COUNTER_PREFIX = "$popoto_memory:counter"` with a docstring cross-referencing
+   `service.COUNTER_KEY_PREFIX`, and a test asserts the two strings are equal so the coupling
+   cannot drift silently. The `INCRBY` goes inside the existing `try/except` — a counter failure
+   must never fail a save. `cli.py::_cmd_doctor` gains one line: when `counters["evicted"]` is
+   non-zero, print a data-loss line naming the count and `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`.
 
 3. **Docs prominence** — the file list is verified, not guessed (see Documentation section):
    the env-var table in `docs/configuration.md`, the existing cap paragraphs in `docs/recipes.md`
