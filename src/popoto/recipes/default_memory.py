@@ -87,7 +87,7 @@ import logging
 from typing import Any, cast
 
 from ..fields.access_tracker import AccessTrackerMixin
-from ..fields.constants import Defaults
+from ..fields.constants import Defaults, _read_default_memory_max_records
 from ..redis_db import POPOTO_REDIS_DB
 from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
@@ -99,6 +99,29 @@ from ..models.encoding import decode_popoto_model_hashmap
 from ..privacy.never_record import NeverRecordMixin
 
 logger = logging.getLogger("POPOTO.DefaultMemory")
+
+EVICTION_COUNTER_PREFIX = "$popoto_memory:counter"
+"""Redis key prefix for the durable eviction report (#596).
+
+Duplicates ``popoto.integrations.service.COUNTER_KEY_PREFIX`` on purpose:
+``recipes/`` must not import from ``integrations/``, so the string is
+restated here and a test asserts the two are equal. Choosing the counter
+prefix means ``MemoryService._read_counters()`` already surfaces the number
+in ``status()``, the MCP ``memory_status`` tool, and ``popoto-memory doctor``.
+
+Contract: ``{prefix}:{agent_id}:evicted`` records the cap **selected** for
+eviction, not records deleted. It is incremented by ``excess`` before the
+delete loop runs, and the loop can legitimately delete fewer (the saving
+record's own key is skipped, a missing hash is routed to an orphan purge,
+and a mid-loop error aborts). The invariant is ``counter >= records actually
+deleted``, with equality on the clean path.
+"""
+
+#: ``(model class name, agent_id)`` pairs whose first over-cap eviction has
+#: already been announced. Bounded by the number of distinct pairs seen in
+#: this process -- fine for a hook process; a long-lived multi-tenant server
+#: with unbounded agent ids grows it slowly. Accepted; no LRU.
+_EVICTION_WARNED: set[tuple[str, str]] = set()
 
 
 class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
@@ -150,7 +173,20 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
             # queued, so the cap cannot be evaluated yet; a False result is
             # a write-filter drop with nothing to evict for.
             return result
-        cap = self._max_records_per_agent
+        # Precedence is asymmetric on purpose (#596): the env var may lower,
+        # raise, or disable the *default* cap, but a falsy class attribute is
+        # an explicit library-author opt-out that a positive env value must
+        # never re-arm -- that opt-out is the escape hatch the recipes and
+        # harness docs advertise.
+        attr = self._max_records_per_agent
+        env = _read_default_memory_max_records()
+        cap: int | None
+        if not attr:
+            cap = attr
+        elif env is not None:
+            cap = env
+        else:
+            cap = attr
         if not cap:
             return result
         try:
@@ -161,6 +197,41 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
             excess = POPOTO_REDIS_DB.zcard(zset_key) - cap
             if excess <= 0:
                 return result
+            # Announce BEFORE deleting: the records are unrecoverable (no
+            # tombstone) once the loop runs, and a mid-loop error would
+            # otherwise be swallowed by the enclosing ``except``, making the
+            # loudest case the quietest log. ``_EVICTION_WARNED`` is marked
+            # here too, so a partial-failure path still leaves the notice.
+            warn_key = (type(self).__name__, str(self.agent_id))
+            if warn_key in _EVICTION_WARNED:
+                logger.debug(
+                    "%s eviction: agent_id=%s deleting %s record(s) over the "
+                    "cap of %s",
+                    warn_key[0],
+                    warn_key[1],
+                    excess,
+                    cap,
+                )
+            else:
+                _EVICTION_WARNED.add(warn_key)
+                logger.warning(
+                    "%s cap exceeded for agent_id=%s: deleting %s record(s) "
+                    "to reach the cap of %s. This is permanent data loss "
+                    "(no tombstone). Set "
+                    "POPOTO_DEFAULT_MEMORY_MAX_RECORDS to change the cap, or "
+                    "to 0/off to disable eviction.",
+                    warn_key[0],
+                    warn_key[1],
+                    excess,
+                    cap,
+                )
+            # Durable marker: a log record does not reach a hook subprocess
+            # whose stderr the harness suppresses. Counts records *selected*
+            # for eviction (see EVICTION_COUNTER_PREFIX). Inside the
+            # enclosing try, so a counter failure never fails a save.
+            POPOTO_REDIS_DB.incrby(
+                f"{EVICTION_COUNTER_PREFIX}:{self.agent_id}:evicted", excess
+            )
             own_key = self.db_key.redis_key
             for raw in POPOTO_REDIS_DB.zrange(zset_key, 0, excess - 1):
                 victim = raw.decode() if isinstance(raw, bytes) else str(raw)
