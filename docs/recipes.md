@@ -522,6 +522,16 @@ lifecycle = MemoryLifecycle(
 `MemoryLifecycle` is an independent policy layer — it composes *alongside*
 `SubconsciousMemory`, not as a replacement:
 
+!!! note "`DefaultMemory` evicts on its own since 1.9.0"
+
+    If the model below is `DefaultMemory`, it already caps itself at 1000
+    records per `agent_id` and hard-deletes the stalest past that
+    (`_max_records_per_agent`). That is a blunt floor, not a substitute for
+    this layer: `MemoryLifecycle` tombstones restorably and reads tier and
+    evidence before forgetting, while the cap only reads the decay clock.
+    Set `_max_records_per_agent` falsy on your subclass if you want
+    lifecycle policy to be the only thing that removes records.
+
 ```python
 from popoto.recipes import DefaultMemory, MemoryLifecycle, SubconsciousMemory
 

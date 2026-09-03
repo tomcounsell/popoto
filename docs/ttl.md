@@ -50,9 +50,17 @@ session.save()
 ### What Happens When a Key Expires
 
 When Redis removes an expired key, subsequent `load()` or `query.get()` calls
-return `None`. Popoto handles orphaned secondary index entries gracefully
-during queries. For proactive cleanup of orphaned index entries left behind by
-expired keys, use [`Model.clean_indexes()`](recipes.md#index-maintenance).
+return `None`. Orphaned secondary index entries — an index still naming a key
+whose hash is gone — are skipped during queries, and since 1.9.0 they are also
+**purged on read** for every index derivable from the key alone: the class
+set, non-auto `KeyField` sets, and sorted sets partitioned by key fields.
+A query that walks past an orphan removes it, so a TTL'd model no longer
+accumulates permanent index ghosts.
+
+Indexes that cannot be derived from the key (a `SortedField` scored by a
+non-key value, for example) still need the sweep: use
+[`Model.clean_indexes()`](recipes.md#index-maintenance) for those, and for
+cleanup you would rather not wait for a read to trigger.
 
 ## Per-Instance TTL Override
 
