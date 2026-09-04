@@ -348,6 +348,21 @@ hash, not a sibling `IndexedField`'s index entry, not an interval. On the
 external-pipeline path it queues nothing onto the caller's pipeline for that
 call.
 
+Capture-time `valid_from` now has a producer.
+[Reference Resolution](reference-resolution.md) (M4) computes a `valid_from`
+epoch for a candidate whose single `relative_time` reference resolves to an
+onset (see its
+[onset rule](reference-resolution.md#the-onset-rule-for-valid_from)) and
+threads it through `ProvenanceJournal.append(..., at=resolution.valid_from)`
+as the field value at construction — the ordinary declared-value path above,
+not a reconciliation call. A capture never conflicts on an interval this way:
+every `ProvenanceJournal.append()` mints a fresh `JournalEntry` keyed by its
+own `AutoKeyField` `entry_id`, so each resolution's `valid_from` opens its
+*own* interval rather than re-asserting one against an existing record.
+`ValidityValidFromConflictError` only fires on a re-save of the *same* key
+with a disagreeing declared start; M4 never re-saves and never calls
+`get_valid_from` to reconcile — it only ever constructs new entries.
+
 ### Reconciling a record that already diverges
 
 There is **no data migration** — no stored key, score, or hash field changes
@@ -526,6 +541,10 @@ including `DefaultMemory`, does.
   (it needs an explicit incumbent and a construction-time valid-from, not the
   identity pointer), and uses `chain()` for provenance display only, never for
   membership
+- [Reference Resolution](reference-resolution.md) — the M4 stage that
+  produces a caller-supplied `valid_from` for onset references, threaded
+  through as the declared value at construction, never through
+  reconciliation
 - [ObservationProtocol](observation-protocol.md) — the outcome vocabulary
   that reports contradiction; `_apply_contradicted` writes provenance through
   this protocol when the model has a `ValidityField`

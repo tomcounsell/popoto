@@ -232,6 +232,74 @@ plan; the right horizon isn't knowable until the M9 follow-on
 ([#568](https://github.com/tomcounsell/popoto/issues/568)) consumes the log
 at scale.
 
+### Reference Resolution (M4)
+
+Source: `src/popoto/fields/constants.py`, consumed by
+`src/popoto/extraction/resolution.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `M4_RESOLUTION_ENABLED` | `True` (env override) | n/a (boolean kill switch) | n/a |
+| `M4_WINDOW_MAX_TURNS` | 8 | Not swept (structural bound, not a quality knob) | Not swept |
+| `M4_WINDOW_MAX_CHARS` | 4000 | Not swept (structural bound) | Not swept |
+| `M4_MAX_REFERENCES_PER_CANDIDATE` | 8 | Not swept (re-validation cap) | Not swept |
+| `M4_EVIDENCE_GAP_MIN_CANDIDATES` | 2 | Not swept (vocabulary bound) | Not swept |
+| `M4_EVIDENCE_GAP_MAX_CANDIDATES` | 4 | Not swept (vocabulary bound) | Not swept |
+| `M4_ASSUMPTION_MAX_CHARS` | 200 | Not swept (re-validation cap) | Not swept |
+| `M4_QUESTION_MAX_CHARS` | 200 | Not swept (re-validation cap) | Not swept |
+| `M4_STATEMENT_MAX_GROWTH_FACTOR` | 2.0 | Not swept (re-validation cap) | Not swept |
+| `M4_STATEMENT_MAX_GROWTH_CHARS` | 120 | Not swept (re-validation cap) | Not swept |
+| `M4_VALID_FROM_ROLES` | `("onset",)` | Not swept (policy decision, not a quality knob) | Not swept |
+
+None of these eleven constants have been through this guide's benchmark
+harness — they gate structure and re-validation, not a retrieval-quality
+metric a sweep would tune:
+
+- `M4_RESOLUTION_ENABLED` is a **deploy-level kill switch**, not a tuning
+  constant — like `NEVER_RECORD_ENABLED`. It is read fresh on every call (not
+  cached, so tests can monkeypatch it), default `True`, and overridable with
+  the `POPOTO_M4_RESOLUTION_ENABLED` environment variable, read at import
+  time. With it `False`, the auditable path's output is byte-identical to
+  M3's: no provider call, no `res:` tag, no sidecar row. See
+  [Reference Resolution](../features/reference-resolution.md#the-m4_resolution_enabled-kill-switch).
+- `M4_WINDOW_MAX_TURNS` (8) and `M4_WINDOW_MAX_CHARS` (4000) are the two
+  bounds `TurnContext.bounded_window()` truncates the conversational window
+  to, whichever binds first, dropping the oldest turns first. Two bounds
+  rather than one because a turn count alone does not bound prompt size and
+  a character count alone can slice a single turn in half.
+- `M4_MAX_REFERENCES_PER_CANDIDATE` (8) caps how many references
+  re-validation accepts per candidate; a reply over this cap is rejected
+  outright rather than truncated, so a runaway model response cannot
+  silently balloon one candidate's evidence.
+- `M4_EVIDENCE_GAP_MIN_CANDIDATES` (2) and `M4_EVIDENCE_GAP_MAX_CANDIDATES`
+  (4) bound the `evidence_gap` candidate-antecedent list: below the minimum
+  there is no genuine ambiguity to report, and above the maximum the model is
+  listing possibilities rather than narrowing them, which is not useful
+  evidence for the one clarifying question the record carries.
+- `M4_ASSUMPTION_MAX_CHARS` (200) and `M4_QUESTION_MAX_CHARS` (200) cap an
+  `assumed` status's stated assumption and an `evidence_gap` status's
+  clarifying question respectively, so both stay scannable audit lines
+  rather than free-form prose.
+- `M4_STATEMENT_MAX_GROWTH_FACTOR` (2.0, multiplicative) and
+  `M4_STATEMENT_MAX_GROWTH_CHARS` (120, additive) together bound
+  `statement`'s length relative to `verbatim`: re-validation enforces
+  `len(statement) <= len(verbatim) * factor + chars`, so the model cannot
+  turn a clause into a paragraph of invention. The additive term keeps very
+  short verbatims from being bounded to near-zero growth.
+- `M4_VALID_FROM_ROLES` (`("onset",)`) is the pinned constant the onset rule
+  reads to decide which `TemporalRole` values emit `valid_from` — currently
+  onsets only, a deliberate narrowing that keeps a deadline reference from
+  silently hiding the obligation it describes until the deadline passes
+  (V0 membership: `valid_from <= t AND invalid_at > t`). It is read fresh at
+  emission time, never inlined as a literal, so reversing the decision is a
+  one-tuple change. See
+  [Reference Resolution](../features/reference-resolution.md#the-onset-rule-for-valid_from)
+  for the full argument.
+
+The `ResolutionRecord` sidecar rows themselves are **unbounded**, same as
+M3's decision log — no retention/cap constant exists for them either; see
+[the sidecar](../features/reference-resolution.md#the-resolutionrecord-sidecar).
+
 ## Cliff Effects
 
 Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):

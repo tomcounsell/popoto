@@ -162,7 +162,10 @@ Accepted content is the **verbatim candidate span**, assembled by trusted
 code — `verbatim` and `statement` on the journal entry are the same string
 object as `candidate.text`, with no normalization, rewriting, or casing
 change. Distillation (turning verbatim spans into cleaner stored statements)
-is explicitly out of scope for M3 — it's M4's job.
+is explicitly out of scope for M3 — it's
+[Reference Resolution](reference-resolution.md) (M4)'s job: it runs after a
+candidate is accepted and before assembly, rewriting `statement` while
+leaving `verbatim` untouched on the same record.
 
 The model may only emit `accept` / `reject` / `withhold` — never
 `firewall_drop` (a trusted-code-only decision) or `pending` (an internal
@@ -409,3 +412,7 @@ turn, with nothing left to discriminate between.
   module scans every candidate through, twice.
 - [SubconsciousMemory Recipe](../guides/subconscious-memory-recipe.md) —
   where `auditable_extraction=` is wired in.
+- [Reference Resolution](reference-resolution.md) — the stage that rewrites
+  an accepted candidate's `statement` (pronouns, relative dates, definite
+  references) before it reaches the journal, and produces `valid_from` for
+  onset references.

@@ -27,4 +27,5 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 | [PolicyCache](policy-cache.md) | Learned action selection with crystallization and TD updates | Stable |
 | [PredictionLedger](prediction-ledger.md) | Prediction recording, resolution, and `error_summary` aggregation | Stable |
 | [Provenance Journal](provenance-journal.md) | Append-only attributed entries with confirm/supersede/retract annotations | Stable |
+| [Reference Resolution](reference-resolution.md) | Post-M3 stage that resolves pronouns, relative dates, and definite references into an audited statement, with a four-way status ladder and a `res:{status}` journal tag | Stable |
 | [ValidityField and SupersessionProtocol](validity-and-supersession.md) | Bitemporal validity intervals and supersession chains — validity decides membership, decay decides ordering | Stable |
