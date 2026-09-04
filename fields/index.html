@@ -6726,6 +6726,8 @@ internal operations like reindexing, migration, or lifecycle ticks:</p>
 </code></pre></div>
 <p><code>MemoryLifecycle.tick()</code> uses <code>.no_track()</code> automatically — a periodic tick
 produces <strong>zero</strong> new staged entries and does not inflate access-frequency signals.</p>
+<p><code>count()</code> never fires <code>on_read()</code> on either code path — a tally is not a read, so
+counting a population stages nothing regardless of whether <code>.no_track()</code> is chained.</p>
 <p>Note: <code>Model.query.all()</code> (without <code>.filter()</code>) is non-tracking by design and
 does not call <code>on_read()</code>. The tracking path is the <code>QueryBuilder</code>
 (<code>.filter().all()</code>); chain <code>.no_track()</code> there for any internal sweep that

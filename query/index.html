@@ -4520,6 +4520,8 @@ This is more efficient than calling <code>all()[0]</code> when you only need one
 <a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">expensive_count</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">price__gte</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
 <a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Premium items: </span><span class="si">{</span><span class="n">expensive_count</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
+<p>A <code>limit()</code> chained onto the builder still bounds what <code>all()</code> returns, but <code>count()</code> always
+reports the full matching population regardless of any limit set on the builder.</p>
 <h3 id="using-values-with-chainable-api">Using Values with Chainable API<a class="headerlink" href="#using-values-with-chainable-api" title="Permanent link">&para;</a></h3>
 <p>The <code>values()</code> method specifies which fields to return as dictionaries.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Get only names and ratings as dicts</span>
@@ -5006,7 +5008,10 @@ This is more efficient than calling <code>len()</code> on a full result set.</p>
 <a id="__codelineno-44-6" name="__codelineno-44-6" href="#__codelineno-44-6"></a><span class="n">top_count</span> <span class="o">=</span> <span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">price__lte</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
 </code></pre></div>
 <p>When called without arguments, <code>count()</code> uses Redis <code>SCARD</code> for a fast cardinality check. With
-filter arguments, it computes the intersection of matching key sets.</p>
+filter arguments, it computes the intersection of matching key sets. <code>count()</code> reports the full
+matching population and is never bounded by <code>limit</code>, on both the chainable and kwargs forms,
+including queries that carry <code>Q</code> objects — call <code>count()</code> and <code>all()</code>/<code>limit()</code> separately if you
+need the page size instead.</p>
 <h2 id="get-redis-keys">Get Redis Keys<a class="headerlink" href="#get-redis-keys" title="Permanent link">&para;</a></h2>
 <p>Use <code>query.keys()</code> to retrieve the raw Redis keys for all instances of a model. This is useful
 for debugging or performing custom Redis operations.</p>
