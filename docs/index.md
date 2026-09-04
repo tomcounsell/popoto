@@ -12,7 +12,7 @@ Your memory data stays in your database.
 pip install popoto
 ```
 
-Three packages, 8.7 MB of site-packages in a clean Python 3.12 venv, no API key.
+Three packages, 9.0 MB of site-packages in a clean Python 3.12 venv (redis-py 8.1.0, measured 2026-09-04), no API key.
 Point it at Redis or Valkey on `localhost:6379` and you are running.
 
 ## Memory around an LLM turn

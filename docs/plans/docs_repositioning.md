@@ -47,7 +47,7 @@ External research was performed by three adversarial critique agents (recorded i
 
 - The vendor LoCoMo judged-accuracy "band" (52–92%) is largely one citation chain (Hindsight republishing Backboard's claimed numbers; ByteRover republishing Hindsight); Mem0's 66.88% has an open non-reproduction issue (~0.20 from the official script). → Publishing Popoto's honest 0.36 with CI and refusing the tabulated comparison is both principled and safe.
 - Mem0's paper used gpt-4o-mini as generator — "different generator" is NOT a valid reason to decline comparison; the valid reasons are unnamed judge model, generous judge prompt (~10pt swing), unstated N, excluded category, and non-reproduction. Docs must use the valid reasons only.
-- mem0ai installs 32 packages / 105 MB / requires an OpenAI key; popoto installs 3 packages / 7.9 MB / zero keys, verified in a clean venv. This is an unclaimed differentiator.
+- mem0ai installs 34 packages / 151 MB / requires an OpenAI key; popoto installs 3 packages / 9.0 MB / zero keys, verified in a clean venv (Python 3.12, redis-py 8.1.0, mem0ai 2.0.20, measured 2026-09-04). This is an unclaimed differentiator. *(Figures corrected 2026-09-04 per [#550](https://github.com/tomcounsell/popoto/issues/550); the superseded originals and the re-measurement are recorded in `docs/plans/install_size_claim.md`.)*
 - MEMTIER (arXiv:2605.03675) reports hybrid-RRF retrieval at 96.7 ms/query on comparable hardware — the legitimate latency anchor. Its LoCoMo R@1 values are its own baselines and its authors call them uninformative → the "band" claim is killed, the latency anchor is kept.
 
 ## Data Flow
@@ -109,7 +109,7 @@ Homepage (SubconsciousMemory hero + one evidence line + "built on a full Redis O
 - Judged accuracy: publish 0.3636 with n=77, CI ≈ 0.25–0.47, protocol details, and the git chronology (#456 predates the number); explicitly refuse the vendor-band tabulation with the valid reasons only.
 - Graph traversal: capability framing with the real-data LoCoMo trade-off (R@5/R@10 up, R@1 down, 3.7× slower) beside the synthetic result.
 - SIQ: harness and problem statement only; no Popoto score until #486/#487 land.
-- Promote undersold assets: #489 negative result; 3-package/7.9 MB/zero-key install vs mem0ai's 32/105 MB/key-required; Valkey support; transparency practice (judge-prompt SHA, environment capture, published negative results).
+- Promote undersold assets: #489 negative result; 3-package/9.0 MB/zero-key install (Python 3.12, redis-py 8.1.0, measured 2026-09-04) vs mem0ai 2.0.20's 34/151 MB/key-required; Valkey support; transparency practice (judge-prompt SHA, environment capture, published negative results).
 - LoCoMo retrieval numbers: not amplified anywhere new until the scoring-defect re-run (sibling issue) completes; existing generated pages gain a short "under re-measurement" notice via `gen_benchmark_pages.py` framing text.
 - Add the "composite mode is query-blind by design — when that's right and when it's wrong" explainer, linked from the CSR results page and the SubconsciousMemory reference.
 
