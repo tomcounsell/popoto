@@ -13,7 +13,7 @@ pytest                          # requires Redis on localhost:6379; isolated on 
 pytest -k "test_name"           # single test by name
 mypy src/                       # type checking
 ruff check src/                 # lint (config in [tool.ruff.lint]; gated by lint.yml)
-black src/ tests/               # format
+black src/ tests/               # format (`black --check src/ tests/` gated by lint.yml)
 mkdocs serve                    # docs locally
 scripts/ci-local.sh             # local CI gates: lint + tests + stress + docs (--all, --fast, or named gates)
 ```
@@ -54,7 +54,7 @@ Rule: state the environment alongside any count, and reproduce a subagent's metr
 
 - Line length: 88 (black), imports: 79 (isort)
 - Python 3.10+
-- `ruff check src/` must exit 0 (enforced by `.github/workflows/lint.yml`). Selected rules are `E4,E7,E9,F`; formatting rules (E1/E2/E3/E501) and import order are left to black and isort so the tools do not fight. `tests/` is not gated yet.
+- `ruff check src/` must exit 0 (enforced by `.github/workflows/lint.yml`). Selected rules are `E4,E7,E9,F`; formatting rules (E1/E2/E3/E501) and import order are left to black and isort so the tools do not fight. `tests/` is not ruff-gated yet, but formatting is: the same workflow runs `black --check src/ tests/`, so both trees must be black-clean.
 
 ## Git Workflow
 
