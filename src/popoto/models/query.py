@@ -1782,7 +1782,9 @@ class QueryBuilder:
         """
         return self._execute(no_track=self._no_track)
 
-    def _execute(self, *, apply_limit: bool = True, no_track: bool = False) -> list:
+    def _execute(
+        self, *, apply_limit: bool = True, no_track: bool = False
+    ) -> "list[Any]":
         """Execute the accumulated filters, ordering, and limit.
 
         This is the shared execution seam behind `all()` and the `Q`-object
