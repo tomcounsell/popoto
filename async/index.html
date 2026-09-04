@@ -3500,6 +3500,14 @@ the synchronous <code>filter()</code> -- see <a href="../query/">Making Queries<
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">big_orders</span><span class="p">:</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Order </span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="si">}</span><span class="s2">: $</span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>limit</code> costs the same here as on the sync path</p>
+<p>When a query filters and orders on the same <code>SortedField</code>, <code>async_filter()</code> pushes
+<code>limit</code> into the Redis range read and hydrates only that many objects -- matching
+<code>filter()</code>. Earlier versions read the whole range and loaded every member, so a
+bounded async query cost as much as an unbounded one. Concurrent <code>async_filter()</code>
+calls on the same model under <code>asyncio.gather()</code> each keep their own bound.</p>
+</div>
 <h3 id="async_all">async_all()<a class="headerlink" href="#async_all" title="Permanent link">&para;</a></h3>
 <p>Retrieve every instance of a model.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">list_restaurants</span><span class="p">():</span>

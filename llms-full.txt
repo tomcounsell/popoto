@@ -15220,6 +15220,13 @@ async def find_expensive_orders():
         print(f"Order {order.order_id}: ${order.total}")
 ```
 
+!!! note "`limit` costs the same here as on the sync path"
+    When a query filters and orders on the same `SortedField`, `async_filter()` pushes
+    `limit` into the Redis range read and hydrates only that many objects -- matching
+    `filter()`. Earlier versions read the whole range and loaded every member, so a
+    bounded async query cost as much as an unbounded one. Concurrent `async_filter()`
+    calls on the same model under `asyncio.gather()` each keep their own bound.
+
 ### async_all()
 
 Retrieve every instance of a model.
