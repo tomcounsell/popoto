@@ -593,24 +593,24 @@ that layer.
 
 ## Success Criteria
 
-- [ ] `FLUSHDB` on a popoto client bound to database 0 raises
+- [x] `FLUSHDB` on a popoto client bound to database 0 raises
       `Db0FlushRefusedError` and never reaches the server
-- [ ] `FLUSHALL` on a popoto client raises regardless of the bound database
-- [ ] `FLUSHDB` on any non-zero database still succeeds
-- [ ] The refusal covers the direct method, the raw `execute_command` form,
+- [x] `FLUSHALL` on a popoto client raises regardless of the bound database
+- [x] `FLUSHDB` on any non-zero database still succeeds
+- [x] The refusal covers the direct method, the raw `execute_command` form,
       the sync pipeline path, the async client, and the async pipeline path
-- [ ] `popoto.testing.flush_test_db()` flushes the currently bound client, not
+- [x] `popoto.testing.flush_test_db()` flushes the currently bound client, not
       an import-time snapshot
-- [ ] The guard survives `set_REDIS_DB_settings()`, `_swap_db()`, and
+- [x] The guard survives `set_REDIS_DB_settings()`, `_swap_db()`, and
       `bind_connection()`
-- [ ] `POPOTO_ALLOW_DB0_FLUSH=1` restores the previous behavior, read at call
+- [x] `POPOTO_ALLOW_DB0_FLUSH=1` restores the previous behavior, read at call
       time
-- [ ] The refusal message names the command, the database, the environment
+- [x] The refusal message names the command, the database, the environment
       variable, and a free database when one can be found
-- [ ] No test in the suite executes a real flush against database 0
-- [ ] Full suite green on `POPOTO_TEST_DB=4`; `ruff check src/` clean;
+- [x] No test in the suite executes a real flush against database 0
+- [x] Full suite green on `POPOTO_TEST_DB=4`; `ruff check src/` clean;
       `black --check src/ tests/` clean; mypy error count not increased
-- [ ] Documentation updated (`/do-docs`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 
