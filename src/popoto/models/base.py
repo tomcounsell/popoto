@@ -1291,9 +1291,9 @@ class Model(metaclass=ModelBase):
         elif pipeline:
             pipeline = pipeline_or_success
 
-        # The field pre-save validation hook: the last chance to refuse a
-        # save before ANY
-        # write is issued or queued (#588 plan D5). ONE site, deliberately: the
+        # The field pre-save validation hook: the last chance to refuse a save
+        # before ANY write is issued or queued (#588 plan D5). ONE site,
+        # deliberately: the
         # two eager indexed-field loops both sit inside the `else:` arm of an
         # external-pipeline test that has already returned by then, so a
         # per-loop dispatch would skip every caller-supplied-pipeline save --
