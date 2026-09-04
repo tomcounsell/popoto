@@ -17985,9 +17985,31 @@ popoto_test_db = "15"
 1. `POPOTO_TEST_DB` environment variable
 2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
 
-With neither set the plugin does nothing.
+With neither set the plugin does nothing — but it warns.
 
 DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
+
+**Isolation warning when not opted in:** a session that neither sets `popoto_test_db` nor
+`POPOTO_TEST_DB` gets exactly one `PopotoIsolationWarning` the first time popoto touches
+Redis — naming the DB it just wrote to and both opt-in mechanisms. Merely importing popoto
+or defining a `Model` subclass without ever performing a Redis operation stays silent (a
+transitive dependency on popoto must not produce noise). The warning is advisory only: it
+never affects the outcome of the Redis operation it fires alongside, even under a downstream
+suite's `filterwarnings = error`.
+
+```
+PopotoIsolationWarning: popoto is writing to Redis DB 0 during this pytest session and is NOT isolating
+or flushing it (the popoto pytest plugin is installed but not opted in). Set
+popoto_test_db = "15" under [tool.pytest.ini_options] or export POPOTO_TEST_DB to isolate,
+or pass -p no:popoto to silence this warning.
+```
+
+Known limits: the warning does not cover an async-only suite (there is no async connection
+pool in existence at `pytest_configure` time to arm it on — `get_async_redis_db()` builds its
+client lazily inside the running event loop), and it does not survive a manual `_swap_db()` /
+`set_REDIS_DB_settings()` pool rebind after arming. Both are acceptable — this is an advisory
+signal, never a correctness dependency. `pytest -p no:popoto` silences it along with the rest
+of the plugin.
 
 ```ini
 # pyproject.toml
