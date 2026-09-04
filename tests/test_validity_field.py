@@ -32,9 +32,11 @@ Tests cover:
   must be "carry", not the inherited "rebuild")
 """
 
+import importlib.util
 import inspect
 import io
 import os
+import pathlib
 import re
 import statistics
 import sys
@@ -946,6 +948,45 @@ class TestDecayEvalCallSites:
         """``Query.top_by_decay`` is a thin wrapper; the EVAL lives on the
         builder. Pinned so the site inventory above cannot go stale silently."""
         assert "DECAY_SCORE_LUA" not in inspect.getsource(Query.top_by_decay)
+
+
+class TestSupersedeLuaPhaseSplit:
+    """Run ``scripts/check_supersede_lua_phases.py`` as part of the suite (#588).
+
+    The script is the executable anti-criterion for SUPERSEDE_LUA's
+    validation-before-mutation ordering, which is where the script gets its
+    all-or-nothing property from — Redis Lua has no rollback. Invoking it from a
+    test is what makes it a gate; left as a script nobody runs it would be the
+    comment it was written to replace.
+    """
+
+    @staticmethod
+    def _load():
+        root = pathlib.Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location(
+            "check_supersede_lua_phases",
+            root / "scripts" / "check_supersede_lua_phases.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_validation_phase_precedes_every_write(self):
+        module = self._load()
+        problems = module.check(module.extract_script(module.SOURCE.read_text()))
+        assert problems == []
+
+    def test_the_checker_detects_a_write_above_the_marker(self):
+        """The guard's own guard: prove the matcher can see a bad ordering."""
+        module = self._load()
+        bad = (
+            "if mode ~= 'open' then\n"
+            "  redis.call('EXISTS', KEYS[1])\n"
+            "end\n"
+            "redis.call('ZADD', KEYS[1], 0, 'x')\n"
+            "-- MUTATION PHASE\n"
+        )
+        assert any("ZADD" in problem for problem in module.check(bad))
 
 
 # ---------------------------------------------------------------------------
