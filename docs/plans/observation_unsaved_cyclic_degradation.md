@@ -482,7 +482,8 @@ The lead deploys team members and coordinates; it does not build directly.
 
 Baseline for the grep rows at `3b1e9e4`: `grep -c "Graceful degradation for unsaved instances"`
 on `src/popoto/fields/observation.py` returns **2** today. Seven new guards, each carrying that
-comment, must take it to **9**.
+comment, must take it to **8**: `strengthen_cycle` and `resolve_pressure` share one `try`
+block (and therefore one comment) per the Technical Approach, so seven calls need six guards.
 
 | Check | Command | Expected |
 |-------|---------|----------|
@@ -491,7 +492,7 @@ comment, must take it to **9**.
 | Model-level raise preserved | `POPOTO_TEST_DB=13 python -m pytest tests/test_observation_protocol.py -q -k test_unsaved_instance_raises` | exit code 0 |
 | Lint clean | `python -m ruff check src/` | exit code 0 |
 | Format clean | `python -m black --check src/ tests/` | exit code 0 |
-| Guards present at all seven new sites | `grep -c "Graceful degradation for unsaved instances" src/popoto/fields/observation.py` | output == 9 |
+| Guards present at all seven new sites | `grep -c "Graceful degradation for unsaved instances" src/popoto/fields/observation.py` | output == 8 |
 | No unguarded raising call left (AST, not a char-offset grep) | `POPOTO_TEST_DB=13 python -m pytest tests/test_observation_protocol.py -q -k test_no_unguarded_raising_calls` | exit code 0 |
 | Every outcome degrades on an unsaved instance | `POPOTO_TEST_DB=13 python -m pytest tests/test_observation_protocol.py -q -k unsaved` | exit code 0 |
 | Model methods unchanged | `git diff --name-only main -- src/popoto/models/base.py` | output does not contain base.py |
