@@ -270,13 +270,272 @@ exported *before* `import popoto`, per CLAUDE.md's DB-0 hazard rule), at baselin
 
 ## Data Flow
 
+Traced end-to-end at baseline `bb38f42`. **Bold** steps are new in M4; everything else exists.
+
+1. **Entry point** — `SubconsciousMemory.extract_memories(response_text, importance=0.5,
+   turn_id=None, `**`context=None`**`)` (`src/popoto/recipes/subconscious_memory.py:426`). The new
+   `context` is a `TurnContext` (speaker, capture instant, IANA timezone, bounded prior-turn
+   window). Omitted → **`TurnContext.now()`**: capture instant from the clock, `UTC`, no speaker,
+   empty window. The stage still runs — degraded, never skipped.
+2. Empty-turn check (`:481-484`) and the turn-level never-record firewall (`:494-501`) — unchanged,
+   and both run **before** any context is used, so an off-the-record turn never reaches the
+   resolution LLM.
+3. `_extract_memories_auditable(response_text, turn_id, `**`context`**`)` (`:655-719`) →
+   `generate_candidates(turn_id, response_text)` (`extraction/candidates.py:77-104`) — unchanged,
+   still pure and context-free.
+4. Per candidate: `_verdict_for(candidate)` (`:622-653`) → `VerdictResult`. Non-`accept` →
+   `write_terminal(...)`, `continue`. **Resolution never runs on a rejected candidate**, so its
+   cost scales with the acceptance rate, not the candidate count.
+5. **On `accept`: `_resolve_for(candidate, response_text, context)`** → one structured LLM call
+   (`extraction/resolution.py`). Inputs: the candidate span, the *full* turn text (the span's own
+   context, always available), the bounded window, and the context header
+   (`now` as ISO-8601 in `context.timezone`, weekday name, speaker). Output: a `Resolution`
+   (`statement`, `references`, aggregate `status`, `valid_from`, `degraded`).
+6. **Python re-validation** (`_parse_reply` analogue): every `surface` must be a literal substring
+   of the candidate span at its declared offsets; every status/kind/role must be a known enum
+   member; per-status required fields must be present and bounded; ISO-8601 dates are parsed
+   *in Python* against `context.timezone` into epoch floats. Anything malformed **drops that
+   reference**, not the whole result; a malformed envelope drops to
+   `statement = verbatim, status = indeterminate, degraded = True`.
+7. `DecisionLog.assemble(agent_id, candidate, journal, speaker=…, `**`resolution=…`**`)`
+   (`extraction/decision_log.py:609-695`) — unchanged ordering: claim → probe → `pending` →
+   append → terminal → release. The resolution rides along as one new keyword.
+8. `_append_and_transition(...)` (`:752-822`) → `ProvenanceJournal.append(...)`
+   (`recipes/provenance_journal.py:563`) with, **new**: `statement=resolution.statement` (was
+   `candidate.text`), `captured_at=context.captured_at` (was: journal's write clock),
+   `at=resolution.valid_from` (was: `None` → write clock), and one extra subject tag
+   `res:{status}` beside the existing `cand:{candidate_id}`. `verbatim=candidate.text` is
+   **unchanged and remains the raw span**.
+9. `ProvenanceJournal._write` (`:879-960`) — unchanged: builds `JournalEntry` with
+   `validity=_coerce_instant(at)`, runs the D7 pre-flight and the never-record scan over all
+   values *including the new `res:` tag*, then saves. `ValidityField.on_save` `ZADD NX`s
+   `valid_from`.
+10. **Sidecar write: `ResolutionLog.write(agent_id, candidate, resolution, entry_id)`** — a
+    `ResolutionRecord` keyed `(agent_id, turn_id, candidate_id)`, holding the full reference list
+    (JSON), the assumption lines, the `evidence_gap` candidates + questions, and the context
+    header. Written **after** a successful append so it can carry `entry_id`; a failure here is a
+    logged warning, never a rollback (the status flag already travels on the entry's tag).
+11. `write_terminal(..., ACCEPT, ACCEPTED, entry_id=...)` (`:815-821`) — unchanged.
+12. **Output**: `ExtractedFact` gains `verbatim`, `resolution_status`, and `assumption`; its
+    `text` is now `resolution.statement` (the resolved form) rather than the raw span.
+13. **Downstream consumers**: M5 (#564) reads `statement` for equivalence judgments; M7 (#566)
+    reads `ResolutionRecord`s with `status == evidence_gap` for its question source; the context
+    assembler surfaces the entry, and the `res:assumed` tag travels with it.
+
 ## Architectural Impact
+
+- **New dependencies**: none. `zoneinfo` and `datetime` are stdlib (repo is 3.10+); the
+  `anthropic` client is already an optional dependency probed exactly the way `verdict.py:54-63`
+  probes it. **No Redis modules** — the sidecar is a plain Popoto `Model`, Valkey-compatible.
+- **Interface changes** (all additive, all defaulted):
+  - `SubconsciousMemory.extract_memories(..., context=None)`
+  - `AuditableExtractionConfig.resolution_provider: Any = None` (a frozen dataclass field with a
+    default, so existing positional/keyword construction is unaffected)
+  - `DecisionLog.assemble(..., resolution=None)` and `_append_and_transition(..., resolution)`
+  - `ExtractedFact` gains `verbatim`, `resolution_status`, `assumption` (all `None` by default;
+    the legacy provider path never sets them)
+  - **Behavioural change, deliberate**: on the auditable path `ExtractedFact.text` and
+    `JournalEntry.statement` become the *resolved* form. `verbatim` is unchanged on both.
+- **Coupling**: M4 depends on M3 and M1; neither depends on M4. `resolution.py` is pure (no
+  Redis import) and `resolution_log.py` owns the only Redis surface, so the resolution logic is
+  unit-testable without a database.
+- **Data ownership**: M4 owns a new keyspace (`ResolutionRecord`) and becomes the **only** writer
+  of a non-default `valid_from` on the capture path. M1 keeps ownership of the journal; M3 keeps
+  ownership of the decision log and of assembly ordering.
+- **Reversibility**: high. `Defaults.M4_RESOLUTION_ENABLED = False` (a deploy-level env kill
+  switch, per the repo's default-on doctrine) restores M3's exact behaviour —
+  `statement == verbatim`, `valid_from == now`, no `res:` tag, no sidecar write. Already-written
+  records stay readable; nothing is migrated.
 
 ## Appetite
 
+**Size:** Large
+
+**Team:** Solo dev, PM, code reviewer
+
+**Interactions:**
+- PM check-ins: 1-2 (the `valid_from` onset-vs-deadline rule and the four-way prompt vocabulary
+  are product decisions as much as technical ones — see Open Questions)
+- Review rounds: 2+ (a new LLM stage on a write path that touches validity intervals; M1/M3 both
+  took multiple rounds)
+
+Large because it is a new module, a new persisted model, a new pinned prompt/schema, a new
+context object threaded through three call layers, and a `valid_from` emission that changes what
+the validity index means for captured entries — with a four-status test matrix on top.
+
 ## Prerequisites
 
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis/Valkey reachable | `redis-cli -n 15 PING` | The suite and every journal/sidecar test need a live server |
+| Test DB pinned (not 15, not 0) | `python -c "import os,sys; d=os.environ.get('POPOTO_TEST_DB'); sys.exit(0 if d and d not in ('0','15') else 1)"` | Every worktree shares DB 15; concurrent lanes produce phantom failures (CLAUDE.md) |
+| Editable install resolves to this checkout | `python -c "import popoto,pathlib,sys; sys.exit(0 if pathlib.Path(popoto.__file__).resolve().is_relative_to(pathlib.Path.cwd().resolve()) else 1)"` | A stale editable install silently tests another tree |
+| Full extras installed | `python -c "import numpy, sentence_transformers"` | `.[dev]` alone deselects ~95 tests |
+
+`ANTHROPIC_API_KEY` is **not** a prerequisite: every test injects a fake client or a stub
+resolution provider, exactly as `tests/test_auditable_extraction.py:80-111, 188-206` does. The
+absent-dependency path is itself a test case.
+
 ## Solution
+
+### Key Elements
+
+- **`ResolutionStatus` — the four-way ladder.** `resolved | assumed | evidence_gap |
+  indeterminate`, a `str`-valued enum, ordered worst-last so a candidate's aggregate status is the
+  worst of its references' statuses. Deliberately replaces a numeric confidence: downstream only
+  ever branches on these four cases.
+- **`TurnContext` — the perishable header.** Speaker, capture instant (epoch float), IANA
+  timezone, and a bounded window of prior turns. Constructed by the caller, or defaulted to
+  "now, UTC, no speaker, no window". This is the only thing in the system that records *when and
+  by whom* something was said, as opposed to when it was stored.
+- **`resolve_references(...)` — the stage.** One structured LLM call per accepted candidate,
+  schema-constrained, re-validated in Python, never raising, always returning a usable
+  `Resolution`.
+- **`Resolution` — the carrier.** `statement` (resolved rewrite, or verbatim when nothing
+  resolved), `references` (per-reference records), aggregate `status`, `valid_from` (optional),
+  `degraded` (whether the LLM path failed open).
+- **`ResolutionRecord` / `ResolutionLog` — the sidecar.** A Popoto model keyed by candidate
+  identity holding the full structure: every reference's surface, offsets, kind, status,
+  resolution, assumption line, `evidence_gap` candidate list and clarifying question, plus the
+  context header. M7 (#566) reads it; nothing else has to.
+- **The `res:{status}` subject tag — the flag that travels.** One low-entropy tag on the journal
+  entry itself, so an `assumed` fact cannot be surfaced anywhere without its flag being on the
+  record that carries it.
+- **`Defaults.M4_*` — pinned constants and a deploy kill switch.** Window bounds, reference caps,
+  string caps; plus `M4_RESOLUTION_ENABLED`, on by default, disableable by environment for
+  PyPI adopters who cannot edit model code.
+
+### Flow
+
+Turn arrives → `extract_memories(text, context=TurnContext(...))` → candidates enumerated →
+per candidate: **verdict** → *(accept)* → **resolution call** → typed `Resolution` →
+journal entry written with resolved `statement`, untouched `verbatim`, `res:{status}` tag,
+true `captured_at`, and `valid_from` when an onset was anchored → sidecar `ResolutionRecord`
+written with the full evidence → `ExtractedFact` returned carrying both forms and the status.
+
+Worked example — Tuesday 2026-09-01, speaker `user`, previous turn *"How's Dana settling in on
+Atlas?"*, candidate span *"she wants the report filed by Friday"*:
+
+| Reference | kind | status | outcome |
+|---|---|---|---|
+| `she` | pronoun | `resolved` | → "Dana" (prior turn names her) |
+| `Friday` | relative_time | `resolved` | → 2026-09-04, role `deadline` → **no `valid_from`** |
+| `the report` | definite_reference | `evidence_gap` | candidates: ["the Atlas onboarding report", "the Q3 status report"]; question: "Which report does Dana need filed by Friday?" |
+
+Aggregate status `evidence_gap`; `statement` = *"Dana wants the report filed by Friday
+2026-09-04."*; `verbatim` = *"she wants the report filed by Friday"*; tag `res:evidence_gap`.
+A second candidate, *"Dana's been on Atlas since March"*, yields one `relative_time` reference
+with role `onset` → **`valid_from` = 2026-03-01T00:00 in the speaker's timezone**.
+
+### Technical Approach
+
+**1. New module `src/popoto/extraction/resolution.py` (pure — no Redis import).**
+
+Types: `ResolutionStatus`, `ReferenceKind` (`pronoun | relative_time | definite_reference`),
+`TemporalRole` (`onset | deadline | mention | none`), `Reference`, `TurnContext`, `WindowTurn`,
+`Resolution` — all frozen dataclasses / `str` enums, matching `verdict.py:68-202`'s shape.
+
+Pinned, non-user-configurable constants in-module (precedent: `verdict.py:205-263`,
+`claude.py:38-70`): `RESOLUTION_MODEL = "claude-haiku-4-5-20251001"` (same tier as the verdict
+call — this runs per accepted candidate), `RESOLUTION_MAX_TOKENS`, `RESOLUTION_PROMPT`,
+`RESOLUTION_SCHEMA`.
+
+The call copies `verdict.py:283-309` exactly — GA structured-output path,
+`output_config={"format": {"type": "json_schema", "schema": RESOLUTION_SCHEMA}}`, no beta header,
+`additionalProperties: False`, and **one level of nesting only** (an object holding a flat array
+of flat objects), because Anthropic's schema support is not full JSON Schema (Research).
+
+**2. Python re-validation is the contract, not the schema.** Format adherence is guaranteed;
+content correctness is not (Research). `_parse_reply` enforces, per reference:
+
+- `candidate.text[start:end] == surface` — the BioCoref verbatim constraint, mechanically checked.
+  A model that invents or rephrases a surface loses that reference.
+- known enum members for `kind`, `status`, `temporal_role`;
+- `resolved` requires a non-empty `resolved_text` (and, for `relative_time`, a parseable ISO-8601
+  `resolved_iso`); `assumed` additionally requires a one-line `assumption`
+  (≤ `M4_ASSUMPTION_MAX_CHARS`, no newlines); `evidence_gap` requires 2–4 `candidates` **and** a
+  non-empty `question` (≤ `M4_QUESTION_MAX_CHARS`); `indeterminate` requires all of those to be
+  absent;
+- at most `M4_MAX_REFERENCES_PER_CANDIDATE` references;
+- `statement` non-empty and length-bounded relative to `verbatim`
+  (`M4_STATEMENT_MAX_GROWTH_FACTOR` × len + `M4_STATEMENT_MAX_GROWTH_CHARS`), so the model cannot
+  turn a clause into a paragraph of invention.
+
+A failing reference is dropped and the aggregate status floors at `indeterminate`; a failing
+envelope yields the degraded `Resolution`. **Dates are never trusted as numbers from the model** —
+it emits ISO-8601 and Python converts with `datetime.fromisoformat` + `zoneinfo.ZoneInfo(
+context.timezone)`, attaching the context zone when the value is naive. This is the direct lesson
+of #519/#521.
+
+**3. Fail-open, per M3's precedent.** `resolve_references` never raises and never returns `None`.
+Missing `anthropic`, a client exception, a malformed reply, or `M4_RESOLUTION_ENABLED = False` all
+produce `Resolution(statement=verbatim, status=indeterminate, references=(), valid_from=None,
+degraded=True)` — the entry is still captured, byte-identical to M3's output. M4 is explicitly
+"quality loss, not corruption" when unavailable.
+
+**4. `valid_from` emission — the onset rule.** `valid_from` is the instant a claim *became true*,
+not every date the claim mentions. Emitting it for a deadline would be a data error: *"file it by
+Friday"* is true **now**, not from Friday. So the model classifies each `relative_time` reference
+with a `temporal_role`, and the stage emits `valid_from` **only** when exactly one reference has
+`kind == relative_time`, `status in {resolved, assumed}`, and `role == onset`. Zero onsets → no
+emission (M1's default, the capture instant). Two or more onsets → **no emission**, and the
+aggregate status floors at `assumed` with a stated assumption — abstaining is cheaper than
+guessing which onset owns the interval. Threaded as `journal.append(at=resolution.valid_from)`;
+spike-1 proved a backdated `at` is stored exactly, and spike-1b that a future one is legal.
+
+**5. Answers to the #588 comment's two questions.**
+
+- *(1) What does the stage do when a re-resolution supplies a different `valid_from` for an
+  already-open interval?* **The situation is unreachable, and the plan keeps it that way.**
+  `JournalEntry.entry_id` is an `AutoKeyField`, so every capture is a fresh member with its own
+  interval (spike-3); double-capture of one candidate is prevented by M3's claim + `pending`/
+  terminal probe, not by the validity index. M4 therefore **never** calls
+  `ValidityField.get_valid_from()` to reconcile and never retries with an effective value —
+  absorbing a conflict is exactly the silent behaviour #588 removed. A `ValidityValidFromConflict
+  Error` reaching this path would be a genuine bug and is left to M3's existing
+  `reject(assembly_failed)` handler with the exception class name in `detail_code`
+  (`decision_log.py:790-810`). A grep-based anti-criterion in Verification asserts the absorb
+  pattern never appears.
+- *(2) Does M4 take on the `execute_supersede` → `save_and_supersede` conversion at
+  `provenance_journal.py:1127`?* **No — explicitly declined**, and the in-code comment naming
+  #563 is corrected as part of this work. The conversion is on M1's *annotation* path, which M4
+  does not use (M4 appends targetless `assert` entries). `SupersessionProtocol` still cannot
+  express the explicit `old_member` and `assert_valid_from=False` that path needs, and the D7
+  pre-flight (`:960-1013`) carries firewall, cross-agent-ownership and kind/target checks the
+  protocol cannot express. Converting it would add risk to a shipped write path for zero M4
+  benefit. Task 7 rewrites the comment to record the declination and points it at a follow-up
+  issue instead of at #563.
+
+**6. Where the status lives — both places, deliberately** (the issue's open question). The full
+structure lives in the `ResolutionRecord` sidecar, because `JournalEntry` must not be subclassed
+and its field set is guarded by `_require_journal_shape` (`provenance_journal.py:1227-1264`) —
+adding fields to a shipped, append-only model is a migration this plan will not take on. But a
+sidecar alone fails AC #4 ("`assumed` records carry a one-line stated assumption **retrievable
+with the fact**") and walks straight into the design study's top threat, so the *status* also
+rides on the entry as the indexed subject tag `res:{status}`, verified retrievable in spike-2.
+Flag transport is on the record; evidence is in the sidecar.
+
+**7. Plumbing, in three small widenings.** `AuditableExtractionConfig` gains
+`resolution_provider: Any = None` (the test seam, identical in spirit to `verdict_provider`);
+`DecisionLog.assemble`/`_reconcile_pending`/`_append_and_transition` gain `resolution=None` and
+derive `speaker`/`captured_at` from `resolution.context` when the caller did not pass them;
+`extract_memories`/`_extract_memories_auditable` gain `context=None`. No signature loses a
+parameter and no default changes.
+
+**8. Constants** go in `src/popoto/fields/constants.py` under a new
+`# -- reference resolution (extraction/resolution.py, #563) --` banner, `M4_`-prefixed (precedent:
+`M3_ASSEMBLY_CLAIM_TTL_MS`, `:455`): `M4_RESOLUTION_ENABLED` (env-backed kill switch built with
+the module's existing `_read_*` helper convention, `:44-126`), `M4_WINDOW_MAX_TURNS`,
+`M4_WINDOW_MAX_CHARS`, `M4_MAX_REFERENCES_PER_CANDIDATE`, `M4_EVIDENCE_GAP_MIN_CANDIDATES`,
+`M4_EVIDENCE_GAP_MAX_CANDIDATES`, `M4_ASSUMPTION_MAX_CHARS`, `M4_QUESTION_MAX_CHARS`,
+`M4_STATEMENT_MAX_GROWTH_FACTOR`, `M4_STATEMENT_MAX_GROWTH_CHARS`. Each carries an inline comment
+stating why it is not a tunable. `tests/benchmarks/test_defaults_sync.py` must be updated in the
+same commit.
+
+**9. Window bounding is oldest-first truncation.** The window is capped at
+`M4_WINDOW_MAX_TURNS` turns **and** `M4_WINDOW_MAX_CHARS` characters; when both are exceeded the
+oldest turns are dropped first, and truncation is recorded on the `ResolutionRecord` so a later
+audit can tell "the window did not contain the antecedent" from "the model missed it".
 
 ## Failure Path Test Strategy
 
