@@ -42,7 +42,7 @@ never affects the outcome of the Redis operation it fires alongside, even under 
 suite's `filterwarnings = error`.
 
 ```
-UserWarning: popoto is writing to Redis DB 0 during this pytest session and is NOT isolating
+PopotoIsolationWarning: popoto is writing to Redis DB 0 during this pytest session and is NOT isolating
 or flushing it (the popoto pytest plugin is installed but not opted in). Set
 popoto_test_db = "15" under [tool.pytest.ini_options] or export POPOTO_TEST_DB to isolate,
 or pass -p no:popoto to silence this warning.

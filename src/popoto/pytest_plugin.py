@@ -223,11 +223,16 @@ def _make_tripwire(pool: Any, original: Callable[..., Any]) -> Callable[..., Any
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         nonlocal fired
+        # Hold the lock only for the fired check/flip — never across the
+        # delegated `original(...)` call, which can block on pool exhaustion
+        # and would otherwise serialize all connection acquisition.
         with _tripwire_lock:
-            if fired:
-                return original(*args, **kwargs)
-            fired = True
-            _disarm_tripwire(pool, wrapper)
+            first_fire = not fired
+            if first_fire:
+                fired = True
+                _disarm_tripwire(pool, wrapper)
+        if not first_fire:
+            return original(*args, **kwargs)
 
         # Resolve at trip time, not at arm time: capturing this in the
         # closure at configure time would make the message lie if anything
