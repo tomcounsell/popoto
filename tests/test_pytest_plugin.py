@@ -20,6 +20,7 @@ import pytest
 
 import popoto
 from popoto import redis_db
+from popoto.pytest_plugin import _resolve_test_db
 from popoto.redis_db import get_async_redis_db
 
 
@@ -34,6 +35,38 @@ def _get_db():
 _DB_AT_IMPORT_TIME = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
     "db", 0
 )
+
+# The DB that TestIsolationWarning._inert_env pins children to via REDIS_URL, and
+# that the inert-plumbing test seeds its marker key on. Single source of truth so
+# the helper's URL and the parent-side probe client can never drift apart.
+_INERT_PROBE_DB = 14
+
+# The DB the env-beats-ini child is pinned to. Deliberately a literal, not a value
+# resolved through _resolve_test_db: this test exists to pin the resolution chain
+# independently, so deriving the expectation from the resolver would make it a
+# tautology. Must be a DB no parent suite run uses -- an opted-in child flushes its
+# DB before each of its own tests, so a collision would wipe the parent's live DB
+# mid-test.
+_ENV_OVERRIDE_CHILD_DB = 12
+
+
+@pytest.fixture(scope="session")
+def expected_test_db(pytestconfig):
+    """The DB this session is supposed to be isolated on, resolved the way the
+    plugin resolves it.
+
+    Skips if the plugin is inert (no ``popoto_test_db`` opt-in). Only use this
+    fixture in tests that do NOT also carry a ``!= 0`` DB-0 guard: a skip raised
+    here happens during fixture setup and aborts the whole test body, which would
+    make those guards conditional (#577). Such tests resolve inline instead, after
+    the guard has already run.
+    """
+    from popoto.pytest_plugin import _resolve_test_db
+
+    db = _resolve_test_db(pytestconfig)
+    if db is None:
+        pytest.skip("plugin is inert (no popoto_test_db opt-in) — nothing to assert")
+    return db
 
 
 class TestPluginModule:
@@ -70,13 +103,15 @@ class TestDatabaseIsolation:
         current_db = pool_kwargs.get("db", 0)
         assert current_db != 0, "Tests should not run on DB 0"
 
-    def test_on_test_db(self):
+    def test_on_test_db(self, expected_test_db):
         """The connection should be on the configured test DB (default 15)."""
         pool_kwargs = _get_db().connection_pool.connection_kwargs
         current_db = pool_kwargs.get("db", 0)
-        assert current_db == 15, f"Expected DB 15, got DB {current_db}"
+        assert (
+            current_db == expected_test_db
+        ), f"Expected DB {expected_test_db}, got DB {current_db}"
 
-    def test_swap_happens_before_test_modules_are_imported(self):
+    def test_swap_happens_before_test_modules_are_imported(self, pytestconfig):
         """#522: the DB swap must precede collection, not the first test.
 
         A session-scoped autouse fixture first runs when the first test
@@ -85,11 +120,15 @@ class TestDatabaseIsolation:
         level) would therefore write to DB 0, the developer's real database.
         The plugin does the swap in ``pytest_configure`` instead.
         """
+        # Guard first, unconditionally: this assertion must never be skipped.
         assert _DB_AT_IMPORT_TIME != 0, (
             "Connection was still on DB 0 while test modules were being "
             "imported; module-level model code would write to the real database"
         )
-        assert _DB_AT_IMPORT_TIME == 15
+        expected = _resolve_test_db(pytestconfig)
+        if expected is None:
+            pytest.skip("plugin is inert (no popoto_test_db opt-in)")
+        assert _DB_AT_IMPORT_TIME == expected
 
     def test_db_is_empty_at_start(self):
         """Each test should start with an empty database (flushed by fixture)."""
@@ -183,7 +222,7 @@ class TestAsyncIntegration:
         finally:
             loop.close()
 
-    def test_async_connection_on_test_db(self):
+    def test_async_connection_on_test_db(self, expected_test_db):
         """A lazily-built async connection is on the test DB, not DB 0."""
         import redis.asyncio as aioredis
 
@@ -194,7 +233,9 @@ class TestAsyncIntegration:
             loop.close()
         assert isinstance(async_redis, aioredis.Redis)
         async_db = async_redis.connection_pool.connection_kwargs.get("db", 0)
-        assert async_db == 15, f"Expected async on DB 15, got DB {async_db}"
+        assert (
+            async_db == expected_test_db
+        ), f"Expected async on DB {expected_test_db}, got DB {async_db}"
 
 
 class PluginTestModel(popoto.Model):
@@ -292,7 +333,7 @@ class TestSrcPopotoImportPaths:
             "src.popoto.redis_db" in sys.modules
         ), "pytest_configure did not register src.popoto.redis_db in sys.modules."
 
-    def test_src_popoto_redis_db_on_test_db(self):
+    def test_src_popoto_redis_db_on_test_db(self, pytestconfig):
         """sys.modules['src.popoto.redis_db'].POPOTO_REDIS_DB must be on the test DB.
 
         This is the key correctness invariant for issue #420: before the fix,
@@ -316,7 +357,10 @@ class TestSrcPopotoImportPaths:
             "src.popoto.redis_db.POPOTO_REDIS_DB is on DB 0 — the isolation fix did not work. "
             "Model saves via src.popoto would pollute DB 0 instead of the test DB."
         )
-        assert db == 15, f"Expected test DB 15, got DB {db}"
+        expected = _resolve_test_db(pytestconfig)
+        if expected is None:
+            pytest.skip("plugin is inert (no popoto_test_db opt-in)")
+        assert db == expected, f"Expected test DB {expected}, got DB {db}"
 
     def test_src_popoto_redis_db_is_canonical_redis_db(self):
         """sys.modules['src.popoto.redis_db'] must be the same object as popoto.redis_db.
@@ -367,7 +411,7 @@ class TestSrcPopotoImportPaths:
             "Writes via src.popoto would target a different Redis client than the test DB client."
         )
 
-    def test_canonical_redis_db_on_test_db(self):
+    def test_canonical_redis_db_on_test_db(self, pytestconfig):
         """The canonical popoto.redis_db.POPOTO_REDIS_DB must be on DB 15.
 
         Baseline check that confirms the session fixture has run and the canonical
@@ -380,7 +424,10 @@ class TestSrcPopotoImportPaths:
             "db", 0
         )
         assert db != 0, "popoto.redis_db.POPOTO_REDIS_DB is still on DB 0"
-        assert db == 15, f"Expected DB 15, got {db}"
+        expected = _resolve_test_db(pytestconfig)
+        if expected is None:
+            pytest.skip("plugin is inert (no popoto_test_db opt-in)")
+        assert db == expected, f"Expected DB {expected}, got {db}"
 
 
 class TestDecoyModuleNotStomped:
@@ -978,3 +1025,128 @@ class TestIsolationWarning:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "1 passed" in result.stdout, result.stdout
+
+
+class TestResolutionChain:
+    """#549: pin the env>ini>None resolution chain and the inert plumbing contract.
+
+    Reuses ``TestIsolationWarning``'s subprocess helpers (``_repo_root``,
+    ``_base_env``, ``_inert_env``, ``_run``) by delegation rather than building a
+    parallel harness. Deliberately NOT a subclass: inheriting would make pytest
+    re-collect and re-run every ``TestIsolationWarning`` test under this class.
+
+    Every child below pins ``REDIS_URL`` to an explicit non-zero DB
+    before popoto is imported: CI exports a db-less ``REDIS_URL`` and a child
+    that inherits it unpinned would land wherever that URL points (#603, #577).
+    """
+
+    def test_env_var_beats_ini_option(self, tmp_path, pytestconfig):
+        """POPOTO_TEST_DB wins over the ini opt-in, with a literal expectation.
+
+        The child gets ``-o popoto_test_db=15`` on argv *and*
+        ``POPOTO_TEST_DB=12`` in its env; it must land on 12. The expectation is
+        a hardcoded literal on purpose — resolving it through
+        ``_resolve_test_db`` would move both sides of the assertion together and
+        hide a resolver bug. This is the test that keeps the five
+        resolution-based assertions above honest.
+        """
+        # An opted-in child flushes its own DB before each of its tests. If a
+        # parent suite ever runs on the child's DB, that flush would wipe the
+        # parent's live DB mid-test. Fail loudly instead of colliding silently.
+        assert _resolve_test_db(pytestconfig) != _ENV_OVERRIDE_CHILD_DB, (
+            f"Parent session is on DB {_ENV_OVERRIDE_CHILD_DB}, which this test's "
+            "child process flushes. Pick a different _ENV_OVERRIDE_CHILD_DB."
+        )
+
+        repo_root = TestIsolationWarning._repo_root()
+        probe = tmp_path / "test_env_beats_ini_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe():
+                    from popoto import redis_db
+
+                    db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
+                        "db"
+                    )
+                    assert db == 12, f"expected env override to win with DB 12, got {db}"
+            """))
+        env = TestIsolationWarning._base_env(repo_root)
+        env["POPOTO_TEST_DB"] = str(_ENV_OVERRIDE_CHILD_DB)
+        env["REDIS_URL"] = f"redis://localhost:6379/{_INERT_PROBE_DB}"
+        result = TestIsolationWarning._run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(probe),
+                "-q",
+                "-o",
+                "popoto_test_db=15",
+            ],
+            repo_root,
+            env,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "1 passed" in result.stdout, result.stdout
+
+    def test_inert_plugin_performs_no_swap_and_no_flush(self, tmp_path):
+        """#549: an inert plugin must not swap the connection nor flush the DB.
+
+        #595 covers the *warning* half of the inert path; this is the *plumbing*
+        half. The child self-asserts its own inertness first, so a developer with
+        ``POPOTO_TEST_DB`` exported cannot make this pass vacuously.
+
+        The marker key co-resides on DB 14 with #595's ``test_5a``/``test_5d``
+        probes. That is safe only because the inert path never flushes — today
+        the inert branch of ``_configure_test_db`` arms a tripwire and returns,
+        touching nothing. If that ever changes, this test and #595's fail
+        together; this note is the explanation a future reader will need.
+        """
+        import uuid
+
+        import redis
+
+        repo_root = TestIsolationWarning._repo_root()
+        marker = f"popoto_inert_probe:{uuid.uuid4().hex}"
+
+        # Build the parent-side probe client with the repo's helper rather than
+        # splatting a live pool's connection_kwargs, which redis-py 8 rejects
+        # (himport_registry, maint_notifications_*, orig_*) -- the #490 crash.
+        kwargs = redis_db.sibling_client_kwargs(
+            redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs,
+            db=_INERT_PROBE_DB,
+        )
+        probe_client = redis.Redis(**kwargs)
+
+        probe = tmp_path / "test_inert_plumbing_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe(pytestconfig):
+                    import os
+
+                    # Prove the plugin really is inert before asserting on it.
+                    assert pytestconfig.getini("popoto_test_db") == ""
+                    assert "POPOTO_TEST_DB" not in os.environ
+
+                    from popoto import redis_db
+
+                    db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
+                        "db"
+                    )
+                    assert db == 14, f"inert plugin swapped the DB: got {db}"
+            """))
+
+        try:
+            probe_client.set(marker, "survives")
+            result = TestIsolationWarning._run(
+                [sys.executable, "-m", "pytest", str(probe), "-q"],
+                repo_root,
+                TestIsolationWarning._inert_env(repo_root),
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert probe_client.get(marker) == b"survives", (
+                "Marker key vanished from DB "
+                f"{_INERT_PROBE_DB}: the inert plugin flushed a database it "
+                "was never opted in to touch."
+            )
+        finally:
+            probe_client.delete(marker)
+            probe_client.close()
