@@ -90,7 +90,7 @@ Technical Approach for why that is not scope creep.
 **Commits on main since the issue was filed (touching referenced files):**
 
 - `16aa702` Agent memory production audit: contracts and P0 fixes (#594) — touched
-  `observation.py` and `base.py`; did not alter the cycle call sites.
+  `base.py` (and 58 other files) but did **not** touch `src/popoto/fields/observation.py`.
 - `90fc3d3` fix(#588): decide supersession membership inside SUPERSEDE_LUA (#601) — supersession
   Lua only; the bare calls are untouched.
 
@@ -176,10 +176,12 @@ effects raise internally and are swallowed → that member contributes nothing �
   `not self._db_content and not self._saved_field_values` invariant into `observation.py`, giving
   two places to update when the saved-detection rule changes. Rejected in favor of catching the
   exception the model methods already define as the signal.
-- **Fix all four unsaved-raising sites, not only the two the issue names.** `_apply_acted`'s
-  `touch`, `strengthen_cycle` and `resolve_pressure` fail identically. Shipping the two named
-  calls would leave `acted` — the most common outcome — raising out of the same protocol, and
-  a caller would file the same issue again. The added surface is three more wraps in one function.
+- **Fix all seven unsaved-raising sites, not only the two the issue names.** `_apply_acted`'s
+  `touch`, `confirm_access`, `strengthen_cycle` and `resolve_pressure` fail identically, and
+  `_apply_used`'s `confirm_access` fails on every `AccessTrackerMixin` model regardless of its
+  decay fields. Shipping the two named calls would leave `acted` — the most common outcome —
+  and `used` raising out of the same protocol, and a caller would file the same issue again.
+  The `used` and `confirm_access` sites were missed by the first draft and added at critique.
 - **Keep `strengthen_cycle` and `resolve_pressure` in one `try` block** in `_apply_acted`:
   `resolve_pressure` is only reached when the strengthen succeeded, and pairing them preserves
   the existing per-field ordering.
@@ -190,12 +192,29 @@ effects raise internally and are swallowed → that member contributes nothing �
 
 Corrected line references for the builder (baseline `53a65b8`):
 
-| Site | Location | Call |
-|---|---|---|
-| `_apply_acted` | `observation.py:267-269` | `instance.touch(...)` |
-| `_apply_acted` | `observation.py:275-281` | `instance.strengthen_cycle(...)` + `instance.resolve_pressure(...)` |
-| `_apply_dismissed` | `observation.py:319-323` | `instance.weaken_cycle(...)` |
-| `_apply_contradicted` | `observation.py:379-383` | `instance.weaken_cycle(...)` |
+| Site | Location | Call | Raises on unsaved |
+|---|---|---|---|
+| `_apply_acted` | `observation.py:266` | `instance.touch(...)` | `Cannot call touch() on an unsaved model instance.` |
+| `_apply_acted` | `observation.py:270` | `instance.confirm_access(...)` | `confirm_access() requires a saved model instance` |
+| `_apply_acted` | `observation.py:275-279` | `instance.strengthen_cycle(...)` + `instance.resolve_pressure(...)` | `Cannot adjust cycle amplitudes on an unsaved model instance.` |
+| `_apply_dismissed` | `observation.py:321` | `instance.weaken_cycle(...)` | `Cannot adjust cycle amplitudes on an unsaved model instance.` |
+| `_apply_contradicted` | `observation.py:381` | `instance.weaken_cycle(...)` | `Cannot adjust cycle amplitudes on an unsaved model instance.` |
+| `_apply_used` | `observation.py:535` | `instance.confirm_access(...)` | `confirm_access() requires a saved model instance` |
+
+**Seven calls across four appliers.** Two sites already carry guards and are NOT to be
+touched: `resolve_pressure` at `observation.py:422` (inside the auto-discharge `try`) and the
+five pre-existing `ConfidenceField`/`PredictionLedgerMixin` blocks.
+
+`discard_staged_access` (`observation.py:316`, `346`, `376`) needs **no** guard — `deferred`
+degrades cleanly today, confirmed empirically. `confirm_access` ignores its `pipeline` kwarg
+and evals Lua directly; that is pre-existing and out of scope, the guard wraps the call as-is.
+
+Empirical baseline (repro on DB 13, `on_context_used([unsaved], {key: outcome})`):
+
+| Model | acted | dismissed | contradicted | used | deferred |
+|---|---|---|---|---|---|
+| `AccessTrackerMixin` + `CyclicDecayField` | raise | raise | raise | raise | ok |
+| `AccessTrackerMixin` + `DecayingSortedField` | raise | ok | ok | raise | ok |
 
 ## Failure Path Test Strategy
 
@@ -247,9 +266,12 @@ previously raised, so nothing that passes today can start failing.
 - **Agent Type**: builder
 - **Domain**: Redis/Popoto data
 - **Parallel**: false
-- In `src/popoto/fields/observation.py`, wrap each of the four sites in the corrected-line table
-  above with `try: ... except (TypeError, ValueError): pass`, with the comment
-  `# Graceful degradation for unsaved instances` matching the neighbors verbatim.
+- In `src/popoto/fields/observation.py`, wrap each of the **seven** calls in the corrected-line
+  table above with `try: ... except (TypeError, ValueError): pass`, carrying a comment that
+  matches the neighboring convention (`# Graceful degradation for unsaved instances`).
+- The two `confirm_access` sites (`_apply_acted` at 270, `_apply_used` at 535) are the ones the
+  issue and the first plan draft both missed; do not skip them.
+- Leave `discard_staged_access` and the already-guarded `resolve_pressure` at 422 alone.
 - Keep `strengthen_cycle` and its guarded `resolve_pressure` in a single `try` block.
 - Change nothing in `src/popoto/models/base.py`.
 - Re-check the file for any other bare model-method call in an `_apply_*` function that can raise
@@ -268,20 +290,36 @@ previously raised, so nothing that passes today can start failing.
   - `contradicted` → `on_context_used` returns without raising, and no cycles hash entry exists
     for the instance key.
   - `dismissed` → same assertions.
-  - `acted` → same assertions, covering the `touch` / `strengthen_cycle` / `resolve_pressure`
-    sites found during the freshness check.
+  - `acted` → same assertions, covering the `touch` / `confirm_access` / `strengthen_cycle` /
+    `resolve_pressure` sites. Note `FullMemory` is `AccessTrackerMixin`, so this case only
+    passes once task 1's `confirm_access` guard is in — build task 1 first.
+  - `used` → same assertions, covering the `_apply_used` `confirm_access` site.
+  - `deferred` → control: already degrades today and must keep degrading.
 - Add the **saved-instance control**: the same three outcomes on a saved `FullMemory` still move
   cycle amplitudes in the expected direction. Without this, the guards could swallow real failures
   and the unsaved tests would still pass.
 - Add a **mixed-batch** test: `[unsaved, saved]` in one `on_context_used` call — the saved member's
   effects land, proving the loop no longer aborts mid-batch.
-- Add a `DecayingSortedField`-only unsaved case for `acted`, covering the `touch` site.
+- Add a `DecayOnlyMemory` (`tests/test_observation_protocol.py:52`) unsaved case for `acted` and
+  for `used`, covering the `touch` and `_apply_used` `confirm_access` sites on a model with no
+  `CyclicDecayField`.
+- Add a **blast-radius control** (critique CONCERN): write a corrupt, non-msgpack payload into a
+  SAVED instance's cycles hash and assert the failure stays observable — the new guards must not
+  turn a `msgpack` `UnpackValueError` (a `ValueError` subclass) into a silent no-op that is
+  indistinguishable from success. Assert amplitudes did not move rather than widening the caught
+  tuple; the point is to pin the blast radius, not to change it.
+- Add `test_no_unguarded_raising_calls`: an `ast` walk over `src/popoto/fields/observation.py`
+  asserting every `instance.touch` / `confirm_access` / `strengthen_cycle` / `weaken_cycle` /
+  `resolve_pressure` Call node has an enclosing `ast.Try` whose handlers catch `TypeError`. This
+  replaces the first draft's character-offset grep, which black reformatting could flip and which
+  could not see the `touch` / `confirm_access` / `resolve_pressure` sites at all.
 - Assert `test_unsaved_instance_raises` still passes untouched.
 
 ### 3. Documentation
 
 - **Task ID**: document-contract
 - **Depends On**: build-tests
+- **Validates**: `mkdocs build --strict`
 - **Assigned To**: observation-documentarian
 - **Agent Type**: documentarian
 - **Parallel**: false
@@ -290,7 +328,7 @@ previously raised, so nothing that passes today can start failing.
   never raise, and do not abort the batch — and note that the model methods themselves still raise
   for direct callers.
 - `CHANGELOG.md` under `## [Unreleased]` → `### Fixed`: describe the behavior change, name the
-  outcomes affected (`acted`, `dismissed`, `contradicted`), and state explicitly that direct
+  outcomes affected (`acted`, `dismissed`, `contradicted`, `used`), and state explicitly that direct
   `weaken_cycle`/`strengthen_cycle`/`touch`/`resolve_pressure` calls are unchanged.
 - Check `docs/guides/agent-memory-quickstart.md` and `docs/guides/subconscious-memory-recipe.md`
   for any `on_context_used` description that implies or contradicts the contract; update only if
@@ -300,12 +338,14 @@ previously raised, so nothing that passes today can start failing.
 
 - **Task ID**: validate-all
 - **Depends On**: build-guard, build-tests, document-contract
+- **Validates**: the Verification table
 - **Assigned To**: observation-validator
 - **Agent Type**: validator
 - **Parallel**: false
 - Run every command in the Verification table and report pass/fail per row.
 - Confirm `git diff --stat` touches only `src/popoto/fields/observation.py`,
-  `tests/test_observation_protocol.py`, `docs/features/observation-protocol.md` and `CHANGELOG.md`.
+  `tests/test_observation_protocol.py`, `docs/features/observation-protocol.md`, `CHANGELOG.md`
+  and this plan document.
 
 ## Rabbit Holes
 
@@ -396,10 +436,13 @@ its signature or its exposure. No new MCP tool and no `.mcp.json` change.
 
 ## Success Criteria
 
-- [ ] `on_context_used` on an unsaved `CyclicDecayField`-bearing model raises nothing for
-      `contradicted`, `dismissed` and `acted`.
+- [ ] `on_context_used` on an unsaved instance raises nothing for **every** outcome —
+      `acted`, `dismissed`, `contradicted`, `used` and `deferred` — on a `CyclicDecayField`
+      model, a `DecayingSortedField` model and an `AccessTrackerMixin`-only model.
 - [ ] A batch of `[unsaved, saved]` applies the saved member's effects in full.
-- [ ] A saved instance's cycle amplitudes still move on all three outcomes (control test).
+- [ ] A saved instance's cycle amplitudes still move on all three cycle outcomes (control test).
+- [ ] A corrupt cycles payload on a SAVED instance does not silently pass as success
+      (blast-radius control).
 - [ ] `test_unsaved_instance_raises` passes unmodified — direct model-method calls still raise.
 - [ ] `docs/features/observation-protocol.md` states the contract; `CHANGELOG.md` records it.
 - [ ] Tests pass (`/do-test`), docs updated (`/do-docs`).
@@ -437,8 +480,9 @@ The lead deploys team members and coordinates; it does not build directly.
 
 ## Verification
 
-Baseline for the grep rows at `53a65b8`: `grep -c "Graceful degradation for unsaved instances"`
-returns **2** today, so the four new verbatim-commented guards must take it to 6.
+Baseline for the grep rows at `3b1e9e4`: `grep -c "Graceful degradation for unsaved instances"`
+on `src/popoto/fields/observation.py` returns **2** today. Seven new guards, each carrying that
+comment, must take it to **9**.
 
 | Check | Command | Expected |
 |-------|---------|----------|
@@ -447,19 +491,31 @@ returns **2** today, so the four new verbatim-commented guards must take it to 6
 | Model-level raise preserved | `POPOTO_TEST_DB=13 python -m pytest tests/test_observation_protocol.py -q -k test_unsaved_instance_raises` | exit code 0 |
 | Lint clean | `python -m ruff check src/` | exit code 0 |
 | Format clean | `python -m black --check src/ tests/` | exit code 0 |
-| Guards present at all four new sites | `grep -c "Graceful degradation for unsaved instances" src/popoto/fields/observation.py` | output > 5 |
-| No bare weaken_cycle left | `python -c "import re,sys; s=open('src/popoto/fields/observation.py').read(); print(sum(1 for m in re.finditer(r'instance\.(weaken_cycle|strengthen_cycle)\(', s) if 'try:' not in s[max(0,m.start()-260):m.start()]))"` | output contains 0 |
+| Guards present at all seven new sites | `grep -c "Graceful degradation for unsaved instances" src/popoto/fields/observation.py` | output == 9 |
+| No unguarded raising call left (AST, not a char-offset grep) | `POPOTO_TEST_DB=13 python -m pytest tests/test_observation_protocol.py -q -k test_no_unguarded_raising_calls` | exit code 0 |
+| Every outcome degrades on an unsaved instance | `POPOTO_TEST_DB=13 python -m pytest tests/test_observation_protocol.py -q -k unsaved` | exit code 0 |
 | Model methods unchanged | `git diff --name-only main -- src/popoto/models/base.py` | output does not contain base.py |
 | No stale xfails added | `git diff main -- tests/test_observation_protocol.py \| grep '^+' \| grep -c xfail` | match count == 0 |
 | Docs contract stated | `grep -c "unsaved" docs/features/observation-protocol.md` | output > 0 |
+| CHANGELOG names the `used` outcome | `grep -c "used" CHANGELOG.md` | output > 0 |
 | Docs build | `python -m mkdocs build --strict` | exit code 0 |
 
 ## Critique Results
 
 <!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 
+Round 1 (2026-09-04, FULL depth: Risk & Robustness, Scope & Value, History & Consistency +
+structural pass). Verdict: **NEEDS REVISION** (2 blockers, 2 concerns, 2 nits).
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | structural + dev repro | The four-site table misses `instance.confirm_access(pipeline=pipeline)` at `observation.py:270` (`_apply_acted`) and `observation.py:535` (`_apply_used`). `AccessTrackerMixin.confirm_access` (`access_tracker.py:189-224`) raises `TypeError("confirm_access() requires a saved model instance")` in three places, one of them a `POPOTO_REDIS_DB.exists(redis_key)` check. `_apply_used` is an applier and `used` is a valid outcome, so Success Criterion "never raises ... for any outcome" is unmet. Empirical repro on DB 13: `used` raises on BOTH a CyclicDecayField model and a DecayingSortedField model; `acted` raises on any AccessTrackerMixin model regardless of cycle fields. | task 1 (site table), task 2 (test matrix), task 3 (docs/CHANGELOG must name `used`) | Guard all SEVEN sites, not four: `touch` (266), `confirm_access` (270), `strengthen_cycle` (275), `resolve_pressure` (279), `weaken_cycle` (321), `weaken_cycle` (381), `confirm_access` (535). `resolve_pressure` at 422 is already inside a `try`. `discard_staged_access` (316/346/376) needs NO guard — `deferred` degrades cleanly today, confirmed empirically. Note `confirm_access` ignores its `pipeline` kwarg and evals Lua directly, so its guard is `try: instance.confirm_access(pipeline=pipeline) except (TypeError, ValueError): pass` at both sites. |
+| BLOCKER | structural | Task 2's stated test — unsaved `FullMemory` + `acted` — fails against the plan's own four-site fix. `FullMemory` (`tests/test_observation_protocol.py:40`) is `AccessTrackerMixin, popoto.Model`, so `_apply_acted` reaches the unguarded `confirm_access` at line 270 before any cycle call. The plan's fix list and its test list contradict each other. | task 1 then task 2 | Fix task 1 first (add the `confirm_access` guards); only then does the `acted`-on-unsaved-`FullMemory` assertion pass. Add an AccessTrackerMixin-only unsaved case and `used` cases for both `FullMemory` and `DecayOnlyMemory` (`tests/test_observation_protocol.py:52`). |
+| BLOCKER | Risk & Robustness, Scope & Value, History & Consistency (3/3) | The Verification row "No bare weaken_cycle left" greps only `instance\.(weaken_cycle\|strengthen_cycle)\(`, so it reports `0` (pass) even if `touch`, `resolve_pressure` or `confirm_access` are left unguarded — the row cannot prove what the Technical Approach commits to. It is also a character-offset heuristic (`'try:' not in s[m.start()-260:m.start()]`) that black reformatting or an unrelated nearby `try:` can flip either way. | Verification table | Either delete the row and rely on the behavioral tests from task 2 (which assert "returns without raising" per site), or replace the alternation with `instance\.(touch\|weaken_cycle\|strengthen_cycle\|resolve_pressure\|confirm_access)\(` AND drop the 260-char window in favour of an AST walk that checks each Call node has an enclosing `ast.Try` handler catching `TypeError`. |
+| CONCERN | Risk & Robustness | The new `except (TypeError, ValueError): pass` also swallows genuine failures on SAVED instances: `_adjust_cycle_amplitudes` calls `msgpack.unpackb` on the cycles hash after the unsaved check passes, and `msgpack.exceptions.UnpackValueError` subclasses `ValueError`. Risk 1's mitigation (a saved-instance control on valid data) exercises only happy paths and cannot catch this class. | Risks / task 2 | Add one control test that writes a corrupt (non-msgpack) payload into the cycles hash for a SAVED instance and asserts the failure is still observable — either it raises, or the test asserts amplitudes did not move and a DEBUG log fired. Do not widen the caught tuple; the point is a test that pins the blast radius. |
+| CONCERN | History & Consistency | Freshness Check states commit `16aa702` (#594) "touched `observation.py` and `base.py`". `git diff 16aa702^..16aa702 --name-only` shows it touched `base.py` (and 58 other files) but NOT `src/popoto/fields/observation.py`; only `90fc3d3` (#601) touched `observation.py` in the post-issue window. The conclusion is still right, the cited evidence is wrong. | Freshness Check | Correct the bullet to "touched `base.py`; did not touch `observation.py`" — a reviewer who re-runs the cited command sees a mismatch and discounts the whole Freshness Check. |
+| NIT | Scope & Value | Task 1 dictates the comment string verbatim rather than "match the neighbouring convention". | task 1 | n/a |
+| NIT | structural | Tasks 3 and 4 carry no `Validates:` field, unlike tasks 1 and 2. | Step by Step Tasks | n/a |
 
 ---
 
