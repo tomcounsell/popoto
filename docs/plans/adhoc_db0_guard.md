@@ -66,7 +66,11 @@ open. Every residual-gap claim was re-verified against the baseline commit.
 - Nothing in `src/` refuses `FLUSHDB`/`FLUSHALL`. Confirmed by grep: the only
   matches in `src/` are `src/popoto/pytest_plugin.py` (the per-test flush of
   the isolated DB), `src/popoto/testing.py:79` (`flush_test_db()`, a public
-  helper that flushes whatever database is bound), and one prose mention
+  helper that flushes the client bound **at import time** — not, as this line
+  originally read, whatever database is currently bound. `set_REDIS_DB_settings`
+  rebinds the module global and `flush_test_db()` does not follow it, so the
+  documented `use_test_db()` + `flush_test_db()` pattern already mis-flushes;
+  Task 1 fixes it by routing through `get_REDIS_DB()`), and one prose mention
   inside the integrations refusal message.
 - `src/popoto/integrations/config.py` carries `Db0RefusedError`,
   `effective_db()`, `suggest_free_db()`, and the `POPOTO_MEMORY_ALLOW_DB0`
@@ -127,8 +131,10 @@ documentation.
 
 ## Spike Results
 
-All spikes ran with `REDIS_URL=redis://localhost:6379/4` exported before
-`import popoto`, against redis-py 7.1.1. No spike wrote to or read DB 0.
+All spikes ran with a non-zero `REDIS_URL` exported before `import popoto`,
+against redis-py 7.1.1. No spike wrote to or read DB 0. The spike text below
+names DB 13; the lane database for build and verification is **DB 4** (see
+Prerequisites).
 
 ### spike-1: Does overriding `execute_command` on a `redis.Redis` subclass catch every flush shape?
 - **Assumption**: "A single `execute_command` override catches `flushdb()`,
@@ -265,16 +271,19 @@ database you configured at all.
 
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
-| Redis or Valkey reachable | `redis-cli -n 4 ping` | Test and spike target; DB 13 is used so DB 0 and the shared DB 15 are both untouched |
-| Editable install resolves to this checkout | `python -c "import popoto, pathlib, sys; sys.exit(0 if 'src/popoto' in str(pathlib.Path(popoto.__file__)) else 1)"` | Guards against the worktree hazard in `CLAUDE.md` |
+| Redis or Valkey reachable | `redis-cli -n 4 ping` | Test and spike target. **DB 4 is this plan's single lane database**, everywhere: tests and every Verification row. DB 0 (live agent store) and the shared DB 15 are both untouched. The spike transcripts above name DB 13 because they predate this decision; read every `13` in them as `4`. |
+| Editable install resolves to **this** checkout | run from the worktree root: `python -c "import popoto, pathlib, sys; sys.exit(0 if pathlib.Path(popoto.__file__).resolve() == pathlib.Path('src/popoto/__init__.py').resolve() else 1)"` | Guards against the worktree hazard in `CLAUDE.md`. The substring form (`'src/popoto' in str(path)`) passes on **any** popoto checkout and is not acceptable here: a false pass would let a verification command run against an unguarded package. |
 
 ## Solution
 
 ### Key Elements
 
-- **`Db0FlushRefusedError`**: a `PopotoException` subclass raised instead of
-  executing a flush whose blast radius includes database 0. Inherits the
-  automatic ERROR-level log, so the refusal is visible even when swallowed.
+- **`Db0FlushRefusedError(PopotoException, ValueError)`**: raised instead of
+  executing a flush whose blast radius includes database 0. `PopotoException`
+  supplies the automatic ERROR-level log, so the refusal is visible even when
+  swallowed; `ValueError` matches the #584 house pattern
+  (`Db0RefusedError(ValueError)`), so a caller written against the established
+  `except ValueError` idiom still catches this refusal.
 - **`_flush_refusal_reason(command, db)`**: a pure predicate returning the
   refusal message or `None`. Factored out on purpose — it is the only way to
   test the *permitted* branch without ever issuing a real destructive command.
@@ -292,7 +301,7 @@ database you configured at all.
 Scratch script → `import popoto` → (no `REDIS_URL`, so bound to DB 0) →
 `POPOTO_REDIS_DB.flushdb()` → **refusal naming DB 0, a free database, and
 `POPOTO_ALLOW_DB0_FLUSH`** → author exports `REDIS_URL=redis://localhost:6379/4`
-before the import → flush proceeds on DB 13 → live agent state intact.
+before the import → flush proceeds on DB 4 → live agent state intact.
 
 ### Technical Approach
 
@@ -321,12 +330,38 @@ place, whereas overriding the named methods misses the raw form. The check is
 a `frozenset` membership test on an upper-cased first argument, on a path that
 already does msgpack encoding and a socket round trip.
 
-**Three classes, per spike-2.** `Redis.pipeline()` hard-codes the stock
-`Pipeline` class, so `GuardedRedis.pipeline()` must reassign the returned
-object's `__class__` to `GuardedPipeline`; reimplementing the constructor call
-would bind the plan to a signature that moves between redis-py versions.
-`GuardedAsyncRedis` needs an `async def execute_command` override because the
-async client is a separate hierarchy.
+**Four classes** (revised from three after CRITIQUE). `Redis.pipeline()`
+hard-codes the stock `Pipeline` class, so `GuardedRedis.pipeline()` must
+reassign the returned object's `__class__` to `GuardedPipeline`; reimplementing
+the constructor call would bind the plan to a signature that moves between
+redis-py versions. `GuardedAsyncRedis` needs an `async def execute_command`
+override because the async client is a separate hierarchy — and
+`redis.asyncio.Redis.pipeline()` hard-codes the stock async `Pipeline` exactly
+as the sync one does, so a fourth class,
+`GuardedAsyncPipeline(aioredis.client.Pipeline)`, is required, with its own
+`async def execute_command` override plus a `GuardedAsyncRedis.pipeline()`
+override that reassigns `pipe.__class__`. This is not hypothetical:
+`src/popoto/models/query.py` calls `async_redis.pipeline()` on the live query
+path. `pipeline()` is a plain, non-`async` method on **both** hierarchies — do
+not `await` it.
+
+**Definition order inside `redis_db.py`.** `PopotoException` is defined near
+the bottom of the file, well after the module-level connection block, but the
+guarded classes are needed *at* that block. Move the `PopotoException` class
+definition above the connection block (a pure reorder within the one file, no
+import change), then define `Db0FlushRefusedError`, `_flush_refusal_reason`,
+and the four guarded classes immediately after it and before the first client
+is constructed.
+
+**`suggest_free_db()` is opt-out on the async path.** The suggestion helper
+issues a *synchronous* `INFO keyspace` round trip on the sync global, which
+would block the event loop for up to the socket timeout if called from an
+`async def execute_command`. `_flush_refusal_reason` therefore takes
+`suggest: bool = True`, and both async overrides pass `suggest=False`,
+degrading to the already-specified no-suggestion message. Import
+`suggest_free_db` **lazily, inside the function** — `popoto.redis_db` is
+imported by `popoto/__init__`, so a module-level import of
+`popoto.integrations.config` is an import cycle.
 
 **Construction sites to change**, all inside `redis_db.py`:
 the two module-level branches (the `REDIS_URL` branch and the localhost
@@ -402,7 +437,7 @@ Stated plainly so nobody reads more safety into the guard than it has:
 
 - [ ] `tests/test_pytest_plugin.py` — UPDATE only if a case asserts the exact
   type of `redis_db.POPOTO_REDIS_DB`. The plugin's own per-test `flushdb()`
-  runs against the isolated database (15 here, 13 for this plan's lane), so
+  runs against the isolated database (15 by default, 4 for this plan's lane), so
   the guard never fires and no behavior changes.
 - [ ] `tests/test_stress.py`, `tests/test_async.py`,
   `tests/test_meta_indexes.py`, `tests/test_meta_ttl.py`,
@@ -563,7 +598,9 @@ that layer.
 - [ ] `FLUSHALL` on a popoto client raises regardless of the bound database
 - [ ] `FLUSHDB` on any non-zero database still succeeds
 - [ ] The refusal covers the direct method, the raw `execute_command` form,
-      the pipeline path, and the async client
+      the sync pipeline path, the async client, and the async pipeline path
+- [ ] `popoto.testing.flush_test_db()` flushes the currently bound client, not
+      an import-time snapshot
 - [ ] The guard survives `set_REDIS_DB_settings()`, `_swap_db()`, and
       `bind_connection()`
 - [ ] `POPOTO_ALLOW_DB0_FLUSH=1` restores the previous behavior, read at call
@@ -617,7 +654,7 @@ that layer.
 - **Assigned To**: db0-flush-guard-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Add `Db0FlushRefusedError(PopotoException)` and a module constant
+- Add `Db0FlushRefusedError(PopotoException, ValueError)` and a module constant
   `ALLOW_DB0_FLUSH_ENV = "POPOTO_ALLOW_DB0_FLUSH"`
 - Add `_flush_refusal_reason(command, db) -> str | None`: returns a message
   for `FLUSHDB` when `db == 0`, for `FLUSHALL` on any `db`, and `None`
@@ -632,9 +669,23 @@ that layer.
   `self.connection_pool.connection_kwargs.get("db", 0) or 0`, and a
   `pipeline()` override that reassigns the returned object's `__class__` to
   `GuardedPipeline`
-- Add `GuardedPipeline(redis.client.Pipeline)` and
-  `GuardedAsyncRedis(aioredis.Redis)` with the same override (`async def` for
-  the latter)
+- Add `GuardedPipeline(redis.client.Pipeline)`,
+  `GuardedAsyncRedis(aioredis.Redis)`, and
+  `GuardedAsyncPipeline(aioredis.client.Pipeline)` with the same override
+  (`async def execute_command` for the two async classes). Give
+  `GuardedAsyncRedis` a `pipeline()` override that reassigns
+  `pipe.__class__ = GuardedAsyncPipeline`, mirroring the sync one; `pipeline()`
+  is NOT a coroutine on either hierarchy, so do not `await` it
+- Give `_flush_refusal_reason` a `suggest: bool = True` parameter; both async
+  overrides pass `suggest=False`. Import `suggest_free_db` lazily inside the
+  function to avoid the `popoto/__init__` import cycle
+- Move the `PopotoException` class definition above the module-level
+  connection block so the guarded classes can be defined before the first
+  client is constructed
+- Fix `popoto/testing.py`'s `flush_test_db()` to call
+  `redis_db.get_REDIS_DB().flushdb()` instead of the import-time
+  `POPOTO_REDIS_DB` binding, so it flushes the database that is actually bound
+  after `set_REDIS_DB_settings` rebinds the global
 - Replace **every** construction site: both module-level branches, both
   branches of `set_REDIS_DB_settings`, `get_async_redis_db`, and both branches
   of `set_async_redis_db_settings`
@@ -655,16 +706,21 @@ that layer.
 - Refusal cases through a real client bound to database 0: `flushdb()`,
   `execute_command("FLUSHDB")`, `execute_command(b"FLUSHDB")`, and a pipeline
   `flushdb()` — each raises before the socket
-- `FLUSHALL` refused on a client bound to database 13
-- `flushdb()` on database 13 succeeds
-- Async: `await GuardedAsyncRedis(...).flushdb()` on database 0 refuses
+- `FLUSHALL` refused on a client bound to database 4
+- `flushdb()` on database 4 succeeds
+- Async: `await GuardedAsyncRedis(...).flushdb()` on database 0 refuses, and
+  an async pipeline off that client refuses too (the fourth-class case)
+- Client-level DB-0 refusal is proven **without a live DB-0 connection**: build
+  the client against a pool whose `connection_kwargs` say `db=0` and
+  monkeypatch the transport so the test fails loudly if the guard ever lets a
+  command reach it
 - Predicate unit tests: opt-in permits both commands; opt-in read at call time
   (set the variable after import via monkeypatch); a pool with no `db` key is
   treated as database 0; no-argument `execute_command` does not raise
   `IndexError`
 - Class-persistence tests: `POPOTO_REDIS_DB` is a `GuardedRedis` after
-  `set_REDIS_DB_settings(db=13)`, after the kwargs / positional-args /
-  explicit-`connection_pool` branches, and after `pytest_plugin._swap_db(13)`
+  `set_REDIS_DB_settings(db=4)`, after the kwargs / positional-args /
+  explicit-`connection_pool` branches, and after `pytest_plugin._swap_db(4)`
 - Message tests: names the command, the database, `POPOTO_ALLOW_DB0_FLUSH`;
   names a free database when `suggest_free_db()` returns one and still raises
   usefully when it returns `None`
@@ -720,15 +776,18 @@ DB 15.
 | Full suite passes | `POPOTO_TEST_DB=4 pytest -q` | exit code 0 |
 | Lint clean | `ruff check src/` | exit code 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
-| FLUSHDB refused on DB 0 | `REDIS_URL=redis://localhost:6379/0 python -c "import popoto; from popoto.redis_db import POPOTO_REDIS_DB, Db0FlushRefusedError; POPOTO_REDIS_DB.flushdb()"` | exit code != 0 |
+| FLUSHDB refused on DB 0 (predicate only — **no verification command may bind database 0**) | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; assert r._flush_refusal_reason('FLUSHDB', 0) is not None"` | exit code 0 |
+| Refusal fires before the socket | `POPOTO_TEST_DB=4 pytest tests/test_db0_flush_guard.py -q -k never_reaches_server` | exit code 0 (client-level DB-0 refusal is proven only against a pool whose `connection_kwargs` say `db=0`, with the transport monkeypatched to fail the test if it is ever touched) |
 | Refusal names the opt-in | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; print(r._flush_refusal_reason('FLUSHDB', 0))"` | output contains POPOTO_ALLOW_DB0_FLUSH |
 | FLUSHALL refused off DB 0 | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto.redis_db import POPOTO_REDIS_DB; POPOTO_REDIS_DB.flushall()"` | exit code != 0 |
 | Non-zero DB still flushable | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto.redis_db import POPOTO_REDIS_DB; POPOTO_REDIS_DB.flushdb()"` | exit code 0 |
-| Refusal reason is `None` off DB 0 | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; print(r._flush_refusal_reason('FLUSHDB', 13))"` | output contains None |
+| Refusal reason is `None` off DB 0 | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; print(r._flush_refusal_reason('FLUSHDB', 4))"` | output contains None |
 | No unguarded sync construction | `grep -c "= redis.Redis(" src/popoto/redis_db.py` | match count == 0 |
 | No unguarded async construction | `grep -c "= aioredis.Redis(" src/popoto/redis_db.py` | match count == 0 |
-| Guard survives reconfiguration | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; r.set_REDIS_DB_settings(db=13); assert isinstance(r.POPOTO_REDIS_DB, r.GuardedRedis)"` | exit code 0 |
+| Guard survives reconfiguration | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; r.set_REDIS_DB_settings(db=4); assert isinstance(r.POPOTO_REDIS_DB, r.GuardedRedis)"` | exit code 0 |
 | Tests never flush DB 0 with the opt-in | `grep -c "POPOTO_ALLOW_DB0_FLUSH.*\(flushdb\|flushall\)" tests/test_db0_flush_guard.py` | match count == 0 |
+| No test binds database 0 for a real flush | `grep -rn "6379/0" tests/` | no output |
+| No verification command binds database 0 | `grep -c "REDIS_URL=redis://localhost:6379/0" docs/plans/adhoc_db0_guard.md` | match count == 0 (prose mentions of the DB-0 URL are fine; an *executed* binding is not) |
 | Scratch template never binds DB 0 | `grep -c "6379/0" scripts/scratch_repro.py` | match count == 0 |
 | Env var documented | `grep -c "POPOTO_ALLOW_DB0_FLUSH" docs/configuration.md` | output > 0 |
 | Safe pattern documented | `grep -c "before .import popoto." docs/testing.md` | output > 0 |
@@ -747,6 +806,13 @@ new errors.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | Risk & Robustness | Async pipelines are unguarded. `redis.asyncio.Redis.pipeline()` hard-codes `return Pipeline(self.connection_pool, ...)` (verified, redis-py 7.1.1), so `GuardedAsyncRedis.pipeline()` returns a stock async Pipeline. `src/popoto/models/query.py:3501` and `:3784` already use `async_redis.pipeline()`. The Success Criterion claiming the refusal covers "the pipeline path and the async client" is unmet by the three-class design. | Task 1 (build-guard) + Task 2 (build-tests): add a fourth class | Add `GuardedAsyncPipeline(aioredis.client.Pipeline)` with an `async def execute_command` override, and give `GuardedAsyncRedis` a `pipeline()` override that reassigns `pipe.__class__ = GuardedAsyncPipeline`. `pipeline()` is a plain (non-async) method on both hierarchies — do NOT `await` it; reassign `__class__` on the returned object, mirroring the sync override. |
+| BLOCKER | History & Consistency | The Verification row "FLUSHDB refused on DB 0" runs a real `POPOTO_REDIS_DB.flushdb()` against `redis://localhost:6379/0`. If the guard is absent, misbuilt, or the wrong package is imported, that row performs the exact live DB-0 wipe this plan exists to prevent — contradicting Risk 4, whose no-flush-DB-0 discipline is scoped only to `tests/test_db0_flush_guard.py`. The Prerequisites check that is supposed to protect it is a substring test (`'src/popoto' in str(path)`) that passes on ANY popoto checkout: run from this worktree it exits 0 while `popoto.__file__` is `/Users/valorengels/src/popoto/src/popoto/__init__.py` (main checkout) and `pip show popoto` reports the editable install at a third tree, `.worktrees/cooccurrence_edge_weight_clamp`. Verified. | Prerequisites table + Verification table | Replace the prerequisite with an exact-path comparison run from the worktree root: `python -c "import popoto, pathlib, sys; sys.exit(0 if pathlib.Path(popoto.__file__).resolve() == pathlib.Path('src/popoto/__init__.py').resolve() else 1)"`. Rewrite the destructive row to assert through the pure predicate — `r._flush_refusal_reason('FLUSHDB', 0) is not None` — and never bind `redis://localhost:6379/0` in any verification command. |
+| CONCERN | Risk & Robustness | The refusal message builder calls `suggest_free_db()`, which issues a synchronous `POPOTO_REDIS_DB.info("keyspace")` round trip on the sync global (`integrations/config.py:287-311`). Invoked from `GuardedAsyncRedis.execute_command` (an `async def`), that blocks the event loop for the duration of the INFO call — up to the 5s socket timeout on an unreachable server. | Task 1 (build-guard) | Gate the lookup behind a parameter: `_flush_refusal_reason(command, db, suggest=True)`, and have the async override pass `suggest=False` so it degrades to the already-specified no-suggestion message. Import `suggest_free_db` lazily INSIDE the function — `popoto.redis_db` is imported by `popoto/__init__`, so a module-level import of `popoto.integrations.config` would be a cycle. |
+| CONCERN | History & Consistency | The Freshness Check calls `flush_test_db()` "a public helper that flushes whatever database is bound". It does not. `testing.py:46` binds `POPOTO_REDIS_DB` at import time, while `set_REDIS_DB_settings` REBINDS the module global to a new client object (unlike `_swap_db`/`bind_connection`, which swap the pool in place — the plan's Data Flow section relies on that distinction). The documented `use_test_db(15)` + `flush_test_db()` conftest pattern in `testing.py`'s own docstring therefore already flushes the import-time snapshot, and the new guard catches it only when that snapshot happens to be on db 0. | Task 1 or Task 4 (docs cascade) — pick one and say which | One-line fix in `testing.py`: have `flush_test_db()` call `redis_db.get_REDIS_DB().flushdb()` (accessor already exported) instead of the import-time `POPOTO_REDIS_DB` binding. If deferred instead, correct the Freshness Check claim and add an explicit `docs/testing.md` warning that `use_test_db()` + `flush_test_db()` do not compose today, independent of the guard. |
+| CONCERN | Scope & Value | The lane database is inconsistent throughout. Prerequisites checks `redis-cli -n 4` while its own Purpose column says "DB 13 is used"; Verification pins `POPOTO_TEST_DB=4` and `.../4`; Spike Results, Test Impact ("13 for this plan's lane"), Risk 4 and Task 2's cases all say 13. The Flow example is self-contradictory: exporting `REDIS_URL=redis://localhost:6379/4` cannot make "flush proceeds on DB 13". | Whole plan — Prerequisites, Solution/Flow, Test Impact, Risks, Tasks, Verification | Not cosmetic: a validator running the Verification table as written uses DB 4 while the tests built in Task 2 assert against DB 13. Pick one number and rewrite every occurrence, including the Flow sentence and `set_REDIS_DB_settings(db=13)` in Task 2. |
+| NIT | History & Consistency | `Db0FlushRefusedError` is specified to subclass `PopotoException` (plain `Exception`), but Prior Art claims it follows the #584 house pattern, where `integrations/config.py:225` defines `Db0RefusedError(ValueError)`. A caller written against the established `except ValueError` idiom will not catch the new refusal. | Task 1 (build-guard) | — |
+| NIT | Scope & Value | The Success Criterion "No test in the suite executes a real flush against database 0" has no Verification row that checks it. The existing grep row matches only a flush and the opt-in string on one line — a stricter, different pattern. | Verification table | — |
 
 ## Open Questions
 
