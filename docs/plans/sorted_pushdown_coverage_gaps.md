@@ -5,6 +5,8 @@ appetite: Small
 owner: sdlc-559
 created: 2026-08-13
 revised: 2026-09-04
+revision_applied: true
+revision_applied_at: 2026-09-04T07:09:44Z
 tracking: https://github.com/tomcounsell/popoto/issues/559
 last_comment_id: 5536628727
 ---
@@ -637,8 +639,12 @@ Expected collected count after the change: **38** (30 + 8).
 /do-docs cascade warned about in issue comment `5536628727`.
 **Mitigation:** the async task is **deleted from this plan**, not rewritten; the
 Freshness Check names the six #602 tests that subsume it; and the Verification
-table carries an explicit anti-criterion asserting the diff adds **zero** `xfail`
-markers.
+**script** carries an explicit anti-criterion asserting the diff adds **zero**
+`xfail` markers. That anti-criterion was inert in the prior draft (critique B1 —
+it lived in a markdown table, so its ERE pipe was escaped into a literal); it is
+now a fenced, executable check, and it has been observed to report `1` against a
+line containing `@pytest.mark.xfail(strict=True)`. An unfired anti-criterion is
+not a mitigation.
 
 ### Risk 2: New model classes leak state into other tests on a shared DB
 **Impact:** phantom failures in unrelated modules — the failure mode CLAUDE.md
@@ -646,8 +652,10 @@ gotcha #4 describes (73–158 phantom failures observed historically).
 **Mitigation:** prefix every new model `PushdownDoc*` so the autouse `clean_docs`
 fixture's existing `keys("*PushdownDoc*")` glob sweeps both the model hashes and
 the `$SortF:<ClassName>:...` sorted-set keys. Verify by running the new tests,
-then the full module, then `redis-cli -n <DB> keys '*Pushdown*'` and expecting
-empty.
+then the full module, then `redis-cli -n 12 keys '*Pushdown*'` and expecting
+empty. Confirmed working during spike-6: the throwaway module defined
+`PushdownDocMetaDesc` / `PushdownDocMetaOther`, and after the run
+`redis-cli -n 9 keys '*PushdownDoc*'` was empty and `dbsize` was `0`.
 
 ### Risk 3: A metric measured in the wrong venv or the wrong DB is reported as truth
 **Impact:** this already happened once during the 2026-08-13 planning pass — 12
@@ -705,7 +713,8 @@ The five are exactly the `assert db == 15` set —
 `::test_canonical_redis_db_on_test_db`.
 `test_version_matches_pyproject` **passes** here (the editable install is fresh).
 Any other failure after this work is a regression. Expected after the change:
-`5 failed, 3422 passed, 26 skipped`.
+`5 failed, 3424 passed, 26 skipped` (3416 + 8 new tests; the count moved from the
+prior draft's 3422 because critique C2 added tasks 3a and 4a).
 
 ## No-Gos (Out of Scope)
 
@@ -736,7 +745,9 @@ module. No MCP surface, no tool wrapper, no entry point.
 
 No feature documentation changes required — this plan adds no feature and changes
 no public API. The behaviors being covered are already documented as part of the
-#517 pushdown work and #602's `docs/async.md` note.
+#517 pushdown work and #602's `docs/async.md` note. The `/do-docs` SDLC stage is
+still expected to run; it should report a **no-op cascade** (critique N4). "No doc
+changes required" and "the docs stage must run" are not in tension.
 
 ### Inline Documentation
 - [ ] Each new test carries a docstring naming the guard it defends and what a
@@ -765,20 +776,30 @@ no public API. The behaviors being covered are already documented as part of the
       keeps the bound on the **async** path — new coverage #602 did not add.
 - [ ] `Meta.order_by` naming a **different** field declines the pushdown on the
       **sync** path: results complete and in `Meta` order, hydration count shows
-      the full range was read.
+      the full range was read — asserted as **lower bounds**, not an equality.
 - [ ] The same on the **async** path.
+- [ ] `Meta.order_by` naming the sorted field **descending** supplies the direction
+      to the **pre-hydration key-list slice** (`query.py:2329`) when a second
+      indexed predicate has declined the Redis-side bound — on **both** paths.
+      This is the only shape that reaches that branch; without it, deleting
+      `or self.model_class._meta.order_by` at 2329 returns wrong rows and every
+      other test stays green (spike-6).
 - [ ] `Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN` is used, not hardcoded — no
       bare `8` or `11` in the new assertions.
 - [ ] **Zero `xfail` / `skip` markers added.** Every new assertion is hard.
 - [ ] No file outside `tests/` is modified.
-- [ ] `tests/test_sorted_range_pushdown.py` collects **36** and passes in full.
-- [ ] Full suite: `5 failed, 3422 passed, 26 skipped` — the five being exactly
+- [ ] `tests/test_sorted_range_pushdown.py` collects **38** and passes in full.
+- [ ] Full suite: `5 failed, 3424 passed, 26 skipped` — the five being exactly
       the documented `assert db == 15` set for a non-15 `POPOTO_TEST_DB`
       (baseline on `7f057f9`: `5 failed, 3416 passed, 26 skipped`; see Race
       Conditions for the full environment statement).
 - [ ] `black --check tests/test_sorted_range_pushdown.py` exits 0.
+- [ ] The fenced Verification script exits 0 with every line `PASS`.
 - [ ] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [ ] Documentation updated (`/do-docs`) — **expected to be a no-op cascade**
+      (critique N4). The Documentation section above establishes that no feature
+      doc changes; the `/do-docs` stage is an SDLC gate that must still run and
+      report "no changes required", not a claim that changes are expected.
 
 ## Team Orchestration
 
@@ -1255,6 +1276,24 @@ inspects a different DB than the suite used.
   longer the `origin/main` tip (three plan-doc commits have landed since). The
   ancestor check still holds; the sentence should say "at or above".
 
+### Revision Disposition (2026-09-04, run 753c237513c44a21843ded67800f63a2)
+
+All 11 findings addressed; none deferred. Verdict cleared for BUILD.
+
+| # | Finding | Disposition |
+|---|---|---|
+| **B1** | Anti-criteria inert (escaped pipes) | **Fixed.** Verification table replaced by a fenced, executable bash script with corrected ERE (`(xfail\|mark\.skip)` unescaped), `[ "$(… \| grep -cE …)" = 0 ]` framing for the "expect zero" checks, and per-check `PASS`/`FAIL` output. Script was **extracted and run** against the current tree: 8 PASS / 4 FAIL, the four being exactly the not-yet-built criteria. The xfail pattern was separately confirmed to report `1` on a line containing `@pytest.mark.xfail(strict=True)` and `0` under the old escaped form. |
+| **C1** | Tasks 3/4 mandate equalities the Rabbit Holes forbid | **Fixed.** Tasks 3 and 4 now specify lower bounds (`>= 2 * 20` / `>= 20`) paired with `> 2 * (limit + MARGIN)`; the Rabbit Hole entry gained an explicit paragraph naming the contradiction and the brittleness reason (`query.py:3049-3055`). |
+| **C2** | `query.py:2329` `Meta`-desc branch unpinned | **Fixed, and verified by measurement.** New **spike-6**: `PushdownDocMetaDesc` gains a `bucket` IndexedField; new tasks **3a** (sync) and **4a** (async). Measured `['m019','m018','m017']` at 22 sync / 11 async hydrations; the guard mutation (deleting `or self.model_class._meta.order_by` at 2329) returns `['m010','m009','m008']` on both paths while every originally-planned test stays green. Critique suggested one test; two were added for sync/async state-route symmetry. Totals moved 36 → **38** and 3422 → **3424**. |
+| **C3** | Task 1 `Parallel: true` on a shared file | **Fixed.** Task 1 set `Parallel: false`; task 2 now depends on `build-count`; an explicit note pins the strict order 0 → 1 → 2 → 3 → 3a → 4 → 4a → 5 → 6. |
+| **C4** | Open Question 1 unresolved vs. hardcoded counts | **Fixed.** Both remaining questions resolved in-plan (keep async coverage; rewrite the issue body); the Open Questions section now states "None". Counts restated against the final eight-test scope. |
+| **C5** | `POPOTO_TEST_DB` prerequisite fails; `<n>` unbound | **Fixed.** DB pinned to **12** literally in the Prerequisites row, every task command, and the Verification script; exporting it is the first action of task 0, with a note that `redis-cli -n` takes its DB independently so both must move together. |
+| **N1** | 110 vs. issue's 80 lines | **Fixed.** Restated as ~140 with a note; reconciliation folded into Open Question 2's issue-body rewrite. |
+| **N2** | Diff expectation ignores the plan doc | **Fixed, with a correction.** The plan doc appears in `git diff --name-only origin/main` only when `origin/main` is *stale* — the revision commits land on main. Task 6 and the script now `git fetch origin` first and expect exactly one path. |
+| **N3** | `--collect-only -q \| tail -1` fragile | **Fixed, but not as suggested.** The proposed `grep -c '::'` returns **0** in this repo: `pyproject.toml:123` sets `addopts = "-v"`, which overrides `-q`'s node-id format with a tree listing. Verified. The script uses the summary line (`grep -oE '[0-9]+ tests? collected'`), confirmed to report `30` pre-change. |
+| **N4** | Documentation vs. Success Criteria tension | **Fixed.** Both sections now state the `/do-docs` stage is expected to be a no-op cascade. |
+| **N5** | Baseline no longer the tip | **Fixed.** Freshness Check restated as "at or above"; `7f057f9` described as the last commit touching `src/` or `tests/`, with all checks written as ancestor tests. |
+
 ### Verified-correct (checked, no finding)
 
 Every file:line claim in the Freshness Check re-verified at `HEAD`:
@@ -1277,22 +1316,32 @@ by different routes.
 
 ## Open Questions
 
+**None. All resolved in the 2026-09-04 revision pass** — the plan is settled and
+buildable as written.
+
 The 2026-08-13 draft carried three questions, all about how to split the async
-criterion between #559 and #571. **All three are answered by events**: #571
+criterion between #559 and #571. **All three were answered by events**: #571
 shipped with its own tests on 2026-09-04, so there is no split to make and no
-`xfail` to decide the strictness of. They are removed rather than answered.
+`xfail` to decide the strictness of.
 
-Two remain, both low-stakes and neither blocking a build:
+Two more were carried into the critique round and are now decided (critique C4 —
+they could not be left open while Success Criteria hardcoded the collected and
+passed counts, since cutting the async tests would have turned two pinned criteria
+into false failures):
 
-1. **Async `Meta` coverage is a scope addition.** #559 as filed asked only for
-   sync `Meta.order_by` coverage, because at filing time the async path had no
-   pushdown at all. Now that #602 routes async through the same
-   `_sorted_pushdown_args` / `_bound_keys_before_hydration` guards, tasks 4's two
-   async `Meta` tests cover a real, unpinned branch for ~20 lines. Included on
-   that reasoning — confirm, or cut them to keep the issue literally as filed.
-2. **Issue-body hygiene.** #559's body still carries the 2026-08-13
-   "Plan-time correction" block describing the async gap as open and the `xfail`
-   as the plan. It is now wrong in both halves. Preference: rewrite the block to
-   point at #602, or leave it as filed with this plan's Freshness Check as the
-   record of the correction? (This plan assumes **rewrite**, and the plan link in
-   the body is being repointed from the unmerged branch to `main` regardless.)
+1. **Async `Meta` coverage — RESOLVED: keep it, and extend it.** #559 as filed
+   asked only for sync `Meta.order_by` coverage, because at filing time the async
+   path had no pushdown at all. #602 then routed async through the *same*
+   `_sorted_pushdown_args` / `_bound_keys_before_hydration` guards and added no
+   `Meta` coverage, so the async `Meta` branches are genuinely unpinned rather
+   than duplicative. Keeping them is what makes the async decline branch guarded
+   at all. The scope grew rather than shrank: spike-6 (critique C2) added the
+   key-list-slice pair, bringing the total to eight tests. The acceptance numbers
+   throughout the plan — **38 collected**, **3424 passed** — are stated against
+   that final scope and are no longer contingent on an open question.
+2. **Issue-body hygiene — RESOLVED: rewrite.** #559's body still carries the
+   2026-08-13 "Plan-time correction" block describing the async gap as open and
+   the `xfail` as the plan; it is wrong in both halves. The block is rewritten to
+   point at #602, the Deliverable's "roughly 80 lines" is reconciled to ~140
+   (critique N1), and the plan link is repointed from the unmerged
+   `test/559-pushdown-coverage` branch to `main`.
