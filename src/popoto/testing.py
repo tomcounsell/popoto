@@ -43,7 +43,7 @@ Manual Helpers (for non-pytest or custom setups):
             flush_test_db()
 """
 
-from .redis_db import set_REDIS_DB_settings, POPOTO_REDIS_DB
+from .redis_db import set_REDIS_DB_settings, get_REDIS_DB
 
 
 def use_test_db(db: int = 15):
@@ -76,4 +76,7 @@ def flush_test_db():
         def teardown_module():
             flush_test_db()
     """
-    POPOTO_REDIS_DB.flushdb()
+    # Resolve the client at call time: ``set_REDIS_DB_settings`` rebinds the
+    # module global, so an import-time snapshot would flush the database that
+    # was bound when this module was first imported, not the one in use now.
+    get_REDIS_DB().flushdb()

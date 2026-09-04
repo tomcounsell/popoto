@@ -30,6 +30,23 @@ Async Support:
             async_redis = await get_async_redis_db()
             await async_redis.hset(key, mapping=data)
 
+Safety:
+    Popoto's own client refuses two destructive commands, by default:
+    ``FLUSHDB`` when the client is bound to database 0, and ``FLUSHALL`` on
+    any binding (it destroys every database including 0). The refusal raises
+    :class:`Db0FlushRefusedError` **before** the command reaches the socket.
+    Set ``POPOTO_ALLOW_DB0_FLUSH=1`` to restore the previous behavior; the
+    variable is read at call time, not at import.
+
+    Binding to database 0 is still permitted and unchanged -- reads and writes
+    are untouched. Only the commands that destroy a whole database are guarded.
+
+    Not covered: ``redis-cli``/``valkey-cli``, a bare ``redis.Redis()`` the
+    caller constructs itself, ``redis.call('FLUSHDB')`` inside an ``EVAL``ed Lua
+    script (the guard sees ``EVAL``; Popoto ships no such script), other
+    destructive commands (``SHUTDOWN``, ``CONFIG SET``, ``SCRIPT FLUSH``, mass
+    ``DEL``), and raw connections checked out of the pool and driven directly.
+
 Design Philosophy:
     Popoto follows a "configure once, use everywhere" pattern for database connections.
     The connection is established at module import time using environment variables,
@@ -124,6 +141,251 @@ try:
 except ValueError:
     _SYNC_MAX_CONNECTIONS = 128
 
+# ---------------------------------------------------------------------------
+# Exceptions and the destructive-flush guard
+#
+# Both of these are defined *here*, above the first client construction,
+# because every client Popoto builds below is a guarded subclass and the
+# subclasses need the exception and the predicate to already exist.
+# ---------------------------------------------------------------------------
+
+
+class PopotoException(Exception):
+    """Base exception for Popoto framework errors. Logs the message on init.
+
+    Centralizes error handling across the ORM by ensuring all Popoto exceptions
+    are automatically logged at ERROR level when raised. This design decision
+    means developers don't need to add separate logging calls when catching
+    and re-raising errors - the logging happens automatically at exception
+    creation time.
+
+    This class is intentionally placed in redis_db.py (rather than a dedicated
+    exceptions module) because it's imported by nearly every Popoto module,
+    and redis_db.py is already a universal dependency. This minimizes import
+    complexity and circular import risks.
+
+    Attributes:
+        message: Human-readable error description, also logged automatically.
+
+    Example:
+        raise PopotoException("Model 'User' has no KeyField defined")
+    """
+
+    def __init__(self, message):
+        self.message = message
+        logger.error(message)
+
+
+#: Environment variable that disables the destructive-flush guard.
+ALLOW_DB0_FLUSH_ENV = "POPOTO_ALLOW_DB0_FLUSH"
+
+#: The only two commands the guard knows about. Deliberately not extended:
+#: both recorded incidents were ``flushdb``, and there is no natural stopping
+#: point once ``SHUTDOWN``/``CONFIG SET``/``SCRIPT FLUSH`` are on the list.
+_DESTRUCTIVE_COMMANDS = frozenset({"FLUSHDB", "FLUSHALL"})
+
+#: Same truthy set the integrations layer accepts, so the two opt-ins behave
+#: identically even though they grant different permissions.
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+class Db0FlushRefusedError(PopotoException, ValueError):
+    """Raised instead of running a flush whose blast radius includes database 0.
+
+    Two bases on purpose. ``PopotoException`` supplies the automatic
+    ERROR-level log, so a caller that swallows the refusal still leaves a
+    trace in the log -- which is exactly the failure mode this guard exists to
+    make visible. ``ValueError`` matches the house pattern established by
+    ``popoto.integrations.config.Db0RefusedError``, so code already written
+    against ``except ValueError`` keeps catching DB-0 refusals.
+    """
+
+
+def _flush_refusal_reason(command: Any, db: Any, suggest: bool = True) -> str | None:
+    """Return a refusal message, or ``None`` if the command is permitted.
+
+    A pure predicate: it issues no Redis command and mutates nothing. That is
+    deliberate -- it is the only way to exercise the *permitted* branch in a
+    test without ever running a real destructive command against database 0.
+
+    Args:
+        command: The command name as passed to ``execute_command``. May be
+            ``bytes``, or something that is not a string at all; it is
+            normalized before comparison.
+        db: The database the connection is bound to. A pool built from a
+            unix-socket or certain URL forms carries no ``db`` key, so callers
+            resolve it with ``.get("db", 0) or 0`` and a ``None`` arriving
+            here means database 0 (see #490).
+        suggest: Whether to look up a free database to name in the message.
+            The lookup is a *synchronous* ``INFO keyspace`` round trip, so the
+            async overrides pass ``suggest=False`` rather than block the event
+            loop for up to the socket timeout.
+
+    Returns:
+        The refusal message, or ``None`` when the command may proceed.
+    """
+    if os.environ.get(ALLOW_DB0_FLUSH_ENV, "").strip().lower() in _TRUTHY:
+        return None
+
+    if isinstance(command, bytes):
+        name = command.decode("utf-8", "replace")
+    else:
+        name = str(command)
+    name = name.strip().upper()
+
+    if name not in _DESTRUCTIVE_COMMANDS:
+        return None
+
+    try:
+        bound_db = int(db or 0)
+    except (TypeError, ValueError):
+        bound_db = 0
+
+    if name == "FLUSHDB":
+        if bound_db != 0:
+            return None
+        blast = "database 0"
+    else:
+        # FLUSHALL is refused on every binding: it destroys every database
+        # including 0, whatever this client happens to be pointed at.
+        blast = "every database on this server, including database 0"
+
+    lines = [
+        f"Popoto refused to run {name}: it would wipe {blast}.",
+        f"This client is bound to database {bound_db}.",
+        "Database 0 is the default binding when REDIS_URL is unset, so this is "
+        "usually an ad-hoc script that meant to target an isolated database.",
+    ]
+
+    free_db = None
+    if suggest:
+        try:
+            from .integrations.config import suggest_free_db
+
+            free_db = suggest_free_db()
+        except Exception:  # pragma: no cover - best-effort diagnostic only
+            free_db = None
+
+    if free_db is not None:
+        lines.append(
+            f"Export REDIS_URL=redis://localhost:6379/{free_db} BEFORE "
+            "'import popoto' to work on a free database instead."
+        )
+    else:
+        lines.append(
+            "Export REDIS_URL with a non-zero database number BEFORE "
+            "'import popoto' to work on an isolated database instead."
+        )
+
+    lines.append(
+        f"To allow this anyway, set {ALLOW_DB0_FLUSH_ENV}=1 in the environment."
+    )
+    return " ".join(lines)
+
+
+def _bound_db(client: Any) -> int:
+    """Resolve the database a client is bound to, **at call time**.
+
+    Read at call time and never captured at construction, so the guard judges
+    the connection that will actually be wiped. That is what makes it correct
+    across ``pytest_plugin._swap_db()`` and
+    ``integrations.config.bind_connection()``, both of which rebind the pool
+    attribute on the existing client object.
+    """
+    try:
+        kwargs = client.connection_pool.connection_kwargs
+    except AttributeError:
+        return 0
+    return kwargs.get("db", 0) or 0
+
+
+def _check_flush(client: Any, args: tuple, suggest: bool = True) -> None:
+    """Raise :class:`Db0FlushRefusedError` if ``args`` is a refused flush."""
+    if not args:
+        # ``execute_command()`` with no arguments is redis-py's problem, not
+        # the guard's. Never raise IndexError from here.
+        return
+    reason = _flush_refusal_reason(args[0], _bound_db(client), suggest=suggest)
+    if reason is not None:
+        raise Db0FlushRefusedError(reason)
+
+
+class GuardedPipeline(redis.client.Pipeline):
+    """A sync pipeline that refuses destructive flushes. See :class:`GuardedRedis`."""
+
+    def execute_command(self, *args, **kwargs):
+        _check_flush(self, args)
+        return super().execute_command(*args, **kwargs)
+
+
+class GuardedRedis(redis.Redis):
+    """Popoto's sync client. Refuses ``FLUSHDB`` on database 0 and ``FLUSHALL``
+    anywhere.
+
+    The hook is ``execute_command`` rather than the ``flushdb``/``flushall``
+    methods, because that single site also catches the raw
+    ``execute_command("FLUSHDB")`` form that the method overrides would miss.
+
+    ``Redis.pipeline()`` hard-codes the stock ``Pipeline`` class rather than
+    ``type(self)``, so a pipeline off a guarded client would otherwise be
+    unguarded. Reassigning ``__class__`` on the returned object guards both
+    the buffered and the post-``watch()`` immediate paths without depending on
+    the ``Pipeline`` constructor signature, which moves between redis-py
+    versions.
+
+    Not covered, stated plainly: ``redis-cli``, a bare ``redis.Redis()`` the
+    caller constructs itself, ``redis.call('FLUSHDB')`` inside an ``EVAL``ed
+    Lua script (the guard sees ``EVAL``; Popoto ships no such script), other
+    destructive commands such as ``SHUTDOWN``/``CONFIG SET``, and raw
+    connections checked out of the pool and driven directly.
+    """
+
+    def execute_command(self, *args, **options):
+        _check_flush(self, args)
+        return super().execute_command(*args, **options)
+
+    def pipeline(self, transaction=True, shard_hint=None):
+        pipe = super().pipeline(transaction=transaction, shard_hint=shard_hint)
+        pipe.__class__ = GuardedPipeline
+        return pipe
+
+
+class GuardedAsyncPipeline(aioredis.client.Pipeline):
+    """The async pipeline counterpart of :class:`GuardedPipeline`.
+
+    ``execute_command`` is a plain ``def`` here, matching
+    ``redis.asyncio.client.Pipeline``: on the buffered path it returns the
+    pipeline itself for chaining, and only the post-``watch()`` immediate path
+    returns an awaitable. Declaring it ``async def`` would break buffered
+    chaining -- ``pipe.set(...)`` would hand back a coroutine.
+
+    ``suggest=False``: the free-database lookup is a synchronous round trip
+    and must never run on the event loop.
+    """
+
+    def execute_command(self, *args, **kwargs):
+        _check_flush(self, args, suggest=False)
+        return super().execute_command(*args, **kwargs)
+
+
+class GuardedAsyncRedis(aioredis.Redis):
+    """Popoto's async client, with the same two rules as :class:`GuardedRedis`.
+
+    ``redis.asyncio.Redis.pipeline()`` hard-codes the stock async ``Pipeline``
+    exactly as the sync client does, and it is a plain (non-``async``) method
+    on both hierarchies -- so it is overridden, not awaited.
+    """
+
+    async def execute_command(self, *args, **options):
+        _check_flush(self, args, suggest=False)
+        return await super().execute_command(*args, **options)
+
+    def pipeline(self, transaction=True, shard_hint=None):
+        pipe = super().pipeline(transaction=transaction, shard_hint=shard_hint)
+        pipe.__class__ = GuardedAsyncPipeline
+        return pipe
+
+
 try:
     BEGINNING_OF_TIME = int(os.environ.get("BEGINNING_OF_TIME", 0))
 except ValueError:
@@ -142,7 +404,7 @@ try:
             socket_connect_timeout=5,
             max_connections=_SYNC_MAX_CONNECTIONS,
         )
-        POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
+        POPOTO_REDIS_DB = GuardedRedis(connection_pool=pool)
         logger.debug("Redis connection established.")
     else:
         REDIS_HOST, REDIS_PORT = "127.0.0.1:6379".split(":")
@@ -154,7 +416,7 @@ try:
             socket_connect_timeout=5,
             max_connections=_SYNC_MAX_CONNECTIONS,
         )
-        POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
+        POPOTO_REDIS_DB = GuardedRedis(connection_pool=pool)
         # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
 
 except Exception as e:
@@ -204,12 +466,12 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None
     # supplying its own ``connection_pool`` has already chosen its pooling
     # policy. Both cases fall through to the direct constructor.
     if args or "connection_pool" in kwargs:
-        POPOTO_REDIS_DB = redis.Redis(*args, **kwargs)
+        POPOTO_REDIS_DB = GuardedRedis(*args, **kwargs)
     else:
         pool = redis.BlockingConnectionPool(
             max_connections=_SYNC_MAX_CONNECTIONS, **kwargs
         )
-        POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
+        POPOTO_REDIS_DB = GuardedRedis(connection_pool=pool)
     # global REDIS_GRAPH
     # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
     logger.debug("Redis connection reset.")
@@ -361,7 +623,7 @@ async def get_async_redis_db():
             max_connections=_ASYNC_MAX_CONNECTIONS,
             **async_kwargs,
         )
-        _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
+        _POPOTO_ASYNC_REDIS_DB = GuardedAsyncRedis(connection_pool=pool)
         logger.debug(
             "Async Redis connection established (db=%s).",
             async_kwargs.get("db", 0),
@@ -401,12 +663,12 @@ async def set_async_redis_db_settings(
         # See set_REDIS_DB_settings for why positional args and an explicit
         # connection_pool bypass the managed pool.
         if args or "connection_pool" in kwargs:
-            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(*args, **kwargs)
+            _POPOTO_ASYNC_REDIS_DB = GuardedAsyncRedis(*args, **kwargs)
         else:
             pool = aioredis.BlockingConnectionPool(
                 max_connections=_ASYNC_MAX_CONNECTIONS, **kwargs
             )
-            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
+            _POPOTO_ASYNC_REDIS_DB = GuardedAsyncRedis(connection_pool=pool)
     logger.debug("Async Redis connection reset.")
 
 
@@ -536,32 +798,6 @@ def print_redis_info() -> None:
         logger.info(
             f"Redis currently consumes {round(100 * used_memory / maxmemory, 2)}% out of {maxmemory_human}"
         )
-
-
-class PopotoException(Exception):
-    """Base exception for Popoto framework errors. Logs the message on init.
-
-    Centralizes error handling across the ORM by ensuring all Popoto exceptions
-    are automatically logged at ERROR level when raised. This design decision
-    means developers don't need to add separate logging calls when catching
-    and re-raising errors - the logging happens automatically at exception
-    creation time.
-
-    This class is intentionally placed in redis_db.py (rather than a dedicated
-    exceptions module) because it's imported by nearly every Popoto module,
-    and redis_db.py is already a universal dependency. This minimizes import
-    complexity and circular import risks.
-
-    Attributes:
-        message: Human-readable error description, also logged automatically.
-
-    Example:
-        raise PopotoException("Model 'User' has no KeyField defined")
-    """
-
-    def __init__(self, message):
-        self.message = message
-        logger.error(message)
 
 
 # ---------------------------------------------------------------------------
