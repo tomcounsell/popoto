@@ -1124,10 +1124,14 @@ class ProvenanceJournal:
             # named by the caller and validated by the pre-flight, not resolved
             # through an identity pointer), and ``assert_valid_from=False``
             # because valid-time is already set at construction. Converting this
-            # to ``save_and_supersede`` is M4's design work (#563), not a
-            # simplification to make here: the pre-flight above carries
-            # firewall, cross-agent-ownership, and kind/target checks the
-            # protocol cannot express.
+            # to ``save_and_supersede`` was offered to M4 and **declined**
+            # (see docs/plans/reference_resolution_m4.md): M4 appends
+            # targetless ``assert`` entries and never reaches this annotation
+            # branch, so the conversion would add risk to a shipped write path
+            # for no M4 benefit. It is tracked separately as #606. The
+            # pre-flight above also carries firewall, cross-agent-ownership and
+            # kind/target checks the protocol cannot express, so any conversion
+            # has to reproduce those first.
             ValidityField.execute_supersede(
                 model,
                 VALIDITY_FIELD_NAME,
