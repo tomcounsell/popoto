@@ -2943,11 +2943,12 @@ table: your own run_id means inherit and continue; only a genuinely foreign
 <h2 id="verification-commands-the-pipeline-can-rely-on">Verification commands the pipeline can rely on<a class="headerlink" href="#verification-commands-the-pipeline-can-rely-on" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; requires Redis/Valkey on localhost:6379</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>mypy<span class="w"> </span>src/<span class="w">                 </span><span class="c1"># type check</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format (line length 88; isort 79)</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># tests + stress + docs (--all, --fast, or named gates)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w">           </span><span class="c1"># lint (E4,E7,E9,F); gated by lint.yml</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>black<span class="w"> </span>--check<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w"> </span><span class="c1"># format (line length 88; isort 79); gated by lint.yml</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># lint + tests + stress + docs (--all, --fast, or named gates)</span>
 </code></pre></div>
-<p>There is no <code>ruff</code> in this repo, and no app to launch — popoto is a library
+<p>There is no app to launch — popoto is a library
 plus an mkdocs site.</p>
 <h2 id="concurrency-db-15-is-shared-across-every-worktree">Concurrency: DB 15 is shared across every worktree<a class="headerlink" href="#concurrency-db-15-is-shared-across-every-worktree" title="Permanent link">&para;</a></h2>
 <p>Every popoto checkout's suite isolates onto <strong>Redis DB 15</strong> via the

@@ -3049,6 +3049,15 @@ indexes stay on plain types. Point <code>REDIS_URL</code> at a
 </code></pre></div>
 <p><code>REDIS_URL</code> is optional in local development. See
 <a href="configuration/">Configuration</a> for the full connection options.</p>
+<p>Since August 2026 that claim also rests on observed CI. The test suite —
+everything except the <code>slow</code>-marked tests, chiefly the stress suite — runs
+against a real Valkey server on every pull request and every push to <code>main</code>, as
+a separately named <code>pytest (Valkey)</code> check in
+<a href="https://github.com/tomcounsell/popoto/blob/main/.github/workflows/tests.yml"><code>tests.yml</code></a>,
+pinned to <code>valkey/valkey:8-alpine</code> alongside the Redis job's <code>redis:7-alpine</code>.
+The job asserts via <code>INFO server</code> that the container really is Valkey before
+pytest starts, and there has been no Valkey-only failure across 60 completed
+runs.</p>
 <h2 id="error-reporting-is-opt-in">Error reporting is opt-in<a class="headerlink" href="#error-reporting-is-opt-in" title="Permanent link">&para;</a></h2>
 <p>Library-specific exceptions can be reported to the maintainers through an
 isolated Sentry client that never touches your own Sentry setup. It is off

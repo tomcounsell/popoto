@@ -126,6 +126,16 @@ REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 `REDIS_URL` is optional in local development. See
 [Configuration](configuration.md) for the full connection options.
 
+Since August 2026 that claim also rests on observed CI. The test suite —
+everything except the `slow`-marked tests, chiefly the stress suite — runs
+against a real Valkey server on every pull request and every push to `main`, as
+a separately named `pytest (Valkey)` check in
+[`tests.yml`](https://github.com/tomcounsell/popoto/blob/main/.github/workflows/tests.yml),
+pinned to `valkey/valkey:8-alpine` alongside the Redis job's `redis:7-alpine`.
+The job asserts via `INFO server` that the container really is Valkey before
+pytest starts, and there has been no Valkey-only failure across 60 completed
+runs.
+
 ## Error reporting is opt-in
 
 Library-specific exceptions can be reported to the maintainers through an

@@ -2831,17 +2831,20 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; requires Redis/Valkey on localhost:6379</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mypy<span class="w"> </span>src/<span class="w">                 </span><span class="c1"># type check</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format — this repo has NO ruff (line length 88; isort 79)</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># tests + stress + docs; --all adds build, lock, guard</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w">           </span><span class="c1"># lint — gated by lint.yml</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format (line length 88; isort 79)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># tests + stress + docs; --all adds build, lock, guard</span>
 </code></pre></div>
 <p>Primary source dir is <code>src/</code>; tests live in <code>tests/</code>. <code>scripts/ci-local.sh</code>
-mirrors the GitHub workflows locally (<code>tests</code> ← test-valkey.yml, <code>stress</code> ←
-stress-tests.yml, <code>docs</code> ← deploy-docs.yml, <code>build</code> ← release.yml, <code>lock</code> ←
-lock-check.yml, <code>guard</code> ← guard-main-push.yml) and is the preferred full run.
-Valkey is deliberately not run locally: redis-py talks to Redis and Valkey
-identically and the project forbids Redis modules, so local Redis covers the
-same ground; GitHub runs the real Valkey job on PR.</p>
+mirrors the GitHub workflows locally (<code>lint</code> ← lint.yml, <code>tests</code> ← tests.yml,
+<code>docs</code> ← deploy-docs.yml, <code>build</code> ← release.yml, <code>lock</code> ← lock-check.yml,
+<code>guard</code> ← guard-main-push.yml) and is the preferred full run. <code>stress</code> mirrors
+no workflow at all: tests.yml runs <code>-m "not slow"</code>, so the stress suite is a
+local-only gate. Valkey is deliberately not run locally: redis-py talks to
+Redis and Valkey identically and the project forbids Redis modules, so local
+Redis covers the same ground; tests.yml runs the real Valkey job on every PR
+and every push to <code>main</code>.</p>
 <h2 id="test-isolation-db-15-and-the-six-expected-failures">Test isolation: DB 15, and the six expected failures<a class="headerlink" href="#test-isolation-db-15-and-the-six-expected-failures" title="Permanent link">&para;</a></h2>
 <p>The suite isolates onto <strong>Redis DB 15</strong> through the <code>popoto.pytest_plugin</code>
 entry point (both <code>import popoto</code> and <code>import src.popoto</code> collapse onto one
