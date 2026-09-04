@@ -539,19 +539,237 @@ audit can tell "the window did not contain the antecedent" from "the model misse
 
 ## Failure Path Test Strategy
 
+### Exception Handling Coverage
+
+M4 introduces four broad `except` sites, and each gets a test asserting **observable** behaviour
+(a returned degraded `Resolution`, a logged warning, or a written record) rather than "it didn't
+crash":
+
+- [ ] `resolve_references` — client raises → returns `Resolution(degraded=True,
+      status=indeterminate, statement == verbatim)`; assert `caplog` carries a
+      `POPOTO.extraction` warning naming the candidate id.
+- [ ] `resolve_references` — `anthropic` import unavailable (monkeypatch
+      `resolution.anthropic_module = None`, mirroring `test_auditable_extraction.py:367-369`) →
+      same degraded result, and **no network call attempted**.
+- [ ] `_parse_reply` — malformed JSON, wrong `candidate_id`, unknown enum member, a `surface`
+      that is not a substring at its offsets, an `evidence_gap` with 1 or 5 candidates, an
+      `assumed` with an empty or multi-line assumption, a `statement` that exceeds the growth
+      bound → each asserted individually, each producing either a dropped reference (with the
+      others surviving) or a degraded envelope.
+- [ ] `ResolutionLog.write` raises → warning logged, `assemble` still returns the `entry_id`, the
+      journal entry still exists **and still carries its `res:` tag**. This is the invariant that
+      makes the sidecar non-load-bearing for the flag guarantee.
+- [ ] `SubconsciousMemory._resolve_for` — a resolution provider that raises is an infrastructure
+      loss, not a rejection: it maps to the degraded `Resolution` and the candidate is still
+      captured. Mirrors `_verdict_for`'s contract (`subconscious_memory.py:622-653`).
+
+No `except Exception: pass` blocks are introduced; every handler logs and returns a typed value.
+
+### Empty/Invalid Input Handling
+
+- [ ] `resolve_references` with an empty/whitespace candidate span → returns the degraded
+      `Resolution` without calling the client (the candidate cannot reach here anyway — M3 rejects
+      it as `empty_turn` — so this is a defence-in-depth test).
+- [ ] `TurnContext` with an empty window, a `None` speaker, and an unknown timezone string → the
+      unknown zone falls back to UTC with a logged warning; nothing raises.
+- [ ] `TurnContext.captured_at` of `None`/`NaN`/`inf` → coerced to the clock, matching
+      `_coerce_instant`'s rejection semantics rather than propagating a bad float into a ZSET
+      score.
+- [ ] A model reply with an **empty** `references` array → valid: `status = resolved`,
+      `statement == verbatim`, no `valid_from`. "Nothing needed resolving" is a legitimate,
+      non-degraded outcome and must not be conflated with `indeterminate`.
+- [ ] `valid_from` candidates: zero onsets, exactly one, and two-or-more — the three-branch rule
+      is tested exhaustively.
+
+### Error State Rendering
+
+M4 has no user-visible UI. Its "rendering" surface is the stored record, so the equivalent tests
+assert that an error state is **legible in the data**: a degraded resolution stores
+`degraded=True` on the `ResolutionRecord` and tags the entry `res:indeterminate`, so a downstream
+reader can always distinguish "the model said it could not resolve this" from "the resolution
+stage never ran".
+
 ## Test Impact
+
+New file `tests/test_reference_resolution.py` carries the bulk. Existing tests affected:
+
+- [ ] `tests/test_auditable_extraction.py` (1445 lines) — **UPDATE**. Assembly-path tests assert
+      `statement == verbatim` today. With the default (no resolution provider configured, no
+      `anthropic` client in tests) the stage fails open and `statement` stays byte-identical, so
+      most tests are expected to pass **unchanged** — that is itself the compatibility assertion.
+      The tests that construct `AuditableExtractionConfig` and the `assemble(...)` call-shape
+      tests need the new keyword threaded. Any test asserting the exact `subjects` list must be
+      updated for the added `res:` tag.
+- [ ] `tests/test_auditable_extraction.py::` the `_FakeJournal` double (`:136-186`) — **UPDATE**:
+      must accept and record `captured_at` and `at` so the new arguments can be asserted.
+- [ ] `tests/test_subconscious_memory.py`, `tests/test_subconscious_memory_integration.py` —
+      **UPDATE**: add coverage for the new `context=` argument; existing calls omit it and must
+      keep working.
+- [ ] `tests/test_extraction.py` — **UPDATE**: `ExtractedFact`'s new fields default to `None` on
+      the legacy provider path; add one assertion pinning that, so the additive-only promise is
+      mechanically enforced.
+- [ ] `tests/benchmarks/test_defaults_sync.py` — **UPDATE**: add the ten `M4_*` constants.
+- [ ] `tests/test_provenance_journal.py`, `tests/test_validity_field.py` — **no change expected**.
+      M4 adds no M1/V0 behaviour; if either suite moves, that is a regression signal, not a
+      migration.
+
+No expected-failure markers exist for this work (`grep -rn 'pytest.mark.xfail\|pytest.xfail('
+tests/` finds nothing related to resolution, coreference, or `valid_from`), so there are no
+xfail conversions.
 
 ## Rabbit Holes
 
+- **Cross-session entity linking at write time.** Building an entity graph so "she" resolves to a
+  person record across conversations. Both the issue's recon and the design study reject it: it is
+  reconstructable later from `verbatim` + context, and at write time it turns a bounded per-turn
+  call into an unbounded retrieval problem. The window is the conversation, full stop.
+- **A calibrated numeric confidence per resolution.** Already dropped in recon. Sub-35B models
+  emit uncalibrated floats; four enum statuses are what downstream actually branches on. Do not
+  quietly reintroduce it as a "score" field.
+- **Writing a date parser.** No `dateparser`/`dateutil`, no regex date grammar. The model emits
+  ISO-8601; Python does `fromisoformat` + `ZoneInfo`. Anything the model cannot express as
+  ISO-8601 is `indeterminate` — a two-line branch instead of a natural-language-date library.
+- **Batching all accepted candidates of a turn into one call.** Tempting for cost, but it
+  re-couples candidates that M3 deliberately isolated ("one flaky candidate must not cost the
+  audit trail of the others") and makes per-candidate `candidate_id` verification much weaker.
+  Revisit only with measured cost data.
+- **Rewriting `EXTRACTION_PROMPT`.** `claude.py`'s "makes sense on its own" sentence lives on the
+  *legacy* provider path, which the auditable pipeline does not use. Leave it alone; deleting or
+  editing it changes a path M4 does not own.
+- **Making `TurnContext` a stateful conversation buffer inside `SubconsciousMemory`.** Owning
+  turn history means owning eviction, ordering, and multi-process coherence. The caller passes the
+  window; the recipe does not accumulate one.
+- **Adding fields to `JournalEntry`.** The shape guard (`provenance_journal.py:1227-1264`) and the
+  no-subclassing rule exist for good reasons, and M1 is append-only with no delete path. The
+  sidecar plus one subject tag gets the same result with no migration.
+
 ## Risks
+
+### Risk 1: An `assumed` fact is surfaced without its assumption
+**Impact:** the highest-severity failure mode in the design study. A guess that reads as a fact
+is worse than no fact — it is confidently wrong, and the flag being "available in a sidecar"
+means nothing if every retrieval path forgets to join it.
+**Mitigation:** the status rides on the entry itself as the indexed `res:{status}` subject tag
+(spike-2 proved it survives the firewall and is queryable), so the flag is transported by the same
+object as the content. Test: retrieve an `assumed` entry through the ordinary journal read path
+and assert the tag is present without any sidecar lookup. The assumption *text* is in the sidecar,
+but the *fact that there is one* is inseparable from the record.
+
+### Risk 2: The model rewrites the statement into something the speaker did not say
+**Impact:** silent fabrication in the field the rest of the system reads.
+**Mitigation:** three layers. (a) `verbatim` is never touched, so the original always exists;
+(b) each reference's `surface` must be a literal substring at its declared offsets, mechanically
+checked; (c) `statement` length is bounded relative to `verbatim`. A violation degrades to
+verbatim rather than storing the rewrite. Tested with a deliberately over-expanding fake reply.
+
+### Risk 3: `valid_from` is emitted for a deadline, corrupting membership
+**Impact:** *"file it by Friday"* would open its interval on Friday, so the fact would be
+**invisible to as-of retrieval until Friday** — a silently missing memory, the hardest kind to
+notice.
+**Mitigation:** the onset rule (Technical Approach §4): emission requires exactly one
+`relative_time` reference with `role == onset`. Deadlines and mentions never emit. Three tests
+(zero/one/many onsets) plus one explicitly asserting that a deadline-only candidate stores
+`valid_from == captured_at`.
+
+### Risk 4: Per-candidate LLM cost on a write path
+**Impact:** one extra call per *accepted* candidate roughly doubles capture-time LLM spend for the
+auditable pipeline.
+**Mitigation:** resolution runs only after `accept`, so it is bounded by the acceptance rate, not
+the candidate count; the model is the cheap tier (same as the verdict call); `max_tokens` is
+pinned low; and `M4_RESOLUTION_ENABLED=false` is a deploy-level kill switch that restores M3's
+exact behaviour. Batching is explicitly deferred (Rabbit Holes) pending measured data.
+
+### Risk 5: Timezone handling repeats #519/#521
+**Impact:** an onset resolved in the wrong zone shifts `valid_from` by hours to a day — enough to
+put an entry on the wrong side of an as-of query boundary.
+**Mitigation:** the context header carries an explicit IANA zone; the model emits ISO-8601 only;
+Python attaches `ZoneInfo(context.timezone)` to naive values and converts to an epoch float
+exactly once. An unknown zone falls back to UTC **with a warning and `degraded=True`**, never
+silently. Tests cover a non-UTC zone, a DST boundary date, and an unknown zone string.
+
+### Risk 6: DB 15 contention makes the new suite look broken
+**Impact:** phantom failures (73–158 historically) mis-read as regressions in a plan that touches
+Redis-backed models.
+**Mitigation:** pin `POPOTO_TEST_DB` per run (Prerequisites), and state the DB alongside every
+count. Remember the six tests that fail by construction on a non-15 DB (`do-sdlc.md`); that exact
+set is expected noise.
 
 ## Race Conditions
 
+### Race 1: Two runners resolve and assemble the same candidate concurrently
+**Location:** `src/popoto/extraction/decision_log.py:609-695` (claim/probe), plus the new
+resolution call in `subconscious_memory.py:682-713`.
+**Trigger:** two processes replaying the same `(agent_id, turn_id)`.
+**Data prerequisite:** the `pending` row and the `cand:` subject tag must exist before any
+reconciliation probe reads them — already guaranteed by M3's ordering.
+**State prerequisite:** exactly one journal entry per candidate.
+**Mitigation:** unchanged from M3 — the claim (`M3_ASSEMBLY_CLAIM_TTL_MS`) serialises assembly and
+the loser no-ops. M4 deliberately runs the resolution call **outside** the claim (it is a slow
+network call and holding a 30 s claim across it would expire the claim mid-flight); the wasted
+duplicate LLM call is the accepted cost, and the loser's `Resolution` is discarded without a
+write. **No new lock is introduced.**
+
+### Race 2: Journal append succeeds, sidecar write fails
+**Location:** the new `ResolutionLog.write` call in `_append_and_transition`
+(`decision_log.py:752-822`).
+**Trigger:** a Redis hiccup between the two writes; they are deliberately not one transaction
+(the journal append may itself already be a pipelined multi-command write).
+**Data prerequisite:** none — the sidecar is evidence, not the flag.
+**State prerequisite:** an `assumed`/`evidence_gap` entry must never be indistinguishable from a
+`resolved` one.
+**Mitigation:** ordering is chosen so the **entry carries its `res:` tag before the sidecar
+exists**, making the failure mode "flagged but the evidence is missing" rather than "unflagged
+guess". A missing sidecar for a tagged entry is detectable by a join and is the sweep target for
+M9 (#568). Tested by forcing the sidecar write to raise.
+
+### Race 3: Clock skew between `captured_at` and `valid_from`
+**Location:** `provenance_journal.py:902, 929, 944`.
+**Trigger:** a caller supplies a `TurnContext.captured_at` from a different host than the one
+running the write.
+**Data prerequisite:** none.
+**State prerequisite:** `valid_from` for a *non-onset* capture should equal the capture instant.
+**Mitigation:** both values come from the **same** `TurnContext` object in a single call, so they
+cannot disagree with each other; only their relation to the server clock can drift, which V0's
+membership semantics already tolerate (`valid_from <= t`). No mitigation code; documented so a
+reviewer does not mistake it for a defect.
+
 ## No-Gos (Out of Scope)
+
+- [SEPARATE-SLUG #566] **Asking any clarifying question.** `evidence_gap` records are written as
+  data and never surfaced as a prompt, a question, or a side effect from this module. M7 owns the
+  rationed question channel and its value-of-information gate.
+- [SEPARATE-SLUG #564] **Cross-entry reconciliation, equivalence classes, and contradiction
+  detection.** M4 resolves references *within* one capture; deciding that two captures say the
+  same or opposite things is M5's job.
+- [SEPARATE-SLUG #606] **Converting `provenance_journal.py:1127`'s `execute_supersede` to
+  `save_and_supersede`.** Explicitly declined here (Technical Approach §5) and filed as its own
+  issue; this plan only re-points the stale in-code comment at it.
+- [SEPARATE-SLUG #489] **Extending the extraction-eval harness to score resolution quality.**
+  Measuring resolution accuracy against a labelled corpus belongs with the existing eval axis, not
+  in the module that produces it.
+- [SEPARATE-SLUG #568] **A sweep for tagged entries with a missing sidecar** (Race 2's detection
+  path) and for stale `pending` rows. M9's seeded audit harness owns write-path auditing.
+
+Everything else the issue asks for is in scope for this plan.
 
 ## Update System
 
+No update-system changes required. Popoto is a library plus an MkDocs site: there is no deployment
+topology, no config file to propagate, and no migration. M4 adds a new Redis keyspace
+(`ResolutionRecord:*`) that is created lazily on first write; existing installations that never
+enable the auditable path never create it, and existing journal entries are untouched and remain
+readable. The one operator-facing knob is the `M4_RESOLUTION_ENABLED` environment kill switch,
+which is documented in `docs/guides/tuning-magic-numbers.md`.
+
 ## Agent Integration
+
+No agent/MCP integration required. This is an internal write-path stage: the capability is reached
+through `SubconsciousMemory.extract_memories(...)`, which harness integrations
+(`src/popoto/integrations/`) already call. No new MCP tool, no new entry point, and nothing in
+`mcp_servers/`/`.mcp.json` (which this repo does not have) needs to change. The new public names
+are exported through `popoto.extraction`'s existing PEP-562 lazy `__getattr__`
+(`src/popoto/extraction/__init__.py:243-268`) so that importing `popoto.extraction` still does not
+probe for `anthropic`.
 
 ## Documentation
 
