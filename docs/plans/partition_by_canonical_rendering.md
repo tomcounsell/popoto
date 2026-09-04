@@ -287,30 +287,62 @@ key-bytes change for a **non**-datetime type — stop and report (scope guard).
 - No change to KeyField identity or `canonical_key.py` itself.
 - No new partition_by types or validation (option 2 in #570 — rejection at definition time —
   is NOT taken; canonicalization supersedes it).
+- **No `DB_key.clean()` / escaping parity for ConfidenceField or EventStream keys.** Those keys
+  stay raw concatenations; the change aligns their *rendering*, not their escaping.
+- No `force=True` anywhere. No change to the `POPOTO_DATETIME_KEY_LEGACY` switch's semantics.
 
 ## Risks / Rabbit Holes
 
 - **Missed site** = split partitions. The original inventory grep in this plan already proved
-  this risk is real — it silently omitted two of the seven sites (see Freshness Check). Use the
-  replacement grep, and add a test exercising every path that renders a partition: write
-  (`on_save`), partition-change cleanup (`on_save`/`on_delete` old-partition branches),
-  `filter_query`, and the three `query.py` decay/index paths.
-- **`base.py:3667` drift**: it is correct *because* it appends raw. A future "consistency"
-  cleanup that wraps it in `str()` would reintroduce the divergence. Add a comment there
-  pointing at `DB_key.__str__` rather than editing the call.
+  this risk is real — it silently omitted two of the seven `str(old_val)` sites, and round-1
+  critique found it also hid `event_stream.py:119` (see Freshness Check). Use the widened grep
+  over `src/popoto/fields/ src/popoto/models/query.py`, gate on it returning 0 (task 5), and
+  test every path that renders a partition.
+- **`Defaults.DATETIME_KEY_LEGACY` / `POPOTO_DATETIME_KEY_LEGACY` — the #476 mixed-deploy hazard
+  (round-1 CONCERN, previously unmitigated).** `canonical_key_str` is gated on that switch
+  (`canonical_key.py:92-94`); only the read-only #537/#538 audit passes `force=True`. If BUILD
+  writes `canonical_key_str(v, force=True)` at *any* of the 11 sites, the write path diverges
+  from `DB_key.__str__` and from the purge path for a fleet mid-rollout with the switch set —
+  precisely the #476 forward-incompatibility shape.
+  *Mitigation:* (a) call `canonical_key_str(val)` with **no `force` kwarg** at all 11 sites;
+  (b) task 5's gate grep is complemented by `grep -rn "canonical_key_str(.*force" src/popoto/fields/ src/popoto/models/query.py`
+  returning **0**; (c) the datetime regression tests explicitly clear
+  `POPOTO_DATETIME_KEY_LEGACY` rather than inheriting ambient env, so a set switch cannot make
+  the suite pass vacuously.
+- **~~`base.py:3667` drift~~ — RETRACTED (round-1 CONCERN).** The round-1 risk "it is correct
+  *because* it appends raw; a cleanup wrapping it in `str()` would reintroduce the divergence"
+  was derived from the wrong mechanism and is false: `values` holds `str` already, so `str()`
+  there is a no-op. Nothing to guard. If a clarifying comment is added at that site, it must
+  point at `DB_key.from_redis_key` + #548 KeyField canonicalization.
+- **Non-datetime byte drift = out of appetite.** `canonical_key_str` is byte-identical to
+  `str(value)` for every non-datetime type on current main (re-confirmed by round-1 critique).
+  If BUILD finds any type where it is not, **STOP and report** — that converts this into a key
+  migration.
 - **1.8.0/1.9.x forward-compat**: partition key bytes change only for datetime partitions,
   which the docs never advertised and no report uses. State this in the CHANGELOG anyway
   (lesson of #476).
+- **DB 0 hazard**: ad-hoc repro scripts default to DB 0, a LIVE agent store. Use
+  `POPOTO_TEST_DB=9` and pin `REDIS_URL=redis://localhost:6379/9` before `import popoto` (#577).
 
 ## Success Criteria
 
-- All 7 SortedField sites + 3 ConfidenceField sites converted; the replacement grep returns
-  zero bare-`str()`/bare-`f":{val}"` partition renders.
-- A datetime-partition test proves the write path and `base.py:3667`'s purge path now agree
-  (the divergence the Freshness Check found).
-- Byte-identity test: str/int/float partition segments unchanged versus `str(value)`.
-- New tests green; full non-slow suite green; ruff/black clean; mypy delta 0 (same env,
-  measured base-vs-branch per CLAUDE.md's redis-py caveat).
+- All **11** sites converted (7 SortedField + 3 ConfidenceField + 1 EventStream); the **widened**
+  grep over `src/popoto/fields/ src/popoto/models/query.py` returns **0** rows (it returns 11
+  pre-change), and `grep -rn "canonical_key_str(.*force" src/popoto/fields/ src/popoto/models/query.py`
+  returns 0.
+- A datetime-partition test with the partition field declared as a **`KeyField(type=datetime)`**
+  proves `get_partitioned_sortedset_db_key` and the key `_purge_orphan_keys` derives for the same
+  row are equal. (A non-key partition field makes this criterion vacuous — `_purge_orphan_keys`
+  skips it — which is why the KeyField requirement is part of the criterion.)
+- Byte-identity test: str/int/float/bool/date/time partition segments unchanged versus
+  `str(value)`.
+- ConfidenceField `None` asymmetry preserved: skip in `get_data_hash_key` /
+  `get_old_data_hash_key`, `QueryException` in `get_data_hash_key_from_values`. EventStream `None`
+  partition still yields the unpartitioned key.
+- New tests green under `POPOTO_TEST_DB=9`; full non-slow suite green; ruff/black clean; mypy
+  delta 0 (same env, base-vs-branch, redis-py version stated per CLAUDE.md's caveat); editable
+  install verified to resolve to the build worktree.
+- PR body contains both `Closes #575` and `Closes #570`.
 
 ## Documentation
 
@@ -324,15 +356,15 @@ Depth: FULL (3 lenses). All findings verified against working-tree source, not i
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| BLOCKER | scope-value + history-consistency | No `## Step by Step Tasks` section and no `## Test Impact`; `## Solution` is five prose bullets and no task carries a validation command, so `/do-build` has nothing to consume. | *(pending revision)* | Split into numbered tasks — (1) `sorted_field_mixin.py` sites 1-4, (2) `query.py` sites 5-7, (3) `confidence_field.py` 315/350/374, (4) tests, (5) docs/CHANGELOG — each with a validation command; add `## Test Impact`. |
-| CONCERN | risk-robustness | The `base.py:3667` mechanism in the Freshness Check is wrong: `_purge_orphan_keys` builds `values: dict[str, str]` from `DB_key.from_redis_key(key)`, i.e. already-unescaped strings, so the "appends raw datetime" cause and the derived "wrapping in `str()` would reintroduce the divergence" risk are both false. | *(pending revision)* | Fix the prose; attribute the divergence to #548 KeyField canonicalization of the stored key, not to `DB_key.__str__` at that site. |
-| CONCERN | risk-robustness | Success Criterion 2 is vacuous unless the partition field is a KeyField — `_purge_orphan_keys` only populates `values` for `meta.key_field_names` and `continue`s otherwise (`base.py:3663-3665`), so a non-key datetime partition never reaches the purge branch. | *(pending revision)* | Regression model must declare the partition field as `KeyField(type=datetime)`; assert `get_partitioned_sortedset_db_key` equals the purge-derived key for the same row. |
-| CONCERN | risk-robustness + history-consistency | The `POPOTO_DATETIME_KEY_LEGACY` / `Defaults.DATETIME_KEY_LEGACY` gate on `canonical_key_str` is unmentioned; a `force=True` call at any of the ten sites recreates the #476 mixed-deploy hazard. | *(pending revision)* | Call `canonical_key_str(val)` with no `force` kwarg at all ten sites; the datetime regression test must clear `POPOTO_DATETIME_KEY_LEGACY` rather than inherit ambient env. |
-| CONCERN | scope-value | Sibling audit stops one site short: `src/popoto/fields/event_stream.py:119` (`base_key = f"{base_key}:{partition_value}"`) is the same bug class, and the Success Criteria grep covers only `sorted_field_mixin.py` + `query.py` so it returns zero while that site remains — the "partial conversion is worse than none" outcome. | *(pending revision)* | Convert it inside the existing `if partition_value is not None` guard, or record an explicit out-of-scope decision plus follow-up issue; widen the criteria grep to `src/popoto/fields/`. |
-| CONCERN | risk-robustness | ConfidenceField conversion aligns those keys only with themselves — raw `key += f":{val}"` concatenation with no `DB_key.clean()`, so escaping parity is not achieved; and `get_data_hash_key`/`get_old_data_hash_key` skip `None` while `get_data_hash_key_from_values` raises. | *(pending revision)* | Put `canonical_key_str(val)` *inside* the existing `if val is not None:` guards to preserve the asymmetry; state that `DB_key` escaping parity is explicitly not attempted. |
-| NIT | history-consistency | `base.py:3667` is off by one — 3667 is `for name in partition:`, the append is 3668; cited four times while the plan itself warns line numbers drift. | *(pending revision)* | Use symbol anchors. |
-| NIT | history-consistency | `cyclic_decay_field.py:423,435` are mischaracterized: they pass raw values into `get_sortedset_db_key`, which `DB_key.__str__` already canonicalizes — a second live divergence today, not sites that merely "inherit the fix". | *(pending revision)* | Description only; no edit needed at those lines (they converge post-fix). |
-| NIT | history-consistency | Frontmatter `tracking:` names only #575 while the title and Solution item 5 claim both #575 and #570. | *(pending revision)* | Add #570 to `tracking:`. |
+| BLOCKER | scope-value + history-consistency | No `## Step by Step Tasks` section and no `## Test Impact`; `## Solution` is five prose bullets and no task carries a validation command, so `/do-build` has nothing to consume. | `## Step by Step Tasks` (9 numbered tasks, each with a validation command) + `## Test Impact` added — revision 2026-09-04. | Split into numbered tasks — (1) `sorted_field_mixin.py` sites 1-4, (2) `query.py` sites 5-7, (3) `confidence_field.py` 315/350/374, (4) tests, (5) docs/CHANGELOG — each with a validation command; add `## Test Impact`. |
+| CONCERN | risk-robustness | The `base.py:3667` mechanism in the Freshness Check is wrong: `_purge_orphan_keys` builds `values: dict[str, str]` from `DB_key.from_redis_key(key)`, i.e. already-unescaped strings, so the "appends raw datetime" cause and the derived "wrapping in `str()` would reintroduce the divergence" risk are both false. | Freshness Check §*Premise correction* rewritten: cause is #548 KeyField canonicalization of the **stored** key, not `DB_key.__str__`. The derived Risks item is explicitly **retracted**. | Fix the prose; attribute the divergence to #548 KeyField canonicalization of the stored key, not to `DB_key.__str__` at that site. |
+| CONCERN | risk-robustness | Success Criterion 2 is vacuous unless the partition field is a KeyField — `_purge_orphan_keys` only populates `values` for `meta.key_field_names` and `continue`s otherwise (`base.py:3663-3665`), so a non-key datetime partition never reaches the purge branch. | Success Criteria now **requires** the partition field be `KeyField(type=datetime)`; `## Test Impact` row `test_write_and_purge_paths_agree` states the same. | Regression model must declare the partition field as `KeyField(type=datetime)`; assert `get_partitioned_sortedset_db_key` equals the purge-derived key for the same row. |
+| CONCERN | risk-robustness + history-consistency | The `POPOTO_DATETIME_KEY_LEGACY` / `Defaults.DATETIME_KEY_LEGACY` gate on `canonical_key_str` is unmentioned; a `force=True` call at any of the ten sites recreates the #476 mixed-deploy hazard. | New Risks item *`Defaults.DATETIME_KEY_LEGACY`*: no `force` kwarg at any of the 11 sites, a `force`-grep gate, and tests must clear `POPOTO_DATETIME_KEY_LEGACY`. | Call `canonical_key_str(val)` with no `force` kwarg at all ten sites; the datetime regression test must clear `POPOTO_DATETIME_KEY_LEGACY` rather than inherit ambient env. |
+| CONCERN | scope-value | Sibling audit stops one site short: `src/popoto/fields/event_stream.py:119` (`base_key = f"{base_key}:{partition_value}"`) is the same bug class, and the Success Criteria grep covers only `sorted_field_mixin.py` + `query.py` so it returns zero while that site remains — the "partial conversion is worse than none" outcome. | `event_stream.py:119` brought **in scope** (task 4, 11 sites total); Success-Criteria grep widened to `src/popoto/fields/ src/popoto/models/query.py`. | Convert it inside the existing `if partition_value is not None` guard, or record an explicit out-of-scope decision plus follow-up issue; widen the criteria grep to `src/popoto/fields/`. |
+| CONCERN | risk-robustness | ConfidenceField conversion aligns those keys only with themselves — raw `key += f":{val}"` concatenation with no `DB_key.clean()`, so escaping parity is not achieved; and `get_data_hash_key`/`get_old_data_hash_key` skip `None` while `get_data_hash_key_from_values` raises. | Freshness Check §*ConfidenceField* now states escaping parity is **not** attempted, and requires `canonical_key_str` **inside** the existing `None` guards. | Put `canonical_key_str(val)` *inside* the existing `if val is not None:` guards to preserve the asymmetry; state that `DB_key` escaping parity is explicitly not attempted. |
+| NIT | history-consistency | `base.py:3667` is off by one — 3667 is `for name in partition:`, the append is 3668; cited four times while the plan itself warns line numbers drift. | All line citations replaced by symbol anchors (`Model._purge_orphan_keys`, the `sorted_field_names` loop). | Use symbol anchors. |
+| NIT | history-consistency | `cyclic_decay_field.py:423,435` are mischaracterized: they pass raw values into `get_sortedset_db_key`, which `DB_key.__str__` already canonicalizes — a second live divergence today, not sites that merely "inherit the fix". | Corrected in Freshness Check §*Sibling sites*: :423/:435 are a **second live divergence** today, not passive inheritors. No edit needed. | Description only; no edit needed at those lines (they converge post-fix). |
+| NIT | history-consistency | Frontmatter `tracking:` names only #575 while the title and Solution item 5 claim both #575 and #570. | `tracking:` now lists both #575 and #570. | Add #570 to `tracking:`. |
 
 ### Detail
 
@@ -417,3 +449,14 @@ grep returns exactly those seven rows; `confidence_field.py:315/350/374`,
 `default_memory.py:194` all match as cited; no partition render sites exist outside the files
 the plan enumerates plus `event_stream.py:119`; the no-op property of `canonical_key_str` for
 non-datetime values holds on current main.
+
+### Revision applied — 2026-09-04T06:57:30Z
+
+All 9 round-1 findings (1 BLOCKER, 5 CONCERNs, 3 NITs) addressed; see the *Addressed By* column.
+Re-verified on `9c4908d` while revising: the widened grep returns exactly 11 rows
+(7 + `confidence_field.py:315,350,374` + `event_stream.py:119`); `_purge_orphan_keys` does build
+`values: dict[str, str]` from `DB_key.from_redis_key` and does gate on `meta.key_field_names`;
+`canonical_key_str` remains gated on `Defaults.DATETIME_KEY_LEGACY` with `force=True` reserved for
+the audit; no bug-related `xfail` markers exist in `tests/`. Scope guard reaffirmed: byte-identity
+of `canonical_key_str` for every non-datetime type is a **build-stop condition** if it fails.
+Appetite unchanged: **Small** (11 one-line edits + one test file + docs).
