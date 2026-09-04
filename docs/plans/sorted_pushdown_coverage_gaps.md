@@ -587,6 +587,25 @@ in this plan. The six tests that fail by construction on a non-15 DB — five
 `tests/test_version.py::test_version_matches_pyproject` on a stale editable
 install — are **expected noise, not regressions** (see `docs/sdlc/do-sdlc.md`).
 
+**Measured baseline**, stated with its environment per CLAUDE.md's rule:
+main checkout `/Users/valorengels/src/popoto` at `7f057f9`, `.venv/bin/python`
+(editable install resolving to this checkout's `src/`), `POPOTO_TEST_DB=12`,
+`pytest -q -p no:randomly`, 318s:
+
+```
+5 failed, 3416 passed, 26 skipped
+```
+
+The five are exactly the `assert db == 15` set —
+`test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db`,
+`::test_swap_happens_before_test_modules_are_imported`,
+`TestAsyncIntegration::test_async_connection_on_test_db`,
+`TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db`,
+`::test_canonical_redis_db_on_test_db`.
+`test_version_matches_pyproject` **passes** here (the editable install is fresh).
+Any other failure after this work is a regression. Expected after the change:
+`5 failed, 3422 passed, 26 skipped`.
+
 ## No-Gos (Out of Scope)
 
 - **Any async pushdown *implementation* work.** Shipped in #571 / PR #602.
@@ -652,9 +671,10 @@ no public API. The behaviors being covered are already documented as part of the
 - [ ] **Zero `xfail` / `skip` markers added.** Every new assertion is hard.
 - [ ] No file outside `tests/` is modified.
 - [ ] `tests/test_sorted_range_pushdown.py` collects **36** and passes in full.
-- [ ] Full suite passes apart from the documented expected failures for a
-      non-15 `POPOTO_TEST_DB` (see Race Conditions), against the baseline
-      recorded by the build's own run.
+- [ ] Full suite: `5 failed, 3422 passed, 26 skipped` — the five being exactly
+      the documented `assert db == 15` set for a non-15 `POPOTO_TEST_DB`
+      (baseline on `7f057f9`: `5 failed, 3416 passed, 26 skipped`; see Race
+      Conditions for the full environment statement).
 - [ ] `black --check tests/test_sorted_range_pushdown.py` exits 0.
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
