@@ -786,9 +786,9 @@ def test_meta_order_by_descending_supplies_direction_and_bound():
         )
 
     assert [d.doc_id for d in results] == ["m019", "m018", "m017"]
-    assert counter.count < 2 * META_POPULATION, (
+    assert counter.count < META_POPULATION, (
         "Meta.order_by must reach the pushdown gate; a full read means the "
-        f"Meta fallback was dropped ({counter.count} of {2 * META_POPULATION})"
+        f"Meta fallback was dropped ({counter.count} of {META_POPULATION})"
     )
 
 
@@ -812,10 +812,10 @@ def test_meta_order_by_ascending_supplies_direction_and_bound():
         )
 
     assert [d.doc_id for d in results] == ["m000", "m001", "m002"]
-    assert counter.count <= 2 * (
-        3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
+    assert (
+        counter.count <= 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
     ), f"ascending Meta order must bound the read, got {counter.count}"
-    assert counter.count < 2 * META_POPULATION
+    assert counter.count < META_POPULATION
 
 
 def test_meta_order_by_other_field_disables_pushdown():
@@ -834,11 +834,11 @@ def test_meta_order_by_other_field_disables_pushdown():
         )
 
     assert [d.doc_id for d in results] == ["m000", "m001", "m002"]
-    assert counter.count >= 2 * META_POPULATION, (
+    assert counter.count >= META_POPULATION, (
         "ordering by another field must read the full range before slicing, "
         f"got {counter.count}"
     )
-    assert counter.count > 2 * (3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN)
+    assert counter.count > 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
 
 
 def test_meta_order_by_supplies_direction_to_the_key_list_slice():
@@ -863,7 +863,7 @@ def test_meta_order_by_supplies_direction_to_the_key_list_slice():
 
     assert [d.doc_id for d in results] == ["m019", "m018", "m017"]
     assert (
-        counter.count < 2 * META_POPULATION
+        counter.count < META_POPULATION
     ), f"the key-list slice must still bound hydration, got {counter.count}"
 
 

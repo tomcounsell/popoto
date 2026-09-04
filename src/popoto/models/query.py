@@ -208,6 +208,10 @@ class QueryBuilder:
         # evaluate membership at the SAME instant. Without it an as-of query
         # could only ever narrow the now-valid set, never reconstruct history.
         self._validity_as_of: Optional[float] = None
+        # One-shot hydration handed from __iter__ to __len__ (#632). See
+        # __iter__ for why this exists and _invalidate_iter_result for the
+        # cases that drop it.
+        self._iter_result: Optional[list] = None
 
     def filter(self, *args, **kwargs) -> "QueryBuilder":
         """Add filter criteria and return a new QueryBuilder.
@@ -264,6 +268,7 @@ class QueryBuilder:
             results = Model.query.filter(status="active").limit(10).all()
         """
         self._limit_value = n
+        self._invalidate_iter_result()
         return self
 
     def order_by(self, field: str) -> "QueryBuilder":
@@ -279,6 +284,7 @@ class QueryBuilder:
             results = Model.query.filter(status="active").order_by("-created_at").all()
         """
         self._order_by_value = field
+        self._invalidate_iter_result()
         return self
 
     def values(self, *fields) -> "QueryBuilder":
@@ -294,6 +300,7 @@ class QueryBuilder:
             results = Model.query.filter(status="active").values("name", "email").all()
         """
         self._values_tuple = fields
+        self._invalidate_iter_result()
         return self
 
     def computed_sort(self, fn, reverse: bool = False) -> "QueryBuilder":
@@ -335,6 +342,7 @@ class QueryBuilder:
             raise TypeError("computed_sort() requires a callable, got None")
         self._computed_sort_fn = fn
         self._computed_sort_reverse = reverse
+        self._invalidate_iter_result()
         return self
 
     def no_track(self) -> "QueryBuilder":
@@ -350,6 +358,7 @@ class QueryBuilder:
             results = Model.query.filter(status="active").no_track().all()
         """
         self._no_track = True
+        self._invalidate_iter_result()
         return self
 
     def top_by_decay(
@@ -1892,13 +1901,47 @@ class QueryBuilder:
         results = self.all()
         return results[-1] if results else None
 
+    def _invalidate_iter_result(self) -> None:
+        """Drop the one-shot iteration result.
+
+        Called by every method that changes what the query would return, so a
+        mutated builder can never hand a stale hydration to `__len__`.
+        """
+        self._iter_result = None
+
     # List-like behavior for backward compatibility
     def __iter__(self):
-        """Iterate over query results (executes query)."""
-        return iter(self.all())
+        """Iterate over query results (executes query).
+
+        The result is also parked in `self._iter_result` for `__len__` to
+        consume once. `list(builder)`, `tuple(builder)`, `sorted(builder)` and
+        `[*builder]` all call `__iter__` and then ask the *iterable* for a
+        length hint, which lands on `__len__`. Before #632 that second call ran
+        the whole pipeline again, so a single materialization issued two
+        HGETALLs per row -- a flat 2x on every read path in every consumer.
+
+        The hand-off is deliberately one-directional and single-use. `__iter__`
+        always executes, so re-iterating a builder still re-queries and still
+        sees fresh data; only the length hint that immediately follows one
+        iteration is served from it, and consuming it clears it.
+        """
+        results = self.all()
+        self._iter_result = results
+        return iter(results)
 
     def __len__(self):
-        """Return the number of results (executes query)."""
+        """Return the number of results (executes query).
+
+        Consumes the one-shot result parked by an immediately preceding
+        `__iter__` when there is one -- this is the length-hint half of
+        `list(builder)`, and answering it from the hydration that call just
+        performed is what makes the pair cost one pass instead of two. With no
+        parked result (a bare `len(builder)`) the query executes normally.
+        """
+        parked = self._iter_result
+        if parked is not None:
+            self._iter_result = None
+            return len(parked)
         return len(self.all())
 
     def __getitem__(self, index):
