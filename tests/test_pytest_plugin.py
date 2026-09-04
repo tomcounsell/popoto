@@ -10,7 +10,10 @@ These tests verify that the auto-registering pytest plugin correctly:
 
 import asyncio
 import importlib
+import os
+import subprocess
 import sys
+import textwrap
 import types
 
 import pytest
@@ -392,19 +395,29 @@ class TestDecoyModuleNotStomped:
     """
 
     def test_decoy_module_not_stomped(self):
-        """A stub 'acme.popoto' in sys.modules is not touched by pytest_configure.
+        """A stub 'acme.popoto' in sys.modules is not touched by the alias-collapse.
 
-        Inject a decoy before re-running the configure hook, then verify it is
-        unchanged.  (pytest_configure already ran at session start; we call it
-        again to verify idempotency and non-interference.)
+        Inject a decoy before re-running the alias-collapse step, then verify
+        it is unchanged.  (The collapse already ran at session start via
+        ``pytest_configure``; we call it again to verify idempotency and
+        non-interference.)
 
-        We load pytest_configure from src.popoto.pytest_plugin so the test
+        Calls ``_collapse_src_popoto()`` directly rather than the full
+        ``pytest_configure(config)`` hook: the latter also invokes
+        ``_configure_test_db(config)`` (#595's isolation-warning tripwire),
+        which needs a real pytest ``Config`` — a ``MagicMock()`` makes
+        ``config.getini(...)`` return a ``MagicMock`` (not a string), which
+        ``_resolve_test_db`` treats as "not opted in" and re-arms the
+        tripwire on this suite's already-isolated (opted-in) DB-15 pool,
+        producing a spurious warning later in the session. This test is about
+        alias-collapse idempotency, not DB-config resolution, so it exercises
+        only the function it means to test.
+
+        We load the module from src.popoto.pytest_plugin so the test
         exercises the new implementation even when the editable install still
         points to the pre-fix main-repo file (a worktree-only situation).
         """
-        from unittest.mock import MagicMock
-
-        # Load the new pytest_configure from the actual module under test.
+        # Load the module under test.
         # src.popoto.pytest_plugin resolves to the worktree file in development;
         # in CI (post-merge) it resolves to the installed file (same code).
         try:
@@ -412,9 +425,9 @@ class TestDecoyModuleNotStomped:
         except ImportError:
             _pp = importlib.import_module("popoto.pytest_plugin")
 
-        if not hasattr(_pp, "pytest_configure"):
+        if not hasattr(_pp, "_collapse_src_popoto"):
             pytest.skip(
-                "pytest_configure not found in loaded pytest_plugin — "
+                "_collapse_src_popoto not found in loaded pytest_plugin — "
                 "running against pre-fix installed version; skip in worktree."
             )
 
@@ -425,8 +438,8 @@ class TestDecoyModuleNotStomped:
 
         sys.modules["acme.popoto"] = decoy
         try:
-            # Re-run the hook — it must be idempotent and must not touch acme.popoto.
-            _pp.pytest_configure(MagicMock())
+            # Re-run the collapse — it must be idempotent and not touch acme.popoto.
+            _pp._collapse_src_popoto()
 
             surviving = sys.modules.get("acme.popoto")
             assert surviving is decoy, (
@@ -672,3 +685,296 @@ class TestSiblingClientKwargs:
             assert client.ping() is True
         finally:
             client.close()
+
+
+class TestIsolationWarning:
+    """Tests for #595: warn once when the plugin is inert but popoto is used.
+
+    All configure-time behavior under test (the one-shot tripwire armed in
+    ``_configure_test_db`` and disarmed in ``pytest_unconfigure``) cannot be
+    re-entered in-process — these are subprocess-based, like
+    ``TestIsolatedDbSubprocess`` above.
+
+    Every inert-path probe strips ``POPOTO_TEST_DB`` from the subprocess
+    environment and points ``REDIS_URL`` at a non-zero DB (14, distinct from
+    this session's 15). A developer with ``POPOTO_TEST_DB`` exported would
+    otherwise make the plugin non-inert and the "no warning" probes would
+    pass vacuously — the silent half is the dangerous one — so every inert
+    probe also self-asserts its own inertness as its first statements.
+    """
+
+    @staticmethod
+    def _repo_root():
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    @classmethod
+    def _base_env(cls, repo_root):
+        """PYTHONPATH pinned to this worktree, like TestIsolatedDbSubprocess."""
+        env = dict(os.environ)
+        src_dir = os.path.join(repo_root, "src")
+        existing_pp = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = os.pathsep.join(
+            [repo_root, src_dir] + ([existing_pp] if existing_pp else [])
+        )
+        return env
+
+    @classmethod
+    def _inert_env(cls, repo_root):
+        """Env for a subprocess that must be genuinely inert (no opt-in)."""
+        env = cls._base_env(repo_root)
+        env.pop("POPOTO_TEST_DB", None)
+        env["REDIS_URL"] = "redis://localhost:6379/14"
+        return env
+
+    @staticmethod
+    def _run(argv, cwd, env):
+        return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True)
+
+    def test_5a_inert_and_used_warns_once_naming_db(self, tmp_path):
+        """Inert + popoto used → exactly one PopotoIsolationWarning, naming the DB."""
+        repo_root = self._repo_root()
+        probe = tmp_path / "test_5a_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe(pytestconfig):
+                    import os
+
+                    assert pytestconfig.getini("popoto_test_db") == ""
+                    assert "POPOTO_TEST_DB" not in os.environ
+
+                    import popoto
+
+                    class Probe5a(popoto.Model):
+                        name = popoto.KeyField()
+
+                    Probe5a(name="x").save()
+                """))
+        result = self._run(
+            [sys.executable, "-m", "pytest", str(probe), "-q"],
+            repo_root,
+            self._inert_env(repo_root),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        out = result.stdout
+        assert out.count("PopotoIsolationWarning") == 1, out
+        assert "DB 14" in out, out
+        assert "popoto_test_db" in out
+        assert "POPOTO_TEST_DB" in out
+
+    def test_5b_ini_opt_in_produces_no_warning(self, tmp_path):
+        """Ini opt-in (-o popoto_test_db=15) → no warning; session is on DB 15.
+
+        A tmp_path probe has no ini file of its own (pytest resolves
+        ``inipath = None`` for it even with ``cwd=repo_root``, so the repo's
+        own pyproject.toml never reaches the subprocess) — the opt-in must be
+        driven from argv instead.
+        """
+        repo_root = self._repo_root()
+        probe = tmp_path / "test_5b_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe():
+                    import popoto
+                    from popoto import redis_db
+
+                    class Probe5b(popoto.Model):
+                        name = popoto.KeyField()
+
+                    Probe5b(name="x").save()
+                    db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
+                        "db"
+                    )
+                    assert db == 15, f"expected DB 15, got {db}"
+                """))
+        result = self._run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(probe),
+                "-q",
+                "-o",
+                "popoto_test_db=15",
+            ],
+            repo_root,
+            self._inert_env(repo_root),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "PopotoIsolationWarning" not in result.stdout
+
+    def test_5c_env_opt_in_produces_no_warning(self, tmp_path):
+        """Env opt-in (POPOTO_TEST_DB=15) → no warning; session is on DB 15."""
+        repo_root = self._repo_root()
+        probe = tmp_path / "test_5c_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe():
+                    import popoto
+                    from popoto import redis_db
+
+                    class Probe5c(popoto.Model):
+                        name = popoto.KeyField()
+
+                    Probe5c(name="x").save()
+                    db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
+                        "db"
+                    )
+                    assert db == 15, f"expected DB 15, got {db}"
+                """))
+        env = self._base_env(repo_root)
+        env["POPOTO_TEST_DB"] = "15"
+        result = self._run(
+            [sys.executable, "-m", "pytest", str(probe), "-q"], repo_root, env
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "PopotoIsolationWarning" not in result.stdout
+
+    def test_5d_inert_and_unused_produces_no_warning(self, tmp_path):
+        """Inert + popoto importable but unused (no Redis op) → no warning."""
+        repo_root = self._repo_root()
+        probe = tmp_path / "test_5d_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe(pytestconfig):
+                    import os
+
+                    assert pytestconfig.getini("popoto_test_db") == ""
+                    assert "POPOTO_TEST_DB" not in os.environ
+
+                    import popoto
+
+                    class Probe5d(popoto.Model):
+                        name = popoto.KeyField()
+
+                    assert Probe5d is not None
+                """))
+        result = self._run(
+            [sys.executable, "-m", "pytest", str(probe), "-q"],
+            repo_root,
+            self._inert_env(repo_root),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "PopotoIsolationWarning" not in result.stdout
+
+    def test_5e_warning_error_filter_does_not_break_the_redis_op(self, tmp_path):
+        """Under -W error::UserWarning the popoto op still succeeds.
+
+        The wrapper's ``warnings.warn`` is exception-guarded and runs after
+        an unguarded ``logger.warning`` mirror, so a downstream suite's
+        ``filterwarnings = error`` cannot turn the advisory into a Redis
+        failure. The mirror line is invisible on a passing run without live
+        log flags — pytest's logging plugin only prints the captured-log
+        section on failure — so this is run with ``-o log_cli=true
+        --log-cli-level=WARNING`` and asserted against stdout+stderr rather
+        than ``caplog`` (the trip happens in a different process).
+        """
+        repo_root = self._repo_root()
+        probe = tmp_path / "test_5e_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe(pytestconfig):
+                    import os
+
+                    assert pytestconfig.getini("popoto_test_db") == ""
+                    assert "POPOTO_TEST_DB" not in os.environ
+
+                    import popoto
+
+                    class Probe5e(popoto.Model):
+                        name = popoto.KeyField()
+
+                    Probe5e(name="x").save()
+                    assert Probe5e.query.get(name="x") is not None
+                """))
+        result = self._run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(probe),
+                "-q",
+                "-W",
+                "error::UserWarning",
+                "-o",
+                "log_cli=true",
+                "--log-cli-level=WARNING",
+            ],
+            repo_root,
+            self._inert_env(repo_root),
+        )
+        combined = result.stdout + result.stderr
+        assert result.returncode == 0, combined
+        assert "popoto is writing to Redis DB" in combined, combined
+
+    def test_5f_disarm_leaves_nothing_behind(self, tmp_path):
+        """Inert + unused → after pytest_unconfigure, the pool carries no
+        instance-level ``get_connection`` attribute (disarm left nothing
+        behind). Checked via an ``atexit`` hook, which fires after
+        ``pytest_unconfigure`` but before process exit.
+        """
+        repo_root = self._repo_root()
+        probe = tmp_path / "test_5f_probe.py"
+        probe.write_text(textwrap.dedent("""
+                import atexit
+
+
+                def _check_disarmed():
+                    from popoto import redis_db
+
+                    pool = redis_db.POPOTO_REDIS_DB.connection_pool
+                    print(
+                        "TRIPWIRE_DISARMED="
+                        + str("get_connection" not in pool.__dict__)
+                    )
+
+
+                atexit.register(_check_disarmed)
+
+
+                def test_probe(pytestconfig):
+                    import os
+
+                    assert pytestconfig.getini("popoto_test_db") == ""
+                    assert "POPOTO_TEST_DB" not in os.environ
+
+                    import popoto
+
+                    class Probe5f(popoto.Model):
+                        name = popoto.KeyField()
+
+                    assert Probe5f is not None
+                """))
+        result = self._run(
+            [sys.executable, "-m", "pytest", str(probe), "-q"],
+            repo_root,
+            self._inert_env(repo_root),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "TRIPWIRE_DISARMED=True" in result.stdout, result.stdout
+
+    def test_5g_arming_is_non_fatal(self, tmp_path):
+        """A conftest that rebinds POPOTO_REDIS_DB to something without
+        ``.connection_pool`` must not abort the session — arming is wrapped
+        in ``try/except Exception`` (round-3 blocker regression test).
+        """
+        repo_root = self._repo_root()
+        (tmp_path / "conftest.py").write_text(textwrap.dedent("""
+                from popoto import redis_db
+
+
+                class _NoPoolClient:
+                    @property
+                    def connection_pool(self):
+                        raise RuntimeError("no connection_pool here (5g probe)")
+
+
+                def pytest_configure(config):
+                    redis_db.POPOTO_REDIS_DB = _NoPoolClient()
+                """))
+        probe = tmp_path / "test_5g_probe.py"
+        probe.write_text(textwrap.dedent("""
+                def test_probe():
+                    assert True
+                """))
+        result = self._run(
+            [sys.executable, "-m", "pytest", str(probe), "-q"],
+            repo_root,
+            self._inert_env(repo_root),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "1 passed" in result.stdout, result.stdout

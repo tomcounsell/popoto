@@ -1,8 +1,10 @@
-"""Pytest plugin for automatic Popoto test DB isolation.
+"""Pytest plugin for opt-in Popoto test DB isolation.
 
-When popoto is installed and pytest runs, this plugin automatically:
+This plugin ships as a ``pytest11`` entry point, so it loads in every project
+that depends on popoto — but it is **inert** (does nothing) unless you opt in.
+When you do, it:
 
-1. Switches the Redis connection to a dedicated test database (default: DB 15)
+1. Switches the Redis connection to a dedicated test database
 2. Flushes the test database before each test for a clean slate
 3. Resets the async Redis connection per test to avoid event loop conflicts
 
@@ -16,11 +18,15 @@ Configuration:
         [tool.pytest.ini_options]
         popoto_test_db = 14
 
-    3. Default: 15
+    Neither set: the plugin does nothing — no swap, no flush. A session that
+    uses popoto models without opting in gets exactly one
+    ``PopotoIsolationWarning`` on the first Redis-touching operation, naming
+    the DB it is writing to and both opt-in mechanisms. A session where
+    popoto is merely importable but never touches Redis stays silent.
 
 Disabling:
 
-    To disable the plugin entirely::
+    To disable the plugin entirely (including the isolation warning)::
 
         pytest -p no:popoto
 
@@ -29,11 +35,26 @@ Auth Preservation:
     The plugin preserves any host, port, password, and username from the
     current Redis connection when switching databases, so REDIS_URL with
     authentication continues to work.
+
+Known limits:
+
+    - Async-only suites are not covered: ``get_async_redis_db()`` builds its
+      client lazily inside the running event loop, so there is no async pool
+      in existence at ``pytest_configure`` time to arm the warning on. A
+      suite that only ever touches the async client gets no warning.
+    - The warning does not survive a manual ``_swap_db()`` /
+      ``set_REDIS_DB_settings()`` pool rebind — that replaces the pool object
+      the warning was armed on. Degrading to silence is acceptable (this is
+      an advisory, never a correctness dependency).
+    - One warning per xdist worker process is expected/acceptable.
 """
 
 import asyncio
 import logging
 import os
+import threading
+import warnings
+from typing import Any, Callable
 
 import pytest
 import redis
@@ -41,6 +62,20 @@ import redis
 from popoto import redis_db
 
 logger = logging.getLogger("POPOTO-PYTEST")
+
+# Guards the fired-flag flip and the disarm on the shared connection pool
+# (see `_make_tripwire`). Module-level: shared across every tripwire armed in
+# this interpreter, since the pool itself is process-global.
+_tripwire_lock = threading.Lock()
+
+
+class PopotoIsolationWarning(UserWarning):
+    """Raised once per session when popoto touches Redis without test isolation.
+
+    The pytest plugin is installed (it ships as a ``pytest11`` entry point)
+    but neither ``popoto_test_db`` nor ``POPOTO_TEST_DB`` opted it in, so
+    nothing is swapping or flushing the connection. See the module docstring.
+    """
 
 
 def pytest_configure(config):
@@ -134,7 +169,26 @@ def _configure_test_db(config):
     except ValueError:
         raise  # Misconfiguration (e.g. db=0) — fail loudly and early.
     if test_db is None:
-        return  # Not opted in: leave the developer's connection alone.
+        # Not opted in: leave the developer's connection alone, but arm a
+        # one-shot tripwire so a session that actually touches Redis gets a
+        # single advisory warning instead of silent, unisolated writes.
+        #
+        # Non-fatal by construction: this hook runs in EVERY downstream
+        # pytest session that has popoto in its dependency tree, and today
+        # the inert path is a bare `return` that touches nothing. A conftest
+        # that rebinds `redis_db.POPOTO_REDIS_DB` to something without a
+        # `.connection_pool` (e.g. `redis.RedisCluster`) must not be able to
+        # abort collection — that would be strictly worse than the silence
+        # this warning exists to fix.
+        try:
+            pool = redis_db.POPOTO_REDIS_DB.connection_pool
+            original = pool.get_connection  # bound method, captured pre-swap
+            wrapper = _make_tripwire(pool, original)
+            pool.get_connection = wrapper
+            config._popoto_tripwire = (pool, wrapper)
+        except Exception as e:  # never break a downstream collection
+            logger.debug("popoto pytest plugin: isolation warning not armed (%s)", e)
+        return
 
     try:
         original_kwargs = dict(
@@ -150,6 +204,85 @@ def _configure_test_db(config):
             test_db,
             e,
         )
+
+
+def _make_tripwire(pool: Any, original: Callable[..., Any]) -> Callable[..., Any]:
+    """Build a one-shot ``get_connection`` wrapper that warns on first use.
+
+    Only fires once (module-level lock + closure-local ``fired`` flag — a
+    module-level flag would make a second arm in the same interpreter
+    permanently silent). Disarms itself the moment it fires, so the wrapper
+    never sits on the hot path after the first Redis operation.
+
+    Wrapper body order is load-bearing: the Redis op this wrapper wraps must
+    never be affected by the warning, so ``warnings.warn`` is exception-guarded
+    and the ``logger.warning`` mirror runs first, unguarded, so the signal
+    survives even a downstream suite's ``filterwarnings = error``.
+    """
+    fired = False
+
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        nonlocal fired
+        # Hold the lock only for the fired check/flip — never across the
+        # delegated `original(...)` call, which can block on pool exhaustion
+        # and would otherwise serialize all connection acquisition.
+        with _tripwire_lock:
+            first_fire = not fired
+            if first_fire:
+                fired = True
+                _disarm_tripwire(pool, wrapper)
+        if not first_fire:
+            return original(*args, **kwargs)
+
+        # Resolve at trip time, not at arm time: capturing this in the
+        # closure at configure time would make the message lie if anything
+        # rebound the connection in between. `connection_kwargs` has no
+        # "db" key for some pool constructions (unix-socket / URL forms) —
+        # `.get(..., default)` only, never a bare `[...]` lookup (see #490).
+        db = pool.connection_kwargs.get("db", 0)
+        msg = (
+            f"popoto is writing to Redis DB {db} during this pytest session "
+            "and is NOT isolating or flushing it (the popoto pytest plugin "
+            'is installed but not opted in). Set popoto_test_db = "15" '
+            "under [tool.pytest.ini_options] or export POPOTO_TEST_DB to "
+            "isolate, or pass -p no:popoto to silence this warning."
+        )
+        # Unguarded and first: this is what log-capture / -W error suites see
+        # even when the warnings.warn below is swallowed by the caller.
+        logger.warning(msg)
+        try:
+            warnings.warn(msg, PopotoIsolationWarning, stacklevel=2)
+        except Exception:
+            pass
+        return original(*args, **kwargs)
+
+    return wrapper
+
+
+def _disarm_tripwire(pool: Any, wrapper: Callable[..., Any] | None) -> None:
+    """Remove the tripwire wrapper from ``pool`` if it is still ours.
+
+    Identity-checked so this never clobbers a wrapper installed by someone
+    else, and never touches a different pool if a conftest rebound
+    ``redis_db.POPOTO_REDIS_DB`` after arm time. ``pop``, not reassigning the
+    bound method back: assigning `original` would leave a shadowing instance
+    attribute plus a reference cycle, so the pool would not be byte-identical
+    to its pre-arm state.
+    """
+    if getattr(pool, "get_connection", None) is wrapper:
+        pool.__dict__.pop("get_connection", None)
+
+
+def pytest_unconfigure(config: Any) -> None:
+    """Disarm the isolation tripwire, if it is still armed and unfired.
+
+    A no-op when the tripwire already fired (it self-disarms on trip) or was
+    never armed (e.g. the opt-in path, or arming failed non-fatally).
+    """
+    pool, wrapper = getattr(config, "_popoto_tripwire", (None, None))
+    if pool is not None:
+        with _tripwire_lock:
+            _disarm_tripwire(pool, wrapper)
 
 
 def _swap_db(target_db, **extra_kwargs):
