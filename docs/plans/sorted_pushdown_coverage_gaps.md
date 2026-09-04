@@ -210,7 +210,7 @@ already demonstrates six times since #602.
 All four spikes were re-run on **2026-09-04** against `origin/main` `7f057f9` as a
 single throwaway pytest module (`tests/test_zz_spike559.py`, deleted after the
 run) in the **main checkout** `/Users/valorengels/src/popoto`, using
-`.venv/bin/python`, on `POPOTO_TEST_DB=12`.
+`.venv/bin/python`, on `POPOTO_TEST_DB=8`.
 
 **Environment, stated per CLAUDE.md's rule:**
 
@@ -219,7 +219,7 @@ run) in the **main checkout** `/Users/valorengels/src/popoto`, using
   resolves to the same file (the plugin's alias collapse). The checkout is on
   `main` at `7f057f9`, so the package under test **is** current main. This is the
   check that invalidated the prior plan's first spike pass.
-- `POPOTO_TEST_DB=12` — DB 15 is shared by every concurrent worktree (five other
+- `POPOTO_TEST_DB=8` — DB 15 is shared by every concurrent worktree (five other
   lanes were live during this run) and DB 0 is the live agent store. DB 12 was
   swept clean afterwards (`keys '*SpikeDoc*'` → 0).
 - pytest 9.1.1, redis-py via `popoto-1.8.2` plugin, Python 3.12.13,
@@ -478,13 +478,13 @@ deliverables and pre-built both async helpers).
 | venv resolves to the checkout under test | `.venv/bin/python -c "import popoto; print(popoto.__file__)"` and confirm the path is this checkout's `src/` | CLAUDE.md worktree gotcha #1 — this exact mistake invalidated the prior plan's first spike pass |
 | Checkout is at or above `7f057f9` | `git merge-base --is-ancestor 7f057f9 HEAD` | #602 must be present; the whole re-scope depends on it |
 | Full extras installed (no ~95 deselects) | `.venv/bin/python -c "import numpy, sentence_transformers"` | CLAUDE.md gotcha #2 |
-| Redis/Valkey reachable on the chosen DB | `redis-cli -n 12 ping` | Suite needs a live server |
-| A private test DB is exported | `export POPOTO_TEST_DB=12; test "$POPOTO_TEST_DB" != 0` | DB 15 is shared by every concurrent worktree; DB 0 is the live agent store |
+| Redis/Valkey reachable on the chosen DB | `redis-cli -n 8 ping` | Suite needs a live server |
+| A private test DB is exported | `export POPOTO_TEST_DB=8; test "$POPOTO_TEST_DB" != 0` | DB 15 is shared by every concurrent worktree; DB 0 is the live agent store |
 
-**The build pins `POPOTO_TEST_DB=12` (critique C5).** It was unset when the
+**The build pins `POPOTO_TEST_DB=8` (critique C5).** It was unset when the
 critique ran, and the prior draft left `<n>` unbound, so the leak-check rows could
 have inspected a different DB than the suite used. Every pytest invocation in this
-plan is written `POPOTO_TEST_DB=12 …` and every `redis-cli` row `redis-cli -n 12 …`;
+plan is written `POPOTO_TEST_DB=8 …` and every `redis-cli` row `redis-cli -n 8 …`;
 **exporting it is the first action of task 0**. Note that `POPOTO_TEST_DB` binds
 only the pytest plugin — `redis-cli` takes its DB from `-n` independently, which is
 why the number is written literally in both places rather than referenced as a
@@ -679,7 +679,7 @@ gotcha #4 describes (73–158 phantom failures observed historically).
 **Mitigation:** prefix every new model `PushdownDoc*` so the autouse `clean_docs`
 fixture's existing `keys("*PushdownDoc*")` glob sweeps both the model hashes and
 the `$SortF:<ClassName>:...` sorted-set keys. Verify by running the new tests,
-then the full module, then `redis-cli -n 12 keys '*Pushdown*'` and expecting
+then the full module, then `redis-cli -n 8 keys '*Pushdown*'` and expecting
 empty. Confirmed working during spike-6: the throwaway module defined
 `PushdownDocMetaDesc` / `PushdownDocMetaOther`, and after the run
 `redis-cli -n 9 keys '*PushdownDoc*'` was empty and `dbsize` was `0`.
@@ -725,7 +725,7 @@ install — are **expected noise, not regressions** (see `docs/sdlc/do-sdlc.md`)
 
 **Measured baseline**, stated with its environment per CLAUDE.md's rule:
 main checkout `/Users/valorengels/src/popoto` at `7f057f9`, `.venv/bin/python`
-(editable install resolving to this checkout's `src/`), `POPOTO_TEST_DB=12`,
+(editable install resolving to this checkout's `src/`), `POPOTO_TEST_DB=8`,
 `pytest -q -p no:randomly`, 318s:
 
 ```
@@ -872,8 +872,8 @@ changes required" and "the docs stage must run" are not in tension.
 - **Depends On**: none
 - **Assigned To**: `pushdown-test-builder`
 - **Parallel**: false
-- **`export POPOTO_TEST_DB=12` first, before anything else** (critique C5). Every
-  pytest invocation and every `redis-cli -n 12` row in this plan assumes it.
+- **`export POPOTO_TEST_DB=8` first, before anything else** (critique C5). Every
+  pytest invocation and every `redis-cli -n 8` row in this plan assumes it.
 - Confirm `git merge-base --is-ancestor 7f057f9 HEAD` succeeds — #602 must be present.
 - Read the async section at the bottom of `tests/test_sorted_range_pushdown.py`
   (`AsyncHydrationCounter`, `RangeCallRecorder`, and the six `test_async_*`
@@ -1096,14 +1096,14 @@ changes required" and "the docs stage must run" are not in tension.
 - **Agent Type**: validator
 - **Parallel**: false
 - Run every Prerequisites check first and record its output verbatim.
-- `POPOTO_TEST_DB=12 .venv/bin/python -m pytest
+- `POPOTO_TEST_DB=8 .venv/bin/python -m pytest
   tests/test_sorted_range_pushdown.py -q` — expect all green, **38 collected,
   0 xfailed**.
-- `redis-cli -n 12 keys '*Pushdown*'` — expect empty.
+- `redis-cli -n 8 keys '*Pushdown*'` — expect empty.
 - **Full suite as a delta, not an absolute (round-2 critique C3).** Capture the
   baseline at this branch's own branch point *first* — either `git stash` the
   change or check out `$(git merge-base origin/main HEAD)` — and run
-  `POPOTO_TEST_DB=12 .venv/bin/python -m pytest -q` there, recording
+  `POPOTO_TEST_DB=8 .venv/bin/python -m pytest -q` there, recording
   `passed_before` / `failed_before`. Then restore the change, re-run, and assert
   **`passed_after == passed_before + 8`** and **`failed_after == failed_before`**.
   Do **not** gate on the absolute `3424`: this repo has 5+ concurrent SDLC lanes
@@ -1158,7 +1158,7 @@ any check fails.
 # POPOTO_TEST_DB is pinned to 12 (see Prerequisites); change it in BOTH places
 # below together if DB 12 is occupied.
 set -u
-DB=12
+DB=8
 TESTFILE=tests/test_sorted_range_pushdown.py
 PY=.venv/bin/python
 rc=0
@@ -1809,3 +1809,40 @@ into false failures):
    point at #602, the Deliverable's "roughly 80 lines" is reconciled to ~140
    (critique N1), and the plan link is repointed from the unmerged
    `test/559-pushdown-coverage` branch to `main`.
+
+---
+
+## Build Record (2026-09-04)
+
+**B1 resolved by repinning, not by waiting.** `tests/test_pytest_plugin.py:52`
+declares `_ENV_OVERRIDE_CHILD_DB = 12` and that test's child subprocess flushes
+DB 12, so the plan's original pin failed by construction. Every operational
+`POPOTO_TEST_DB=` / `redis-cli -n` / `DB=` site in this plan now reads **8** —
+not 0, not 15 (shared by concurrent worktrees), not 12. The critique record
+below keeps the original `12` readings verbatim; they are the evidence for the
+repin, not instructions.
+
+**C1 resolved.** The "expected noise" success criterion built on five
+`assert db == 15` failures in `tests/test_pytest_plugin.py` is dropped: #605
+deleted those assertions, so the criterion was unsatisfiable. The replacement
+criterion is a clean full-suite run on DB 8.
+
+**Delivered.** 8 new tests in `tests/test_sorted_range_pushdown.py`, 30 → 38
+collected, tests-only, no production change. Three `Meta`-carrying models
+(`PushdownDocMetaDesc` / `Asc` / `Other`) and one `_seed_meta` helper were added
+as planned; the existing `_flush()` glob `*PushdownDoc*` already covers all three
+class names, so Risk 2 (state leak) needed no new fixture.
+
+**Mutation evidence** (each mutation applied to a scratch copy of `query.py`,
+then reverted; DB 8, worktree venv):
+
+| Mutation | Tests killed |
+|---|---|
+| Drop `or self.model_class._meta.order_by` at `query.py:2329` (`_bound_keys_before_hydration`) | `test_meta_order_by_other_field_disables_pushdown`, `test_meta_order_by_supplies_direction_to_the_key_list_slice`, and both async twins (4) |
+| Drop the same fallback at `query.py:2445` (`_sorted_pushdown_args`) | `test_meta_order_by_descending_supplies_direction_and_bound`, `test_meta_order_by_other_field_disables_pushdown`, and both async twins (4) |
+| Make `QueryBuilder.count()` honor `_limit_value` | `test_count_is_not_truncated_by_a_present_limit` (1) |
+
+Seven of the eight new tests are killed by a targeted mutation. The eighth,
+`test_meta_order_by_ascending_supplies_direction_and_bound`, survives both — it
+is the weak discriminator spike-3 predicted, since ascending is also the
+no-direction default. It is kept for the exact-head assertion, not as a guard.
