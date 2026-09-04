@@ -181,19 +181,105 @@ byte-for-byte. The no-op property this plan depends on holds on current main.
 
 ## Solution
 
-1. Convert all seven SortedField partition-value rendering sites (Freshness Check table) to
-   `canonical_key_str(value)`; import from `..models.canonical_key` in `sorted_field_mixin.py`
-   and `.canonical_key` in `query.py`. Do not touch `base.py:3667` — it is already canonical.
-2. Convert the three `ConfidenceField` interpolations (`confidence_field.py:315,350,374`) to
-   `key += f":{canonical_key_str(val)}"`, subject to the escape hatch in the Freshness Check.
-3. Regression tests: a model with `SortedField(partition_by=<datetime field>)` — an aware
-   datetime and its UTC equivalent land in the SAME partition; naive datetimes partition
-   consistently; write-path and every read/query path agree on the partition key (round-trip
-   through save → filter-by-partition). Plus a byte-identity test: for str/int/float partition
-   values the rendered partition segment is unchanged versus `str(value)`.
-4. Docs: note in `docs/query.md` (or the SortedField docs section) that datetime partition
-   values are canonicalized; CHANGELOG entry.
-5. PR body: `Closes #575` and `Closes #570`.
+Route every partition-value rendering site through `canonical_key_str(value)` — 11 sites across
+three files — so datetime partitions address one partition regardless of how the value decoded,
+and so all sites agree with the #548-canonical stored key that the orphan purge parses back out.
+
+1. Convert the seven SortedField sites (Freshness Check table) to `canonical_key_str(value)`;
+   import from `..models.canonical_key` in `sorted_field_mixin.py` and `.canonical_key` in
+   `query.py`. Do **not** touch `Model._purge_orphan_keys` — it is already canonical.
+2. Convert the three `ConfidenceField` interpolations (`confidence_field.py:315,350,374`) inside
+   their existing `None` guards, subject to the escape hatch and the two stated limits.
+3. Convert `event_stream.py:119` inside its existing `if partition_value is not None:` guard.
+4. Regression tests (see `## Test Impact`).
+5. Docs: `docs/query.md` SortedField/partition note + CHANGELOG entry.
+6. PR body must contain **both** `Closes #575` and `Closes #570`.
+
+**Call shape, at all 11 sites: `canonical_key_str(val)` — no `force` kwarg, ever.** See Risks.
+
+### Build environment (inherited by `/do-build`)
+
+- Build in a **dedicated git worktree** with its own venv installed as
+  `.[dev,embeddings,benchmark,mcp]`. Before trusting any test number, verify the editable install
+  resolves to *that* checkout (`python -c "import popoto, sys; print(popoto.__file__)"`) — see
+  CLAUDE.md "Verifying in a worktree".
+- All test runs use `POPOTO_TEST_DB=9`. **Never DB 0** — it is a LIVE agent store on this machine.
+  Any subprocess test must pin an explicit non-zero-db `REDIS_URL`
+  (e.g. `REDIS_URL=redis://localhost:6379/9`) set *before* `import popoto`.
+- Note the environment (redis-py major version) alongside any mypy/test count.
+
+## Step by Step Tasks
+
+1. **`sorted_field_mixin.py` — sites 1-4.** Add `from ..models.canonical_key import
+   canonical_key_str` and replace `str(...)` with `canonical_key_str(...)` at
+   `get_partitioned_sortedset_db_key` (:475), `on_save` old-partition cleanup (:546), `on_delete`
+   old-partition cleanup (:629), and `filter_query` (:753). No `force` kwarg.
+   *Verify:* `ruff check src/` clean; `grep -n "str(getattr(model_instance, partition\|append(str(\|str(query_params\[partition" src/popoto/fields/sorted_field_mixin.py` returns **0** rows.
+2. **`query.py` — sites 5-7.** Add `from .canonical_key import canonical_key_str` and replace the
+   three `[str(self._filters[pf]) for pf in field.partition_by]` comprehensions (`top_by_decay`
+   :438, `_resolve_index` :1379, `_materialize_decay_field` :1421) with
+   `[canonical_key_str(self._filters[pf]) for pf in field.partition_by]`.
+   *Verify:* `grep -n "\[str(self\._filters" src/popoto/models/query.py` returns **0** rows;
+   `ruff check src/` clean.
+3. **`confidence_field.py` — 3 sites, guards preserved.** Replace `key += f":{val}"` with
+   `key += f":{canonical_key_str(val)}"` at :315, :350, :374, each **inside** its existing
+   `if val is not None:` guard (:350 sits after the `QueryException` raise — leave the raise
+   untouched). Import `from ..models.canonical_key import canonical_key_str`.
+   *Verify:* `pytest tests/test_confidence_field.py tests/test_partitioned_confidence.py -q`
+   (with `POPOTO_TEST_DB=9`) green; diff shows no change to any `if val is not None` /
+   `raise QueryException` line.
+4. **`event_stream.py` — 1 site.** Replace `base_key = f"{base_key}:{partition_value}"` with
+   `base_key = f"{base_key}:{canonical_key_str(partition_value)}"`, inside the existing
+   `if partition_value is not None:` guard. Import as above.
+   *Verify:* `pytest tests/test_event_stream_mixin.py -q` green.
+5. **Inventory gate.** Re-run the widened grep from the Freshness Check over
+   `src/popoto/fields/ src/popoto/models/query.py`.
+   *Verify:* returns **0** rows. (It returned 11 before task 1.)
+6. **Regression tests** — new file `tests/test_partition_canonical_rendering.py`, contents per
+   `## Test Impact`.
+   *Verify:* `POPOTO_TEST_DB=9 pytest tests/test_partition_canonical_rendering.py -q` green.
+7. **Full-suite + typing gate.**
+   *Verify:* `POPOTO_TEST_DB=9 pytest -q -m "not slow"` green; `ruff check src/` exit 0;
+   `black --check src/ tests/`; `mypy src/` delta 0 measured base-vs-branch **in the same env**
+   (CLAUDE.md redis-py caveat — state the redis-py version with the number).
+8. **Docs + CHANGELOG.** `docs/query.md` SortedField/partition section gains a note that datetime
+   partition values are canonicalized to UTC (aware/naive/offset variants collapse to one
+   partition); CHANGELOG entry naming the key-bytes change for datetime partitions only.
+   *Verify:* `mkdocs build --strict` succeeds (or `scripts/ci-local.sh docs`).
+9. **PR body.** Contains `Closes #575` and `Closes #570`, plus the escape-hatch disclosure if any
+   in-scope site was dropped.
+   *Verify:* `gh pr view --json body -q .body | grep -c "Closes #5"` returns 2.
+
+## Test Impact
+
+**New file: `tests/test_partition_canonical_rendering.py`.**
+
+| Test | What it pins | Why |
+|---|---|---|
+| `test_aware_and_utc_equivalent_share_partition` | A model with `SortedField(partition_by=("ts",))` where `ts` is a **`KeyField(type=datetime)`**; `12:00+07:00` and its UTC equivalent `05:00+00:00` produce the *same* zset key and the same query result set. | The core #570 defect. |
+| `test_naive_datetime_partitions_consistently` | A naive datetime partitions to the same key as its UTC-aware twin (canonical doctrine: naive is assumed UTC). | Matches `canonical_key_str` semantics; prevents a "naive is a third partition" regression. |
+| `test_write_and_purge_paths_agree` | `get_partitioned_sortedset_db_key(instance, field)` equals the zset key `Model._purge_orphan_keys` derives for that same row. **The partition field MUST be a `KeyField`** — `_purge_orphan_keys` populates `values` only `for field_name in meta.key_field_names` and `continue`s when any partition name is absent, so a plain (non-key) datetime partition never reaches the purge branch and the assertion is vacuous (round-1 CONCERN). | Proves the live divergence is closed, non-vacuously. |
+| `test_byte_identity_for_non_datetime_partitions` | For `str` / `int` / `float` / `bool` / `date` / `time` partition values, the rendered partition segment is byte-identical to `str(value)`. | The scope guard. **If any non-datetime type is NOT byte-identical, BUILD must STOP and report** — that is a key migration, out of appetite. |
+| `test_partition_change_cleanup_paths` | Old-partition cleanup on `on_save` and `on_delete` targets the canonical old key (exercises sites 2 and 3, the two the original defective grep missed). | Missed-site insurance. |
+| `test_query_paths_agree` | `filter_query`, `top_by_decay`, `_resolve_index`, `_materialize_decay_field` all resolve the same partition key the write path used, via a save → filter-by-partition round trip. | Covers sites 4-7. |
+| `test_confidence_field_partition_canonical` | `get_data_hash_key`, `get_data_hash_key_from_values`, `get_old_data_hash_key` agree with each other for a datetime partition; `None` still **skips** in the first and third and still **raises** `QueryException` in the second. | Sites 8-10 + the preserved asymmetry. |
+| `test_event_stream_partition_canonical` | The partitioned stream key uses the canonical rendering; a `None` partition value still yields the unpartitioned `base_key`. | Site 11 + preserved guard. |
+
+**Environment requirements for these tests:**
+- Every datetime test must **explicitly clear `POPOTO_DATETIME_KEY_LEGACY`** (e.g. a
+  `monkeypatch.delenv(..., raising=False)` fixture plus reloading/patching `Defaults.DATETIME_KEY_LEGACY`)
+  rather than inheriting ambient env — otherwise the suite's verdict depends on the shell.
+- Runs under `POPOTO_TEST_DB=9`; any subprocess pins `REDIS_URL=redis://localhost:6379/9`.
+
+**Touched existing tests (expected green, no edits anticipated):** `tests/test_sortedfield.py`,
+`tests/test_sorted_field_ordering.py`, `tests/test_decaying_sorted_field.py`,
+`tests/test_sorted_range_pushdown.py`, `tests/test_confidence_field.py`,
+`tests/test_partitioned_confidence.py`, `tests/test_confidence_modulated_decay.py`,
+`tests/test_event_stream_mixin.py`. If any of these needs an assertion changed, that is a
+key-bytes change for a **non**-datetime type — stop and report (scope guard).
+
+**No xfail markers** related to this bug exist in `tests/` (searched `pytest.mark.xfail` /
+`pytest.xfail(`); nothing to convert.
 
 ## No-Gos
 
