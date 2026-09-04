@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-09-04
 tracking: https://github.com/tomcounsell/popoto/issues/549
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-04T07:22:00Z
 ---
 
 # #549 — test_pytest_plugin.py: stop hardcoding DB 15; cover env-override and inert states
@@ -50,6 +52,38 @@ Verified 2026-09-04 against main `57d2ddc` (baseline before this revision: `ab48
 
 **Disposition: Minor drift** — line numbers moved with #597, two new literals classified as
 out-of-scope, one solution item (inert plumbing) confirmed still unmet.
+
+## Revision Notes (2026-09-04)
+
+Revision pass dispatched by the router under G1 after CRITIQUE recorded **NEEDS REVISION**.
+
+**Disclosure — the critique's concern list was not recoverable.** The verdict landed in the
+ledger (`latest_critique_verdict: NEEDS REVISION`), but the critiquing agent recorded no
+rationale anywhere retrievable: no commit to this plan file beyond `2941bdb`, no comment on
+issue #549, and no reply across three direct requests. This revision therefore addresses an
+independent adversarial re-verification by the supervisor, **not** the critique's actual
+findings, which remain unknown. Reviewers should treat the critique gate as satisfied only in
+the procedural sense. No verdict rationale has been synthesized or guessed.
+
+Independently re-verified against worktree `.worktrees/sdlc-549` (Python 3.12.13, editable
+install confirmed resolving to that checkout, popoto plugin 1.8.2, Redis on localhost:6379):
+
+- The five rewrite targets are at lines 77, 92, 197, 319, 383 — the Freshness Check table is
+  exactly correct on current main.
+- The two out-of-scope literals are at 785 and 819, inside `TestIsolationWarning`'s child-probe
+  source strings. Confirmed correct by construction; still No-Go.
+- `_resolve_test_db(config)` confirmed: `POPOTO_TEST_DB` beats the `popoto_test_db` ini, returns
+  `None` when neither is set. Signature takes `config`, so the fixture must depend on
+  `pytestconfig`.
+- `TestIsolationWarning._repo_root/_base_env/_inert_env/_run` exist as described; `_inert_env`
+  already strips `POPOTO_TEST_DB` and pins `REDIS_URL=redis://localhost:6379/14`.
+- Baseline repro measured: `POPOTO_TEST_DB=14` → 5 failed / 36 passed (all five
+  `assert ... == 15`); `POPOTO_TEST_DB=15` → 41 passed.
+
+One substantive gap was found and closed in this pass: task 4 did not say which client seeds the
+parent-side marker key. Using popoto's global would have written to the parent's own DB and made
+the no-flush assertion vacuous. Task 4 now mandates an explicit `redis.Redis(db=…)` probe client
+tied to `_inert_env`'s DB via a shared constant.
 
 ## Prior Art
 
@@ -152,6 +186,22 @@ survival in the DB the child was pointed at.
    then deletes it.
    *Validate:* the new test passes; it fails if `_inert_env` is replaced with `_base_env`
    (i.e. it is not vacuous when the plugin is *not* inert).
+
+   **Parent-side client is explicit, never popoto's global.** The parent session is itself
+   isolated on its own DB (15 by default, or whatever `POPOTO_TEST_DB` says — 10 in the
+   supervised run). `redis_db.POPOTO_REDIS_DB` therefore does NOT point at DB 14, so seeding
+   the marker through popoto's global client would write to the parent's DB and the test would
+   assert nothing about the child's. Construct a dedicated client for the assertion:
+
+   ```python
+   probe = redis.Redis(host="localhost", port=6379, db=14)
+   ```
+
+   Match the DB integer to the one `_inert_env` pins in `REDIS_URL` — if that helper's DB is
+   ever changed, this literal must change with it, so derive both from a single module-level
+   constant rather than repeating `14` in two places. Key name is
+   `f"popoto_inert_probe:{uuid.uuid4().hex}"`, deleted in a `finally` so a mid-test failure
+   cannot leak it into a DB another lane is using.
 5. Run the gates: `pytest tests/test_pytest_plugin.py` on the default DB and under
    `POPOTO_TEST_DB=7` and `POPOTO_TEST_DB=14`; then the full non-slow suite on the default DB;
    `ruff check src/`, `black --check src/ tests/`, `mypy src/`.
