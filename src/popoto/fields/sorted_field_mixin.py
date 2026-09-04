@@ -53,6 +53,7 @@ import datetime
 import typing
 import redis
 
+from ..models.canonical_key import canonical_key_str
 from ..models.db_key import DB_key
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
@@ -472,7 +473,7 @@ class SortedFieldMixin:
         ].partition_by:
             try:
                 sortedset_db_key.append(
-                    str(getattr(model_instance, partition_field_name))
+                    canonical_key_str(getattr(model_instance, partition_field_name))
                 )
             except KeyError:
                 raise QueryException(
@@ -543,7 +544,7 @@ class SortedFieldMixin:
                     for pf in field.partition_by:
                         old_val = saved.get(pf)
                         if old_val is not None:
-                            old_ss_key.append(str(old_val))
+                            old_ss_key.append(canonical_key_str(old_val))
                     # Use saved_redis_key if available (key may have changed too)
                     old_member = kwargs.get(
                         "saved_redis_key",
@@ -626,7 +627,7 @@ class SortedFieldMixin:
                 for pf in field.partition_by:
                     old_val = saved.get(pf)
                     if old_val is not None:
-                        sortedset_db_key.append(str(old_val))
+                        sortedset_db_key.append(canonical_key_str(old_val))
                 if pipeline:
                     return pipeline.zrem(sortedset_db_key.redis_key, saved_redis_key)
                 else:
@@ -750,7 +751,7 @@ class SortedFieldMixin:
                 model_class,
                 field_name,
                 *[
-                    str(query_params[partition_field_name])
+                    canonical_key_str(query_params[partition_field_name])
                     for partition_field_name in model_class._meta.fields[
                         field_name
                     ].partition_by
