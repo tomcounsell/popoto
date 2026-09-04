@@ -155,8 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["reject", "bypass"],
         default="reject",
         help=(
-            "honor the destination model's write gate "
-            "(default: reject) or bypass it"
+            "honor the destination model's write gate " "(default: reject) or bypass it"
         ),
     )
     imp.add_argument(
