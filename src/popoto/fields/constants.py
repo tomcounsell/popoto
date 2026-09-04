@@ -61,6 +61,31 @@ def _read_never_record_switch() -> bool:
     return value not in _TRUTHY
 
 
+def _read_decode_quarantine_switch() -> bool:
+    """Read ``POPOTO_DECODE_QUARANTINE_DISABLE`` from the environment (#573).
+
+    Returns True when decode quarantine is ENABLED — i.e. when an undecodable
+    non-key field should be tolerated (raw bytes preserved, warning logged,
+    field recorded in ``_corrupt_fields``) instead of raising. The env var is
+    phrased as a *disable* so the default-on doctrine holds when it is unset.
+
+    A ``_DISABLE`` switch is a two-state membership test: anything not in
+    :data:`_TRUTHY` means "not disabled", which is the safe default. There is
+    deliberately no malformed-value handling and :data:`_WARNED_BAD_ENV` is
+    untouched.
+
+    This is a call-time function and deliberately **not** a ``Defaults`` class
+    attribute: the class body is evaluated at import, which would bind the
+    value once and make a deploy-time flip (or a ``monkeypatch.setenv``)
+    a no-op. The call-time precedent is
+    :func:`_read_default_memory_max_records` above. It is only ever called
+    from ``_decode_field_value``'s ``except`` branch, which is already off the
+    healthy path, so the ``os.environ`` read costs a healthy row nothing.
+    """
+    value = os.environ.get("POPOTO_DECODE_QUARANTINE_DISABLE", "").strip().lower()
+    return value not in _TRUTHY
+
+
 def _read_default_memory_max_records() -> int | None:
     """Cap on records **per ``agent_id``** kept by ``DefaultMemory``;
     ``0``/``off`` disables eviction.
