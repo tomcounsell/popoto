@@ -133,3 +133,8 @@ data/
 # by `git add -A` as embedded-repo gitlinks — five of them landed in a commit
 # on this branch before being caught.
 .worktrees/
+
+# Same hazard, same cause: the pipeline writes a scratch task list here, and
+# removing this line to keep an unrelated change out of a behavior PR is
+# precisely how a stale copy got committed on PR #601.
+PROGRESS.md

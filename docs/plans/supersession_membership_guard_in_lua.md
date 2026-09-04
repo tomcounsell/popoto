@@ -1669,7 +1669,7 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 | ANTI: `pre_save_validate` is dispatched from exactly one site, above the partial/full split (B1) | `grep -n 'pre_save_validate' src/popoto/models/base.py` | exactly one line, numbered above the `if update_fields is not None:` split |
 | ANTI: the dispatch is not inside either eager-loop arm (B1) | `python -c "s=open('src/popoto/models/base.py').read().split(chr(10));i=[n for n,l in enumerate(s,1) if 'pre_save_validate' in l];k=[n for n,l in enumerate(s,1) if 'new_db_key = DB_key(self.db_key)' in l];print(len(i)==1 and i[0]<k[0])"` | output contains True |
 | `chain()` keeps the unsaved contract (B2) | `pytest tests/test_validity_field.py -q -k 'chain or degrades_with_no_partial_state'` | exit code 0 |
-| M1 surfaces a typed error, not a raw ResponseError (C2/D8) | `grep -c '_map_lua_error' src/popoto/recipes/provenance_journal.py` | output > 0 |
+| M1 surfaces a typed error, not a raw ResponseError (C2/D8) | `grep -c 'map_lua_error' src/popoto/recipes/provenance_journal.py` | output > 0 |
 | CHANGELOG carries the divergence remediation recipe (C1) | `grep -c 'get_valid_from' CHANGELOG.md` | output > 0 |
 
 ### Red-state proof (run at `44abc17`, critique revision pass)

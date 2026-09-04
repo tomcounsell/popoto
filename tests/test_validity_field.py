@@ -987,6 +987,8 @@ class TestSupersedeLuaPhaseSplit:
             "redis.call('EXPIRE', KEYS[1], 60)",
             # Lua takes either quote style; so must the guard.
             'redis.call("HSET", KEYS[1], "f", "v")',
+            # pcall differs from call only in error handling, not in writing.
+            "redis.pcall('ZADD', KEYS[1], 0, 'x')",
         ],
     )
     def test_the_checker_detects_a_write_above_the_marker(self, write):

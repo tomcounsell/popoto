@@ -42,8 +42,9 @@ READ_COMMANDS = frozenset(
 )
 
 #: Both quote styles, since Lua accepts either and a guard that reads only one
-#: is a guard with a hole in it.
-CALL_RE = re.compile(r"""redis\.call\(\s*['"]([A-Za-z]+)['"]""")
+#: is a guard with a hole in it. ``pcall`` too: it differs from ``call`` only in
+#: error handling, so it writes just as hard.
+CALL_RE = re.compile(r"""redis\.p?call\(\s*['"]([A-Za-z]+)['"]""")
 
 
 def extract_script(text: str) -> str:
@@ -71,7 +72,7 @@ def check(body: str) -> "list[str]":
                     "is genuinely a read, add it to READ_COMMANDS"
                 )
 
-    exists_match = re.search(r"""redis\.call\(\s*['"]EXISTS['"]""", body)
+    exists_match = re.search(r"""redis\.p?call\(\s*['"]EXISTS['"]""", body)
     if exists_match is None:
         problems.append("no EXISTS membership guard in the script")
     else:
