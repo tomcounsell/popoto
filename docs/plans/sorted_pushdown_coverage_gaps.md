@@ -1008,32 +1008,95 @@ no public API. The behaviors being covered are already documented as part of the
 - `redis-cli -n 12 keys '*Pushdown*'` — expect empty.
 - `POPOTO_TEST_DB=12 .venv/bin/python -m pytest -q` — expect only the documented
   non-15-DB expected failures.
-- `git diff --name-only origin/main` — expect exactly two paths:
-  `tests/test_sorted_range_pushdown.py` **and**
-  `docs/plans/sorted_pushdown_coverage_gaps.md` (critique N2 — the critique and
-  revision passes both edit this plan doc, so it will appear in the diff against
-  any `origin/main` older than those commits). Any third path is a defect.
+- `git fetch origin && git diff --name-only origin/main` — expect exactly one path,
+  `tests/test_sorted_range_pushdown.py`. **The `git fetch` is not optional**
+  (critique N2): the critique and revision passes commit
+  `docs/plans/sorted_pushdown_coverage_gaps.md` straight to `main`, so against a
+  stale `origin/main` ref the plan doc shows up in the diff and looks like build
+  output. Any path other than the test file is a defect.
 - Run the fenced Verification commands below verbatim and record each exit code.
 - Report every count alongside the commit, the venv path, and the DB number.
 
 ## Verification
 
-Run from the checkout under test; `<n>` is the private `POPOTO_TEST_DB`.
+Run from the checkout under test. **These commands are the verification** — run the
+block verbatim; it prints one `PASS`/`FAIL` line per check and exits non-zero if
+any check fails.
 
-| Check | Command | Expected |
-|-------|---------|----------|
-| #602 is present | `git merge-base --is-ancestor 7f057f9 HEAD` | exit code 0 |
-| Correct package under test | `.venv/bin/python -c "import popoto; print(popoto.__file__)"` | path is this checkout's `src/popoto/__init__.py` |
-| Pushdown module green | `POPOTO_TEST_DB=<n> .venv/bin/python -m pytest tests/test_sorted_range_pushdown.py -q` | exit code 0 |
-| Six new tests collected | `POPOTO_TEST_DB=<n> .venv/bin/python -m pytest tests/test_sorted_range_pushdown.py --collect-only -q \| tail -1` | output contains 36 |
-| Margin used, not hardcoded | `git diff origin/main -- tests/test_sorted_range_pushdown.py \| grep -c '^+.*SORTED_PUSHDOWN_OVERFETCH_MARGIN'` | output > 0 |
-| Anti-criterion: no new xfail/skip | `git diff origin/main -- tests/test_sorted_range_pushdown.py \| grep -cE '^\+.*(xfail\|mark\.skip)'` | match count == 0 |
-| Anti-criterion: no async parity duplicate | `git diff origin/main -- tests/test_sorted_range_pushdown.py \| grep -cE '^\+.*def test_async_(and_sync\|bounded_query\|range_read)'` | match count == 0 |
-| Anti-criterion: no production change | `git diff --name-only origin/main -- src/ \| wc -l \| tr -d ' '` | output is 0 |
-| Anti-criterion: no bare margin literal | `git diff origin/main -- tests/test_sorted_range_pushdown.py \| grep -cE '^\+.*(num=11\|MARGIN = 8)'` | match count == 0 |
-| Meta models are flush-swept | `git diff origin/main -- tests/test_sorted_range_pushdown.py \| grep -c '^+class PushdownDocMeta'` | output is 3 |
-| No leaked Redis state | `redis-cli -n <n> keys '*Pushdown*' \| wc -l \| tr -d ' '` | output is 0 |
-| Format clean | `.venv/bin/python -m black --check tests/test_sorted_range_pushdown.py` | exit code 0 |
+> **Why this is a fenced script and not a table (critique blocker B1).** Inside a
+> markdown table cell a `|` **must** be escaped, and the escape leaks into the
+> command: `grep -cE '^\+.*(xfail\|mark\.skip)'` searches ERE for a *literal pipe*,
+> i.e. the string `xfail|mark.skip`, which can never match. Measured on a synthetic
+> diff containing `+@pytest.mark.xfail(strict=True, ...)`: the escaped form scores
+> **0**, the unescaped form scores **1**. Rows using `\|` as a *shell* pipe
+> (`… \| wc -l`) never ran at all — `grep` received a literal `|` as an argument.
+> All four anti-criteria in the prior draft therefore passed **vacuously**, which
+> also silently voided Risk 1's named mitigation. A piped command cannot be written
+> correctly in a table cell, so the fix is to move it out of the table, not to
+> unescape it in place.
+>
+> Two further corrections baked in below:
+> - `grep -c` exits **1** when the count is 0, so an "expect zero" check must be
+>   asserted as `[ "$(… | grep -cE …)" = 0 ]`, never as "exit code 0".
+> - The collected-count check does **not** use `--collect-only -q | tail -1`
+>   (fragile) *or* `grep -c '::'` (critique N3's suggestion — it returns **0** in
+>   this repo, because `pyproject.toml:123` sets `addopts = "-v"`, which overrides
+>   `-q`'s node-id output format with a tree listing). The stable form is the
+>   summary line, verified to report `30` on the pre-change tree under both forms.
+
+```bash
+#!/usr/bin/env bash
+# Verification for #559. Run from the repo root of the checkout under test.
+# POPOTO_TEST_DB is pinned to 12 (see Prerequisites); change it in BOTH places
+# below together if DB 12 is occupied.
+set -u
+DB=12
+TESTFILE=tests/test_sorted_range_pushdown.py
+PY=.venv/bin/python
+rc=0
+check() {  # check <name> <expected> <actual>
+  if [ "$2" = "$3" ]; then echo "PASS  $1"; else echo "FAIL  $1 (expected '$2', got '$3')"; rc=1; fi
+}
+
+# --- environment (CLAUDE.md worktree gotchas) ---
+git merge-base --is-ancestor 7f057f9 HEAD && echo "PASS  #602 present" || { echo "FAIL  #602 present"; rc=1; }
+check "correct package under test" "$(pwd)/src/popoto/__init__.py" "$($PY -c 'import popoto; print(popoto.__file__)')"
+
+# --- suite ---
+POPOTO_TEST_DB=$DB $PY -m pytest "$TESTFILE" && echo "PASS  pushdown module green" || { echo "FAIL  pushdown module green"; rc=1; }
+check "38 tests collected" "38" \
+  "$(POPOTO_TEST_DB=$DB $PY -m pytest "$TESTFILE" --collect-only -q 2>&1 | grep -oE '[0-9]+ tests? collected' | grep -oE '[0-9]+')"
+
+# --- positive criteria on the diff ---
+DIFF=$(git diff origin/main -- "$TESTFILE")
+[ "$(printf '%s' "$DIFF" | grep -c '^+.*SORTED_PUSHDOWN_OVERFETCH_MARGIN')" -gt 0 ] \
+  && echo "PASS  margin used, not hardcoded" || { echo "FAIL  margin used, not hardcoded"; rc=1; }
+check "3 Meta model classes added" "3" "$(printf '%s' "$DIFF" | grep -c '^+class PushdownDocMeta')"
+
+# --- anti-criteria (each MUST be 0; note grep -c exits 1 on zero, hence "$( )") ---
+check "no new xfail/skip marker"     "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*(xfail|mark\.skip)')"
+check "no async parity duplicate"    "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*def test_async_(and_sync|bounded_query|range_read)')"
+check "no bare margin literal"       "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*(num=11|MARGIN = 8)')"
+check "no production change"         "0" "$(git diff --name-only origin/main -- src/ | wc -l | tr -d ' ')"
+check "no leaked Redis state"        "0" "$(redis-cli -n $DB keys '*Pushdown*' | grep -c . )"
+
+# --- format ---
+$PY -m black --check "$TESTFILE" && echo "PASS  format clean" || { echo "FAIL  format clean"; rc=1; }
+
+# --- changed files: exactly the test file (critique N2) ---
+# `git fetch` first, or this reports docs/plans/sorted_pushdown_coverage_gaps.md as
+# well: the critique and revision passes commit that file straight to main, so a
+# stale origin/main ref makes the plan doc look like part of the build's diff.
+git fetch origin --quiet
+check "changed files" "tests/test_sorted_range_pushdown.py" "$(git diff --name-only origin/main | sort | tr '\n' ' ' | sed 's/ $//')"
+
+exit $rc
+```
+
+**Self-check on the anti-criteria** (do this once, before trusting a `PASS`): pipe a
+line containing `@pytest.mark.xfail(strict=True)` into the `no new xfail/skip`
+pattern and confirm it reports **1**. An anti-criterion that has never been seen to
+fire is indistinguishable from one that cannot.
 
 ## Critique Results
 
