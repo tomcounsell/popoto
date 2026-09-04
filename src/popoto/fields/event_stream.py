@@ -53,6 +53,7 @@ import time
 from typing import Optional
 
 from ..exceptions import ModelException
+from ..models.canonical_key import canonical_key_str
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.EventStream")
@@ -116,7 +117,7 @@ class EventStreamMixin:
                 )
             partition_value = getattr(self, self._stream_partition_field)
             if partition_value is not None:
-                base_key = f"{base_key}:{partition_value}"
+                base_key = f"{base_key}:{canonical_key_str(partition_value)}"
 
         return base_key
 
