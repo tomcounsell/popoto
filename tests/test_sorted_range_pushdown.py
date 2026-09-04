@@ -562,6 +562,161 @@ def test_count_is_not_truncated_by_a_present_limit():
 
 
 # ---------------------------------------------------------------------------
+# count() on the Q-object path must also ignore limit() (#610)
+#
+# The partition value must ride inside the Q, not as a sibling kwarg, or
+# QueryException fires from sorted_field_mixin.py:760.
+# ---------------------------------------------------------------------------
+
+
+def test_q_count_unlimited_is_the_control():
+    """Control: an unlimited Q count already reports the full population.
+
+    If this fails, the other tests in this group are not testing what they
+    claim to test.
+    """
+    _seed()
+    assert (
+        PushdownDoc.query.filter(Q(room_id="r1", last_active_at__gte=0)).count()
+        == POPULATION
+    )
+
+
+def test_q_count_ignores_a_present_limit_descending():
+    """Guard: count() must not truncate to the limit on the Q path.
+
+    A dropped guard returns 5 (the limit) instead of POPULATION.
+    """
+    _seed()
+    builder = PushdownDoc.query.filter(
+        Q(room_id="r1", last_active_at__gte=0), order_by="-last_active_at"
+    ).limit(5)
+    assert builder.count() == POPULATION
+
+
+def test_q_count_ignores_a_present_limit_ascending():
+    """Guard: same as the descending case, with ascending order_by.
+
+    A dropped guard returns 5 instead of POPULATION.
+    """
+    _seed()
+    builder = PushdownDoc.query.filter(
+        Q(room_id="r1", last_active_at__gte=0), order_by="last_active_at"
+    ).limit(5)
+    assert builder.count() == POPULATION
+
+
+def test_q_count_does_not_make_the_limit_assertion_vacuous():
+    """Guard: the same builder that reports the full count still yields 5 rows.
+
+    Without this, a count() that ignores the limit and a limit that was never
+    applied to all() would look identical. A dropped `all()`-side guard
+    returns something other than 5 here.
+    """
+    _seed()
+    builder = PushdownDoc.query.filter(
+        Q(room_id="r1", last_active_at__gte=0), order_by="-last_active_at"
+    ).limit(5)
+    assert builder.count() == POPULATION
+    assert len(list(builder)) == 5, (
+        "the limit must still be live on the builder that just reported "
+        f"{POPULATION}"
+    )
+
+
+def test_q_count_ignores_limit_with_computed_sort():
+    """Guard: the computed_sort branch must also skip its post-sort slice.
+
+    A dropped guard returns 5 (the computed_sort branch's own limit slice)
+    instead of POPULATION.
+    """
+    _seed()
+    builder = (
+        PushdownDoc.query.filter(Q(room_id="r1", last_active_at__gte=0))
+        .computed_sort(lambda d: -d.last_active_at)
+        .limit(5)
+    )
+    assert builder.count() == POPULATION
+
+
+def test_q_count_after_first_is_not_pinned_to_one():
+    """Guard: first() mutates the builder's limit to 1; count() must ignore it.
+
+    first() is limit(1).all(), and limit() mutates in place, so a later
+    count() on the same builder inherits a live limit of 1 unless count()
+    suppresses it. A dropped guard returns 1 instead of POPULATION.
+    """
+    _seed()
+    builder = PushdownDoc.query.filter(Q(room_id="r1", last_active_at__gte=0))
+    builder.first()
+    assert builder.count() == POPULATION
+
+
+class TrackedPushdownDoc(popoto.fields.access_tracker.AccessTrackerMixin, popoto.Model):
+    """Small AccessTrackerMixin model, used only to pin the tracking guard.
+
+    PushdownDoc does not mix in AccessTrackerMixin, so no other test in this
+    module would catch a regression where count() starts firing on_read().
+    """
+
+    room_id = popoto.KeyField(type=str)
+    doc_id = popoto.KeyField(type=str)
+    last_active_at = popoto.SortedField(type=float, partition_by="room_id")
+
+
+def _seed_tracked(room="r1", count=POPULATION):
+    docs = []
+    for i in range(count):
+        doc = TrackedPushdownDoc(room_id=room, doc_id=f"d{i}", last_active_at=float(i))
+        doc.save()
+        docs.append(doc)
+    return docs
+
+
+def _staged_key_lengths(docs):
+    return [POPOTO_REDIS_DB.llen(doc._at_key("staged")) for doc in docs]
+
+
+def test_q_count_leaves_staged_access_keys_unchanged():
+    """THE TRACKING GUARD: a Q + limit count() must record no accesses.
+
+    _fire_on_read() pipelines an RPUSH+EXPIRE per hydrated instance when
+    _no_track is False. A dropped guard would turn an unbounded Q + limit
+    count() into a population-scale burst of staged-access writes, changing
+    every staged-access key length from 0 to something nonzero. all() on the
+    same builder must still record accesses, proving the suppression is
+    specific to count() and not a global tracking outage.
+    """
+    docs = _seed_tracked()
+    try:
+        builder = TrackedPushdownDoc.query.filter(
+            Q(room_id="r1", last_active_at__gte=0)
+        ).limit(5)
+
+        result = builder.count()
+        assert result == POPULATION
+
+        after_count = _staged_key_lengths(docs)
+        assert after_count == [0] * len(docs), (
+            "count() on a Q + limit builder must not stage any access-tracker "
+            f"writes, got lengths {after_count}"
+        )
+
+        list(builder)  # all() on the same builder: must still track reads
+        after_all = _staged_key_lengths(docs)
+        assert any(length > 0 for length in after_all), (
+            "all() on the same builder must still record accesses; "
+            "if it doesn't, tracking was disabled globally rather than "
+            "suppressed only for count()"
+        )
+    finally:
+        for key in POPOTO_REDIS_DB.keys("*TrackedPushdownDoc*"):
+            POPOTO_REDIS_DB.delete(key)
+        for key in POPOTO_REDIS_DB.keys("$AT:TrackedPushdownDoc:*"):
+            POPOTO_REDIS_DB.delete(key)
+
+
+# ---------------------------------------------------------------------------
 # Meta.order_by participates in the pushdown gate
 #
 # Both _sorted_pushdown_args and _bound_keys_before_hydration resolve direction

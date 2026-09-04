@@ -1930,6 +1930,9 @@ Memory.query.filter(agent_id="agent-1").no_track().all()
 `MemoryLifecycle.tick()` uses `.no_track()` automatically — a periodic tick
 produces **zero** new staged entries and does not inflate access-frequency signals.
 
+`count()` never fires `on_read()` on either code path — a tally is not a read, so
+counting a population stages nothing regardless of whether `.no_track()` is chained.
+
 Note: `Model.query.all()` (without `.filter()`) is non-tracking by design and
 does not call `on_read()`. The tracking path is the `QueryBuilder`
 (`.filter().all()`); chain `.no_track()` there for any internal sweep that
