@@ -3947,6 +3947,24 @@ clobbering, fixes <code>$Class:</code> membership, moves side keys whose names e
 hash key, and runs one <code>rebuild_indexes()</code> at the end.</p>
 <p>A model with no <code>KeyField(type=datetime)</code> needs none of this: the audit
 reports "not applicable" and the kill switch is irrelevant.</p>
+<p><strong>The switch has a second scope this recipe does not migrate.</strong> From 1.9.0 it
+also gates how a <code>partition_by</code> value is rendered into a partition key --
+<code>SortedField</code> sorted sets, <code>ConfidenceField</code> companion hashes and
+<code>EventStreamMixin</code> stream keys. A <code>datetime</code> partition value canonicalizes
+to UTC there too, so aware, offset and naive forms of one instant address a
+single partition instead of splitting into three. Non-datetime partition values
+are byte-identical either way, so a deployment that declares no <code>datetime</code>
+<code>partition_by</code> is unaffected and has nothing to do.</p>
+<p>There is no migration for that half, and none of the refusals above apply to
+it. Pre-change partition keys are simply left stranded: unreferenced by reads
+and writes, but not deleted. <code>clean_indexes()</code> does <strong>not</strong> recover them --
+it removes index members whose instance hash is missing, and these members
+point at live hashes, so it removes nothing. Recovery is manual and cheap:
+re-save the affected rows, which writes the canonical partition key, then
+<code>SCAN</code> the legacy partition key patterns and <code>DEL</code> them. Because the same
+switch governs both scopes, do not lift it fleet-wide at step 6 on the strength
+of a clean <code>audit_datetime_keys()</code> alone -- that audit covers row identity
+only, and says nothing about partition keys.</p>
 <p><strong>A fourth refusal, specific to the switch.</strong> <code>migrate_datetime_keys(dry_run=False)</code>
 also refuses -- with no acknowledgment kwarg, because the fix is one line --
 when <code>POPOTO_DATETIME_KEY_LEGACY</code> is set in the calling process. There is no

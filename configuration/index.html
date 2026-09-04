@@ -4001,7 +4001,7 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <tr>
 <td><code>POPOTO_DATETIME_KEY_LEGACY</code></td>
 <td>unset (falsy)</td>
-<td>Kill switch that restores 1.8.2 <code>str(value)</code> key bytes for <code>KeyField(type=datetime)</code> values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect <code>audit_datetime_keys()</code>, which always reports the truth. See <a href="../fields/#datetime-keyfields">Datetime KeyFields</a> and migration cookbook recipe 19.</td>
+<td>Kill switch that restores 1.8.2 <code>str(value)</code> key bytes for datetime values on the write path, so a fleet can roll readers forward before moving key bytes. It covers two things, and lifting it commits to both: <code>KeyField(type=datetime)</code> row identity, and <code>partition_by</code> partition segments for <code>SortedField</code>, <code>ConfidenceField</code> and <code>EventStreamMixin</code> (a datetime partition value canonicalizes to UTC, so aware, offset and naive forms of one instant share a single partition). Non-datetime partition values are byte-identical either way. Migration cookbook recipe 19 covers only the KeyField half; partition keys have no automatic migration, so do not lift the switch fleet-wide on the strength of a finished KeyField migration alone. Does not affect <code>audit_datetime_keys()</code>, which always reports the truth. See <a href="../fields/#datetime-keyfields">Datetime KeyFields</a>, <a href="../fields/#partition_by">partition_by</a> and migration cookbook recipe 19.</td>
 </tr>
 <tr>
 <td><code>POPOTO_NEVER_RECORD_DISABLE</code></td>

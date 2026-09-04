@@ -6066,6 +6066,17 @@ to another), Popoto automatically removes the entry from the old partition's sor
 set and adds it to the new one. No manual cleanup is needed.</p>
 </div>
 <div class="admonition note">
+<p class="admonition-title">Datetime partition values are canonicalized to UTC</p>
+<p>When a <code>partition_by</code> field holds a <code>datetime</code>, the partition segment is
+canonicalized to UTC before it becomes part of the key. An aware value, its
+equivalent in another offset, and the naive form of the same instant (naive is
+assumed UTC) all collapse to one partition, so a query cannot miss rows just
+because a value decoded differently than it was written. Every other partition
+value type renders exactly as <code>str(value)</code>, unchanged. Setting
+<code>POPOTO_DATETIME_KEY_LEGACY=1</code> restores the pre-canonical rendering for a fleet
+mid-rollout, at the cost of reinstating the split.</p>
+</div>
+<div class="admonition note">
 <p class="admonition-title">Deprecation Notice</p>
 <p>The <code>sort_by</code> parameter is deprecated and will be removed in a future major version.
 Use <code>partition_by</code> instead. <code>sort_by</code> still works but emits a <code>DeprecationWarning</code>.</p>
@@ -6853,6 +6864,16 @@ should not count as a user-originated read.</p>
 <a id="__codelineno-85-11" name="__codelineno-85-11" href="#__codelineno-85-11"></a><span class="c1"># Writes to stream:mutations:beta</span>
 <a id="__codelineno-85-12" name="__codelineno-85-12" href="#__codelineno-85-12"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"y"</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">"beta"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Datetime partition values are canonicalized to UTC</p>
+<p>If <code>_stream_partition_field</code> names a <code>datetime</code> field, the segment appended to the
+stream name is canonicalized to UTC, so aware, offset and naive representations of
+one instant route to a single stream rather than several. Every other partition
+value type renders exactly as <code>str(value)</code>, so the <code>stream:mutations:acme</code> form
+above is unchanged. A <code>None</code> partition value still writes to the unpartitioned
+<code>stream:mutations</code>. Setting <code>POPOTO_DATETIME_KEY_LEGACY=1</code> restores the
+pre-canonical rendering.</p>
+</div>
 <h3 id="custom-events-non-save-operations">Custom Events (Non-Save Operations)<a class="headerlink" href="#custom-events-non-save-operations" title="Permanent link">&para;</a></h3>
 <p>Operations that bypass <code>Model.save()</code> (like <code>ConfidenceField.update_confidence()</code> and <code>CoOccurrenceField.strengthen()</code>) can log events via the public <code>_xadd_event()</code> method:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a><span class="c1"># Called automatically by ConfidenceField.update_confidence()</span>

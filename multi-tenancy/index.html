@@ -3210,6 +3210,14 @@ scope the sorted index:</p>
 With <code>partition_by=('project_id',)</code>, each project gets its own sorted set,
 making range queries faster and fully isolated.</p>
 </div>
+<div class="admonition note">
+<p class="admonition-title">Datetime partition values are canonicalized to UTC</p>
+<p>If the field you partition on is a <code>datetime</code> rather than a string tenant id, the
+partition segment is canonicalized to UTC, so aware, offset and naive
+representations of one instant share a single partition instead of splitting into
+several. Non-datetime partition values, including the string ids used throughout
+this page, are unchanged.</p>
+</div>
 <h2 id="passing-the-namespace-through-your-application">Passing the namespace through your application<a class="headerlink" href="#passing-the-namespace-through-your-application" title="Permanent link">&para;</a></h2>
 <p>The KeyField pattern is explicit — you pass <code>project_id</code> to every <code>create()</code>,
 <code>filter()</code>, and <code>load()</code> call. In web applications, you can reduce boilerplate
@@ -3278,6 +3286,13 @@ making reads O(partition_size) instead of O(total_members).</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Datetime partition values are canonicalized to UTC</p>
+<p>When the partition field holds a <code>datetime</code>, the segment appended to the companion
+hash name is canonicalized to UTC, so aware, offset and naive representations of
+one instant share a single hash. String project ids like <code>atlas</code> above render as
+<code>str(value)</code> and are unchanged.</p>
+</div>
 <p>Usage is identical to unpartitioned ConfidenceField -- the partition is resolved
 automatically from the model instance:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">"atlas"</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s2">"fact1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"The sky is blue"</span><span class="p">)</span>

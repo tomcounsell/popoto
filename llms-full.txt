@@ -11376,7 +11376,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_TEST_DB` | unset | Redis DB number used by the pytest plugin for test isolation, and one of the two ways to activate the plugin at all (the other is the `popoto_test_db` ini option, which this overrides). Unset with no ini option, the plugin does nothing. DB 0 is rejected to prevent accidental production data loss. See [Testing](testing.md). |
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
-| `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
+| `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for datetime values on the write path, so a fleet can roll readers forward before moving key bytes. It covers two things, and lifting it commits to both: `KeyField(type=datetime)` row identity, and `partition_by` partition segments for `SortedField`, `ConfidenceField` and `EventStreamMixin` (a datetime partition value canonicalizes to UTC, so aware, offset and naive forms of one instant share a single partition). Non-datetime partition values are byte-identical either way. Migration cookbook recipe 19 covers only the KeyField half; partition keys have no automatic migration, so do not lift the switch fleet-wide on the strength of a finished KeyField migration alone. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields), [partition_by](fields.md#partition_by) and migration cookbook recipe 19. |
 | `POPOTO_NEVER_RECORD_DISABLE` | unset (falsy) | Kill switch for the never-record firewall (`NeverRecordMixin`). The firewall is default-on: unset, it blocks credential- and secret-shaped content on `save()` for any model that carries the mixin. A truthy value disables the check globally, restoring pre-firewall behavior with no model code change. See [NeverRecordMixin](fields.md#neverrecordmixin). |
 | `POPOTO_JOURNAL_COUPLING_DISABLE` | unset (falsy) | Kill switch for the provenance journal's validity coupling. Read at import time. Default-on: unset, a `supersede()` or `retract()` appends the annotation *and* closes the target's validity interval in one transaction. A truthy value keeps the annotation append but stops the interval close, so the journal still records what was said while membership stops changing. Degraded mode is observable without a Redis read via `AnnotationResult.coupling_enabled` and `target_closed`. See [Provenance Journal](features/provenance-journal.md#the-kill-switch-popoto_journal_coupling_disable). |
 | `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` | unset | Cap on records **per `agent_id`** kept by `DefaultMemory` (name shortened for table brevity — the scope is per-agent, not per-store). Read at call time on every `save()`, so it can be changed without a code edit. `0`/`off`/`false`/`no` disables eviction; a positive integer sets the cap; unset defers to the class attribute (default 1000, `Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`); a malformed value warns once and is ignored. It can lower, raise, or disable the *default* cap, but it can **never** re-arm eviction on a subclass whose `_max_records_per_agent` is set falsy — that opt-out always wins. See [DefaultMemory eviction](features/harness-integration.md#corpus-growth) for the data-loss behavior on the first save after upgrading. |
@@ -12784,6 +12784,16 @@ except Exception as e:
     to another), Popoto automatically removes the entry from the old partition's sorted
     set and adds it to the new one. No manual cleanup is needed.
 
+!!! note "Datetime partition values are canonicalized to UTC"
+    When a `partition_by` field holds a `datetime`, the partition segment is
+    canonicalized to UTC before it becomes part of the key. An aware value, its
+    equivalent in another offset, and the naive form of the same instant (naive is
+    assumed UTC) all collapse to one partition, so a query cannot miss rows just
+    because a value decoded differently than it was written. Every other partition
+    value type renders exactly as `str(value)`, unchanged. Setting
+    `POPOTO_DATETIME_KEY_LEGACY=1` restores the pre-canonical rendering for a fleet
+    mid-rollout, at the cost of reinstating the split.
+
 !!! note "Deprecation Notice"
     The `sort_by` parameter is deprecated and will be removed in a future major version.
     Use `partition_by` instead. `sort_by` still works but emits a `DeprecationWarning`.
@@ -13538,6 +13548,15 @@ TenantMemory(key="x", tenant="acme").save()
 # Writes to stream:mutations:beta
 TenantMemory(key="y", tenant="beta").save()
 ```
+
+!!! note "Datetime partition values are canonicalized to UTC"
+    If `_stream_partition_field` names a `datetime` field, the segment appended to the
+    stream name is canonicalized to UTC, so aware, offset and naive representations of
+    one instant route to a single stream rather than several. Every other partition
+    value type renders exactly as `str(value)`, so the `stream:mutations:acme` form
+    above is unchanged. A `None` partition value still writes to the unpartitioned
+    `stream:mutations`. Setting `POPOTO_DATETIME_KEY_LEGACY=1` restores the
+    pre-canonical rendering.
 
 ### Custom Events (Non-Save Operations)
 
@@ -17061,6 +17080,13 @@ top_episodes = Episode.query.filter(
     With `partition_by=('project_id',)`, each project gets its own sorted set,
     making range queries faster and fully isolated.
 
+!!! note "Datetime partition values are canonicalized to UTC"
+    If the field you partition on is a `datetime` rather than a string tenant id, the
+    partition segment is canonicalized to UTC, so aware, offset and naive
+    representations of one instant share a single partition instead of splitting into
+    several. Non-datetime partition values, including the string ids used throughout
+    this page, are unchanged.
+
 ## Passing the namespace through your application
 
 The KeyField pattern is explicit — you pass `project_id` to every `create()`,
@@ -17129,6 +17155,12 @@ This creates per-project companion hashes:
 |----------------------|----------------------------|
 | `$ConfidencF:Memory:certainty:data` (all members) | `$ConfidencF:Memory:certainty:data:atlas` (project atlas only) |
 | | `$ConfidencF:Memory:certainty:data:hermes` (project hermes only) |
+
+!!! note "Datetime partition values are canonicalized to UTC"
+    When the partition field holds a `datetime`, the segment appended to the companion
+    hash name is canonicalized to UTC, so aware, offset and naive representations of
+    one instant share a single hash. String project ids like `atlas` above render as
+    `str(value)` and are unchanged.
 
 Usage is identical to unpartitioned ConfidenceField -- the partition is resolved
 automatically from the model instance:
