@@ -450,7 +450,18 @@ deliverables and pre-built both async helpers).
 | Checkout is at or above `7f057f9` | `git merge-base --is-ancestor 7f057f9 HEAD` | #602 must be present; the whole re-scope depends on it |
 | Full extras installed (no ~95 deselects) | `.venv/bin/python -c "import numpy, sentence_transformers"` | CLAUDE.md gotcha #2 |
 | Redis/Valkey reachable on the chosen DB | `redis-cli -n <N> ping` | Suite needs a live server |
-| A private test DB is exported | `test -n "$POPOTO_TEST_DB" && test "$POPOTO_TEST_DB" != 0` | DB 15 is shared by every concurrent worktree; DB 0 is the live agent store |
+| A private test DB is exported | `export POPOTO_TEST_DB=12; test "$POPOTO_TEST_DB" != 0` | DB 15 is shared by every concurrent worktree; DB 0 is the live agent store |
+
+**The build pins `POPOTO_TEST_DB=12` (critique C5).** It was unset when the
+critique ran, and the prior draft left `<n>` unbound, so the leak-check rows could
+have inspected a different DB than the suite used. Every pytest invocation in this
+plan is written `POPOTO_TEST_DB=12 …` and every `redis-cli` row `redis-cli -n 12 …`;
+**exporting it is the first action of task 0**. Note that `POPOTO_TEST_DB` binds
+only the pytest plugin — `redis-cli` takes its DB from `-n` independently, which is
+why the number is written literally in both places rather than referenced as a
+variable. If DB 12 is occupied by another lane at build time, change the number in
+**both** places together and say so in the report. (spike-6 ran on DB 9 for exactly
+that reason; the DB number is arbitrary, its consistency is not.)
 
 If the build runs in a fresh worktree, install `.[dev,embeddings,benchmark,mcp]`
 (omit `dataframe` — it breaks `test_dataframe_field.py` collection).
@@ -466,12 +477,18 @@ If the build runs in a fresh worktree, install `.[dev,embeddings,benchmark,mcp]`
   (`order_by = "doc_id"`). `Meta` is class-level, so each case needs its own
   model. Same field shape as `PushdownDoc`'s pushdown-relevant subset:
   `room_id` KeyField, `doc_id` KeyField, `last_active_at` SortedField partitioned
-  on `room_id`.
+  on `room_id`. **`PushdownDocMetaDesc` additionally carries
+  `bucket = popoto.IndexedField(type=str, null=True)`** — the second indexed
+  predicate is the only way to decline the Redis-side bound while leaving the
+  key-list slice live, which is what reaches `query.py:2329` (spike-6, critique
+  C2). The other two models keep the minimal shape.
 - **A small seeding helper for the `Meta` models** — `_seed()` is hard-bound to
   `PushdownDoc`; the `Meta` tests need a `model`-parametrized twin (and, for the
   other-field case, `doc_id` values anti-correlated with score).
-- **Six new test functions**: one `count()`, three sync `Meta` (desc / asc /
-  other-field), two async `Meta` (desc / other-field).
+- **Eight new test functions**: one `count()`; four sync `Meta` (Redis-bound desc /
+  Redis-bound asc / other-field / **key-list-slice desc**); three async `Meta`
+  (Redis-bound desc / other-field / **key-list-slice desc**). The two key-list-slice
+  tests are the spike-6 addition (critique C2).
 - **No new helpers.** `HydrationCounter` and `AsyncHydrationCounter` both already
   exist in the module; `Defaults` is already imported at line 25. Nothing is
   added to the file's infrastructure.
@@ -575,7 +592,16 @@ Expected collected count after the change: **36** (30 + 6).
   work against code that calls `zrevrangebyscore(..., num=11)` twice.
 - **Tightening the counters to an exact object count.** Sync counts 2 `HGETALL`s
   per object and async counts 1; chasing an exact number is a fragile detour into
-  redis-py pipeline internals. Assert boundaries, not equalities.
+  redis-py pipeline internals. **Assert boundaries, not equalities — including in
+  the "the bound must have declined" cases.** The 2026-08-13 draft had tasks 3 and
+  4 asserting `counter.count == 2 * 20` / `== 20`, which is this very Rabbit Hole
+  appearing as planned work (critique C1); both are now stated as lower bounds
+  (`>= 2 * 20` / `>= 20`) paired with a `> 2 * (limit + MARGIN)` claim, which is
+  what actually distinguishes "declined" from "bounded". The equality was not
+  merely stylistic: 40 holds today only because `_execute_filter` leaves
+  `kwargs["order_by"]` unset when `_sorted_field_order` is truthy
+  (`query.py:3049-3055`), and it breaks the moment `get_many_objects`' KeyField
+  pre-slice path is reached.
 - **Making the ascending-`Meta` test "prove" more than it can.** With no `Meta`,
   sorted-set order is already ascending. No query shape distinguishes "Meta
   supplied ascending" from "the default was already ascending" through public
