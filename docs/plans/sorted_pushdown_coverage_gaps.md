@@ -848,4 +848,22 @@ Run from the checkout under test; `<n>` is the private `POPOTO_TEST_DB`.
 
 ## Open Questions
 
-<!-- skeleton -->
+The 2026-08-13 draft carried three questions, all about how to split the async
+criterion between #559 and #571. **All three are answered by events**: #571
+shipped with its own tests on 2026-09-04, so there is no split to make and no
+`xfail` to decide the strictness of. They are removed rather than answered.
+
+Two remain, both low-stakes and neither blocking a build:
+
+1. **Async `Meta` coverage is a scope addition.** #559 as filed asked only for
+   sync `Meta.order_by` coverage, because at filing time the async path had no
+   pushdown at all. Now that #602 routes async through the same
+   `_sorted_pushdown_args` / `_bound_keys_before_hydration` guards, tasks 4's two
+   async `Meta` tests cover a real, unpinned branch for ~20 lines. Included on
+   that reasoning — confirm, or cut them to keep the issue literally as filed.
+2. **Issue-body hygiene.** #559's body still carries the 2026-08-13
+   "Plan-time correction" block describing the async gap as open and the `xfail`
+   as the plan. It is now wrong in both halves. Preference: rewrite the block to
+   point at #602, or leave it as filed with this plan's Freshness Check as the
+   record of the correction? (This plan assumes **rewrite**, and the plan link in
+   the body is being repointed from the unmerged branch to `main` regardless.)
