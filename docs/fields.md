@@ -2014,6 +2014,15 @@ TenantMemory(key="x", tenant="acme").save()
 TenantMemory(key="y", tenant="beta").save()
 ```
 
+!!! note "Datetime partition values are canonicalized to UTC"
+    If `_stream_partition_field` names a `datetime` field, the segment appended to the
+    stream name is canonicalized to UTC, so aware, offset and naive representations of
+    one instant route to a single stream rather than several. Every other partition
+    value type renders exactly as `str(value)`, so the `stream:mutations:acme` form
+    above is unchanged. A `None` partition value still writes to the unpartitioned
+    `stream:mutations`. Setting `POPOTO_DATETIME_KEY_LEGACY=1` restores the
+    pre-canonical rendering.
+
 ### Custom Events (Non-Save Operations)
 
 Operations that bypass `Model.save()` (like `ConfidenceField.update_confidence()` and `CoOccurrenceField.strengthen()`) can log events via the public `_xadd_event()` method:

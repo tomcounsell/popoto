@@ -155,6 +155,12 @@ This creates per-project companion hashes:
 | `$ConfidencF:Memory:certainty:data` (all members) | `$ConfidencF:Memory:certainty:data:atlas` (project atlas only) |
 | | `$ConfidencF:Memory:certainty:data:hermes` (project hermes only) |
 
+!!! note "Datetime partition values are canonicalized to UTC"
+    When the partition field holds a `datetime`, the segment appended to the companion
+    hash name is canonicalized to UTC, so aware, offset and naive representations of
+    one instant share a single hash. String project ids like `atlas` above render as
+    `str(value)` and are unchanged.
+
 Usage is identical to unpartitioned ConfidenceField -- the partition is resolved
 automatically from the model instance:
 
