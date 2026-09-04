@@ -42,6 +42,7 @@ class _ExportsState(Protocol):
     @staticmethod
     def export_state(instance: Any) -> Any: ...
 
+
 DEFAULT_CHUNK_SIZE = 500
 """Keys hydrated per round trip.
 
@@ -58,9 +59,7 @@ def _as_str(key: Any) -> str:
     return key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
 
 
-def _render_filter(
-    q_objects: "list[Any]", filters: "dict[str, Any]"
-) -> "str | None":
+def _render_filter(q_objects: "list[Any]", filters: "dict[str, Any]") -> "str | None":
     """Render filter provenance from Q objects plus plain kwargs.
 
     ``Q.__repr__`` already produces ``(Q(a='b') OR ~Q(c__lt=2))``, so it is

@@ -51,6 +51,7 @@ class _ImportsState(Protocol):
     @staticmethod
     def import_state(instance: Any, carried: Any) -> Any: ...
 
+
 BATCH_SIZE = 500
 """Records per conflict-check / reconciliation batch."""
 
