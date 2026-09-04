@@ -199,7 +199,7 @@ Roughly four small additive methods, one module, one recipe rewrite of ~15 lines
 
 
 ## Test Impact
-No existing tests are edited. `tests/test_default_memory_eviction.py` (36 tests across cap precedence, notice, and counter semantics) is the behavioral oracle and must pass byte-for-byte; spike-1 shows why its client-object monkeypatches keep intercepting the calls once they move into the field layer. `tests/test_production_contracts.py`, `tests/test_integrations_*.py`, and `tests/test_never_record_firewall.py` exercise `DefaultMemory.save()` and stay green.
+No existing tests are edited. `tests/test_default_memory_eviction.py` (15 test functions, several parametrized, across cap precedence, notice, and counter semantics) is the behavioral oracle and must pass byte-for-byte; spike-1 shows why its client-object monkeypatches keep intercepting the calls once they move into the field layer. `tests/test_production_contracts.py`, `tests/test_integrations_*.py`, and `tests/test_never_record_firewall.py` exercise `DefaultMemory.save()` and stay green.
 
 New tests:
 - [ ] `tests/test_sorted_field_reads.py` (create) — `count`/`members` on a partitioned `DecayingSortedField` and an unpartitioned `SortedField`: cardinality, ascending and `reverse=True` order, `start/stop` window, empty index, `stop < start`, unset partition raises, members are `str`.
