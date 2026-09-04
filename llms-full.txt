@@ -4225,6 +4225,26 @@ ObservationProtocol.on_context_used(memories, outcome_map)
 
 See [Metacognitive Layer](metacognitive-layer.md) for the full effects comparison table.
 
+### Unsaved instances in a batch
+
+`on_context_used` iterates every instance in `instances` and applies effects one at a
+time. An instance that has never been saved has no `redis_key`, so calling a model
+method on it (`touch`, `confirm_access`, `strengthen_cycle`, `resolve_pressure`,
+`weaken_cycle`) raises `TypeError`. Every applier — `acted`, `dismissed`,
+`contradicted`, and `used` (`deferred` has no method calls to guard) — catches that
+`TypeError` (and `ValueError`) around each call and moves on, so:
+
+- an unsaved member is skipped for that effect: it never raises out of
+  `on_context_used`, and it never aborts the batch;
+- every other, saved instance in the same call still gets its full effects, applied
+  through the same pipeline and `execute()`d as normal;
+- the model methods themselves are unchanged — calling `touch()`,
+  `confirm_access()`, `strengthen_cycle()`, `weaken_cycle()`, or
+  `resolve_pressure()` directly on an unsaved instance still raises `TypeError`,
+  exactly as before. The degradation is a property of `ObservationProtocol`, not of
+  the model methods it calls — a caller invoking those methods outside the protocol
+  gets no such safety net.
+
 ### Migrating custom outcomes
 
 If you were using a custom `"echoed"` outcome (or any bespoke label between `"used"` and `"dismissed"`), map it to `"used"` when the agent reasoned over the memory or to `"dismissed"` when the overlap was coincidental; `on_context_used()` raises `ValueError` on unknown labels, so coerce to a valid outcome before calling.

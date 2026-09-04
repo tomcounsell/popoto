@@ -34735,7 +34735,19 @@ dispatches effects based on outcome type.</p>
 <span class="normal"><a href="#__codelineno-0-198">198</a></span>
 <span class="normal"><a href="#__codelineno-0-199">199</a></span>
 <span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="k">class</span><span class="w"> </span><span class="nc">ObservationProtocol</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="k">class</span><span class="w"> </span><span class="nc">ObservationProtocol</span><span class="p">:</span>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="w">    </span><span class="sd">"""Lifecycle hooks for passive behavioral inference on memory models.</span>
 <a id="__codelineno-0-103" name="__codelineno-0-103"></a>
 <a id="__codelineno-0-104" name="__codelineno-0-104"></a><span class="sd">    All methods are static — the protocol is a stateless coordinator that</span>
@@ -34815,27 +34827,39 @@ dispatches effects based on outcome type.</p>
 <a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">            ValidityField — ``contradicted`` behaves exactly as before. See</span>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">            ``_apply_supersession``.</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">            ValueError: If any outcome string is not a valid outcome.</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">        """</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>            <span class="k">return</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>        <span class="c1"># Validate all outcomes upfront</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">outcome</span> <span class="ow">in</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>            <span class="k">if</span> <span class="n">outcome</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_OUTCOMES</span><span class="p">:</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>                    <span class="sa">f</span><span class="s2">"Invalid outcome '</span><span class="si">{</span><span class="n">outcome</span><span class="si">}</span><span class="s2">' for key '</span><span class="si">{</span><span class="n">pk</span><span class="si">}</span><span class="s2">'. "</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>                    <span class="sa">f</span><span class="s2">"Valid outcomes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">VALID_OUTCOMES</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>                <span class="p">)</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>            <span class="n">pk</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>            <span class="n">outcome</span> <span class="o">=</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="s2">"deferred"</span><span class="p">)</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="n">_apply_outcome</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="c1"># Resolve any pending proposal for this instance</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="n">RecallProposal</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        Unsaved instances:</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">            An unsaved member of ``instances`` is skipped, for every outcome.</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">            Its field effects raise internally and are swallowed, it</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">            contributes no commands, and the remaining members of the batch</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">            still get their full effects — one unsaved instance never aborts</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">            the batch (issue #583). The model methods themselves</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">            (``touch``, ``confirm_access``, ``strengthen_cycle``,</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">            ``weaken_cycle``, ``resolve_pressure``) are unchanged and still</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">            raise ``TypeError`` for direct callers; the degradation belongs</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">            to this protocol layer only.</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">            ValueError: If any outcome string is not a valid outcome. Being</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">                unsaved is never a reason this method raises.</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">        """</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>            <span class="k">return</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="c1"># Validate all outcomes upfront</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">outcome</span> <span class="ow">in</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="k">if</span> <span class="n">outcome</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_OUTCOMES</span><span class="p">:</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>                    <span class="sa">f</span><span class="s2">"Invalid outcome '</span><span class="si">{</span><span class="n">outcome</span><span class="si">}</span><span class="s2">' for key '</span><span class="si">{</span><span class="n">pk</span><span class="si">}</span><span class="s2">'. "</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>                    <span class="sa">f</span><span class="s2">"Valid outcomes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">VALID_OUTCOMES</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>                <span class="p">)</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>            <span class="n">pk</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>            <span class="n">outcome</span> <span class="o">=</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="s2">"deferred"</span><span class="p">)</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>            <span class="n">_apply_outcome</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>            <span class="c1"># Resolve any pending proposal for this instance</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>            <span class="n">RecallProposal</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -35197,6 +35221,19 @@ ValidityField — ``contradicted`` behaves exactly as before. See
 </code></pre></div>
 
 
+<details class="unsaved-instances" open>
+  <summary>Unsaved instances</summary>
+  <p>An unsaved member of <code>instances</code> is skipped, for every outcome.
+Its field effects raise internally and are swallowed, it
+contributes no commands, and the remaining members of the batch
+still get their full effects — one unsaved instance never aborts
+the batch (issue #583). The model methods themselves
+(<code>touch</code>, <code>confirm_access</code>, <code>strengthen_cycle</code>,
+<code>weaken_cycle</code>, <code>resolve_pressure</code>) are unchanged and still
+raise <code>TypeError</code> for direct callers; the degradation belongs
+to this protocol layer only.</p>
+</details>
+
 <p><span class="doc-section-title">Raises:</span></p>
     <table>
       <thead>
@@ -35212,7 +35249,8 @@ ValidityField — ``contradicted`` behaves exactly as before. See
             </td>
             <td>
               <div class="doc-md-description">
-                <p>If any outcome string is not a valid outcome.</p>
+                <p>If any outcome string is not a valid outcome. Being
+unsaved is never a reason this method raises.</p>
               </div>
             </td>
           </tr>
@@ -35282,7 +35320,19 @@ ValidityField — ``contradicted`` behaves exactly as before. See
 <span class="normal"><a href="#__codelineno-0-198">198</a></span>
 <span class="normal"><a href="#__codelineno-0-199">199</a></span>
 <span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-141" name="__codelineno-0-141"></a><span class="nd">@staticmethod</span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-141" name="__codelineno-0-141"></a><span class="nd">@staticmethod</span>
 <a id="__codelineno-0-142" name="__codelineno-0-142"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_context_used</span><span class="p">(</span><span class="n">instances</span><span class="p">,</span> <span class="n">outcome_map</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="w">    </span><span class="sd">"""Fire when application reports how agent responded to surfaced memories.</span>
 <a id="__codelineno-0-144" name="__codelineno-0-144"></a>
@@ -35322,27 +35372,39 @@ ValidityField — ``contradicted`` behaves exactly as before. See
 <a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        ValidityField — ``contradicted`` behaves exactly as before. See</span>
 <a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        ``_apply_supersession``.</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">        ValueError: If any outcome string is not a valid outcome.</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    """</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>        <span class="k">return</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="c1"># Validate all outcomes upfront</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>    <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">outcome</span> <span class="ow">in</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="k">if</span> <span class="n">outcome</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_OUTCOMES</span><span class="p">:</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>                <span class="sa">f</span><span class="s2">"Invalid outcome '</span><span class="si">{</span><span class="n">outcome</span><span class="si">}</span><span class="s2">' for key '</span><span class="si">{</span><span class="n">pk</span><span class="si">}</span><span class="s2">'. "</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>                <span class="sa">f</span><span class="s2">"Valid outcomes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">VALID_OUTCOMES</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>            <span class="p">)</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>        <span class="n">pk</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="s2">"deferred"</span><span class="p">)</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>        <span class="n">_apply_outcome</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="c1"># Resolve any pending proposal for this instance</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="n">RecallProposal</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">    Unsaved instances:</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">        An unsaved member of ``instances`` is skipped, for every outcome.</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">        Its field effects raise internally and are swallowed, it</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">        contributes no commands, and the remaining members of the batch</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">        still get their full effects — one unsaved instance never aborts</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        the batch (issue #583). The model methods themselves</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        (``touch``, ``confirm_access``, ``strengthen_cycle``,</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">        ``weaken_cycle``, ``resolve_pressure``) are unchanged and still</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        raise ``TypeError`` for direct callers; the degradation belongs</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        to this protocol layer only.</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        ValueError: If any outcome string is not a valid outcome. Being</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">            unsaved is never a reason this method raises.</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    """</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="k">return</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="c1"># Validate all outcomes upfront</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">outcome</span> <span class="ow">in</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="k">if</span> <span class="n">outcome</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_OUTCOMES</span><span class="p">:</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>                <span class="sa">f</span><span class="s2">"Invalid outcome '</span><span class="si">{</span><span class="n">outcome</span><span class="si">}</span><span class="s2">' for key '</span><span class="si">{</span><span class="n">pk</span><span class="si">}</span><span class="s2">'. "</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>                <span class="sa">f</span><span class="s2">"Valid outcomes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">VALID_OUTCOMES</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="p">)</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>        <span class="n">pk</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="n">outcome_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pk</span><span class="p">,</span> <span class="s2">"deferred"</span><span class="p">)</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="n">_apply_outcome</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>        <span class="c1"># Resolve any pending proposal for this instance</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="n">RecallProposal</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -35387,39 +35449,7 @@ TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/observation.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-547">547</a></span>
-<span class="normal"><a href="#__codelineno-0-548">548</a></span>
-<span class="normal"><a href="#__codelineno-0-549">549</a></span>
-<span class="normal"><a href="#__codelineno-0-550">550</a></span>
-<span class="normal"><a href="#__codelineno-0-551">551</a></span>
-<span class="normal"><a href="#__codelineno-0-552">552</a></span>
-<span class="normal"><a href="#__codelineno-0-553">553</a></span>
-<span class="normal"><a href="#__codelineno-0-554">554</a></span>
-<span class="normal"><a href="#__codelineno-0-555">555</a></span>
-<span class="normal"><a href="#__codelineno-0-556">556</a></span>
-<span class="normal"><a href="#__codelineno-0-557">557</a></span>
-<span class="normal"><a href="#__codelineno-0-558">558</a></span>
-<span class="normal"><a href="#__codelineno-0-559">559</a></span>
-<span class="normal"><a href="#__codelineno-0-560">560</a></span>
-<span class="normal"><a href="#__codelineno-0-561">561</a></span>
-<span class="normal"><a href="#__codelineno-0-562">562</a></span>
-<span class="normal"><a href="#__codelineno-0-563">563</a></span>
-<span class="normal"><a href="#__codelineno-0-564">564</a></span>
-<span class="normal"><a href="#__codelineno-0-565">565</a></span>
-<span class="normal"><a href="#__codelineno-0-566">566</a></span>
-<span class="normal"><a href="#__codelineno-0-567">567</a></span>
-<span class="normal"><a href="#__codelineno-0-568">568</a></span>
-<span class="normal"><a href="#__codelineno-0-569">569</a></span>
-<span class="normal"><a href="#__codelineno-0-570">570</a></span>
-<span class="normal"><a href="#__codelineno-0-571">571</a></span>
-<span class="normal"><a href="#__codelineno-0-572">572</a></span>
-<span class="normal"><a href="#__codelineno-0-573">573</a></span>
-<span class="normal"><a href="#__codelineno-0-574">574</a></span>
-<span class="normal"><a href="#__codelineno-0-575">575</a></span>
-<span class="normal"><a href="#__codelineno-0-576">576</a></span>
-<span class="normal"><a href="#__codelineno-0-577">577</a></span>
-<span class="normal"><a href="#__codelineno-0-578">578</a></span>
-<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-579">579</a></span>
 <span class="normal"><a href="#__codelineno-0-580">580</a></span>
 <span class="normal"><a href="#__codelineno-0-581">581</a></span>
 <span class="normal"><a href="#__codelineno-0-582">582</a></span>
@@ -35518,138 +35548,170 @@ TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</p>
 <span class="normal"><a href="#__codelineno-0-675">675</a></span>
 <span class="normal"><a href="#__codelineno-0-676">676</a></span>
 <span class="normal"><a href="#__codelineno-0-677">677</a></span>
-<span class="normal"><a href="#__codelineno-0-678">678</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="k">class</span><span class="w"> </span><span class="nc">RecallProposal</span><span class="p">:</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="w">    </span><span class="sd">"""Internal tracking for proactively surfaced memories.</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="sd">    Key pattern: $RP:{ClassName}:pending:{partition} -&gt; ZSET scored by surfaced_at</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">    Statuses: pending -&gt; acted | used | dismissed | deferred | contradicted | expired</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">    TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</span>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">    This is internal ORM infrastructure, not a user-facing Model.</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">    """</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="n">DEFAULT_TTL</span> <span class="o">=</span> <span class="mi">3600</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_pending_key</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="w">        </span><span class="sd">"""Build the Redis key for pending proposals.</span>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">            model_class: The Model class (or instance's class).</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="sd">            partition: Optional partition key.</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a>
-<a id="__codelineno-0-567" name="__codelineno-0-567"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-568" name="__codelineno-0-568"></a><span class="sd">            str: Redis key like '$RP:ClassName:pending:partition'</span>
-<a id="__codelineno-0-569" name="__codelineno-0-569"></a><span class="sd">        """</span>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a>        <span class="n">class_name</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-571" name="__codelineno-0-571"></a>            <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>            <span class="k">else</span> <span class="nb">type</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="p">)</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="n">part</span> <span class="o">=</span> <span class="n">partition</span> <span class="ow">or</span> <span class="s2">"default"</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"$RP:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:pending:</span><span class="si">{</span><span class="n">part</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">create_batch</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instances</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="w">        </span><span class="sd">"""Create pending proposals for a batch of instances.</span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span>
+<span class="normal"><a href="#__codelineno-0-693">693</a></span>
+<span class="normal"><a href="#__codelineno-0-694">694</a></span>
+<span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="k">class</span><span class="w"> </span><span class="nc">RecallProposal</span><span class="p">:</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="w">    </span><span class="sd">"""Internal tracking for proactively surfaced memories.</span>
 <a id="__codelineno-0-581" name="__codelineno-0-581"></a>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">            instances: List of Model instances being surfaced.</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">            reason: Why the memories were surfaced.</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a><span class="sd">            partition: Optional partition key.</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">            pipeline: Optional Redis pipeline for batch operations.</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">        """</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>            <span class="k">return</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">    Key pattern: $RP:{ClassName}:pending:{partition} -&gt; ZSET scored by surfaced_at</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">    Statuses: pending -&gt; acted | used | dismissed | deferred | contradicted | expired</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">    TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">    This is internal ORM infrastructure, not a user-facing Model.</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">    """</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>    <span class="n">DEFAULT_TTL</span> <span class="o">=</span> <span class="mi">3600</span>
 <a id="__codelineno-0-590" name="__codelineno-0-590"></a>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>        <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>        <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instances</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_pending_key</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a><span class="w">        </span><span class="sd">"""Build the Redis key for pending proposals.</span>
 <a id="__codelineno-0-594" name="__codelineno-0-594"></a>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>        <span class="c1"># ZADD each instance with score=now</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>        <span class="n">members</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>        <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>            <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a>            <span class="c1"># Store member key with reason as the value scored by time</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>            <span class="n">members</span><span class="p">[</span><span class="n">member_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">now</span>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>        <span class="k">if</span> <span class="n">members</span><span class="p">:</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="n">db</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">)</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="w">        </span><span class="sd">"""Remove a resolved proposal from the pending set.</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a><span class="sd">        Idempotent — returns 0 if already removed (e.g., by expiration).</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">            instance: The Model instance whose proposal to resolve.</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a><span class="sd">            outcome: The outcome string (for logging).</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">            partition: Optional partition key.</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">            pipeline: Optional Redis pipeline for batch operations.</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">            int: Number of members removed (0 or 1).</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        """</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="k">return</span> <span class="n">pipeline</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">expire_stale</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="w">        </span><span class="sd">"""Remove proposals older than TTL. Returns expired member keys.</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a><span class="sd">            model_class: The Model class (or instance's class).</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">            partition: Optional partition key.</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a><span class="sd">            str: Redis key like '$RP:ClassName:pending:partition'</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a><span class="sd">        """</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>        <span class="n">class_name</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>            <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="k">else</span> <span class="nb">type</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>        <span class="p">)</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>        <span class="n">part</span> <span class="o">=</span> <span class="n">partition</span> <span class="ow">or</span> <span class="s2">"default"</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"$RP:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:pending:</span><span class="si">{</span><span class="n">part</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">create_batch</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instances</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a><span class="w">        </span><span class="sd">"""Create pending proposals for a batch of instances.</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a><span class="sd">            instances: List of Model instances being surfaced.</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">            reason: Why the memories were surfaced.</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">            partition: Optional partition key.</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">            pipeline: Optional Redis pipeline for batch operations.</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        """</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>            <span class="k">return</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instances</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="c1"># ZADD each instance with score=now</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="n">members</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>            <span class="c1"># Store member key with reason as the value scored by time</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>            <span class="n">members</span><span class="p">[</span><span class="n">member_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">now</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">            model_class: The Model class to check.</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">            partition: Optional partition key.</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">            ttl: TTL in seconds. Default DEFAULT_TTL (3600).</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">            pipeline: Optional Redis pipeline for batch operations.</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">            list: List of expired member key strings.</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">        """</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="k">if</span> <span class="n">ttl</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>            <span class="n">ttl</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">DEFAULT_TTL</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="n">cutoff</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">ttl</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>        <span class="k">if</span> <span class="n">members</span><span class="p">:</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>            <span class="n">db</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">)</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="w">        </span><span class="sd">"""Remove a resolved proposal from the pending set.</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">        Idempotent — returns 0 if already removed (e.g., by expiration).</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">            instance: The Model instance whose proposal to resolve.</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">            outcome: The outcome string (for logging).</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">            partition: Optional partition key.</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">            pipeline: Optional Redis pipeline for batch operations.</span>
 <a id="__codelineno-0-650" name="__codelineno-0-650"></a>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>        <span class="c1"># Get members with scores below cutoff (older than TTL)</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>        <span class="n">expired</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="k">if</span> <span class="n">expired</span><span class="p">:</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a>            <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="c1"># Decode bytes to strings</span>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">expired</span><span class="p">]</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_pending</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a><span class="w">        </span><span class="sd">"""Return all pending proposals as (member_key, surfaced_at) pairs.</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="sd">            model_class: The Model class to check.</span>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">            partition: Optional partition key.</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">            list: List of (member_key_str, surfaced_at_float) tuples.</span>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">        """</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>        <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a>            <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>        <span class="p">]</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">            int: Number of members removed (0 or 1).</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        """</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>            <span class="k">return</span> <span class="n">pipeline</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">expire_stale</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="w">        </span><span class="sd">"""Remove proposals older than TTL. Returns expired member keys.</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">            model_class: The Model class to check.</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="sd">            partition: Optional partition key.</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">            ttl: TTL in seconds. Default DEFAULT_TTL (3600).</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">            pipeline: Optional Redis pipeline for batch operations.</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">            list: List of expired member key strings.</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">        """</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a>        <span class="k">if</span> <span class="n">ttl</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>            <span class="n">ttl</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">DEFAULT_TTL</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="n">cutoff</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">ttl</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a>        <span class="c1"># Get members with scores below cutoff (older than TTL)</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a>        <span class="n">expired</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a>        <span class="k">if</span> <span class="n">expired</span><span class="p">:</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a>            <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="c1"># Decode bytes to strings</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">expired</span><span class="p">]</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_pending</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="w">        </span><span class="sd">"""Return all pending proposals as (member_key, surfaced_at) pairs.</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">            model_class: The Model class to check.</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">            partition: Optional partition key.</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">            list: List of (member_key_str, surfaced_at_float) tuples.</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        """</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>            <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="p">]</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -35761,61 +35823,61 @@ TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/observation.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-578">578</a></span>
-<span class="normal"><a href="#__codelineno-0-579">579</a></span>
-<span class="normal"><a href="#__codelineno-0-580">580</a></span>
-<span class="normal"><a href="#__codelineno-0-581">581</a></span>
-<span class="normal"><a href="#__codelineno-0-582">582</a></span>
-<span class="normal"><a href="#__codelineno-0-583">583</a></span>
-<span class="normal"><a href="#__codelineno-0-584">584</a></span>
-<span class="normal"><a href="#__codelineno-0-585">585</a></span>
-<span class="normal"><a href="#__codelineno-0-586">586</a></span>
-<span class="normal"><a href="#__codelineno-0-587">587</a></span>
-<span class="normal"><a href="#__codelineno-0-588">588</a></span>
-<span class="normal"><a href="#__codelineno-0-589">589</a></span>
-<span class="normal"><a href="#__codelineno-0-590">590</a></span>
-<span class="normal"><a href="#__codelineno-0-591">591</a></span>
-<span class="normal"><a href="#__codelineno-0-592">592</a></span>
-<span class="normal"><a href="#__codelineno-0-593">593</a></span>
-<span class="normal"><a href="#__codelineno-0-594">594</a></span>
-<span class="normal"><a href="#__codelineno-0-595">595</a></span>
-<span class="normal"><a href="#__codelineno-0-596">596</a></span>
-<span class="normal"><a href="#__codelineno-0-597">597</a></span>
-<span class="normal"><a href="#__codelineno-0-598">598</a></span>
-<span class="normal"><a href="#__codelineno-0-599">599</a></span>
-<span class="normal"><a href="#__codelineno-0-600">600</a></span>
-<span class="normal"><a href="#__codelineno-0-601">601</a></span>
-<span class="normal"><a href="#__codelineno-0-602">602</a></span>
-<span class="normal"><a href="#__codelineno-0-603">603</a></span>
-<span class="normal"><a href="#__codelineno-0-604">604</a></span>
-<span class="normal"><a href="#__codelineno-0-605">605</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="k">def</span><span class="w"> </span><span class="nf">create_batch</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instances</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="w">    </span><span class="sd">"""Create pending proposals for a batch of instances.</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">        instances: List of Model instances being surfaced.</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">        reason: Why the memories were surfaced.</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a><span class="sd">        partition: Optional partition key.</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">        pipeline: Optional Redis pipeline for batch operations.</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">    """</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="k">return</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>    <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>    <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instances</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="c1"># ZADD each instance with score=now</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>    <span class="n">members</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>    <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a>        <span class="c1"># Store member key with reason as the value scored by time</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>        <span class="n">members</span><span class="p">[</span><span class="n">member_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">now</span>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>    <span class="k">if</span> <span class="n">members</span><span class="p">:</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>        <span class="n">db</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-610">610</a></span>
+<span class="normal"><a href="#__codelineno-0-611">611</a></span>
+<span class="normal"><a href="#__codelineno-0-612">612</a></span>
+<span class="normal"><a href="#__codelineno-0-613">613</a></span>
+<span class="normal"><a href="#__codelineno-0-614">614</a></span>
+<span class="normal"><a href="#__codelineno-0-615">615</a></span>
+<span class="normal"><a href="#__codelineno-0-616">616</a></span>
+<span class="normal"><a href="#__codelineno-0-617">617</a></span>
+<span class="normal"><a href="#__codelineno-0-618">618</a></span>
+<span class="normal"><a href="#__codelineno-0-619">619</a></span>
+<span class="normal"><a href="#__codelineno-0-620">620</a></span>
+<span class="normal"><a href="#__codelineno-0-621">621</a></span>
+<span class="normal"><a href="#__codelineno-0-622">622</a></span>
+<span class="normal"><a href="#__codelineno-0-623">623</a></span>
+<span class="normal"><a href="#__codelineno-0-624">624</a></span>
+<span class="normal"><a href="#__codelineno-0-625">625</a></span>
+<span class="normal"><a href="#__codelineno-0-626">626</a></span>
+<span class="normal"><a href="#__codelineno-0-627">627</a></span>
+<span class="normal"><a href="#__codelineno-0-628">628</a></span>
+<span class="normal"><a href="#__codelineno-0-629">629</a></span>
+<span class="normal"><a href="#__codelineno-0-630">630</a></span>
+<span class="normal"><a href="#__codelineno-0-631">631</a></span>
+<span class="normal"><a href="#__codelineno-0-632">632</a></span>
+<span class="normal"><a href="#__codelineno-0-633">633</a></span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-610" name="__codelineno-0-610"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a><span class="k">def</span><span class="w"> </span><span class="nf">create_batch</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instances</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a><span class="w">    </span><span class="sd">"""Create pending proposals for a batch of instances.</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a><span class="sd">        instances: List of Model instances being surfaced.</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">        reason: Why the memories were surfaced.</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">        partition: Optional partition key.</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">        pipeline: Optional Redis pipeline for batch operations.</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">    """</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="k">return</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>    <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instances</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>    <span class="c1"># ZADD each instance with score=now</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>    <span class="n">members</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>    <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>        <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="c1"># Store member key with reason as the value scored by time</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="n">members</span><span class="p">[</span><span class="n">member_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">now</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="k">if</span> <span class="n">members</span><span class="p">:</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>        <span class="n">db</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">members</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -35940,53 +36002,53 @@ TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/observation.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-607">607</a></span>
-<span class="normal"><a href="#__codelineno-0-608">608</a></span>
-<span class="normal"><a href="#__codelineno-0-609">609</a></span>
-<span class="normal"><a href="#__codelineno-0-610">610</a></span>
-<span class="normal"><a href="#__codelineno-0-611">611</a></span>
-<span class="normal"><a href="#__codelineno-0-612">612</a></span>
-<span class="normal"><a href="#__codelineno-0-613">613</a></span>
-<span class="normal"><a href="#__codelineno-0-614">614</a></span>
-<span class="normal"><a href="#__codelineno-0-615">615</a></span>
-<span class="normal"><a href="#__codelineno-0-616">616</a></span>
-<span class="normal"><a href="#__codelineno-0-617">617</a></span>
-<span class="normal"><a href="#__codelineno-0-618">618</a></span>
-<span class="normal"><a href="#__codelineno-0-619">619</a></span>
-<span class="normal"><a href="#__codelineno-0-620">620</a></span>
-<span class="normal"><a href="#__codelineno-0-621">621</a></span>
-<span class="normal"><a href="#__codelineno-0-622">622</a></span>
-<span class="normal"><a href="#__codelineno-0-623">623</a></span>
-<span class="normal"><a href="#__codelineno-0-624">624</a></span>
-<span class="normal"><a href="#__codelineno-0-625">625</a></span>
-<span class="normal"><a href="#__codelineno-0-626">626</a></span>
-<span class="normal"><a href="#__codelineno-0-627">627</a></span>
-<span class="normal"><a href="#__codelineno-0-628">628</a></span>
-<span class="normal"><a href="#__codelineno-0-629">629</a></span>
-<span class="normal"><a href="#__codelineno-0-630">630</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-607" name="__codelineno-0-607"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="w">    </span><span class="sd">"""Remove a resolved proposal from the pending set.</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a><span class="sd">    Idempotent — returns 0 if already removed (e.g., by expiration).</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">        instance: The Model instance whose proposal to resolve.</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a><span class="sd">        outcome: The outcome string (for logging).</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">        partition: Optional partition key.</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">        pipeline: Optional Redis pipeline for batch operations.</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        int: Number of members removed (0 or 1).</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">    """</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>    <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="k">return</span> <span class="n">pipeline</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span>
+<span class="normal"><a href="#__codelineno-0-642">642</a></span>
+<span class="normal"><a href="#__codelineno-0-643">643</a></span>
+<span class="normal"><a href="#__codelineno-0-644">644</a></span>
+<span class="normal"><a href="#__codelineno-0-645">645</a></span>
+<span class="normal"><a href="#__codelineno-0-646">646</a></span>
+<span class="normal"><a href="#__codelineno-0-647">647</a></span>
+<span class="normal"><a href="#__codelineno-0-648">648</a></span>
+<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span>
+<span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span>
+<span class="normal"><a href="#__codelineno-0-657">657</a></span>
+<span class="normal"><a href="#__codelineno-0-658">658</a></span>
+<span class="normal"><a href="#__codelineno-0-659">659</a></span>
+<span class="normal"><a href="#__codelineno-0-660">660</a></span>
+<span class="normal"><a href="#__codelineno-0-661">661</a></span>
+<span class="normal"><a href="#__codelineno-0-662">662</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="n">outcome</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="w">    </span><span class="sd">"""Remove a resolved proposal from the pending set.</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">    Idempotent — returns 0 if already removed (e.g., by expiration).</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">        instance: The Model instance whose proposal to resolve.</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">        outcome: The outcome string (for logging).</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">        partition: Optional partition key.</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">        pipeline: Optional Redis pipeline for batch operations.</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">        int: Number of members removed (0 or 1).</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">    """</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="n">model_class</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>    <span class="n">member_key</span> <span class="o">=</span> <span class="n">_get_instance_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>    <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="k">return</span> <span class="n">pipeline</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -36110,65 +36172,65 @@ TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/observation.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-632">632</a></span>
-<span class="normal"><a href="#__codelineno-0-633">633</a></span>
-<span class="normal"><a href="#__codelineno-0-634">634</a></span>
-<span class="normal"><a href="#__codelineno-0-635">635</a></span>
-<span class="normal"><a href="#__codelineno-0-636">636</a></span>
-<span class="normal"><a href="#__codelineno-0-637">637</a></span>
-<span class="normal"><a href="#__codelineno-0-638">638</a></span>
-<span class="normal"><a href="#__codelineno-0-639">639</a></span>
-<span class="normal"><a href="#__codelineno-0-640">640</a></span>
-<span class="normal"><a href="#__codelineno-0-641">641</a></span>
-<span class="normal"><a href="#__codelineno-0-642">642</a></span>
-<span class="normal"><a href="#__codelineno-0-643">643</a></span>
-<span class="normal"><a href="#__codelineno-0-644">644</a></span>
-<span class="normal"><a href="#__codelineno-0-645">645</a></span>
-<span class="normal"><a href="#__codelineno-0-646">646</a></span>
-<span class="normal"><a href="#__codelineno-0-647">647</a></span>
-<span class="normal"><a href="#__codelineno-0-648">648</a></span>
-<span class="normal"><a href="#__codelineno-0-649">649</a></span>
-<span class="normal"><a href="#__codelineno-0-650">650</a></span>
-<span class="normal"><a href="#__codelineno-0-651">651</a></span>
-<span class="normal"><a href="#__codelineno-0-652">652</a></span>
-<span class="normal"><a href="#__codelineno-0-653">653</a></span>
-<span class="normal"><a href="#__codelineno-0-654">654</a></span>
-<span class="normal"><a href="#__codelineno-0-655">655</a></span>
-<span class="normal"><a href="#__codelineno-0-656">656</a></span>
-<span class="normal"><a href="#__codelineno-0-657">657</a></span>
-<span class="normal"><a href="#__codelineno-0-658">658</a></span>
-<span class="normal"><a href="#__codelineno-0-659">659</a></span>
-<span class="normal"><a href="#__codelineno-0-660">660</a></span>
-<span class="normal"><a href="#__codelineno-0-661">661</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="k">def</span><span class="w"> </span><span class="nf">expire_stale</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="w">    </span><span class="sd">"""Remove proposals older than TTL. Returns expired member keys.</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        model_class: The Model class to check.</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        partition: Optional partition key.</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">        ttl: TTL in seconds. Default DEFAULT_TTL (3600).</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">        pipeline: Optional Redis pipeline for batch operations.</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">        list: List of expired member key strings.</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">    """</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a>    <span class="k">if</span> <span class="n">ttl</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">DEFAULT_TTL</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>    <span class="n">cutoff</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">ttl</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="c1"># Get members with scores below cutoff (older than TTL)</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="n">expired</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="k">if</span> <span class="n">expired</span><span class="p">:</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>    <span class="c1"># Decode bytes to strings</span>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">expired</span><span class="p">]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-664">664</a></span>
+<span class="normal"><a href="#__codelineno-0-665">665</a></span>
+<span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span>
+<span class="normal"><a href="#__codelineno-0-670">670</a></span>
+<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+<span class="normal"><a href="#__codelineno-0-672">672</a></span>
+<span class="normal"><a href="#__codelineno-0-673">673</a></span>
+<span class="normal"><a href="#__codelineno-0-674">674</a></span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span>
+<span class="normal"><a href="#__codelineno-0-677">677</a></span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span>
+<span class="normal"><a href="#__codelineno-0-693">693</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a><span class="k">def</span><span class="w"> </span><span class="nf">expire_stale</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="w">    </span><span class="sd">"""Remove proposals older than TTL. Returns expired member keys.</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">        model_class: The Model class to check.</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="sd">        partition: Optional partition key.</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">        ttl: TTL in seconds. Default DEFAULT_TTL (3600).</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">        pipeline: Optional Redis pipeline for batch operations.</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">        list: List of expired member key strings.</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">    """</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="k">if</span> <span class="n">ttl</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">DEFAULT_TTL</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a>    <span class="n">cutoff</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">ttl</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a>    <span class="c1"># Get members with scores below cutoff (older than TTL)</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a>    <span class="n">expired</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a>    <span class="k">if</span> <span class="n">expired</span><span class="p">:</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zremrangebyscore</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="s2">"-inf"</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">)</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>    <span class="c1"># Decode bytes to strings</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">expired</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -36262,37 +36324,37 @@ TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/observation.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-663">663</a></span>
-<span class="normal"><a href="#__codelineno-0-664">664</a></span>
-<span class="normal"><a href="#__codelineno-0-665">665</a></span>
-<span class="normal"><a href="#__codelineno-0-666">666</a></span>
-<span class="normal"><a href="#__codelineno-0-667">667</a></span>
-<span class="normal"><a href="#__codelineno-0-668">668</a></span>
-<span class="normal"><a href="#__codelineno-0-669">669</a></span>
-<span class="normal"><a href="#__codelineno-0-670">670</a></span>
-<span class="normal"><a href="#__codelineno-0-671">671</a></span>
-<span class="normal"><a href="#__codelineno-0-672">672</a></span>
-<span class="normal"><a href="#__codelineno-0-673">673</a></span>
-<span class="normal"><a href="#__codelineno-0-674">674</a></span>
-<span class="normal"><a href="#__codelineno-0-675">675</a></span>
-<span class="normal"><a href="#__codelineno-0-676">676</a></span>
-<span class="normal"><a href="#__codelineno-0-677">677</a></span>
-<span class="normal"><a href="#__codelineno-0-678">678</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_pending</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a><span class="w">    </span><span class="sd">"""Return all pending proposals as (member_key, surfaced_at) pairs.</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="sd">        model_class: The Model class to check.</span>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">        partition: Optional partition key.</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">        list: List of (member_key_str, surfaced_at_float) tuples.</span>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">    """</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>    <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a>        <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="p">]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_pending</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="w">    </span><span class="sd">"""Return all pending proposals as (member_key, surfaced_at) pairs.</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        model_class: The Model class to check.</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">        partition: Optional partition key.</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">        list: List of (member_key_str, surfaced_at_float) tuples.</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">    """</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_pending_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
