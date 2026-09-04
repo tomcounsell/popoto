@@ -50,8 +50,12 @@ See Also:
 - `popoto.fields.sorted_field_mixin.SortedFieldMixin` - Range query logic
 """
 
+import asyncio
 import logging
+import threading
+import weakref
 from asyncio import to_thread
+from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from .db_key import DB_key
@@ -69,6 +73,51 @@ from ..redis_db import (
 from ..fields.constants import Defaults
 
 logger = logging.getLogger("POPOTO.Query")
+
+
+@dataclass
+class _PushdownState:
+    """Per-call snapshot of the bookkeeping ``filter_for_keys_set`` writes.
+
+    ``Query`` is instantiated once per model class (``models/base.py``), so
+    every ``async_filter`` call on a model shares one ``self``. The sync path
+    reads these attributes off ``self`` with no yield point between write and
+    read; the async path has two awaits in between, so a second coroutine can
+    overwrite all seven fields mid-flight. The async path therefore snapshots
+    them into one of these inside the single ``to_thread`` hop and never reads
+    ``self._pushdown_*`` again.
+    """
+
+    sorted_field_order: "Optional[list]" = None
+    sorted_field_name: "Optional[str]" = None
+    pending_client_filters: "dict[str, Any]" = dataclass_field(default_factory=dict)
+    pushdown_limit: "Optional[int]" = None
+    pushdown_requested: int = 0
+    pushdown_fetched: int = 0
+    pushdown_partition: "dict[str, Any]" = dataclass_field(default_factory=dict)
+
+
+# One lock per running event loop, built lazily. A module-level asyncio.Lock()
+# constructed at import binds the first loop that awaits it and raises on every
+# other one (redis_db._async_redis_lock has that shape, and tests/test_async.py
+# carries an autouse fixture solely to reassign it per test). The
+# WeakKeyDictionary self-cleans as loops are collected, so a per-test loop needs
+# no fixture. The threading.Lock guards the dict only; no I/O happens under it.
+_PUSHDOWN_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = (
+    weakref.WeakKeyDictionary()
+)
+_PUSHDOWN_LOCKS_GUARD = threading.Lock()
+
+
+def _pushdown_lock_for_running_loop() -> "asyncio.Lock":
+    """Return the pushdown lock belonging to the currently running loop."""
+    loop = asyncio.get_running_loop()
+    with _PUSHDOWN_LOCKS_GUARD:
+        lock = _PUSHDOWN_LOCKS.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            _PUSHDOWN_LOCKS[loop] = lock
+        return lock
 
 
 class QueryException(Exception):
@@ -2194,12 +2243,52 @@ class Query:
             **kwargs,
         )
 
+    def _snapshot_pushdown_state(self) -> "_PushdownState":
+        """Copy the bookkeeping ``filter_for_keys_set`` left on ``self``.
+
+        Mutable members are copied, not aliased, so a later query on the same
+        shared ``Query`` cannot mutate a snapshot already handed out.
+        """
+        return _PushdownState(
+            sorted_field_order=getattr(self, "_sorted_field_order", None),
+            sorted_field_name=getattr(self, "_sorted_field_name", None),
+            pending_client_filters=dict(
+                getattr(self, "_pending_client_filters", None) or {}
+            ),
+            pushdown_limit=getattr(self, "_pushdown_limit", None),
+            pushdown_requested=getattr(self, "_pushdown_requested", 0),
+            pushdown_fetched=getattr(self, "_pushdown_fetched", 0),
+            pushdown_partition=dict(getattr(self, "_pushdown_partition", None) or {}),
+        )
+
+    def _filter_keys_with_pushdown(
+        self, allow_pushdown: bool, kwargs: "dict[str, Any]"
+    ) -> "tuple[Any, _PushdownState]":
+        """Arm the pushdown, run the key query, and snapshot — no await inside.
+
+        The async path calls this through a single ``to_thread`` hop so that the
+        arm, the query, and the snapshot cannot be interleaved with another
+        coroutine's use of the same shared ``Query`` instance. Callers must hold
+        the per-loop pushdown lock: two ``to_thread`` calls run in different
+        worker threads, and ``filter_for_keys_set`` releases the GIL on Redis
+        I/O, so its reset can otherwise land between another call's populate and
+        its snapshot.
+        """
+        self._pushdown_allowed = allow_pushdown
+        try:
+            db_keys = self.filter_for_keys_set(**kwargs)
+        finally:
+            self._pushdown_allowed = False
+        return db_keys, self._snapshot_pushdown_state()
+
     def _bound_keys_before_hydration(
         self,
         db_keys: Any,
         q_objects: "Optional[list[Any]]",
         allow_pushdown: bool,
         kwargs: "dict[str, Any]",
+        *,
+        state: "Optional[_PushdownState]" = None,
     ) -> Any:
         """Slice the sorted key list to ``limit`` before anything is loaded.
 
@@ -2211,14 +2300,25 @@ class Query:
         wider set of cases. A second indexed predicate blocks the Redis-side
         bound, since the sorted set alone cannot honor the other index, but not
         this one: the intersection is already reflected in _sorted_field_order.
+
+        ``state`` is the async path's per-call snapshot: when supplied the guard
+        reads and writes it instead of ``self``, which is what keeps concurrent
+        ``async_filter`` calls from clobbering each other's bound. ``None`` keeps
+        the sync path on shared instance state exactly as before.
         """
+        if state is None:
+            state = self._snapshot_pushdown_state()
+            write_back = True
+        else:
+            write_back = False
+
         if q_objects or not allow_pushdown:
             return db_keys
-        if getattr(self, "_pending_client_filters", None):
+        if state.pending_client_filters:
             return db_keys
-        if getattr(self, "_pushdown_limit", None):
+        if state.pushdown_limit:
             return db_keys  # the range read was already bounded, and in order
-        ordered = getattr(self, "_sorted_field_order", None)
+        ordered = state.sorted_field_order
         if not ordered:
             return db_keys
 
@@ -2232,17 +2332,75 @@ class Query:
             if not isinstance(order_by, str):
                 return db_keys
             desc = order_by.startswith("-")
-            if (order_by[1:] if desc else order_by) != self._sorted_field_name:
+            if (order_by[1:] if desc else order_by) != state.sorted_field_name:
                 return db_keys
 
         # _sorted_field_order is ascending by score; a descending query wants
         # the tail, so reverse before slicing rather than after.
         fetch = limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
         bounded = list(reversed(ordered))[:fetch] if desc else list(ordered)[:fetch]
-        self._pushdown_limit = limit
-        self._pushdown_requested = fetch
-        self._pushdown_fetched = len(bounded)
+        state.pushdown_limit = limit
+        state.pushdown_requested = fetch
+        state.pushdown_fetched = len(bounded)
+        if write_back:
+            self._pushdown_limit = limit
+            self._pushdown_requested = fetch
+            self._pushdown_fetched = len(bounded)
         return bounded
+
+    def _short_result_action(
+        self,
+        n_objects: int,
+        allow_pushdown: bool,
+        state: "_PushdownState",
+    ) -> bool:
+        """Warn about a short bounded read; return True if it must be re-read.
+
+        ``get_many_objects`` silently drops keys whose hash is gone, so a
+        bounded read can spend its budget on members that hydrate to nothing.
+        The over-fetch margin absorbs the ordinary case in the same round trip.
+        Coming up short despite a full page is the signal that it did not; a
+        partial page means the range was exhausted and the count is honest.
+        A short bounded result is a wrong answer rather than a slow one, so
+        neither branch below is allowed to pass silently.
+
+        Decision and logging only: the caller owns the retry, because the sync
+        and async paths recurse into different methods.
+        """
+        pushdown_limit: int = state.pushdown_limit or 0
+        short = pushdown_limit > 0 and n_objects < pushdown_limit
+        exhausted = state.pushdown_fetched < state.pushdown_requested
+        orphans = state.pushdown_fetched - n_objects
+        partition = (
+            f", partition {state.pushdown_partition}"
+            if state.pushdown_partition
+            else ""
+        )
+        if allow_pushdown and short and not exhausted:
+            logger.warning(
+                f"{self.model_class.__name__}: bounded sorted read on "
+                f"{state.sorted_field_name} returned {n_objects} of "
+                f"{pushdown_limit} requested ({state.pushdown_fetched} index "
+                f"members read, {orphans} hydrated to nothing{partition}). "
+                f"Re-reading the full range so the answer is correct. Orphaned "
+                f"index members are the cause, and re-reading only tolerates "
+                f"them: clear them with "
+                f"{self.model_class.__name__}.clean_indexes(), or inspect "
+                f"with {self.model_class.__name__}.query.keys(clean=True)."
+            )
+            return True
+        if short and orphans > 0:
+            # The range ran out, so this is as complete as the index allows.
+            # Still short, and still worth saying out loud.
+            logger.warning(
+                f"{self.model_class.__name__}: sorted read on "
+                f"{state.sorted_field_name} returned {n_objects} rows of "
+                f"{pushdown_limit} requested; {orphans} index members hydrated "
+                f"to nothing{partition}. The range is exhausted, so the result "
+                f"is short rather than wrong. Clear the orphans with "
+                f"{self.model_class.__name__}.clean_indexes()."
+            )
+        return False
 
     def _sorted_pushdown_args(
         self,
@@ -2930,50 +3088,14 @@ class Query:
             values=kwargs.get("values", None),
         )
 
-        # get_many_objects silently drops keys whose hash is gone, so a bounded
-        # read can spend its budget on members that hydrate to nothing. The
-        # over-fetch margin absorbs the ordinary case in the same round trip.
-        # Coming up short despite a full page is the signal that it did not; a
-        # partial page means the range was exhausted and the count is honest.
-        # A short bounded result is a wrong answer rather than a slow one, so
-        # neither branch below is allowed to pass silently.
-        pushdown_limit: int = getattr(self, "_pushdown_limit", None) or 0
-        short = pushdown_limit > 0 and len(objects) < pushdown_limit
-        exhausted = self._pushdown_fetched < self._pushdown_requested
-        orphans = self._pushdown_fetched - len(objects)
-        partition = (
-            f", partition {self._pushdown_partition}"
-            if self._pushdown_partition
-            else ""
-        )
-        if _allow_pushdown and short and not exhausted:
-            logger.warning(
-                f"{self.model_class.__name__}: bounded sorted read on "
-                f"{self._sorted_field_name} returned {len(objects)} of "
-                f"{pushdown_limit} requested ({self._pushdown_fetched} index "
-                f"members read, {orphans} hydrated to nothing{partition}). "
-                f"Re-reading the full range so the answer is correct. Orphaned "
-                f"index members are the cause, and re-reading only tolerates "
-                f"them: clear them with "
-                f"{self.model_class.__name__}.clean_indexes(), or inspect "
-                f"with {self.model_class.__name__}.query.keys(clean=True)."
-            )
+        if self._short_result_action(
+            len(objects), _allow_pushdown, self._snapshot_pushdown_state()
+        ):
             return self._execute_filter(
                 q_objects=q_objects,
                 _no_track=_no_track,
                 _allow_pushdown=False,
                 **kwargs,
-            )
-        if short and orphans > 0:
-            # The range ran out, so this is as complete as the index allows.
-            # Still short, and still worth saying out loud.
-            logger.warning(
-                f"{self.model_class.__name__}: sorted read on "
-                f"{self._sorted_field_name} returned {len(objects)} rows of "
-                f"{pushdown_limit} requested; {orphans} index members hydrated "
-                f"to nothing{partition}. The range is exhausted, so the result "
-                f"is short rather than wrong. Clear the orphans with "
-                f"{self.model_class.__name__}.clean_indexes()."
             )
 
         # Apply client-side filters for plain (unindexed) fields
