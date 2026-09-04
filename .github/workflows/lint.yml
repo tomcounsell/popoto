@@ -5,19 +5,25 @@ name: Lint
 # names in string annotations, unused imports, dead locals. This gate keeps
 # them from coming back.
 #
-# Scope is src/ only: tests/, examples/ and benchmarks are not yet clean, and
-# widening the gate is a separate change.
+# Ruff's scope is src/ only: tests/, examples/ and benchmarks are not yet clean,
+# and widening the gate is a separate change.
+#
+# The black gate covers src/ and tests/, which were both already clean when it
+# landed (#579). Until then nothing enforced formatting, so main drifted from its
+# own black pin and every PR touching a drifted file carried unrelated churn.
 
 on:
   pull_request:
     paths:
       - "src/**"
+      - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/lint.yml"
   push:
     branches: [main]
     paths:
       - "src/**"
+      - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/lint.yml"
 
@@ -48,3 +54,26 @@ jobs:
         run: |
           ruff --version
           ruff check src/
+
+  black:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Pin the black version for the same reason ruff is pinned: black's stable
+      # style changes between releases, so an unpinned `latest` reformats the
+      # tree from under an unrelated PR. The dev extra floors this at
+      # black>=26.3.1; bump both together, alongside the reformat the new
+      # version wants.
+      - name: Install black
+        run: python -m pip install "black==26.5.1"
+
+      # Line length and target version come from [tool.black] in pyproject.toml.
+      - name: Format check
+        run: |
+          black --version
+          black --check --diff src/ tests/
