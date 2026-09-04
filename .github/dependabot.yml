@@ -64,9 +64,12 @@ updates:
 
   # Workflow action versions live in .github/workflows/*.yml, not in any
   # lockfile, so security-only mode gave them no coverage at all. checkout@v4,
-  # setup-python@v5, setup-uv@v5 and gh-action-pypi-publish@release/v1 have
-  # never been version-checked by anything. This entry is a deliberate widening
-  # beyond the literal ask in #551, which names only the uv ecosystem.
+  # setup-python@v5 and setup-uv@v5 have never been version-checked by
+  # anything; this entry covers them. gh-action-pypi-publish is pinned to the
+  # branch ref `release/v1`, and Dependabot only bumps actions pinned to a tag
+  # or a SHA, so that one stays uncovered until it is repinned. This entry is a
+  # deliberate widening beyond the literal ask in #551, which names only the uv
+  # ecosystem.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
