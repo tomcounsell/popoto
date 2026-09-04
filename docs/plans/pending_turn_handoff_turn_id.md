@@ -253,7 +253,14 @@ shared state between them.
       `LREM key 1 <that exact raw element>`. Proceed only if `LREM` returned
       `>= 1`. No match → return `[]` (see the one compat exception in Technical
       Approach).
-    - **no turn id, or turn keying disabled**: `LPOP key`, exactly as today.
+    - **no turn id, or turn keying disabled**: `LPOP key`, then decode through
+      the *same* tolerant decode the claiming branch uses. Not "exactly as
+      today": under default-on turn keying an untagged harness stages
+      `{"t":null,"k":[...]}`, and today's reader (`json.loads` then
+      `[k for k in keys if isinstance(k, str)]`) iterates a dict's **keys** and
+      returns the literal `["t","k"]`. See the shared-decode rule in Technical
+      Approach — getting this wrong silently zeroes outcome reporting for Hermes
+      and OpenClaw on the default configuration.
 12. **Output (write).** `ObservationProtocol.on_context_used()` applies the
     outcome to the records the *matching* turn staged. The hook writes nothing to
     stdout and exits 0.
@@ -349,10 +356,31 @@ to `LREM`, so its bytes must be reproducible from what `LRANGE` returned. In
 practice `LREM` is given the exact bytes `LRANGE` handed back, never a
 re-serialization — this is belt and braces, and the test suite pins it.
 
-**Reader tolerates both shapes.** A decoded element that is a `list` is a legacy
-untagged entry (`turn_id` = `None`, keys = the list). A `dict` is the new shape.
-Anything else is skipped as corrupt, logged through `_record_failure`, and
-`LREM`ed out of the way rather than left to jam the queue.
+**Reader tolerates both shapes, on both branches.** The decode is **one shared
+step**, applied to a raw element however it was fetched — by `LPOP` on the
+fallback branch or by `LRANGE` on the claiming branch. Neither branch may keep a
+private parser:
+
+```python
+elem = json.loads(raw)
+if isinstance(elem, dict):
+    keys = elem.get("k")
+elif isinstance(elem, list):
+    keys = elem            # legacy untagged entry
+else:
+    keys = None            # corrupt
+```
+
+`None` (or a non-list `k`) is corrupt: log through `_record_failure("pending_pop",
+...)`, `LREM` it out of the way so it cannot jam later claims, and skip it.
+Otherwise filter `[k for k in keys if isinstance(k, str)]` as today.
+
+This is the single most important rule in the change. The pre-change reader
+parses only the bare-array shape, and under default-on turn keying *every*
+entry is object-shaped — including an untagged harness's `{"t":null,"k":[...]}`.
+A fallback branch that kept the old parser would iterate the dict's keys and
+return `["t","k"]`, resolving no records, so `feedback` would return 0 for every
+Hermes and OpenClaw turn while looking perfectly healthy.
 
 **Claiming pop, turn id present.**
 
@@ -370,8 +398,13 @@ misattribution this plan exists to remove, at exactly the moment (an aborted or
 already-claimed turn) when misattribution is most likely.
 
 There is **one** exception, for upgrade-in-flight only: if the turn id matched
-nothing **and every element in the list is legacy-shaped** (no element carries a
-`t` at all), fall back to `LPOP`. That is the case where the read was staged by
+nothing **and every element in the list is legacy-shaped**, fall back to `LPOP`.
+"Legacy-shaped" means the decoded element is a bare `list` — i.e. the `t` **key
+is absent from the object entirely**. It does *not* mean "`t` is falsy". Under
+default-on turn keying an untagged-harness entry is `{"t":null,"k":[...]}`,
+which carries the key with a null value; reading the predicate as value
+truthiness would wrongly re-enable the `LPOP` fallback for those entries and
+reintroduce the misattribution this plan removes. That is the case where the read was staged by
 the pre-upgrade code and the write is running the new code. The fallback is
 bounded — it cannot fire once a single tagged entry exists in the list — and its
 behavior is exactly the current release's, so it cannot be worse than the status
@@ -447,12 +480,22 @@ process exits 0. The user-visible surface is `popoto-memory doctor`.
 
 All new tests land in the two existing files; no test file is created or deleted.
 
-- [ ] `tests/test_integrations_service.py::test_pending_list_survives_out_of_order_writes`
-      — UPDATE: this test (around line 280) asserts the FIFO ordering contract by
-      calling `_pop_pending("s1")` twice positionally. Its premise is still valid
-      for untagged sessions. Keep it, and rename nothing; add explicit
-      `turn_id=None` arguments so it reads as a fallback-path test rather than as
-      the default contract.
+- [ ] `tests/test_integrations_service.py::test_interleaved_turns_do_not_cross_report`
+      (`tests/test_integrations_service.py:276`) — UPDATE. The plan previously
+      named this `test_pending_list_survives_out_of_order_writes`, which does not
+      exist anywhere in `tests/`; that was a plan error, corrected in critique.
+      The real test asserts the FIFO ordering contract by calling
+      `_pop_pending("s1")` twice positionally. Its premise is still valid for
+      untagged sessions. Keep it, and rename nothing; add explicit `turn_id=None`
+      arguments so it reads as a fallback-path test rather than as the default
+      contract. **Also strengthen it**: its current body asserts only
+      `first != second` plus a final empty pop, and an inequality assertion passes
+      under the very misattribution being fixed. Assert the exact resolved record
+      keys instead.
+      **Before starting task 5**, run
+      `grep -n "^def test_" tests/test_integrations_service.py tests/test_integrations_hooks.py`
+      and re-verify every name cited below against the real files rather than
+      trusting this plan's line numbers.
 - [ ] `tests/test_integrations_service.py::test_feedback_reports_against_the_turn_that_was_injected`
       — UPDATE: currently passes no turn id. Add a sibling test for the tagged
       path rather than changing this one; it is the fallback path's regression
@@ -505,7 +548,11 @@ All new tests land in the two existing files; no test file is created or deleted
    later, different turn's report still resolves correctly, proving the second
    subagent stole nothing.
 5. `test_untagged_harness_keeps_fifo_order` — Hermes/OpenClaw shape, `turn_id=None`
-   on both sides, ordering preserved. The current behavior, pinned.
+   on both sides, ordering preserved. The current behavior, pinned. **Must assert
+   that the returned record keys equal the seeded keys**, not merely ordering or
+   counts: the blocker this plan was revised for returns `["t","k"]` from the
+   fallback branch, which satisfies a count-only or ordering-only assertion while
+   resolving no records at all.
 6. `test_legacy_entries_are_claimed_after_an_upgrade` — hand-write a legacy
    bare-array element with `RPUSH`, then report with a turn id. It resolves via
    the upgrade-in-flight fallback.
@@ -519,6 +566,11 @@ All new tests land in the two existing files; no test file is created or deleted
 9. `test_corrupt_pending_entry_is_logged_and_skipped` — `RPUSH` raw garbage, then
    report; no raise, a `pending_pop` line in the log, and the garbage no longer
    blocks a later valid claim.
+12. `test_duplicate_push_for_same_turn_stages_one_claimable_entry` — call
+    `_push_pending` twice with the same `session_id`, `turn_id` and records;
+    assert `LLEN` is 1. Then report twice for that turn: the first returns the
+    record count, the second returns `0`. Guards the advisory same-turn check
+    added to task 3.
 10. `tests/test_integrations_hooks.py::test_turn_id_is_normalized_from_every_harness`
     — parametrized over all eight fixtures; asserts the exact expected turn id per
     fixture, including `None` for the four docs-derived ones.
@@ -897,11 +949,32 @@ Claude Code settings.
   `LRANGE key 0 -1`, find the first element whose `t` matches, `LREM key 1 <that
   exact raw element>`, and **return `[]` unless `LREM` returned `>= 1`**. Pass
   `LREM` the bytes `LRANGE` returned, never a re-serialization.
-- Decode tolerantly: a `list` element is legacy (untagged), a `dict` is tagged,
-  anything else is corrupt — log via `_record_failure` and `LREM` it out of the
-  way so it cannot jam later claims.
+- Decode tolerantly through **one shared decode step used by both branches** —
+  the `LPOP` fallback branch must not keep the old bare-array parser. A `list`
+  element is legacy (untagged), a `dict` is tagged, anything else is corrupt: log
+  via `_record_failure("pending_pop", ...)` and `LREM` it out of the way so it
+  cannot jam later claims. See the shared-decode snippet in Technical Approach.
+  Skipping this is the blocker the critique caught: it zeroes outcome reporting
+  for Hermes and OpenClaw on the default configuration, silently.
+- Make the push idempotent per turn. When `turn_id` is truthy and turn keying is
+  on, before the `RPUSH`/`LTRIM`/`EXPIRE` pipeline, `LRANGE` the list, decode
+  tolerantly, and return early if any element is a dict whose `t` equals this
+  turn id. Do not raise and do not count it as a failure — a re-fired read hook
+  is not an error. The check is **advisory, not atomic**: two concurrent pushes
+  for one turn can both pass it. That is acceptable because the residual window
+  is far narrower than today's unconditional double-push, and because the harm is
+  bounded to double-applying an outcome to the *correct* turn's records. Say so
+  in the docstring rather than implying exclusivity.
 - Implement the bounded upgrade-in-flight fallback: fall back to `LPOP` only when
-  the turn id matched nothing **and** no element in the list carries a `t`.
+  the turn id matched nothing **and** every element is a bare `list` (the `t` key
+  is absent entirely). Never read the predicate as "`t` is falsy" — an untagged
+  harness's entry carries `t: null` under default-on keying, and treating that as
+  legacy re-enables positional popping for exactly the harnesses the fallback is
+  supposed to leave alone.
+- **Layout invariant**: keep the `# -- per-session injection suppression` block
+  physically between `_push_pending` and `_pop_pending`. The suppression
+  anti-criterion in the Verification table reads that region, and colocating the
+  two handoff functions would silently break its range.
 - Count a miss as `_record_failure("pending_miss", ...)`, a counter name distinct
   from `pending_pop`, so a dropped report is diagnosable in `doctor` and is never
   confused with a Redis error.
@@ -996,14 +1069,18 @@ loudly by design (`test_pytest_plugin.py:1056`). DB 14 is `_INERT_PROBE_DB` and
 suite therefore runs on `POPOTO_TEST_DB=10`, which no test reserves. Never DB 0 —
 it is the live agent store on this machine.
 
-**mypy baseline**, measured at `b8e1dc4` on redis-py **7.1.1**:
-`src/popoto/integrations/` has exactly **1** error, `config.py:301`
-`Item "Awaitable[Any]" of "Awaitable[Any] | Any" has no attribute "__iter__"`,
-which is the redis-py-7.x-only union-narrowing artifact CLAUDE.md describes.
-Whole-tree total is 1178 errors in 71 files. The gate below is `<= 1` for the
-integrations package so it is satisfiable on both 7.x (1) and 8.x (likely 0), and
-it is scoped to the touched package rather than the tree so unrelated drift
-cannot mask a regression here.
+**mypy baseline — measured in two environments**, because the count is
+redis-py-version-dependent (CLAUDE.md, gotcha 5):
+
+| Environment | Errors in `src/popoto/integrations/` |
+|---|---|
+| redis-py 7.1.1, at `b8e1dc4` | 1 — `config.py:301` `Item "Awaitable[Any]" of "Awaitable[Any] \| Any" has no attribute "__iter__"`, the redis-py-7.x-only union-narrowing artifact |
+| redis-py 8.1.0, mypy 2.3.1, Python 3.13.2, this worktree | 0 — 8.x narrows the union, so the artifact disappears |
+
+The gate below is `<= 1` for the integrations package precisely so it is
+satisfiable in both, and it is scoped to the touched package rather than the tree
+so unrelated drift cannot mask a regression here. **State the redis-py version
+alongside any count reported against this row.**
 
 | Check | Command | Expected |
 |-------|---------|----------|
@@ -1018,13 +1095,13 @@ cannot mask a regression here.
 | mypy no worse in integrations | `test $(python -m mypy src/ 2>&1 \| grep -c '^src/popoto/integrations/.*error:') -le 1` | exit code 0 |
 | Docs build | `python -m mkdocs build --strict` | exit code 0 |
 | Kill switch is documented | `grep -rn "POPOTO_MEMORY_TURN_KEYED" docs/features/harness-integration.md src/popoto/integrations/config.py` | exit code 0 |
-| Stale #574 tech-debt NOTE removed | `grep -c "PR #546 review, tech debt" src/popoto/integrations/service.py` | match count == 0 |
-| Feature doc "Known gap" section removed | `grep -c "Known gap: the read" docs/features/harness-integration.md` | match count == 0 |
-| Pending key name unchanged | `grep -c 'PENDING_KEY_PREFIX = "\$popoto_memory:pending"' src/popoto/integrations/service.py` | output contains 1 |
-| Cap and TTL unchanged | `grep -c "MAX_PENDING_TURNS = 32" src/popoto/integrations/service.py; grep -c "PENDING_TTL_SECONDS = 3600" src/popoto/integrations/config.py` | output does not contain 0 |
-| Anti-criterion: no Lua in the handoff | `grep -c "register_script\|EVALSHA\|evalsha\|\.eval(" src/popoto/integrations/service.py` | match count == 0 |
-| Anti-criterion: MCP surface untouched by the handoff | `grep -c "_push_pending\|_pop_pending\|turn_id" src/popoto/integrations/mcp_server.py` | match count == 0 |
-| Anti-criterion: suppression SET not keyed per turn | `sed -n '/# -- per-session injection suppression/,/def _pop_pending/p' src/popoto/integrations/service.py \| sed '$d' \| grep -c "turn_id"` | match count == 0 |
+| Stale #574 tech-debt NOTE removed | `test $(grep -c "PR #546 review, tech debt" src/popoto/integrations/service.py) -eq 0` | exit code 0 |
+| Feature doc "Known gap" section removed | `test $(grep -c "Known gap: the read" docs/features/harness-integration.md) -eq 0` | exit code 0 |
+| Pending key name unchanged | `test $(grep -c 'PENDING_KEY_PREFIX = "\$popoto_memory:pending"' src/popoto/integrations/service.py) -eq 1` | exit code 0 |
+| Cap and TTL unchanged | `test $(grep -c "MAX_PENDING_TURNS = 32" src/popoto/integrations/service.py) -eq 1 && test $(grep -c "PENDING_TTL_SECONDS = 3600" src/popoto/integrations/config.py) -eq 1` | exit code 0 |
+| Anti-criterion: no Lua in the handoff | `test $(grep -c "register_script\|EVALSHA\|evalsha\|\.eval(" src/popoto/integrations/service.py) -eq 0` | exit code 0 |
+| Anti-criterion: MCP surface untouched by the handoff | `test $(grep -c "_push_pending\|_pop_pending\|turn_id" src/popoto/integrations/mcp_server.py) -eq 0` | exit code 0 |
+| Anti-criterion: suppression SET not keyed per turn | `test $(awk '/def _injected_key\(\|def _injected_keys\(\|def _mark_injected\(/,/^    def [a-z_]+\(self/' src/popoto/integrations/service.py \| grep -c "turn_id") -eq 0` | exit code 0 |
 | No stale xfails introduced | `grep -rn 'pytest.mark.xfail\|pytest.xfail(' tests/test_integrations_service.py tests/test_integrations_hooks.py` | exit code 1 |
 
 ## Critique Results
@@ -1041,3 +1118,17 @@ Environment for every measured number below: redis-py **8.1.0**, mypy **2.3.1**,
 | CONCERN | History & Consistency | **The suppression-SET anti-criterion `sed` range breaks under the refactor the plan itself directs.** The row `sed -n '/# -- per-session injection suppression/,/def _pop_pending/p' ... \| sed '$d' \| grep -c "turn_id"` works only because of the current incidental layout: `_push_pending` at `service.py:522`, the suppression marker at `:566`, `_pop_pending` at `:625`. Task build-handoff rewrites `_push_pending` and `_pop_pending` together and the natural refactor colocates them; if `def _pop_pending` no longer appears *after* the marker, `sed` finds no end pattern, prints to EOF, and the row silently captures the new `turn_id`-bearing code — turning a green anti-criterion into a meaningless one or a spurious failure, with no signal that the range broke. | build-handoff (task 3), validate-handoff (task 6) | Replace the fragile range with a self-delimiting one that does not depend on function ordering: `test $(sed -n '/# -- per-session injection suppression/,/^    # -- /{/^    # -- per-session/!{/^    # -- /q};p}' src/popoto/integrations/service.py \| grep -c "turn_id") -eq 0`. Simpler and preferred: assert on the three suppression functions by name instead of on a line range — `test $(awk '/def _injected_key\(|def _injected_keys\(|def _mark_injected\(/,/^    def [a-z_]+\(self/' src/popoto/integrations/service.py \| grep -c "turn_id") -eq 0`. Whichever form is chosen, add an explicit instruction to task 3: **keep the `# -- per-session injection suppression` block physically between `_push_pending` and `_pop_pending`**, so the row's premise is a stated invariant rather than an accident of the current file. |
 | CONCERN | Scope & Value | **A cited test to be updated does not exist.** Test Impact item 1 directs the builder to UPDATE `tests/test_integrations_service.py::test_pending_list_survives_out_of_order_writes` "around line 280". `grep -rn "def test_pending_list_survives_out_of_order_writes" tests/` returns nothing (rc=1). The test actually at that location is `test_interleaved_turns_do_not_cross_report`, at `tests/test_integrations_service.py:276`. A builder taking the plan literally will either create a new test under the wrong name or skip the update, leaving the FIFO-ordering regression guard un-threaded. The plan's seven other UPDATE citations were verified present: `test_feedback_reports_against_the_turn_that_was_injected:228`, `test_feedback_without_a_pending_turn_is_a_no_op:265`, `test_pending_list_is_capped:297`, `test_pending_key_has_a_ttl:316`, `test_feedback_degrades_quietly_when_redis_is_down:405`. | build-tests (task 5) | Correct Test Impact item 1 to name `test_interleaved_turns_do_not_cross_report` at `tests/test_integrations_service.py:276`. Note its current body asserts only `first != second` plus a final empty pop — an inequality assertion that passes under misattribution — so when threading `turn_id=None` through it, also strengthen it to assert the exact resolved record keys. Before starting task 5, run `grep -n "^def test_" tests/test_integrations_service.py tests/test_integrations_hooks.py` and re-verify every cited name against the real files rather than the plan's line numbers. |
 | NIT | History & Consistency | **The stated mypy baseline is stale for the environment the gate will run in.** The Verification preamble records "exactly 1 error, `config.py:301`" measured on redis-py 7.1.1. Re-measured in this worktree — redis-py **8.1.0**, mypy **2.3.1**, Python **3.13.2**, editable install resolving to `.worktrees/sdlc-574/src/popoto/__init__.py` — `python -m mypy src/ 2>&1 \| grep -c '^src/popoto/integrations/.*error:'` returns **0**, not 1. The gate itself is fine: `test $(...) -le 1` exits 0 at both counts, exactly as the plan intended when it chose `<= 1` for 7.x/8.x portability. Only the prose number is stale. | — | Amend the preamble to state both measurements: 1 error on redis-py 7.1.1 (`config.py:301`, the union-narrowing artifact), 0 on redis-py 8.1.0 with mypy 2.3.1 — and keep the `-le 1` threshold, which is what makes the row satisfiable in both environments. |
+
+### Revision (round 1 of 1, applied 2026-09-04)
+
+One round only, as scoped. All six findings are resolved in-plan; no second critique.
+
+- **BLOCKER (untagged pop mis-parses the tagged shape)** — Technical Approach now specifies **one shared tolerant decode** used by the `LPOP` fallback branch and the `LRANGE` claiming branch alike, with the snippet inline. Data Flow step 11 no longer says "exactly as today" and states the failure it would cause. Task 3 carries the same rule and names it as the blocker. Test 5 must now assert resolved record keys, since a count-only assertion passes while returning `["t","k"]`.
+- **BLOCKER, second half (fallback predicate)** — "no element carries a `t`" is pinned to mean the `t` key is **absent** (a bare `list`), never "`t` is falsy". Stated in both the miss-policy prose and task 3, with the reason: an untagged entry carries `t: null` under default-on keying.
+- **CONCERN (duplicate push defeats LREM exclusivity)** — task 3 gains an advisory same-turn check before the push pipeline, explicitly documented as non-atomic rather than implying exclusivity. New test 12 pins it.
+- **CONCERN (grep exit-code trap, five rows)** — every affected row is rewritten in the `test $(grep -c ...) -eq N` form with Expected set to `exit code 0`. The cap-and-TTL row now checks both greps instead of inheriting only the second one's status. The xfail row is untouched: it expects exit code 1 and was already correct.
+- **CONCERN (fragile suppression `sed` range)** — replaced with a function-name-scoped `awk` range that does not depend on function ordering, plus a stated layout invariant in task 3 keeping the suppression block between the two handoff functions.
+- **CONCERN (cited test does not exist)** — Test Impact item 1 now names `test_interleaved_turns_do_not_cross_report` at `tests/test_integrations_service.py:276`, records that the old name was a plan error, and directs the builder to re-verify every cited test name by grep before task 5. It also strengthens that test, whose `first != second` assertion passes under misattribution.
+- **NIT (stale mypy baseline)** — the preamble now gives both measurements in a table, 1 error on redis-py 7.1.1 and 0 on 8.1.0 with mypy 2.3.1, and requires the redis-py version to be stated alongside any reported count. The `-le 1` threshold is unchanged and satisfiable in both.
+
+Status is Ready for build.
