@@ -64,7 +64,7 @@ def use_test_db(db: int = 15):
     set_REDIS_DB_settings(db=db)
 
 
-def flush_test_db():
+def flush_test_db() -> None:
     """Flush the current database.
 
     Use this in test teardown to clean up test data.

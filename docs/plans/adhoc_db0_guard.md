@@ -782,11 +782,11 @@ DB 15.
 | FLUSHALL refused off DB 0 | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto.redis_db import POPOTO_REDIS_DB; POPOTO_REDIS_DB.flushall()"` | exit code != 0 |
 | Non-zero DB still flushable | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto.redis_db import POPOTO_REDIS_DB; POPOTO_REDIS_DB.flushdb()"` | exit code 0 |
 | Refusal reason is `None` off DB 0 | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; print(r._flush_refusal_reason('FLUSHDB', 4))"` | output contains None |
-| No unguarded sync construction | `grep -c "= redis.Redis(" src/popoto/redis_db.py` | match count == 0 |
+| No unguarded sync construction | `grep -c "= redis.Redis(" src/popoto/redis_db.py` | match count == 0 (docstring examples included) |
 | No unguarded async construction | `grep -c "= aioredis.Redis(" src/popoto/redis_db.py` | match count == 0 |
 | Guard survives reconfiguration | `REDIS_URL=redis://localhost:6379/4 python -c "import popoto; from popoto import redis_db as r; r.set_REDIS_DB_settings(db=4); assert isinstance(r.POPOTO_REDIS_DB, r.GuardedRedis)"` | exit code 0 |
 | Tests never flush DB 0 with the opt-in | `grep -c "POPOTO_ALLOW_DB0_FLUSH.*\(flushdb\|flushall\)" tests/test_db0_flush_guard.py` | match count == 0 |
-| No test binds database 0 for a real flush | `grep -rn "6379/0" tests/` | no output |
+| Guard tests never bind database 0 | `grep -c "6379/0" tests/test_db0_flush_guard.py` | match count == 0 (pre-existing `tests/test_integrations_db0_isolation.py` legitimately binds DB 0 to assert the #584 *refusal*; it runs no flush) |
 | No verification command binds database 0 | `grep -c "REDIS_URL=redis://localhost:6379/0" docs/plans/adhoc_db0_guard.md` | match count == 0 (prose mentions of the DB-0 URL are fine; an *executed* binding is not) |
 | Scratch template never binds DB 0 | `grep -c "6379/0" scripts/scratch_repro.py` | match count == 0 |
 | Env var documented | `grep -c "POPOTO_ALLOW_DB0_FLUSH" docs/configuration.md` | output > 0 |

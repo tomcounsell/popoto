@@ -171,7 +171,7 @@ class PopotoException(Exception):
         raise PopotoException("Model 'User' has no KeyField defined")
     """
 
-    def __init__(self, message):
+    def __init__(self, message: Any) -> None:
         self.message = message
         logger.error(message)
 
@@ -299,7 +299,7 @@ def _bound_db(client: Any) -> int:
     return kwargs.get("db", 0) or 0
 
 
-def _check_flush(client: Any, args: tuple, suggest: bool = True) -> None:
+def _check_flush(client: Any, args: tuple[Any, ...], suggest: bool = True) -> None:
     """Raise :class:`Db0FlushRefusedError` if ``args`` is a refused flush."""
     if not args:
         # ``execute_command()`` with no arguments is redis-py's problem, not
@@ -313,7 +313,7 @@ def _check_flush(client: Any, args: tuple, suggest: bool = True) -> None:
 class GuardedPipeline(redis.client.Pipeline):
     """A sync pipeline that refuses destructive flushes. See :class:`GuardedRedis`."""
 
-    def execute_command(self, *args, **kwargs):
+    def execute_command(self, *args: Any, **kwargs: Any) -> Any:
         _check_flush(self, args)
         return super().execute_command(*args, **kwargs)
 
@@ -340,11 +340,11 @@ class GuardedRedis(redis.Redis):
     connections checked out of the pool and driven directly.
     """
 
-    def execute_command(self, *args, **options):
+    def execute_command(self, *args: Any, **options: Any) -> Any:
         _check_flush(self, args)
         return super().execute_command(*args, **options)
 
-    def pipeline(self, transaction=True, shard_hint=None):
+    def pipeline(self, transaction: bool = True, shard_hint: Any = None) -> Any:
         pipe = super().pipeline(transaction=transaction, shard_hint=shard_hint)
         pipe.__class__ = GuardedPipeline
         return pipe
@@ -363,7 +363,7 @@ class GuardedAsyncPipeline(aioredis.client.Pipeline):
     and must never run on the event loop.
     """
 
-    def execute_command(self, *args, **kwargs):
+    def execute_command(self, *args: Any, **kwargs: Any) -> Any:
         _check_flush(self, args, suggest=False)
         return super().execute_command(*args, **kwargs)
 
@@ -376,11 +376,11 @@ class GuardedAsyncRedis(aioredis.Redis):
     on both hierarchies -- so it is overridden, not awaited.
     """
 
-    async def execute_command(self, *args, **options):
+    async def execute_command(self, *args: Any, **options: Any) -> Any:
         _check_flush(self, args, suggest=False)
         return await super().execute_command(*args, **options)
 
-    def pipeline(self, transaction=True, shard_hint=None):
+    def pipeline(self, transaction: bool = True, shard_hint: Any = None) -> Any:
         pipe = super().pipeline(transaction=transaction, shard_hint=shard_hint)
         pipe.__class__ = GuardedAsyncPipeline
         return pipe
@@ -530,12 +530,14 @@ def sibling_client_kwargs(
 
     Example::
 
-        from popoto.redis_db import POPOTO_REDIS_DB, sibling_client_kwargs
+        from popoto.redis_db import (
+            GuardedRedis, POPOTO_REDIS_DB, sibling_client_kwargs,
+        )
 
         kwargs = sibling_client_kwargs(
             POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
         )
-        db0 = redis.Redis(**kwargs)
+        db0 = GuardedRedis(**kwargs)  # guarded: a DB-0 probe reads, never flushes
     """
     out = {
         key: source_kwargs[key]
