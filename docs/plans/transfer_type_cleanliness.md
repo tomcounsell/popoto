@@ -141,6 +141,13 @@ configuration this repo already ships. No new library, API, or ecosystem pattern
 - **Confidence**: high
 - **Impact on plan**: The eight `model_class` parameters get a real type instead of `Any`.
   Import goes under `if TYPE_CHECKING:`.
+- **ERRATUM (recorded at BUILD, mypy 2.3.1):** the first half of this finding **did not
+  hold** in the gate environment. `model_class._meta` raised `attr-defined` on every one of
+  the five sites, because `_meta` is attached by the metaclass at `base.py:504` and never
+  declared on `Model`. The runtime-circularity half of the finding did hold. The fix was to
+  declare `_meta: "ModelOptions"` on `Model`, mirroring the `query: Query` annotation two
+  lines above it — a one-line, runtime-inert addition that also removed 27 errors from
+  `base.py`. Spike results are environment-bound like every other measurement here.
 
 ### spike-2: What discharges the two `attr-defined` errors without a blanket ignore?
 
