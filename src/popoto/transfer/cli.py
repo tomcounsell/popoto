@@ -25,9 +25,12 @@ still shows the operator a summary on their terminal. ``--json`` claims
 stdout for a machine-readable summary instead, and is refused together with
 ``--out -`` since both would write to stdout.
 
-Heavy imports (``popoto``, ``redis``) are kept out of module scope and inside
-the functions that need them, so ``popoto-transfer --help`` and argument
-parsing do not pay for importing the ORM.
+Submodule imports (``redis``, the transfer drivers, the model registry) are
+kept out of module scope and inside the functions that need them, so argument
+parsing and the database-0 guard run before any of them is touched. This does
+not make ``--help`` cheap: the console-script entry point imports
+``popoto.transfer.cli``, which imports the ``popoto`` package, so the ORM is
+already resolved by the time :func:`main` is called.
 """
 
 from __future__ import annotations
