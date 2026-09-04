@@ -638,6 +638,16 @@ def test_meta_order_by_descending_supplies_direction_and_bound():
 
 
 def test_meta_order_by_ascending_supplies_direction_and_bound():
+    """Ascending Meta.order_by supplies direction and keeps the Redis-side bound.
+
+    Weak discriminator (spike-3): with no Meta at all, sorted-set order is
+    already ascending, so this case passes whether or not the Meta fallback in
+    `_sorted_pushdown_args` is consulted. It survives the mutation that deletes
+    `or self.model_class._meta.order_by`. Do not read a green result here as
+    proof the Meta fallback works -- that guard is defended by the descending,
+    other-field and key-list-slice tests. This case exists to pin that the
+    ascending shape stays bounded, not to discriminate the fallback.
+    """
     _seed_meta(PushdownDocMetaAsc)
     with HydrationCounter() as counter:
         results = list(
@@ -968,6 +978,13 @@ async def test_concurrent_async_filters_do_not_clobber_each_other():
 
 @pytest.mark.asyncio
 async def test_async_meta_order_by_descending_supplies_direction_and_bound():
+    """Async: descending Meta.order_by supplies direction and the Redis bound.
+
+    Guards the shared `_sorted_pushdown_args` Meta fallback on the async path.
+    Drop that fallback and the async read loses its direction: it returns the
+    ascending head (m000..m002) instead of the descending head, and hydrates
+    the whole partition rather than the bounded window.
+    """
     _seed_meta(PushdownDocMetaDesc)
     with AsyncHydrationCounter() as counter:
         results = await PushdownDocMetaDesc.query.async_filter(
@@ -983,6 +1000,13 @@ async def test_async_meta_order_by_descending_supplies_direction_and_bound():
 
 @pytest.mark.asyncio
 async def test_async_meta_order_by_other_field_disables_pushdown():
+    """Async: Meta.order_by on a non-sorted field must decline the bound.
+
+    Score order is not result order here (doc_id is anti-correlated with score),
+    so a bound spent on the score axis would return the wrong end of the range.
+    Drop the guard that returns early when the resolved order_by name is not the
+    sorted field and this silently returns m019..m017 instead of m000..m002.
+    """
     _seed_meta(PushdownDocMetaOther, reverse_doc_ids=True)
     with AsyncHydrationCounter() as counter:
         results = await PushdownDocMetaOther.query.async_filter(
