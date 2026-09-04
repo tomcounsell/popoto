@@ -44,7 +44,7 @@ the project can prove.
    fourteen months of commits ago; neither name exists in `.github/workflows/`. The
    same paragraph's line 11 asserts "this repo has NO ruff", which #505/#542 made false.
 3. `.github/workflows/tests.yml:23-24` asserts "Runs on main are never cancelled, so
-   every merged commit keeps a complete result." 31 of the 91 `main` runs since #544
+   every merged commit keeps a complete result." 31 of the 92 `main` runs since #544
    are `cancelled` with zero jobs. The comment describes an invariant the workflow does
    not have.
 4. The workflow's Valkey health check prints `redis_version`, which
@@ -145,7 +145,7 @@ All figures below come from `gh run list --workflow=tests.yml --branch=main` and
 `53a65b8d318fe65f47a801d7771e65a6e9f5d566`. Job conclusions were read per run; none are
 inferred from the run-level rollup.
 
-Aggregate over all 91 `tests.yml` runs on `main` since `d675218` (2026-08-10) through
+Aggregate over all 92 `tests.yml` runs on `main` since `d675218` (2026-08-10) through
 plan time:
 
 | Run conclusion | Count |
@@ -188,7 +188,7 @@ pytest (Valkey)  collected: 3472 → 3406 passed, 36 skipped, 32 deselected in 2
 
 **Server identity is asserted, not assumed.** The Valkey job's "Verify server is Valkey"
 step reads `INFO server` and exits non-zero unless `server_name == "valkey"`
-(`.github/workflows/tests.yml:135-152`). Run 33850587942 printed:
+(`.github/workflows/tests.yml:137-152`). Run 33850587942 printed:
 
 ```
 pytest (Valkey)  server_name: valkey   version: 7.2.4
@@ -250,11 +250,11 @@ the Verification commands are `grep`, `bash -n`, and `mkdocs`.
   observed-CI sentence naming both image pins and linking the workflow.
 - **Docs index mirror** (`docs/index.md:108-113`): same upgrade in the docs site's own
   voice, with an mkdocs-appropriate absolute link.
-- **SDLC test doc** (`docs/sdlc/do-test.md:11,16-17`): replaces two deleted workflow
+- **SDLC test doc** (`docs/sdlc/do-test.md:10,16-17`): replaces two deleted workflow
   filenames with `tests.yml`, and drops the false "NO ruff" clause.
 - **Workflow comment honesty** (`.github/workflows/tests.yml:23-24`): the
   "never cancelled" claim is replaced with what the concurrency group actually does.
-- **Valkey version print** (`.github/workflows/tests.yml:145-152`): the health check
+- **Valkey version print** (`.github/workflows/tests.yml:137-152`): the health check
   also prints `server_version`, so a run log can corroborate the README's "Valkey 8".
 
 ### Flow
@@ -274,25 +274,27 @@ the claim):
 
 > **Valkey is a first-class target.** Popoto uses core Redis data types and commands
 > only, with no Redis-module dependency, and the suite carries explicit Valkey-safety
-> tests asserting that indexes stay on plain types. Since August 2026 the full test
-> suite also runs against a real Valkey server on every pull request and every push to
-> `main`, as a separately named `pytest (Valkey)` check in
-> [`tests.yml`](.github/workflows/tests.yml), pinned to `valkey/valkey:8-alpine`
-> alongside the Redis job's `redis:7-alpine`. The job asserts via `INFO server` that the
-> container really is Valkey before pytest starts, and has reported the same pass count
-> as the Redis job on every run.
+> tests asserting that indexes stay on plain types. Since August 2026 the test suite
+> (everything except the `slow`-marked stress tests) also runs against a real Valkey
+> server on every pull request and every push to `main`, as a separately named
+> `pytest (Valkey)` check in [`tests.yml`](.github/workflows/tests.yml), pinned to
+> `valkey/valkey:8-alpine` alongside the Redis job's `redis:7-alpine`. The job asserts
+> via `INFO server` that the container really is Valkey before pytest starts, and there
+> has been no Valkey-only failure across 60 completed runs.
 
 Three wording constraints, each traceable to the issue:
 
 1. **Name the pins.** `valkey/valkey:8-alpine` and `redis:7-alpine` appear literally, so
    the claim expires visibly when the images move.
-2. **Do not claim result parity.** "the same pass count" is a statement about pass
-   counts, which is what was measured. Anything of the form "identical results",
+2. **Do not claim result parity.** "no Valkey-only failure" is a statement about run
+   conclusions, which is what was read for all 60 completed runs. Pass-count identity
+   was read for exactly one run (33850587942) and must NOT be generalised to "every
+   run". Anything of the form "identical results",
    "produces the same output", or "verified equivalent" is out of bounds — that is the
    differential-run claim the issue explicitly excludes.
-3. **Do not claim the stress suite.** `tests.yml` runs `-m "not slow"`. "Full test suite"
-   is accurate for what CI runs; if the builder judges that ambiguous against the local
-   `stress` gate, prefer explicitness over brevity.
+3. **Do not claim the stress suite.** `tests.yml` runs `-m "not slow"`, so the phrase
+   "full test suite" is out of bounds in both files. Use the explicit form above —
+   "the test suite (everything except the `slow`-marked stress tests)".
 
 **`docs/index.md`** carries the same three constraints. Its link must be
 `https://github.com/tomcounsell/popoto/blob/main/.github/workflows/tests.yml` — a
@@ -308,7 +310,9 @@ protected:
 > `cancelled` with no jobs.
 
 **`.github/workflows/tests.yml` health check**: add a `server_version` line to the
-existing print block in the Valkey job. `redis_version` on Valkey is the
+existing print block in the Valkey job, reading the field defensively:
+`print("server_version:", info.get("server_version") or info.get("valkey_version"))`.
+The key name is not guaranteed across images, and this plan may not assert on it. `redis_version` on Valkey is the
 Redis-compatibility version (`7.2.4`), not the Valkey version, and the current log is
 therefore mildly misleading next to a README that says "Valkey 8". Keep the existing
 `redis_version` print; add rather than replace. The `server_name != "valkey"` guard is
@@ -366,9 +370,14 @@ file and is run in Verification.
 **Impact:** A future PR bumps `valkey/valkey:8-alpine` to `9-alpine`, deletes the job, or
 renames the workflow. The README then makes a specific, checkable, false claim — strictly
 worse than today's vague-but-true one, and exactly the failure #405 caused.
-**Mitigation:** Verification rows assert that `.github/workflows/tests.yml` exists, that
-it still contains `valkey/valkey:8-alpine`, and that the README names the same string.
-A pin bump fails the check and forces the README edit into the same PR.
+**Mitigation (partial — stated honestly):** Verification rows assert that
+`.github/workflows/tests.yml` exists, that it still contains `valkey/valkey:8-alpine`,
+and that the README names the same string. **These are one-time build-time greps run by
+task 5 inside this PR; nothing in `.github/workflows/` runs them on future PRs.** A later
+bump to `valkey:9-alpine` therefore fails no automated check, and the residual rot risk
+is accepted on the record rather than papered over. Adding a standing grep step to
+`lint.yml` was considered and deliberately deferred: it widens this Small's file set
+beyond the four files task 5 asserts on, and belongs in its own change.
 
 ### Risk 2: Wording drifts into the parity claim
 **Impact:** "runs against Valkey" quietly becomes "verified identical on Valkey", merging
@@ -435,22 +444,25 @@ clause it feeds them.
 ### Inline Documentation
 - [ ] `.github/workflows/tests.yml:23-24` — replace the false "never cancelled"
       invariant with the real concurrency behavior.
-- [ ] `docs/sdlc/do-test.md:11,16-17` — `tests.yml` replaces the two deleted workflow
+- [ ] `docs/sdlc/do-test.md:10,16-17` — `tests.yml` replaces the two deleted workflow
       names; drop the "NO ruff" clause.
 
 ## Success Criteria
 
-- [ ] `README.md` states that the full suite runs against Valkey on every PR and push to
-      `main`, names `valkey/valkey:8-alpine` and `redis:7-alpine`, and links
-      `.github/workflows/tests.yml`.
+- [ ] `README.md` states that the test suite — everything except the `slow`-marked
+      stress tests — runs against Valkey on every PR and push to `main`, names
+      `valkey/valkey:8-alpine` and `redis:7-alpine`, and links
+      `.github/workflows/tests.yml`. It does not use the unqualified phrase "full test
+      suite", and does not claim pass-count identity on "every run".
 - [ ] `docs/index.md` carries the same claim with an absolute GitHub URL.
 - [ ] Neither file claims that Redis and Valkey produce identical *results*.
 - [ ] `test-valkey.yml` and `stress-tests.yml` appear nowhere in `docs/` or `scripts/`,
       except in `.github/workflows/tests.yml:5`, where the reference is historical and
       correct ("#405 removed stress-tests.yml and test-valkey.yml").
 - [ ] `.github/workflows/tests.yml` no longer claims runs on `main` are never cancelled.
-- [ ] The Valkey health check prints a real Valkey `server_version` in addition to
-      `redis_version`.
+- [ ] The Valkey health check prints a non-`redis_version` server version field (or
+      `None` if the server publishes neither `server_version` nor `valkey_version`) in
+      addition to `redis_version`, reading both key names. Checkable from the diff.
 - [ ] `bash -n scripts/ci-local.sh` exits 0 and the file is unmodified by this work.
 - [ ] `mkdocs build --strict` passes.
 - [ ] Documentation updated (`/do-docs`).
@@ -509,7 +521,7 @@ clause it feeds them.
   Note that `stress` has no workflow at all: `tests.yml` runs `-m "not slow"`, so stress
   is local-only.
 - Update the closing sentence so it names `tests.yml` as what runs the Valkey job.
-- At `docs/sdlc/do-test.md:11`, drop the "this repo has NO ruff" clause — `ruff check
+- At `docs/sdlc/do-test.md:10`, drop the "this repo has NO ruff" clause — `ruff check
   src/` is gated by `lint.yml` as of #505/#542. Keep the line-length and isort notes.
 - Do not modify `scripts/ci-local.sh`. Its header is already correct.
 
@@ -522,9 +534,12 @@ clause it feeds them.
 - Replace `.github/workflows/tests.yml:23-24` ("Runs on main are never cancelled…") with
   the corrected description in Technical Approach. Do not change the `concurrency:` block
   itself.
-- In the Valkey job's "Verify server is Valkey" step, add a print of
-  `info.get("server_version")` alongside the existing `redis_version` print. Do not
-  assert on it and do not remove the `redis_version` print or the `server_name` guard.
+- In the Valkey job's "Verify server is Valkey" step, add
+  `print("server_version:", info.get("server_version") or info.get("valkey_version"))`
+  alongside the existing `redis_version` print. Read both keys — `valkey/valkey:8-alpine`
+  is not guaranteed to publish the version under `server_version`, and a bare
+  `info.get("server_version")` would silently print `None` while every check passed. Do
+  not assert on it and do not remove the `redis_version` print or the `server_name` guard.
 - Leave `.github/workflows/tests.yml:5` alone — its mention of the two deleted workflows
   is a historical statement about #405 and is correct.
 
@@ -573,6 +588,9 @@ clause it feeds them.
 | do-test.md ruff clause corrected | `grep -c 'NO ruff' docs/sdlc/do-test.md` | match count == 0 |
 | Anti-criterion: no result-parity claim in README | `grep -in 'identical results\|produces the same output\|verified equivalent\|result parity' README.md \| wc -l` | match count == 0 |
 | Anti-criterion: no result-parity claim in docs index | `grep -in 'identical results\|produces the same output\|verified equivalent\|result parity' docs/index.md \| wc -l` | match count == 0 |
+| Anti-criterion: no over-broad pass-count claim | `grep -in 'same pass count as the Redis job on every run' README.md docs/index.md \| wc -l` | match count == 0 |
+| Anti-criterion: no unqualified "full test suite" claim | `grep -in 'full test suite\|full suite' README.md docs/index.md \| wc -l` | match count == 0 |
+| Health check reads both version keys | `grep -c 'valkey_version' .github/workflows/tests.yml` | output > 0 |
 | Anti-criterion: no differential-run claim | `grep -in 'differential run\|differential comparison' README.md docs/index.md \| wc -l` | match count == 0 |
 | Docs build strict | `mkdocs build --strict` | exit code 0 |
 
@@ -590,6 +608,16 @@ is the validator's `git diff --stat` file-list read in task 5.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | History & Consistency | Proposed README wording claims the Valkey job "has reported the same pass count as the Redis job on every run", but pass counts were read for exactly one run (33850587942); only 9 of 59 green runs were spot-checked at job level. The sentence meant to fix an over-broad claim is itself over-broad. | Task 1 (build-claim) — narrow the quantifier | Replace the clause with a claim the Evidence table supports verbatim: "with no Valkey-only failure across 60 completed runs". Do NOT say "every run" about pass counts; pass-count identity is single-run evidence. Add a Verification anti-criterion row: `grep -in 'same pass count as the Redis job on every run' README.md docs/index.md \| wc -l` == 0. |
+| CONCERN | Risk & Robustness | Risk 1's mitigation says "A pin bump fails the check and forces the README edit into the same PR", but the `## Verification` grep rows are run manually by task 5 inside this PR only. Nothing in `.github/workflows/` runs them, so a future `valkey:9-alpine` bump fails nothing and the strengthened README rots exactly as #405's did. | Risk 1 mitigation text (and optionally a new lint.yml step) | Either (a) reword Risk 1 to state the greps are a one-time build-time check, not a standing gate, and accept the residual risk on the record; or (b) add a step to `.github/workflows/lint.yml` (already PR-gated) running `grep -q 'valkey/valkey:8-alpine' README.md && grep -q 'valkey/valkey:8-alpine' .github/workflows/tests.yml`. Do NOT add it to `tests.yml` — that file is the thing being pinned. |
+| CONCERN | Structural + History & Consistency | Wording constraint 3 flags that `tests.yml` runs `-m "not slow"` so "full test suite" is ambiguous — yet the plan's own proposed wording ships the unqualified phrase "the full test suite", and Success Criterion 1 repeats it ("states that the full suite runs against Valkey"). The plan hands the builder a baseline sentence that violates its own constraint. | Technical Approach proposed wording + Success Criterion 1 | Change the baseline sentence to "the test suite (everything except the `slow`-marked stress tests)" and amend Success Criterion 1 to match. The anti-criterion greps do not catch this phrase, so it must be fixed in the plan text rather than left to builder judgement. |
+| CONCERN | Structural (Adversary) | Success Criterion 6 requires the health check to print "a real Valkey `server_version`", but the Failure Path section forbids asserting on it and the Verification row only greps the workflow file for the string `server_version`. If `valkey/valkey:8-alpine` publishes its version under `valkey_version` rather than `server_version`, the job prints `server_version: None`, every check still passes, and the sole justification for touching the workflow is silently unmet. | Task 3 (build-workflow) + Success Criterion 6 | Print defensively rather than guessing the key name: `print("server_version:", info.get("server_version") or info.get("valkey_version"))`, keeping the existing `redis_version` print and the `server_name` guard untouched and adding no assertion. Reword Success Criterion 6 to "prints a non-`redis_version` server version field (or `None` if the server publishes none)" so it is checkable from the diff alone. |
+| NIT | Scope & Value | Three named agents and five tasks for what Architectural Impact itself calls "four text edits ... plus two `echo`-equivalent lines". | Optional — Team Orchestration | n/a (NIT) |
+| NIT | Risk & Robustness | Evidence table rows sum to 92 (59 + 1 + 31 + 1) but the surrounding prose says "all 91 `tests.yml` runs on `main`" and "31 of the 91". | Evidence section arithmetic | n/a (NIT) |
+| NIT | History & Consistency | Line-number drift: `docs/sdlc/do-test.md:11` is actually line 10; the "Verify server is Valkey" step is at `tests.yml:137-152`, not `135-152`/`145-152`. | Citation cleanup | n/a (NIT) |
+| NIT | Risk & Robustness | `grep -c 'server_version' .github/workflows/tests.yml` passes on any mention of the string, including a comment; and `git diff --name-only main -- scripts/ci-local.sh` always exits 0 (the plan already flags this row as a smoke check). | Verification table | n/a (NIT) |
+
+**Verdict: READY TO BUILD (with concerns)** — 0 blockers, 4 concerns, 4 nits (FULL war room: Risk & Robustness, Scope & Value, History & Consistency; 2026-09-04).
 
 ---
 

@@ -110,7 +110,7 @@ mkdocs build --strict     # docs gate
 scripts/ci-local.sh       # tests + stress + docs (--all, --fast, or named gates)
 ```
 
-There is no `ruff` in this repo, and no app to launch — popoto is a library
+There is no app to launch — popoto is a library
 plus an mkdocs site.
 
 ## Concurrency: DB 15 is shared across every worktree

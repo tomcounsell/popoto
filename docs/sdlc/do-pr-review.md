@@ -80,8 +80,9 @@ scripts/ci-local.sh       # tests + stress + docs; --all adds build/lock/guard
 ```
 
 `scripts/ci-local.sh --all` runs the gates mirroring every workflow
-(`tests stress docs build lock guard`). `--fast` is tests only. There is no
-`ruff` here — formatting is `black` (line length 88, isort at 79).
+(`tests stress docs build lock guard`). `--fast` is tests only. Lint is
+`ruff check src/`, gated by `lint.yml`; formatting is `black` (line length 88,
+isort at 79).
 
 ## Test isolation contract, and the expected-failure set
 
