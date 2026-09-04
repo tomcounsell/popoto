@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/575
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-04T06:44:04Z
 ---
 
 # #575 / #570 — Route SortedField(partition_by=...) values through canonical_key_str()
@@ -14,10 +16,15 @@ last_comment_id: none
 
 `SortedField(partition_by=...)` renders partition values with bare `str(value)` at multiple
 sites in `src/popoto/fields/sorted_field_mixin.py` and `src/popoto/models/query.py`. The sites
-are consistent with each other, so nothing is broken today — but a `datetime` partition value
-carries exactly the aware/naive `str()` fragility #537/#538 fixed for `KeyField` identity in
-PR #548: the same instant can land in different partitions depending on how it decoded. Silent,
-no error, visible only as queries returning fewer rows than expected.
+are consistent with *each other*, but a `datetime` partition value carries exactly the
+aware/naive `str()` fragility #537/#538 fixed for `KeyField` identity in PR #548: the same
+instant can land in different partitions depending on how it decoded. Silent, no error, visible
+only as queries returning fewer rows than expected.
+
+The Freshness Check below revises one premise: they are **not** consistent with every partition
+render in the codebase. `base.py:3667` (orphan purge) appends the raw value, which `DB_key`
+canonicalizes as of #548, so that path already disagrees with the seven `str()` sites for a
+datetime partition. The scope and the fix are unchanged; the urgency framing is.
 
 Two issues describe this: #575 (the generic finding, with the suggested `canonical_key_str`
 fix) and #570 (the datetime-specific duplicate, filed with a measure-first framing). One fix
@@ -113,15 +120,19 @@ byte-for-byte. The no-op property this plan depends on holds on current main.
 
 ## Solution
 
-1. Convert every partition-value rendering site to `canonical_key_str(value)`.
-2. Regression tests: a model with `SortedField(partition_by=<datetime field>)` — an aware
+1. Convert all seven SortedField partition-value rendering sites (Freshness Check table) to
+   `canonical_key_str(value)`; import from `..models.canonical_key` in `sorted_field_mixin.py`
+   and `.canonical_key` in `query.py`. Do not touch `base.py:3667` — it is already canonical.
+2. Convert the three `ConfidenceField` interpolations (`confidence_field.py:315,350,374`) to
+   `key += f":{canonical_key_str(val)}"`, subject to the escape hatch in the Freshness Check.
+3. Regression tests: a model with `SortedField(partition_by=<datetime field>)` — an aware
    datetime and its UTC equivalent land in the SAME partition; naive datetimes partition
    consistently; write-path and every read/query path agree on the partition key (round-trip
    through save → filter-by-partition). Plus a byte-identity test: for str/int/float partition
    values the rendered partition segment is unchanged versus `str(value)`.
-3. Docs: note in `docs/query.md` (or the SortedField docs section) that datetime partition
+4. Docs: note in `docs/query.md` (or the SortedField docs section) that datetime partition
    values are canonicalized; CHANGELOG entry.
-4. PR body: `Closes #575` and `Closes #570`.
+5. PR body: `Closes #575` and `Closes #570`.
 
 ## No-Gos
 
@@ -132,17 +143,27 @@ byte-for-byte. The no-op property this plan depends on holds on current main.
 
 ## Risks / Rabbit Holes
 
-- **Missed site** = split partitions. Mitigate with the grep inventory plus a test that
-  exercises every query path that renders a partition (filter, range query, count, delete/index
-  cleanup if they render partitions — follow the inventory).
+- **Missed site** = split partitions. The original inventory grep in this plan already proved
+  this risk is real — it silently omitted two of the seven sites (see Freshness Check). Use the
+  replacement grep, and add a test exercising every path that renders a partition: write
+  (`on_save`), partition-change cleanup (`on_save`/`on_delete` old-partition branches),
+  `filter_query`, and the three `query.py` decay/index paths.
+- **`base.py:3667` drift**: it is correct *because* it appends raw. A future "consistency"
+  cleanup that wraps it in `str()` would reintroduce the divergence. Add a comment there
+  pointing at `DB_key.__str__` rather than editing the call.
 - **1.8.0/1.9.x forward-compat**: partition key bytes change only for datetime partitions,
   which the docs never advertised and no report uses. State this in the CHANGELOG anyway
   (lesson of #476).
 
 ## Success Criteria
 
-- All sites converted (grep inventory returns zero bare-`str()` partition renders).
-- New tests green; full non-slow suite green; ruff/black clean; mypy delta 0 (same env).
+- All 7 SortedField sites + 3 ConfidenceField sites converted; the replacement grep returns
+  zero bare-`str()`/bare-`f":{val}"` partition renders.
+- A datetime-partition test proves the write path and `base.py:3667`'s purge path now agree
+  (the divergence the Freshness Check found).
+- Byte-identity test: str/int/float partition segments unchanged versus `str(value)`.
+- New tests green; full non-slow suite green; ruff/black clean; mypy delta 0 (same env,
+  measured base-vs-branch per CLAUDE.md's redis-py caveat).
 
 ## Documentation
 
