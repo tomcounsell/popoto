@@ -29,7 +29,7 @@ jobs:
       # and so reports an up-to-date lock as stale; a newer one can bump the
       # format and fail a lock that is actually fine. Either way the gate would
       # fail for a reason unrelated to the change under review.
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "0.12.2"
 
