@@ -168,3 +168,91 @@ byte-for-byte. The no-op property this plan depends on holds on current main.
 ## Documentation
 
 - CHANGELOG.md, `docs/query.md` SortedField/partition notes.
+
+## Critique Results
+
+### Round 1 (2026-09-04, main `73c6a48`) — verdict: NEEDS REVISION
+
+Depth: FULL (3 lenses). All findings verified against working-tree source, not inferred.
+
+**BLOCKER — No "Step by Step Tasks" section; no task carries a validation command.**
+`## Solution` is five prose bullets. Every comparable plan in this repo
+(`pytest_plugin_inert_warning.md`, `datetime_keyfield_canonical_identity.md`) carries
+`## Step by Step Tasks` with per-task validation plus `## Test Impact`; `/do-build` consumes
+those. *Implementation Note:* split into numbered tasks — (1) sorted_field_mixin.py sites 1-4,
+(2) query.py sites 5-7, (3) confidence_field.py 315/350/374, (4) tests, (5) docs/CHANGELOG —
+each with a validation command (e.g. `pytest tests/test_sorted_field_partition_canonical.py -q`,
+and the replacement grep returning exactly seven rows). Add `## Test Impact` naming the new/
+touched test files.
+
+**CONCERN — the `base.py:3667` mechanism in the Freshness Check is wrong.**
+The purge path does *not* "append the raw value". `_purge_orphan_keys` builds
+`values: dict[str, str]` from `DB_key.from_redis_key(key)` (`base.py:3629-3648`), i.e. already-
+unescaped *strings* parsed out of the row's stored redis key. `canonical_key_str` no-ops on a
+`str`. The divergence the plan found is real, but its cause is "the KeyField segment in the
+stored key is canonical as of #548", not "DB_key canonicalizes a raw datetime here". Consequence:
+the Risks item "it is correct *because* it appends raw … a cleanup that wraps it in `str()`
+would reintroduce the divergence" is false — `str()` on a `str` is a no-op. *Implementation
+Note:* fix the prose, and if a comment is added at that site, point at
+`DB_key.from_redis_key` + #548 KeyField canonicalization, not at `DB_key.__str__`.
+
+**CONCERN — Success Criterion 2 is vacuous unless the partition field is a KeyField.**
+`_purge_orphan_keys` populates `values` only `for field_name in meta.key_field_names` and skips
+any sorted field whose partition names are not all present (`if any(name not in values for name
+in partition): continue`, `base.py:3663-3665`). A test using a plain (non-key) datetime
+`SortedField(partition_by=...)` never reaches the purge branch and passes trivially. *Implementation
+Note:* the regression model must declare the partition field as a `KeyField(type=datetime)`;
+assert the zset key built by `get_partitioned_sortedset_db_key` equals the one
+`_purge_orphan_keys` derives for the same row.
+
+**CONCERN — the `POPOTO_DATETIME_KEY_LEGACY` gate is unmentioned.**
+`canonical_key_str` is gated on `Defaults.DATETIME_KEY_LEGACY` (`canonical_key.py:92-94`) and
+only the read-only audit passes `force=True`. If the build writes `canonical_key_str(v,
+force=True)` at any of the ten sites, the write path diverges from `DB_key.__str__` and from
+the purge path for a fleet mid-rollout with the switch set — the #476 mixed-deploy hazard.
+*Implementation Note:* call `canonical_key_str(val)` with no `force` kwarg at all ten sites, and
+make the datetime regression test explicitly unset/clear `POPOTO_DATETIME_KEY_LEGACY` rather
+than inheriting ambient env.
+
+**CONCERN — the sibling audit stops one site short: `EventStreamMixin`.**
+`src/popoto/fields/event_stream.py:119` builds the partitioned stream key as
+`base_key = f"{base_key}:{partition_value}"` from a raw model attribute, bypassing `DB_key` —
+the identical bug class the plan scoped ConfidenceField in for. The Success Criteria grep only
+covers `sorted_field_mixin.py` and `query.py`, so it returns zero while this site remains: the
+"partial conversion is worse than none" outcome the plan names. *Implementation Note:* either
+convert it (`f"{base_key}:{canonical_key_str(partition_value)}"`, inside the existing
+`if partition_value is not None` guard) or record an explicit out-of-scope decision plus a
+follow-up issue, and widen the criteria grep to `src/popoto/fields/` so the omission is visible.
+(`prediction_ledger._error_key` takes a caller-supplied label, not a model field — genuinely
+out of scope.)
+
+**CONCERN — the ConfidenceField conversion aligns those keys only with themselves.**
+`get_data_hash_key` and friends build `key = base_key.redis_key + ":data"` then `key += f":{val}"`
+— raw concatenation with no `DB_key.clean()`. The canonical datetime form contains colons, so the
+partition boundary stays ambiguous after the change; this is not a regression (`str(datetime)`
+has colons too) but it means these keys still do not agree byte-for-byte with any `DB_key`-built
+key. Also `get_data_hash_key` (:313-315) and `get_old_data_hash_key` (:372-374) skip `None`
+values while `get_data_hash_key_from_values` (:344-350) raises. *Implementation Note:* put
+`canonical_key_str(val)` *inside* the existing `if val is not None:` guards so the None
+asymmetry is preserved verbatim; state in the plan that escaping parity with `DB_key` is
+explicitly not attempted here.
+
+**NIT — `base.py:3667` is off by one.** Line 3667 is `for name in partition:`; the append is
+3668. The plan cites 3667 four times while itself warning that line numbers drift.
+
+**NIT — `cyclic_decay_field.py:423,435` are mischaracterized.** They call
+`get_sortedset_db_key(model_class, field_name, *partition_values)` with *raw* values, which
+`DB_key.__str__` already canonicalizes — so they are a second live divergence from the seven
+`str()` sites today, not merely sites that "inherit the fix". (Post-fix they converge; no edit
+needed, only the description is wrong.) Lines 402/413 do go through
+`get_partitioned_sortedset_db_key` as described.
+
+**NIT — frontmatter `tracking:` names only #575** while the plan title and Solution item 5 claim
+both #575 and #570.
+
+Verified-clean: all seven SortedField line anchors match exactly on `73c6a48`; the replacement
+grep returns exactly those seven rows; `confidence_field.py:315/350/374`,
+`canonical_key.py:46`, `db_key.py:276-281`, `context_assembler.py:627`,
+`default_memory.py:194` all match as cited; no partition render sites exist outside the files
+the plan enumerates plus `event_stream.py:119`; the no-op property of `canonical_key_str` for
+non-datetime values holds on current main.
