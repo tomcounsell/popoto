@@ -481,27 +481,33 @@ removes that prose, so a recursive grep over `docs/` can never reach zero.
 **counted output, never on `$?`**. Run the four stale-figure rows under `set +e`,
 or use the `| grep -v ":0$" | wc -l` form given, which exits 0 either way.
 
-Let `TARGETS="README.md docs/index.md docs/plans/docs_repositioning.md docs/plans/harness_integration.md"`.
+Below, `F` stands for the four literal paths
+`README.md docs/index.md docs/plans/docs_repositioning.md docs/plans/harness_integration.md`,
+and they must be typed out in full in the command actually run. Do **not**
+collapse them into a shell variable: this repo's default shell is zsh, which
+does not word-split an unquoted parameter expansion, so `grep -c "..." $TARGETS`
+treats the whole string as one missing filename and every row reports a false
+pass. That was hit for real while validating this change.
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| No stale 8.7 MB | `grep -c "8\.7 MB" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
-| No stale 7.9 MB | `grep -c "7\.9 MB" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
-| No stale mem0ai size | `grep -c "105 MB" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
-| No stale mem0ai count | `grep -c "32 packages" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale 8.7 MB | `grep -c "8\.7 MB" F \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale 7.9 MB | `grep -c "7\.9 MB" F \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale mem0ai size | `grep -c "105 MB" F \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale mem0ai count | `grep -c "32 packages" F \| grep -v ":0$" \| wc -l` | output is `0` |
 | README carries the figure | `grep -c "9\.0 MB" README.md` | output > 0 |
 | Docs hero carries the figure | `grep -c "9\.0 MB" docs/index.md` | output > 0 |
 | Repositioning plan updated | `grep -c "9\.0 MB" docs/plans/docs_repositioning.md` | output is `2` |
 | Harness budget updated | `grep -c "9\.0 MB" docs/plans/harness_integration.md` | output > 0 |
-| Python version stated beside every figure | `grep -h "9\.0 MB" $TARGETS \| grep -vc "3\.12" \| cat` | output is `0` |
-| redis-py version stated beside every figure | `grep -h "9\.0 MB" $TARGETS \| grep -vic "redis-py 8\.1\.0" \| cat` | output is `0` |
+| Python version stated beside every figure | `grep -h "9\.0 MB" F \| grep -vc "3\.12" \| cat` | output is `0` |
+| redis-py version stated beside every figure | `grep -h "9\.0 MB" F \| grep -vic "redis-py 8\.1\.0" \| cat` | output is `0` |
 | mem0ai comparison refreshed | `grep -c "151 MB" docs/plans/docs_repositioning.md` | output is `2` |
 | Closed record annotated | `grep -c "install_size_claim.md" docs/plans/docs_repositioning.md` | output > 0 |
 | Package-count-only lines untouched | `git diff --stat origin/main -- docs/llms.txt` | empty output |
 | Untouched claim lines byte-identical | `git diff origin/main -- README.md docs/index.md \| grep -c "^[-+].*three packages"` | output is `0` |
 | No dependency metadata changed | `git diff --exit-code origin/main -- pyproject.toml` | exit code 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
-| Only the four target files changed | `git diff --name-only origin/main` | exactly the 4 targets plus `docs/plans/install_size_claim.md` |
+| Only the four target files changed | `git diff --name-only $(git merge-base HEAD origin/main)` | exactly the 4 targets plus `docs/plans/install_size_claim.md`. Use the merge-base, not bare `origin/main`: main advances during the run and unrelated new files otherwise appear as deletions. |
 
 ## Critique Results
 

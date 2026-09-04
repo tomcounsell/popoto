@@ -20,7 +20,7 @@ Underneath, Popoto is a full Redis/Valkey ORM with Django-like model syntax. The
 pip install popoto
 ```
 
-That pulls `popoto`, `redis`, and `msgpack`: 3 packages, 8.7 MB of site-packages measured in a clean Python 3.12 venv. Point it at Redis or Valkey on `localhost:6379` and you are running.
+That pulls `popoto`, `redis`, and `msgpack`: 3 packages, 9.0 MB of site-packages measured 2026-09-04 in a clean Python 3.12 venv resolving redis-py 8.1.0. Point it at Redis or Valkey on `localhost:6379` and you are running.
 
 ## Memory around an LLM turn
 

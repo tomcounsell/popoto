@@ -162,7 +162,7 @@ Shared invariant: hook process, MCP process, and any user Python program all rea
 
 ## Architectural Impact
 
-- **New dependencies**: `mcp` (the Python MCP SDK) under a new `popoto[mcp]` extra. Core install stays at 3 packages, 7.9 MB, zero API keys — that number is a published differentiator and must not regress. The hook path deliberately does **not** require `mcp`; hooks work on a bare `pip install popoto`.
+- **New dependencies**: `mcp` (the Python MCP SDK) under a new `popoto[mcp]` extra. Core install stays at 3 packages — 9.0 MB of site-packages on Python 3.12 with redis-py 8.1.0, measured 2026-09-04 — and zero API keys. The published differentiator is the package count and the zero-key property; the byte figure tracks whatever the unpinned `redis>=4.4.4` floor resolves to and is not popoto's to hold flat. What must not regress is popoto's own contribution: adding the `mcp` extra must not increase the *core* install's package count, and must not increase the popoto-attributable share of the install size. The hook path deliberately does **not** require `mcp`; hooks work on a bare `pip install popoto`.
 - **Interface changes**: additive only. New `popoto.integrations` package, new `RawTurnExtractionProvider` in `popoto.extraction`, new `[project.scripts] popoto-memory` entry point (the repo has no `[project.scripts]` table today). No existing signature changes.
 - **Coupling**: `popoto.integrations` depends on `popoto.recipes` and `popoto.extraction`; nothing in core depends on `popoto.integrations`. One-directional, and the package is importable-but-optional.
 - **Data ownership**: unchanged. All state stays in the user's Redis/Valkey. No new service, no hosted component, no telemetry egress.
