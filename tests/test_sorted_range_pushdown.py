@@ -526,6 +526,193 @@ def test_exhausted_range_short_on_orphans_still_warns(caplog):
 
 
 # ---------------------------------------------------------------------------
+# count() must report the population, not the bounded read
+# ---------------------------------------------------------------------------
+
+
+def test_count_is_not_truncated_by_a_present_limit():
+    """A limit bounds the rows you get back; it must not bound the tally.
+
+    The limit has to be live for this to mean anything, so the same builder
+    that reports the full count is also drained: without that, a count() that
+    ignored the limit and a limit that was never applied look identical.
+    """
+    _seed()
+
+    assert (
+        PushdownDoc.query.count(room_id="r1", last_active_at__gte=0) == POPULATION
+    ), "an unlimited count is the control for the three limited cases below"
+
+    builder = PushdownDoc.query.filter(
+        room_id="r1", last_active_at__gte=0, order_by="-last_active_at"
+    ).limit(5)
+    assert builder.count() == POPULATION, (
+        "QueryBuilder.count() must tally the matching population, "
+        "not the length of the bounded read"
+    )
+    assert len(list(builder)) == 5, (
+        "the limit must still be live on the builder that just reported "
+        f"{POPULATION}, otherwise the assertion above is vacuous"
+    )
+
+    assert (
+        PushdownDoc.query.count(room_id="r1", last_active_at__gte=0, limit=5)
+        == POPULATION
+    ), "the kwargs form of the limit must be ignored by count() too"
+
+
+# ---------------------------------------------------------------------------
+# Meta.order_by participates in the pushdown gate
+#
+# Both _sorted_pushdown_args and _bound_keys_before_hydration resolve direction
+# as `kwargs.get("order_by") or model._meta.order_by`, so a model that declares
+# its order in Meta reaches the pushdown with no explicit order_by at the call
+# site. Naming another field there must decline the bound: score order is not
+# result order, and a bound spent on the wrong axis returns wrong rows.
+# ---------------------------------------------------------------------------
+
+META_POPULATION = 20
+
+
+class PushdownDocMetaDesc(popoto.Model):
+    room_id = popoto.KeyField(type=str)
+    doc_id = popoto.KeyField(type=str)
+    last_active_at = popoto.SortedField(type=float, partition_by="room_id")
+    bucket = popoto.IndexedField(type=str, null=True)
+
+    class Meta:
+        order_by = "-last_active_at"
+
+
+class PushdownDocMetaAsc(popoto.Model):
+    room_id = popoto.KeyField(type=str)
+    doc_id = popoto.KeyField(type=str)
+    last_active_at = popoto.SortedField(type=float, partition_by="room_id")
+
+    class Meta:
+        order_by = "last_active_at"
+
+
+class PushdownDocMetaOther(popoto.Model):
+    room_id = popoto.KeyField(type=str)
+    doc_id = popoto.KeyField(type=str)
+    last_active_at = popoto.SortedField(type=float, partition_by="room_id")
+
+    class Meta:
+        order_by = "doc_id"
+
+
+def _seed_meta(model, count=META_POPULATION, room="r1", reverse_doc_ids=False):
+    """Seed a Meta-carrying model, optionally anti-correlating doc_id and score.
+
+    ``reverse_doc_ids`` makes doc_id order the exact reverse of score order, so
+    a result ordered by doc_id cannot be mistaken for one ordered by score.
+    """
+    for i in range(count):
+        ordinal = (count - 1 - i) if reverse_doc_ids else i
+        fields = dict(
+            room_id=room,
+            doc_id=f"m{ordinal:03d}",
+            last_active_at=float(i),
+        )
+        if model is PushdownDocMetaDesc:
+            fields["bucket"] = "a"
+        model(**fields).save()
+
+
+def test_meta_order_by_descending_supplies_direction_and_bound():
+    """No explicit order_by: Meta supplies both the direction and the pushdown."""
+    _seed_meta(PushdownDocMetaDesc)
+    with HydrationCounter() as counter:
+        results = list(
+            PushdownDocMetaDesc.query.filter(
+                room_id="r1", last_active_at__gte=0, limit=3
+            )
+        )
+
+    assert [d.doc_id for d in results] == ["m019", "m018", "m017"]
+    assert counter.count < 2 * META_POPULATION, (
+        "Meta.order_by must reach the pushdown gate; a full read means the "
+        f"Meta fallback was dropped ({counter.count} of {2 * META_POPULATION})"
+    )
+
+
+def test_meta_order_by_ascending_supplies_direction_and_bound():
+    """Ascending Meta.order_by supplies direction and keeps the Redis-side bound.
+
+    Weak discriminator (spike-3): with no Meta at all, sorted-set order is
+    already ascending, so this case passes whether or not the Meta fallback in
+    `_sorted_pushdown_args` is consulted. It survives the mutation that deletes
+    `or self.model_class._meta.order_by`. Do not read a green result here as
+    proof the Meta fallback works -- that guard is defended by the descending,
+    other-field and key-list-slice tests. This case exists to pin that the
+    ascending shape stays bounded, not to discriminate the fallback.
+    """
+    _seed_meta(PushdownDocMetaAsc)
+    with HydrationCounter() as counter:
+        results = list(
+            PushdownDocMetaAsc.query.filter(
+                room_id="r1", last_active_at__gte=0, limit=3
+            )
+        )
+
+    assert [d.doc_id for d in results] == ["m000", "m001", "m002"]
+    assert counter.count <= 2 * (
+        3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
+    ), f"ascending Meta order must bound the read, got {counter.count}"
+    assert counter.count < 2 * META_POPULATION
+
+
+def test_meta_order_by_other_field_disables_pushdown():
+    """Ordering by a non-sorted field must decline the bound.
+
+    doc_id order is the reverse of score order here, so the correct head is the
+    score-order tail. A bound spent on the score axis would return the other end
+    of the range entirely.
+    """
+    _seed_meta(PushdownDocMetaOther, reverse_doc_ids=True)
+    with HydrationCounter() as counter:
+        results = list(
+            PushdownDocMetaOther.query.filter(
+                room_id="r1", last_active_at__gte=0, limit=3
+            )
+        )
+
+    assert [d.doc_id for d in results] == ["m000", "m001", "m002"]
+    assert counter.count >= 2 * META_POPULATION, (
+        "ordering by another field must read the full range before slicing, "
+        f"got {counter.count}"
+    )
+    assert counter.count > 2 * (3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN)
+
+
+def test_meta_order_by_supplies_direction_to_the_key_list_slice():
+    """The second indexed predicate declines the Redis-side bound.
+
+    That leaves the pre-hydration key-list slice as the only thing bounding the
+    read, and it resolves direction from Meta at query.py:2329. Dropping that
+    resolution returns the ascending head re-sorted -- the wrong three rows,
+    silently.
+    """
+    _seed_meta(PushdownDocMetaDesc)
+
+    with HydrationCounter() as counter:
+        results = list(
+            PushdownDocMetaDesc.query.filter(
+                room_id="r1",
+                last_active_at__gte=0,
+                bucket="a",
+                limit=3,
+            )
+        )
+
+    assert [d.doc_id for d in results] == ["m019", "m018", "m017"]
+    assert (
+        counter.count < 2 * META_POPULATION
+    ), f"the key-list slice must still bound hydration, got {counter.count}"
+
+
+# ---------------------------------------------------------------------------
 # Async parity: async_filter must apply the same bounds as _execute_filter
 #
 # Two different clients are in play and patching the wrong one gives a vacuous
@@ -781,3 +968,69 @@ async def test_concurrent_async_filters_do_not_clobber_each_other():
         )
         for room, got, expected in outcomes:
             assert got == expected, f"room {room}: got {got}, expected {expected}"
+
+
+# ---------------------------------------------------------------------------
+# Async Meta.order_by: #602 armed the async path through the same shared
+# helpers, so the Meta fallback gates the async read too.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_async_meta_order_by_descending_supplies_direction_and_bound():
+    """Async: descending Meta.order_by supplies direction and the Redis bound.
+
+    Guards the shared `_sorted_pushdown_args` Meta fallback on the async path.
+    Drop that fallback and the async read loses its direction: it returns the
+    ascending head (m000..m002) instead of the descending head, and hydrates
+    the whole partition rather than the bounded window.
+    """
+    _seed_meta(PushdownDocMetaDesc)
+    with AsyncHydrationCounter() as counter:
+        results = await PushdownDocMetaDesc.query.async_filter(
+            room_id="r1", last_active_at__gte=0, limit=3
+        )
+
+    assert [d.doc_id for d in results] == ["m019", "m018", "m017"]
+    assert 3 <= counter.count <= 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN, (
+        "the async read must take its direction and bound from Meta, "
+        f"got {counter.count} of a {META_POPULATION}-row population"
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_meta_order_by_other_field_disables_pushdown():
+    """Async: Meta.order_by on a non-sorted field must decline the bound.
+
+    Score order is not result order here (doc_id is anti-correlated with score),
+    so a bound spent on the score axis would return the wrong end of the range.
+    Drop the guard that returns early when the resolved order_by name is not the
+    sorted field and this silently returns m019..m017 instead of m000..m002.
+    """
+    _seed_meta(PushdownDocMetaOther, reverse_doc_ids=True)
+    with AsyncHydrationCounter() as counter:
+        results = await PushdownDocMetaOther.query.async_filter(
+            room_id="r1", last_active_at__gte=0, limit=3
+        )
+
+    assert [d.doc_id for d in results] == ["m000", "m001", "m002"]
+    assert counter.count >= META_POPULATION, (
+        "ordering by another field must read the full range on the async path "
+        f"too, got {counter.count}"
+    )
+    assert counter.count > 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
+
+
+@pytest.mark.asyncio
+async def test_async_meta_order_by_supplies_direction_to_the_key_list_slice():
+    """Async twin of the sync key-list-slice case: bucket declines the Redis bound."""
+    _seed_meta(PushdownDocMetaDesc)
+    with AsyncHydrationCounter() as counter:
+        results = await PushdownDocMetaDesc.query.async_filter(
+            room_id="r1", last_active_at__gte=0, bucket="a", limit=3
+        )
+
+    assert [d.doc_id for d in results] == ["m019", "m018", "m017"]
+    assert (
+        counter.count < META_POPULATION
+    ), f"the key-list slice must still bound async hydration, got {counter.count}"
