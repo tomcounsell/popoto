@@ -471,7 +471,52 @@ of #519/#521.
 Missing `anthropic`, a client exception, a malformed reply, or `M4_RESOLUTION_ENABLED = False` all
 produce `Resolution(statement=verbatim, status=indeterminate, references=(), valid_from=None,
 degraded=True)` — the entry is still captured, byte-identical to M3's output. M4 is explicitly
-"quality loss, not corruption" when unavailable.
+"quality loss, not corruption" when unavailable. The degraded entry is tagged **`res:degraded`**,
+not `res:indeterminate` (see §3b).
+
+**3a. Every float M4 hands to M1 is finiteness-checked *inside the pure module*, never at the
+journal boundary** (round-1 blocker 3). The round-1 plan claimed `NaN`/`inf` are "coerced to the
+clock, matching `_coerce_instant`'s rejection semantics". That was **false**, and re-verified as
+false at `da8c98d`:
+
+- `_coerce_instant` (`recipes/provenance_journal.py:1266-1285`) **raises `ValueError`** on a
+  non-finite or non-numeric `at`: `if instant != instant or instant in (float("inf"),
+  float("-inf")): raise ValueError(...)`. That raise propagates out of `ProvenanceJournal.append`
+  into `_append_and_transition`'s generic `except Exception` (`decision_log.py:795-812`), which
+  writes `reject(ASSEMBLY_FAILED)` and returns `None` — **the candidate is never captured**. That
+  is corruption of the fail-open contract, not quality loss.
+- `captured_at` takes a **bare `float(captured_at)`** at `provenance_journal.py:929` with no
+  finiteness check, so the *same* bad float is stored silently as `NaN` on the entry. One bad
+  float, two divergent failure modes: `at` fails loudly and drops the record, `captured_at` fails
+  silently and poisons it.
+
+The fix makes reality match the contract at the only layer M4 owns. In `resolution.py`, immediately
+before a `Resolution` is constructed and before a `TurnContext` is accepted:
+
+```python
+if valid_from is not None and not math.isfinite(valid_from):
+    valid_from = None          # degrade to M1's default (the capture instant)
+if captured_at is None or not math.isfinite(captured_at):
+    captured_at = time.time()  # degrade to the clock, with a warning
+```
+
+Both guards log a `POPOTO.extraction` warning and set `degraded=True`. `TurnContext` applies the
+`captured_at` guard in `__post_init__` so an ill-formed context cannot exist. M4 therefore never
+passes a non-finite float across the M1 boundary, and no behaviour change to M1 is required. The
+divergent `captured_at`/`at` handling inside M1 is a real latent defect but it is **not M4's to
+fix** — it is recorded in No-Gos and belongs in an M1 follow-up. Tests: a `Resolution` carrying
+`float("nan")` as `valid_from`, and a `TurnContext` carrying `float("nan")`/`inf`/`None` as
+`captured_at`, each **still produce a journal entry** (Failure Path Test Strategy).
+
+**3b. Five status literals on the tag, four in the model's vocabulary.** The model emits one of the
+four `ResolutionStatus` values. The *tag* carries a fifth literal, `res:degraded`, written whenever
+`Resolution.degraded is True` regardless of the status underneath it. Rationale: `degraded=True`
+lives only in the sidecar, and Risk 1's entire mitigation is that the sidecar must never be needed
+to read the flag — so without a distinct literal, "the model abstained" and "the resolution stage
+never ran" are indistinguishable on the one channel guaranteed to travel with the fact. That
+distinction is exactly what Error State Rendering and Risk 1 lean on. Precedence is explicit:
+`degraded` wins, so a degraded resolution is tagged `res:degraded` **and nothing else**. spike-2
+proved low-entropy `res:*` literals clear the M2 firewall, so the fifth costs nothing.
 
 **4. `valid_from` emission — the onset rule.** `valid_from` is the instant a claim *became true*,
 not every date the claim mentions. Emitting it for a deadline would be a data error: *"file it by
@@ -572,9 +617,14 @@ No `except Exception: pass` blocks are introduced; every handler logs and return
       it as `empty_turn` — so this is a defence-in-depth test).
 - [ ] `TurnContext` with an empty window, a `None` speaker, and an unknown timezone string → the
       unknown zone falls back to UTC with a logged warning; nothing raises.
-- [ ] `TurnContext.captured_at` of `None`/`NaN`/`inf` → coerced to the clock, matching
-      `_coerce_instant`'s rejection semantics rather than propagating a bad float into a ZSET
-      score.
+- [ ] `TurnContext.captured_at` of `None`/`NaN`/`inf` → coerced to the clock **by
+      `TurnContext.__post_init__`**, with a warning and `degraded=True`. This is a guard M4 adds,
+      *not* M1 behaviour: `_coerce_instant` raises on a non-finite `at` and `provenance_journal.py:929`
+      stores a non-finite `captured_at` silently (Technical Approach §3a).
+- [ ] `Resolution.valid_from` of `NaN`/`inf` → dropped to `None` in `resolution.py` before the
+      `Resolution` is constructed, so `journal.append(at=...)` never sees it. **Assert the journal
+      entry still exists** — without this guard the raise lands in `_append_and_transition`'s
+      `except Exception` and the candidate is rejected as `ASSEMBLY_FAILED` rather than captured.
 - [ ] A model reply with an **empty** `references` array → valid: `status = resolved`,
       `statement == verbatim`, no `valid_from`. "Nothing needed resolving" is a legitimate,
       non-degraded outcome and must not be conflated with `indeterminate`.
