@@ -27,19 +27,78 @@ datetime partitions with mixed representations, which no report suggests exists.
 
 ## Freshness Check
 
-To be re-verified at build time against current main: the cited sites were measured at PR #548
-HEAD `154a9d6` (`sorted_field_mixin.py:475,546,629,753`; `query.py:369,1176,1218`) and
-`query.py` has since been reshaped by #594 — **re-run the site inventory before editing**:
+**Re-verified 2026-09-04 against main `7f057f9`** (`fix(#571): apply the SortedField limit
+pushdown on the async path (#602)`). The issue's site list was measured at PR #548 HEAD
+`154a9d6`; since then #594 (agent-memory audit) and #571/PR #602 (async pushdown) reshaped
+`query.py`. Commits touching the cited files since the issue was filed (2026-08-14):
+`7f057f9`, `16aa702`, `07b7268`, `a4f7fbf`, `0ab47a1`. None of them changed the rendering.
+
+**Disposition: Minor drift + one premise correction + one new sibling site.**
+
+### Verified site inventory (main `7f057f9`)
+
+Anchored by enclosing symbol, because line numbers drift under concurrent lanes:
+
+| # | File | Line | Enclosing symbol | Current render |
+|---|---|---|---|---|
+| 1 | `src/popoto/fields/sorted_field_mixin.py` | 475 | `get_partitioned_sortedset_db_key` | `str(getattr(model_instance, partition_field_name))` |
+| 2 | `src/popoto/fields/sorted_field_mixin.py` | 546 | `on_save` (old-partition cleanup) | `old_ss_key.append(str(old_val))` |
+| 3 | `src/popoto/fields/sorted_field_mixin.py` | 629 | `on_delete` (old-partition cleanup) | `sortedset_db_key.append(str(old_val))` |
+| 4 | `src/popoto/fields/sorted_field_mixin.py` | 753 | `filter_query` | `str(query_params[partition_field_name])` |
+| 5 | `src/popoto/models/query.py` | 438 | `top_by_decay` | `[str(self._filters[pf]) for pf in field.partition_by]` |
+| 6 | `src/popoto/models/query.py` | 1379 | `_resolve_index` | same comprehension |
+| 7 | `src/popoto/models/query.py` | 1421 | `_materialize_decay_field` | same comprehension |
+
+Seven SortedField sites, same count as the issue (its prose says "six", its list has seven).
+Recipe call sites (`recipes/context_assembler.py:627`, `recipes/default_memory.py:194`) and
+`cyclic_decay_field.py:402,413,423,435` go through these builders and inherit the fix; they
+need no edit.
+
+### The plan's own inventory grep was defective — replaced
+
+`git grep -n 'str(' … | grep -i partition` matches only lines containing the word
+"partition", so it **misses sites 2 and 3** (`str(old_val)`). Following it would have produced
+exactly the partial conversion this plan calls "worse than none". Use instead:
 
 ```bash
-git grep -n 'str(' -- src/popoto/fields/sorted_field_mixin.py src/popoto/models/query.py | grep -i partition
+grep -rn "append(str(\|\[str(self\._filters\|str(query_params\[partition\|str(getattr(model_instance, partition" \
+  src/popoto/fields/sorted_field_mixin.py src/popoto/models/query.py
 ```
 
-Every partition-rendering site found must be converted; consistency across ALL sites is the
-invariant (a partial conversion is worse than none — it splits partitions immediately).
+and confirm the result is the seven rows above (modulo line drift) before editing.
 
-**Disposition: Minor drift expected** (line numbers only; #548's `canonical_key_str` helper in
-`src/popoto/models/canonical_key.py` is on main and stable).
+### Premise correction: the sites are NOT all consistent today
+
+`DB_key.__str__` (`src/popoto/models/db_key.py:276-281`) already renders **every non-DB_key
+partial through `canonical_key_str`** as of #548. A partition value appended raw is therefore
+already canonical; a value pre-rendered with `str()` arrives as a `str` and canonicalization
+no-ops on it. `src/popoto/models/base.py:3667` (orphan-purge, `zset_key.append(values[name])`)
+appends the **raw** value — so on current main the purge path and the write/query paths already
+disagree for a `datetime` partition value. The issue's "all sites internally consistent, no bug
+today" framing is stale: the defect is live (silently purging nothing) under the same
+datetime-partition precondition, not merely latent. `base.py:3667` is the alignment target and
+must NOT be changed.
+
+Consequence for the fix shape: at these seven sites, `canonical_key_str(v)` and simply dropping
+the `str()` wrapper produce identical bytes. Prefer the explicit `canonical_key_str(v)` so the
+intent survives future refactors that stop routing through `DB_key`.
+
+### New sibling site: ConfidenceField (scope decision)
+
+`ConfidenceField` mirrors SortedField's `partition_by` API but builds its companion-hash key by
+string concatenation off an already-rendered `redis_key`, bypassing `DB_key` entirely:
+`src/popoto/fields/confidence_field.py:315` (`get_data_hash_key`), `:350`
+(`get_data_hash_key_from_values`), `:374` (`get_old_data_hash_key`) — each `key += f":{val}"`.
+Same bug class, same no-op property, three one-line changes.
+
+**Decision: in scope.** Escape hatch: if converting these requires touching anything beyond the
+three interpolations, drop them, file a follow-up issue, and say so in the PR body.
+
+### Helper unchanged
+
+`canonical_key_str` (`src/popoto/models/canonical_key.py:46`) still dispatches on
+`datetime.datetime` only; every other type — including `date` and `time` — returns `str(value)`
+byte-for-byte. The no-op property this plan depends on holds on current main.
 
 ## Prior Art
 
