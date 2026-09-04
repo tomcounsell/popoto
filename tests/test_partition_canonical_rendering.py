@@ -320,3 +320,121 @@ def test_event_stream_partition_canonical():
 
     c = StreamPartitioned.create(name="s3", bucket=None)
     assert c._get_stream_key() == "stream:canon_partition_test"
+
+
+# --- POPOTO_DATETIME_KEY_LEGACY=1: every converted site stays gated ---------
+
+
+@pytest.fixture
+def legacy_datetime_keys():
+    """Turn the legacy switch ON for one test, restoring it explicitly.
+
+    The autouse fixture above forces the switch OFF, so a legacy-mode test
+    must re-enable it *after* that fixture has run. Explicit save/restore
+    (rather than monkeypatch.setattr) because monkeypatch's undo would fire
+    after the autouse teardown and would restore the wrong value.
+    """
+    previous = Defaults.DATETIME_KEY_LEGACY
+    Defaults.DATETIME_KEY_LEGACY = True
+    try:
+        yield
+    finally:
+        Defaults.DATETIME_KEY_LEGACY = previous
+
+
+# str(value) for the aware instant -- the exact bytes every site wrote before
+# this change, and the bytes it must still write while the switch is set.
+LEGACY_SEGMENT = str(INSTANT_PLUS_7)
+
+
+def test_legacy_switch_preserves_sorted_field_partition_bytes(legacy_datetime_keys):
+    """Sites 1 and 4. With the switch set, the write path and filter_query
+    must render the pre-change ``str(value)`` bytes -- no ``force=True``
+    anywhere, or a fleet mid-rollout reads keys it never wrote (#476)."""
+    assert LEGACY_SEGMENT != canonical_key_str(INSTANT_PLUS_7, force=True)
+
+    item = KeyPartitionedScore(name="lg1", bucket=INSTANT_PLUS_7, score=1.0)
+    field = KeyPartitionedScore._meta.fields["score"]
+
+    write_key = field.get_partitioned_sortedset_db_key(item, "score").redis_key
+    # Sorted-set keys are built through DB_key, so the segment is escaped;
+    # compare against a key built from the literal pre-change bytes rather
+    # than against the raw segment.
+    assert (
+        write_key
+        == field.get_sortedset_db_key(
+            KeyPartitionedScore, "score", LEGACY_SEGMENT
+        ).redis_key
+    )
+    assert (
+        write_key
+        != field.get_sortedset_db_key(
+            KeyPartitionedScore, "score", canonical_key_str(INSTANT_PLUS_7, force=True)
+        ).redis_key
+    )
+
+    # site 4: filter_query renders the same legacy bytes, so a query issued
+    # under the switch still addresses the partition the writes went to.
+    query_key = field.get_sortedset_db_key(
+        KeyPartitionedScore, "score", canonical_key_str(INSTANT_PLUS_7)
+    ).redis_key
+    assert query_key == write_key
+
+
+def test_legacy_switch_splits_representations_as_before(legacy_datetime_keys):
+    """The switch is a *legacy* switch: under it the #570 split is expected
+    to persist, because the pre-change bytes are what a mid-rollout fleet
+    must keep reading. This pins the gating, not the defect."""
+    a = KeyPartitionedScore(name="lg2", bucket=INSTANT_PLUS_7, score=1.0)
+    b = KeyPartitionedScore(name="lg3", bucket=INSTANT_UTC, score=2.0)
+    field = KeyPartitionedScore._meta.fields["score"]
+
+    key_a = field.get_partitioned_sortedset_db_key(a, "score").redis_key
+    key_b = field.get_partitioned_sortedset_db_key(b, "score").redis_key
+    assert key_a != key_b
+
+
+def test_legacy_switch_preserves_query_path_bytes(legacy_datetime_keys):
+    """Sites 5-7. The three query.py comprehensions render legacy bytes, so
+    they resolve the same partition key the gated write path produced."""
+    field = DecayPartitioned._meta.fields["relevance"]
+    item = DecayPartitioned(name="lg4", bucket=INSTANT_PLUS_7)
+
+    write_key = field.get_partitioned_sortedset_db_key(item, "relevance").redis_key
+    query_key = field.get_sortedset_db_key(
+        DecayPartitioned, "relevance", canonical_key_str(INSTANT_PLUS_7)
+    ).redis_key
+    assert query_key == write_key
+    assert (
+        write_key
+        == field.get_sortedset_db_key(
+            DecayPartitioned, "relevance", LEGACY_SEGMENT
+        ).redis_key
+    )
+
+
+def test_legacy_switch_preserves_confidence_field_bytes(legacy_datetime_keys):
+    """Sites 8-10. All three ConfidenceField helpers render legacy bytes and
+    still agree with each other under the switch."""
+    field = ConfidencePartitioned._meta.fields["certainty"]
+    a = ConfidencePartitioned.create(name="lg5", bucket=INSTANT_PLUS_7)
+
+    key_get = field.get_data_hash_key(a, "certainty")
+    key_from_values = field.get_data_hash_key_from_values(
+        ConfidencePartitioned, "certainty", bucket=INSTANT_PLUS_7
+    )
+    a._saved_field_values = {"bucket": INSTANT_PLUS_7}
+    key_old = field.get_old_data_hash_key(a, "certainty")
+
+    assert key_get == key_from_values == key_old
+    assert key_get.endswith(LEGACY_SEGMENT)
+
+
+def test_legacy_switch_preserves_event_stream_bytes(legacy_datetime_keys):
+    """Site 11. The partitioned stream key renders legacy bytes under the
+    switch, and a None partition still yields the unpartitioned base key."""
+    a = StreamPartitioned(name="lg6", bucket=INSTANT_PLUS_7)
+    assert a._get_stream_key() == f"stream:canon_partition_test:{LEGACY_SEGMENT}"
+
+    c = StreamPartitioned(name="lg7", bucket=None)
+    assert c._get_stream_key() == "stream:canon_partition_test"
