@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/575, https://github.com/tomcounsell/popoto/issues/570
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-04T08:15:00Z
+revision_applied_at: 2026-09-04T07:14:00Z
 ---
 
 # #575 / #570 — Route SortedField(partition_by=...) values through canonical_key_str()
