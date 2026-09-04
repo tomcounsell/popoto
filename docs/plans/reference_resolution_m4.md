@@ -67,8 +67,10 @@ for the V0 #580 / M1 #560 validity interval.
 
 ## Freshness Check
 
-**Baseline commit:** `bb38f42` (`test(#549): resolve the expected test DB instead of hardcoding
-15 (#605)`) — `git rev-parse main` at plan time.
+**Baseline commit:** `da8c98d` — `git rev-parse main` at revision time (round 1 pinned `bb38f42`;
+re-stamped per critique nit). `git log bb38f42..da8c98d -- src/` is **empty**: every commit in that
+range is a `docs/plans/` write, so no file:line reference in this plan has moved and no re-verification
+was needed. `bb38f42` remains the commit of record for PR #605, which the Verification section cites.
 **Issue filed at:** 2026-08-13T06:28:38Z (three weeks before planning; every dependency landed in
 that window).
 **Disposition:** **Minor drift** — every claim still holds, one is now under-stated, and all four
@@ -368,7 +370,7 @@ the validity index means for captured entries — with a four-status test matrix
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
 | Redis/Valkey reachable | `redis-cli -n 15 PING` | The suite and every journal/sidecar test need a live server |
-| Test DB pinned (not 15, not 0) | `python -c "import os,sys; d=os.environ.get('POPOTO_TEST_DB'); sys.exit(0 if d and d not in ('0','15') else 1)"` | Every worktree shares DB 15; concurrent lanes produce phantom failures (CLAUDE.md) |
+| Test DB pinned (not 15, not 0, not 12) — **a per-run action, not a preexisting condition** | `export POPOTO_TEST_DB=<n>` first, then `python -c "import os,sys; d=os.environ.get('POPOTO_TEST_DB'); sys.exit(0 if d and d not in ('0','12','15') else 1)"` | This repo pins the test DB via `popoto_test_db = "15"` in `pyproject.toml`, so `POPOTO_TEST_DB` is **unset in a clean shell** and this check fails until the runner exports it. Every worktree shares DB 15; concurrent lanes produce phantom failures (CLAUDE.md). DB 12 is used by `_ENV_OVERRIDE_CHILD_DB` subprocess tests |
 | Editable install resolves to this checkout | `python -c "import popoto,pathlib,sys; sys.exit(0 if pathlib.Path(popoto.__file__).resolve().is_relative_to(pathlib.Path.cwd().resolve()) else 1)"` | A stale editable install silently tests another tree |
 | Full extras installed | `python -c "import numpy, sentence_transformers"` | `.[dev]` alone deselects ~95 tests |
 
