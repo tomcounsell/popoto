@@ -530,7 +530,22 @@ counter's per-object convention.
 - **`Meta` other-field tests:** seed 20 with `doc_id` order the *reverse* of score
   order, query with `limit=3` and no `order_by`, assert the `doc_id`-ordered head
   (which is the score-order **tail**), and assert the hydration count shows a
-  **full unbounded read** — the bound must have declined.
+  **full unbounded read** — the bound must have declined. State that as a **lower
+  bound** (`>= 2 * 20` sync, `>= 20` async) plus
+  `counter.count > 2 * (3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN)`, never an
+  equality (critique C1; see Rabbit Holes).
+- **`Meta` key-list-slice tests (spike-6, critique C2):** the same
+  `PushdownDocMetaDesc` seed but with `bucket="a"` on every record *and* in the
+  filter. The `IndexedField` predicate declines `_sorted_pushdown_args`, so
+  `state.pushdown_limit` is `None` and `_bound_keys_before_hydration` reaches the
+  `Meta` resolution at `query.py:2329`. Assert the exact head
+  `["m019","m018","m017"]` — this is the assertion that matters, because dropping
+  that line returns `["m010","m009","m008"]`, the ascending head re-sorted, i.e.
+  **wrong rows** — plus the same bounded-hydration claim as the Redis-bound tests
+  (22 sync / 11 async were measured; assert the boundary, not the number).
+- **`AsyncHydrationCounter` is a synchronous context manager** (spike-5): inside an
+  `async def` test it is `with AsyncHydrationCounter() as counter:`. `async with`
+  raises `TypeError`.
 - **Async `Meta` tests** carry `@pytest.mark.asyncio` (pytest-asyncio is in
   `Mode.STRICT`) and use `AsyncHydrationCounter`. They go in the async section at
   the bottom of the file, after #602's tests, not interleaved with the sync ones.
@@ -571,10 +586,10 @@ passing unchanged; the new model classes are new names and the widened `_flush()
 coverage is a superset of the current glob.
 
 - [ ] `tests/test_sorted_range_pushdown.py` — UPDATE (additive only): add three
-  `Meta` model classes, one seeding helper, and six test functions. **Do not
+  `Meta` model classes, one seeding helper, and eight test functions. **Do not
   modify any existing function body, helper, or import.**
 
-Expected collected count after the change: **36** (30 + 6).
+Expected collected count after the change: **38** (30 + 8).
 
 ## Rabbit Holes
 
@@ -790,6 +805,8 @@ no public API. The behaviors being covered are already documented as part of the
 - **Depends On**: none
 - **Assigned To**: `pushdown-test-builder`
 - **Parallel**: false
+- **`export POPOTO_TEST_DB=12` first, before anything else** (critique C5). Every
+  pytest invocation and every `redis-cli -n 12` row in this plan assumes it.
 - Confirm `git merge-base --is-ancestor 7f057f9 HEAD` succeeds — #602 must be present.
 - Read the async section at the bottom of `tests/test_sorted_range_pushdown.py`
   (`AsyncHydrationCounter`, `RangeCallRecorder`, and the six `test_async_*`
@@ -800,6 +817,12 @@ no public API. The behaviors being covered are already documented as part of the
   tests/` is empty.
 - Record the pre-change collected count: expected **30**.
 
+> **All four build tasks edit the single file `tests/test_sorted_range_pushdown.py`,
+> so they are strictly serial: 0 → 1 → 2 → 3 → 3a → 4 → 4a → 5 → 6** (critique C3).
+> Task 1 was marked `Parallel: true` in the prior draft while depending only on
+> `read-current`, which would have put two writers on one file. Serializing costs
+> nothing: task 1 needs no new model and reuses `_seed()`.
+
 ### 1. Add the count() coverage
 - **Task ID**: build-count
 - **Depends On**: read-current
@@ -809,7 +832,7 @@ no public API. The behaviors being covered are already documented as part of the
   `Query.count` at `query.py:3238` opens no pushdown gate)
 - **Assigned To**: `pushdown-test-builder`
 - **Agent Type**: test-engineer
-- **Parallel**: true
+- **Parallel**: false  <!-- critique C3: same file as tasks 2-4 -->
 - Add `test_count_is_not_truncated_by_a_limit`. Seed with the existing `_seed()`
   (`POPULATION = 60`); no new model needed — `PushdownDoc` is the right subject.
 - Assert `PushdownDoc.query.count(room_id="r1", last_active_at__gte=0) == POPULATION`.
@@ -821,7 +844,7 @@ no public API. The behaviors being covered are already documented as part of the
 
 ### 2. Add the three Meta model classes and the seeding helper
 - **Task ID**: build-meta-models
-- **Depends On**: read-current
+- **Depends On**: build-count
 - **Validates**: `tests/test_sorted_range_pushdown.py` (modify)
 - **Informed By**: Architectural Impact (the `PushdownDoc*` prefix is what
   `_flush()`'s glob sweeps), Risk 4 (no name collisions today)
@@ -833,10 +856,15 @@ no public API. The behaviors being covered are already documented as part of the
   `last_active_at = popoto.SortedField(type=float, partition_by="room_id")`, and
   its own `class Meta: order_by = ...` (`"-last_active_at"`, `"last_active_at"`,
   `"doc_id"` respectively).
+- **`PushdownDocMetaDesc` also gets `bucket = popoto.IndexedField(type=str,
+  null=True)`** (spike-6, critique C2). Only that model — the second indexed
+  predicate is what tasks 3a/4a use to decline the Redis-side bound and reach
+  `query.py:2329`.
 - Add a `model`-parametrized seeding helper alongside `_seed()` — `_seed()` is
   hard-bound to `PushdownDoc` and must not be changed. The helper takes the model
-  class, a count, and a flag for anti-correlated `doc_id` values (`z{n-1-i:03d}`
-  descending as score ascends) used by the other-field cases.
+  class, a count, a flag for anti-correlated `doc_id` values (`z{n-1-i:03d}`
+  descending as score ascends) used by the other-field cases, and an optional
+  `bucket` value passed through only when the model declares the field.
 - Keep the `PushdownDoc` prefix on all three names so `_flush()` sweeps their
   hashes and their `$SortF:<ClassName>:...` sorted-set keys.
 
@@ -863,14 +891,42 @@ no public API. The behaviors being covered are already documented as part of the
 - `test_meta_order_by_on_another_field_blocks_the_pushdown` — seed
   `PushdownDocMetaOther` with anti-correlated `doc_id`s; assert the head is
   `["z000","z001","z002"]` (the `doc_id`-ordered head, i.e. the score-order
-  **tail**) and that `counter.count == 2 * 20`, proving the full range was read.
+  **tail**) and that the read was **not** bounded:
+  `counter.count >= 2 * 20` **and**
+  `counter.count > 2 * (3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN)`.
+  **Lower bounds, not `== 2 * 20`** (critique C1 — the equality contradicts the
+  plan's own Rabbit Hole and is brittle for the reason recorded there).
   Docstring: a dropped guard here returns **wrong rows**, not short ones.
 - Express every bound via `Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`; the import
   already exists.
 
+### 3a. Pin the Meta-supplied direction on the key-list slice (sync)
+- **Task ID**: build-meta-slice-sync
+- **Depends On**: build-meta-sync
+- **Validates**: `tests/test_sorted_range_pushdown.py` (modify)
+- **Informed By**: spike-6 (sync: `['m019','m018','m017']` at 22 `HGETALL`s; the
+  guard mutation returns `['m010','m009','m008']`), critique C2
+- **Assigned To**: `pushdown-test-builder`
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- `test_meta_order_by_sets_direction_on_the_key_list_slice` — seed
+  `PushdownDocMetaDesc` with 20 and `bucket="a"` on every record; query
+  `room_id="r1", last_active_at__gte=0, bucket="a", limit=3` with **no**
+  `order_by`. Model the shape on the existing
+  `test_key_list_slice_bounds_hydration_with_second_indexed_filter`
+  (`tests/test_sorted_range_pushdown.py:255`).
+- Assert the exact head `["m019","m018","m017"]` and
+  `counter.count <= 2 * (3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN)` plus
+  `counter.count < 2 * 20`.
+- Docstring: this is the **only** shape that reaches the `Meta` resolution at
+  `query.py:2329` — every other planned test returns earlier at
+  `if state.pushdown_limit: return db_keys` (`query.py:2321`). Dropping
+  `or self.model_class._meta.order_by` there slices the ascending head and returns
+  **wrong rows**, and every other test in this file stays green.
+
 ### 4. Add the async Meta.order_by coverage
 - **Task ID**: build-meta-async
-- **Depends On**: build-meta-models
+- **Depends On**: build-meta-slice-sync
 - **Validates**: `tests/test_sorted_range_pushdown.py` (modify)
 - **Informed By**: spike-3 (async desc: `['m019','m018','m017']` at **11**
   `HGETALL`s = `1 x (3 + 8)`), spike-4 (async other-field:
@@ -888,14 +944,38 @@ no public API. The behaviors being covered are already documented as part of the
   and, under `AsyncHydrationCounter`, `counter.count <= 3 +
   Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`.
 - `test_async_meta_order_by_on_another_field_blocks_the_pushdown` — the async twin
-  of task 3's third test; assert `["z000","z001","z002"]` and `counter.count == 20`.
+  of task 3's third test; assert `["z000","z001","z002"]`, `counter.count >= 20`
+  and `counter.count > 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`
+  (**lower bounds, not `== 20`** — critique C1).
+- `AsyncHydrationCounter` is a **synchronous** context manager: `with`, not
+  `async with` (spike-5/6).
 - Docstring both: they cover the gate #602 armed on the async path via the shared
   `_sorted_pushdown_args` / `_bound_keys_before_hydration` helpers but did not
   exercise with `Meta`.
 
+### 4a. Pin the Meta-supplied direction on the key-list slice (async)
+- **Task ID**: build-meta-slice-async
+- **Depends On**: build-meta-async
+- **Validates**: `tests/test_sorted_range_pushdown.py` (modify)
+- **Informed By**: spike-6 (async: `['m019','m018','m017']` at 11 `HGETALL`s
+  = `1 x (3 + 8)`; the guard mutation returns `['m010','m009','m008']` here too),
+  critique C2
+- **Assigned To**: `pushdown-test-builder`
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- `test_async_meta_order_by_sets_direction_on_the_key_list_slice` — the async twin
+  of task 3a, `@pytest.mark.asyncio`, in the async section at the bottom of the
+  file. Assert the same exact head and
+  `counter.count <= 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN` plus
+  `counter.count < 20`.
+- Included alongside 3a — rather than 3a alone as critique C2 suggested — because
+  `_bound_keys_before_hydration` takes a different state route on each path (shared
+  `self` on sync, the `state=` snapshot #602 introduced on async), and every other
+  `Meta` case in this plan is paired sync/async.
+
 ### 5. Verify each test fails for the right reason
 - **Task ID**: validate-guards
-- **Depends On**: build-count, build-meta-sync, build-meta-async
+- **Depends On**: build-meta-slice-async
 - **Assigned To**: `pushdown-test-validator`
 - **Agent Type**: validator
 - **Parallel**: false
@@ -905,6 +985,11 @@ no public API. The behaviors being covered are already documented as part of the
   go red.
 - Do the same for the mirrored return in `_bound_keys_before_hydration`
   (`query.py:2329-2336`).
+- Delete only `or self.model_class._meta.order_by` from `query.py:2329` (leaving the
+  rest of the guard intact) and confirm **both** key-list-slice tests (3a sync and
+  4a async) go red with `['m010','m009','m008']`, and that **no other test in the
+  module** changes state. This is the mutation spike-6 ran; it is the proof that
+  tasks 3a/4a pin a branch nothing else reaches.
 - Make `QueryBuilder.count` forward `_limit_value` and confirm
   `test_count_is_not_truncated_by_a_limit` goes red.
 - Restore `src/` to pristine; `git status --short src/` must be empty **before
@@ -917,14 +1002,18 @@ no public API. The behaviors being covered are already documented as part of the
 - **Agent Type**: validator
 - **Parallel**: false
 - Run every Prerequisites check first and record its output verbatim.
-- `POPOTO_TEST_DB=<n> .venv/bin/python -m pytest
-  tests/test_sorted_range_pushdown.py -q` — expect all green, **36 collected,
+- `POPOTO_TEST_DB=12 .venv/bin/python -m pytest
+  tests/test_sorted_range_pushdown.py -q` — expect all green, **38 collected,
   0 xfailed**.
-- `redis-cli -n <n> keys '*Pushdown*'` — expect empty.
-- `POPOTO_TEST_DB=<n> .venv/bin/python -m pytest -q` — expect only the documented
+- `redis-cli -n 12 keys '*Pushdown*'` — expect empty.
+- `POPOTO_TEST_DB=12 .venv/bin/python -m pytest -q` — expect only the documented
   non-15-DB expected failures.
-- `git diff --name-only origin/main` — expect exactly
-  `tests/test_sorted_range_pushdown.py` (plus this plan doc, already on main).
+- `git diff --name-only origin/main` — expect exactly two paths:
+  `tests/test_sorted_range_pushdown.py` **and**
+  `docs/plans/sorted_pushdown_coverage_gaps.md` (critique N2 — the critique and
+  revision passes both edit this plan doc, so it will appear in the diff against
+  any `origin/main` older than those commits). Any third path is a defect.
+- Run the fenced Verification commands below verbatim and record each exit code.
 - Report every count alongside the commit, the venv path, and the DB number.
 
 ## Verification
