@@ -14,6 +14,16 @@ Set `REDIS_URL` as an environment variable before starting your application.
 export REDIS_URL="redis://localhost:6379/0"
 ```
 
+!!! warning
+    Database 0 is Redis's default database, so it's an easy thing to copy into a
+    script unchanged. Popoto's own client refuses `FLUSHDB` when bound to
+    database 0 and refuses `FLUSHALL` on any binding, precisely because ad-hoc
+    scripts pointed at this URL have wiped a live database before (see
+    [#577](https://github.com/tomcounsell/popoto/issues/577)). Prefer a
+    non-zero database number for anything but a genuinely shared/production
+    connection, and see `POPOTO_ALLOW_DB0_FLUSH` below if you need to disable
+    the guard deliberately.
+
 The URL format follows the Redis URI scheme:
 
 ```
@@ -391,6 +401,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
+| `POPOTO_ALLOW_DB0_FLUSH` | unset (falsy) | Escape hatch for the destructive-flush guard on Popoto's own Redis client. Unset, the client refuses `FLUSHDB` when bound to database 0 and refuses `FLUSHALL` on any binding, raising `popoto.redis_db.Db0FlushRefusedError` before the command reaches the server. A truthy value (`1`/`true`/`yes`/`on`, case-insensitive) restores the previous behavior. Read at call time, not at import, so it can be set without restarting a process. It is the only escape hatch — there is no constructor argument. See [#577](https://github.com/tomcounsell/popoto/issues/577). |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for ContentField filesystem storage and EmbeddingField `.npy` files. |
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
