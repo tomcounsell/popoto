@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Small
 owner: Tom Counsell
@@ -143,7 +143,7 @@ Redis command sequence per over-cap save: `ZCARD`, `INCRBY`, `ZRANGE`, then per 
 **Team:** Solo dev, code reviewer
 
 **Interactions:**
-- PM check-ins: 0 (the issue and this plan settle scope; the one naming decision is recorded in Open Questions with a default)
+- PM check-ins: 0 (the issue and this plan settle scope; the naming decision is recorded under Decisions)
 - Review rounds: 1
 
 Roughly four small additive methods, one module, one recipe rewrite of ~15 lines, and four new test files or test classes. The existing eviction suite is the oracle and does not change.
@@ -231,7 +231,7 @@ New tests:
 
 ### Risk 4: Naming lands wrong for the later PRs
 **Impact:** PR 3/4 need a different shape (for example `context_assembler` holds a zset key string, not always an instance) and rename, churning a public method.
-**Mitigation:** all four sibling `zcard` sites were read during planning; three hold an instance and the fourth (`context_assembler:733`) derives its key from records it also holds. `count(model_instance, field_name)` serves all of them. Recorded as Open Question 1 with this as the default.
+**Mitigation:** all four sibling `zcard` sites were read during planning; three hold an instance and the fourth (`context_assembler:733`) derives its key from records it also holds. `count(model_instance, field_name)` serves all of them. Confirmed by the owner; see Decisions.
 
 
 ## Race Conditions
@@ -375,7 +375,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 - Open the PR against `main` referencing #630 without a closing keyword (PRs 2-4 remain). Title: `chore(#630): route default_memory eviction through field/model reads`. Body lists the three primitives and the byte-identical claim with the oracle suite name.
 
 
-## Open Questions
-1. **Method names.** The plan uses the issue's `count` / `members` on `SortedFieldMixin`. The alternative is `index_count` / `index_members` to make "this is the sorted index, not the query" explicit at call sites like `field.count(self, "relevance")`. Default if unanswered: `count` / `members`, as the issue proposed and #631's semantic-naming rule accepts.
-2. **Async parity for `_no_track`.** The plan mirrors the keyword on the async `get` so the two paths stay identical, at the cost of touching a path this recipe does not use. Default if unanswered: mirror it (the #571 fix landed for exactly this kind of sync/async drift).
+## Decisions (recorded 2026-09-04, not open)
 
+1. **Method names: `count` / `members`.** Confirmed by the owner via `/ask-me`. The field object at the call site already says it is an index read; the issue's names stand for this PR, PRs 2-4, and the #631 protocol surface.
+2. **Async parity for `_no_track`: mirror it.** Decided at plan time as low-stakes and reversible. The #571 fix landed for exactly this kind of sync/async drift, so the keyword goes on both `get` paths in the same PR.
