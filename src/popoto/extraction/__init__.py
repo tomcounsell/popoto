@@ -58,10 +58,23 @@ class ExtractedFact:
         candidate_id: Identity of the candidate this fact was assembled
             from, matching the ``cand:`` subject tag on its journal entry.
         generator_rule: Which deterministic rule produced the candidate.
+        verbatim: The original, unmodified candidate span (M4, #563).
+            ``None`` unless the auditable path ran reference resolution;
+            ``text`` may differ from this once resolved.
+        resolution_status: The aggregate
+            :class:`~popoto.extraction.resolution.ResolutionStatus` value
+            (``resolved | assumed | evidence_gap | indeterminate``) for
+            this fact's reference resolution, or ``None`` when resolution
+            never ran (M4, #563).
+        assumption: A joined, one-line-per-reference summary of any
+            stated assumptions the resolution stage made, or ``None``
+            when none were made or resolution never ran (M4, #563). The
+            full detail lives in the ``ResolutionRecord`` sidecar.
 
-    The last five are populated only by the auditable extraction path
-    (#562) and default to ``None`` everywhere else, so existing provider
-    outputs and existing callers are unaffected.
+    The eight fields above ``text``/``entities``/``importance``/
+    ``confidence`` are populated only by the auditable extraction path
+    (#562, #563) and default to ``None`` everywhere else, so existing
+    provider outputs and existing callers are unaffected.
     """
 
     text: str
@@ -73,6 +86,9 @@ class ExtractedFact:
     turn_id: Optional[str] = None
     candidate_id: Optional[str] = None
     generator_rule: Optional[str] = None
+    verbatim: Optional[str] = None
+    resolution_status: Optional[str] = None
+    assumption: Optional[str] = None
 
 
 class AbstractExtractionProvider(ABC):
