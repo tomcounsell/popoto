@@ -1137,6 +1137,26 @@ hash key, and runs one ``rebuild_indexes()`` at the end.
 A model with no ``KeyField(type=datetime)`` needs none of this: the audit
 reports "not applicable" and the kill switch is irrelevant.
 
+**The switch has a second scope this recipe does not migrate.** From 1.9.0 it
+also gates how a ``partition_by`` value is rendered into a partition key --
+``SortedField`` sorted sets, ``ConfidenceField`` companion hashes and
+``EventStreamMixin`` stream keys. A ``datetime`` partition value canonicalizes
+to UTC there too, so aware, offset and naive forms of one instant address a
+single partition instead of splitting into three. Non-datetime partition values
+are byte-identical either way, so a deployment that declares no ``datetime``
+``partition_by`` is unaffected and has nothing to do.
+
+There is no migration for that half, and none of the refusals above apply to
+it. Pre-change partition keys are simply left stranded: unreferenced by reads
+and writes, but not deleted. ``clean_indexes()`` does **not** recover them --
+it removes index members whose instance hash is missing, and these members
+point at live hashes, so it removes nothing. Recovery is manual and cheap:
+re-save the affected rows, which writes the canonical partition key, then
+``SCAN`` the legacy partition key patterns and ``DEL`` them. Because the same
+switch governs both scopes, do not lift it fleet-wide at step 6 on the strength
+of a clean ``audit_datetime_keys()`` alone -- that audit covers row identity
+only, and says nothing about partition keys.
+
 **A fourth refusal, specific to the switch.** ``migrate_datetime_keys(dry_run=False)``
 also refuses -- with no acknowledgment kwarg, because the fix is one line --
 when ``POPOTO_DATETIME_KEY_LEGACY`` is set in the calling process. There is no
