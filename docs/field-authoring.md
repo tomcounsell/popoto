@@ -34,6 +34,47 @@ sufficient. A plain re-save (construct a new instance with the same values and c
 `save()`) fully reconstructs that structure. This is the common case, and it is
 exactly what `roundtrip_policy = "rebuild"` (the default) declares.
 
+## The `pre_save_validate` hook: refusing a save before anything is written
+
+`on_save` is the wrong place to *reject* a save. By the time it runs on the
+internal-pipeline paths, every `IndexedFieldMixin` field on the model has already
+committed its hash value and its index entry against live Redis; raising there
+leaves those writes behind. `pre_save_validate` exists for the check that has to
+precede all of them:
+
+```python
+from popoto import Field
+
+class MonotonicField(Field):
+    @classmethod
+    def pre_save_validate(cls, model_instance, field_name, field_value, **kwargs):
+        # Raise to abort. Returning None (the default) allows the save.
+        ...
+```
+
+It is dispatched once per field from a **single** site in `Model.save()`, after the
+`pre_save` gate and above the partial/full split — which is above both eager
+indexed-field phases and above the two external-pipeline arms. So a `raise` from
+this hook means *nothing at all* was written or queued: not the model hash, not a
+sibling field's index entry, not your own companion structure. On a partial save
+the dispatch is scoped to `update_fields`, so a save of an unrelated column cannot
+trip a validation your field owns.
+
+Two rules follow from where it sits:
+
+- **Raise, don't return.** The return value is ignored; a refusal is an exception.
+  Prefer a typed error subclassing `ValueError`, so existing
+  `except (TypeError, ValueError)` handlers around `save()` keep working.
+- **Implement it only for a check that must precede every write on the model**, not
+  merely every write your field owns. A check that only needs to precede your own
+  structure belongs in `on_save`. Declining a save (the never-record firewall, the
+  write filter) is also *not* this hook's job — those paths decline by returning,
+  and they run first.
+
+`ValidityField` is the worked example: it uses `pre_save_validate` to refuse a
+re-save that declares a `valid_from` the index disagrees with. See
+[Valid-time has one writer](features/validity-and-supersession.md#valid-time-has-one-writer).
+
 ## Lua scripts: use `run_lua`, not `client.eval`
 
 A field that needs atomicity should run its script through
