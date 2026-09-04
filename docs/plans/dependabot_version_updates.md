@@ -171,9 +171,11 @@ The config file records the deferral in a comment so the next reader does not re
 - **Throttle** — three open PRs per ecosystem, weekly, with a 7-day cooldown. Security updates ignore all three.
 - **An explanatory header** — matching this repo's workflow-file convention, recording why `examples/` is absent and why `versioning-strategy` is pinned.
 
+The `github-actions` entry is a deliberate widening beyond the issue's literal suggested fix, which names only the `uv` ecosystem. Action versions live in no lockfile, so security-only mode gives them zero coverage; the entry is the same shape as the uv one and costs nothing extra to add now.
+
 ### Flow
 
-Monday 06:00 UTC → Dependabot resolves `pyproject.toml` + `uv.lock` → one grouped PR titled `chore(deps): bump the uv-minor-patch group` → `lock-check`, `tests (Redis)`, `tests (Valkey)`, `lint` run → human merges or closes → next Monday.
+Monday 06:00 UTC → Dependabot resolves `pyproject.toml` + `uv.lock` → one grouped PR titled `chore(deps): bump the uv-minor-patch group` → `lock-check`, `tests (Redis)` and `tests (Valkey)` run → human merges or closes → next Monday.
 
 ### Technical Approach
 
@@ -266,6 +268,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+    # Same 7-day window as the uv entry. Without this block the entry would
+    # silently fall back to Dependabot's own 3-day default, which contradicts
+    # the uniform cooldown this plan describes.
+    cooldown:
+      default-days: 7
 ```
 
 Three deliberate choices worth naming:
@@ -309,7 +317,7 @@ Not applicable. There is no runtime data path — the artifact is a config file 
 **Mitigation:** The post-merge check below is mandatory, not optional, precisely because of this risk. If the log shows a validation error, delete the two `versioning-strategy` lines. Fallback behavior is acceptable: all six historical Dependabot commits touched `uv.lock` only, so the observed default already matches lockfile-only. The comment in the file tells the next person to do exactly this.
 
 ### Risk 2: Weekly grouped PRs consume real CI budget
-**Impact:** Every PR triggers `tests.yml`, which is two jobs at a 25-minute timeout each (Redis and Valkey), plus `lint` and `lock-check`. Two ecosystems at one grouped PR per week is a predictable but nonzero standing cost.
+**Impact:** Every PR triggers `tests.yml`, which is two jobs at a 25-minute timeout each (Redis and Valkey). A uv PR also triggers `lock-check`. It does **not** trigger `lint`: `lint.yml` filters `pull_request` to `src/**`, `tests/**`, `pyproject.toml`, and `.github/workflows/lint.yml`, none of which a `lockfile-only` PR touches. A `github-actions` PR triggers `lint` or `lock-check` only when it happens to bump an action inside those workflow files. Two ecosystems at one grouped PR per week is a predictable but nonzero standing cost, and slightly smaller than a naive per-PR-runs-everything count suggests. `main` carries no required-status-check protection (`gh api repos/tomcounsell/popoto/branches/main/protection` returns 404), so a workflow that never runs cannot deadlock a merge. Do not widen `lint.yml`'s path filters to chase this.
 **Mitigation:** `open-pull-requests-limit: 3` caps concurrency per ecosystem, grouping collapses minor/patch churn into one PR rather than one per package, and the 7-day cooldown suppresses same-week re-bumps of a package that ships twice. If the cadence still proves noisy, move `interval` to `"monthly"` — a one-word change.
 
 ### Risk 3: The first scheduled run is large
@@ -365,7 +373,7 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 - [ ] No `directory:` key in the file names `examples`.
 - [ ] Neither `uv.lock` nor `examples/uv.lock` appears in the PR diff.
 - [ ] Neither `pyproject.toml` nor `examples/pyproject.toml` appears in the PR diff.
-- [ ] The follow-up issue for `examples/` plus the root lockfile refresh is filed, and its number replaces both `#TBD` placeholders in the No-Gos section.
+- [ ] The follow-up issue for `examples/` plus the root lockfile refresh is filed, and its number replaces both `[SEPARATE-SLUG #TBD]` placeholders in the No-Gos section. Only the bracketed token must disappear; other references to `#TBD` in this plan are instructions about the placeholder and remain.
 - [ ] `CLAUDE.md` records the dependency-update policy.
 - [ ] Tests pass (`/do-test`) — unchanged by this PR, but the gate runs.
 - [ ] Documentation updated (`/do-docs`).
@@ -399,7 +407,7 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 - Note that nothing in CI exercises `examples/`, so the migration needs a manual TUI run as its acceptance signal.
 - Mention the root `uv.lock --upgrade` refresh as covered by the same issue, or the first scheduled Dependabot PR, whichever comes first.
 - Reference #551. Do **not** use a closing keyword.
-- Replace both `#TBD` placeholders in this plan's No-Gos section with the new issue number, and commit that edit with the rest of the work.
+- Replace the issue number in both `[SEPARATE-SLUG #TBD]` prefixes in this plan's No-Gos section with the new issue number, and commit that edit with the rest of the work.
 
 ### 2. Write `.github/dependabot.yml`
 - **Task ID**: build-config
@@ -430,7 +438,7 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 - **Parallel**: false
 - Run every row in the Verification table and report each result individually.
 - Confirm the PR diff contains exactly two files: `.github/dependabot.yml` and `CLAUDE.md`, plus this plan document's `#TBD` edit.
-- Confirm no `#TBD` string survives in this plan document.
+- Confirm no `[SEPARATE-SLUG #TBD]` placeholder survives in this plan's No-Gos section. Match the bracketed token, not the bare string `#TBD` — this plan's own instructions about the placeholder mention it several times and are meant to survive substitution.
 
 ## Verification
 
@@ -447,11 +455,14 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 | Groups scoped to version updates | `python3 -c "import yaml; d=yaml.safe_load(open('.github/dependabot.yml')); print(all(g.get('applies-to')=='version-updates' for u in d['updates'] for g in u['groups'].values()))"` | output contains True |
 | Open-PR limit set on every entry | `python3 -c "import yaml; d=yaml.safe_load(open('.github/dependabot.yml')); print(all(isinstance(u.get('open-pull-requests-limit'), int) for u in d['updates']))"` | output contains True |
 | No examples/ directory entry (anti-criterion) | `python3 -c "import yaml; d=yaml.safe_load(open('.github/dependabot.yml')); print(sum('examples' in str(u.get('directory','')) for u in d['updates']))"` | match count == 0 |
-| No lockfile churn in this PR (anti-criterion) | `git diff --name-only origin/main...HEAD \| grep -c 'uv\.lock'` | match count == 0 |
-| No manifest churn in this PR (anti-criterion) | `git diff --name-only origin/main...HEAD \| grep -c 'pyproject\.toml'` | match count == 0 |
-| No unresolved issue placeholder (anti-criterion) | `grep -c '#TBD' docs/plans/dependabot_version_updates.md` | match count == 0 |
+| Cooldown set on every entry | `python3 -c "import yaml; d=yaml.safe_load(open('.github/dependabot.yml')); print([bool(u.get('cooldown')) for u in d['updates']])"` | output contains `[True, True]` |
+| No lockfile churn in this PR (anti-criterion) | `git diff --name-only origin/main...HEAD \| grep -c 'uv\.lock' \|\| true` | stdout is 0 |
+| No manifest churn in this PR (anti-criterion) | `git diff --name-only origin/main...HEAD \| grep -c 'pyproject\.toml' \|\| true` | stdout is 0 |
+| No unresolved issue placeholder (anti-criterion) | `grep -c '\[SEPARATE-SLUG #TBD\]' docs/plans/dependabot_version_updates.md \|\| true` | stdout is 0 |
 | CLAUDE.md records the policy | `grep -ci 'dependabot' CLAUDE.md` | output > 0 |
 | Docs still build strict | `mkdocs build --strict` | exit code 0 |
+
+The three anti-criterion rows above end in `|| true` on purpose: `grep -c` exits 1 when it matches nothing, so the *desired* state would otherwise report failure under `set -e`. The validator must compare each row's **stdout** against the expected count, never its exit status. The same guard is already used in `.github/workflows/guard-main-push.yml`.
 
 **Post-merge only — not runnable before the PR lands.** Dependabot evaluates `dependabot.yml` on the default branch, so none of these can gate the PR:
 
@@ -474,3 +485,16 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 | CONCERN | Risk & Robustness | The plan twice claims `lint` runs on every Dependabot PR — Flow (line 176) lists "`lock-check`, `tests (Redis)`, `tests (Valkey)`, `lint`", and Risk 2's impact assessment repeats it. It will not. `.github/workflows/lint.yml` filters `pull_request` to `src/**`, `tests/**`, `pyproject.toml`, `.github/workflows/lint.yml`; a `lockfile-only` PR touches `uv.lock` alone and triggers neither ruff nor black. Risk 2's CI-budget arithmetic is correspondingly overstated. | Solution > Flow; Risk 2 | Correct the prose rather than the workflow: a uv PR runs `lock-check` + `tests (Redis)` + `tests (Valkey)`; a github-actions PR runs `tests` (and `lint`/`lock-check` only when it happens to bump an action inside `lint.yml` or `lock-check.yml`, which are in their own path filters). No merge deadlock results — `gh api repos/tomcounsell/popoto/branches/main/protection` returns 404, so `main` has no required-status-check protection and an unrun check cannot block. Do not widen `lint.yml`'s path filters to chase this. |
 | NIT | Scope & Value | Five of the ~15 top-level sections (Race Conditions, Update System, Agent Integration, Data Flow, Failure Path Test Strategy) are boilerplate "not applicable" restatements, so 468 lines carry perhaps 80 lines of decision for a Small single-file chore. The two sections that hold real judgment — the `examples/` deferral and the `versioning-strategy` risk — are diluted by the ceremony around them. | Overall plan structure | Template-conformance observation, not a build blocker. Raise with whoever owns the plan template for Small CI-config chores rather than editing this plan. |
 | NIT | Scope & Value | The issue's suggested fix asks only for a `uv` entry (root, then `examples/`) and never mentions GitHub Actions, but the plan adds a full second `package-ecosystem: "github-actions"` block. It is well justified in the Problem section — action versions sit in no lockfile and get zero security-mode coverage — but a reviewer diffing plan against issue may read it as unrequested scope. | Technical Approach — `github-actions` entry | Add half a sentence to the Problem or Solution noting this is a deliberate widening beyond the issue's literal suggested fix. Same block shape as the uv entry, negligible cost — an expectation-setting note, not something to cut. |
+
+### Revision (round 1 of 1, applied 2026-09-04)
+
+All four actionable findings are resolved in-plan; the two nits are accepted as noted.
+
+- **BLOCKER (`#TBD` gate unsatisfiable)** — the Verification row, task 4 bullet 3, and Success Criterion 7 now match the bracketed token `[SEPARATE-SLUG #TBD]` rather than the bare string. The plan's meta-references to `#TBD` are preserved deliberately.
+- **CONCERN (cooldown asymmetry)** — the `github-actions` entry now carries the same `cooldown: default-days: 7` block as the `uv` entry, so the prose and the YAML agree. A Verification row checks cooldown on both entries.
+- **CONCERN (`grep -c` exit-code trap)** — all three anti-criterion rows end in `|| true`, and a note under the table tells the validator to read stdout rather than exit status.
+- **CONCERN (`lint` will not run)** — Flow and Risk 2 now state the real trigger set and record that `main` has no required-status-check protection, so an unrun workflow cannot deadlock a merge. `lint.yml`'s path filters are left alone.
+- **NIT (boilerplate sections)** — accepted, template-ownership issue, not edited here.
+- **NIT (`github-actions` widening)** — acknowledged in a sentence under Key Elements.
+
+Status is Ready for build. No second critique round.
