@@ -86,6 +86,23 @@ def _read_decode_quarantine_switch() -> bool:
     return value not in _TRUTHY
 
 
+def _read_m4_resolution_switch() -> bool:
+    """Read ``POPOTO_M4_RESOLUTION_ENABLED`` from the environment (#563).
+
+    Deploy-level kill switch for the reference-resolution stage, default
+    ``True`` per the repo's default-on doctrine. Unlike
+    :func:`_read_journal_coupling_switch` / :func:`_read_never_record_switch`,
+    the env var name already reads as "enabled" rather than "disable", so no
+    inversion is needed: unset or empty leaves the stage on, an explicit
+    truthy value leaves it on, and anything else (including an explicit
+    falsy value) turns it off.
+    """
+    value = os.environ.get("POPOTO_M4_RESOLUTION_ENABLED", "").strip().lower()
+    if not value:
+        return True
+    return value in _TRUTHY
+
+
 def _read_default_memory_max_records() -> int | None:
     """Cap on records **per ``agent_id``** kept by ``DefaultMemory``;
     ``0``/``off`` disables eviction.
@@ -478,6 +495,60 @@ class Defaults:
     # in-repo rather than exposed on ``AuditableExtractionConfig``, per the
     # magic-number rule.
     M3_ASSEMBLY_CLAIM_TTL_MS = 30_000
+
+    # -- reference resolution (extraction/resolution.py, #563) --
+    # Deploy-level kill switch, not a tuning constant. Default True per the
+    # repo's default-on doctrine; a PyPI adopter who cannot edit model code
+    # still needs a way to turn the stage off (e.g. no `anthropic` client
+    # available). Read from the environment at import
+    # (``POPOTO_M4_RESOLUTION_ENABLED``); assign directly to override at
+    # runtime.
+    M4_RESOLUTION_ENABLED = _read_m4_resolution_switch()
+    # Window truncation bound 1 of 2, in turns. A turn count alone does not
+    # bound prompt size, so it is paired with a char bound below; whichever
+    # binds first truncates oldest-first (Decision 1).
+    M4_WINDOW_MAX_TURNS = 8
+    # Window truncation bound 2 of 2, in characters. A char bound alone can
+    # slice a single turn in half, so it is paired with the turn-count bound
+    # above (Decision 1).
+    M4_WINDOW_MAX_CHARS = 4000
+    # Cap on references returned per candidate. Re-validation rejects a reply
+    # over this cap rather than truncating it, so a runaway model response
+    # cannot silently balloon a single candidate's evidence.
+    M4_MAX_REFERENCES_PER_CANDIDATE = 8
+    # Lower bound on ``evidence_gap`` candidate referents. Below this there is
+    # no genuine ambiguity to report -- a single candidate is a resolution,
+    # not a gap.
+    M4_EVIDENCE_GAP_MIN_CANDIDATES = 2
+    # Upper bound on ``evidence_gap`` candidate referents. Above this the
+    # model is listing possibilities rather than narrowing them, which is not
+    # useful evidence for the one clarifying question the record carries.
+    M4_EVIDENCE_GAP_MAX_CANDIDATES = 4
+    # Max length of an ``assumed`` status's one-line assumption. Re-validation
+    # enforces this (and no newlines) so the assumption stays a scannable
+    # audit line, not free-form prose.
+    M4_ASSUMPTION_MAX_CHARS = 200
+    # Max length of an ``evidence_gap`` status's clarifying question, for the
+    # same scannability reason as ``M4_ASSUMPTION_MAX_CHARS`` above.
+    M4_QUESTION_MAX_CHARS = 200
+    # Multiplicative term of the ``statement`` length bound relative to
+    # ``verbatim`` (paired with ``M4_STATEMENT_MAX_GROWTH_CHARS`` below).
+    # Re-validation enforces this so the model cannot turn a clause into a
+    # paragraph of invention.
+    M4_STATEMENT_MAX_GROWTH_FACTOR = 2.0
+    # Additive term of the ``statement`` length bound relative to
+    # ``verbatim``; see ``M4_STATEMENT_MAX_GROWTH_FACTOR`` above. The additive
+    # term keeps very short verbatims from being bounded to near-zero growth.
+    M4_STATEMENT_MAX_GROWTH_CHARS = 120
+    # Temporal roles that emit ``valid_from`` (Decision 4). Onsets only, by
+    # deliberate narrowing of the amendment that also named deadlines:
+    # emitting a future deadline as ``valid_from`` would hide the obligation
+    # from as-of retrieval until the deadline arrives, which is a data error.
+    # A constant rather than a literal in the emission code so a maintainer
+    # reversal ("deadlines also emit") is a one-tuple change, not a rewrite;
+    # a parameterised test flips it to ("onset", "deadline") and asserts a
+    # deadline reference then does emit.
+    M4_VALID_FROM_ROLES = ("onset",)
 
 
 class TemporalPeriod:

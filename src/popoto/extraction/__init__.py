@@ -237,6 +237,17 @@ __all__ = [
     "DecisionLog",
     "Metrics",
     "AuditableExtractionConfig",
+    # Reference resolution (#563). Imported lazily by name below so that
+    # `import popoto.extraction` stays free of the optional anthropic
+    # probe in resolution.py.
+    "ResolutionStatus",
+    "ReferenceKind",
+    "TemporalRole",
+    "Reference",
+    "WindowTurn",
+    "TurnContext",
+    "Resolution",
+    "resolve_references",
 ]
 
 
@@ -265,4 +276,17 @@ def __getattr__(name):
         from . import decision_log
 
         return getattr(decision_log, name)
+    if name in (
+        "ResolutionStatus",
+        "ReferenceKind",
+        "TemporalRole",
+        "Reference",
+        "WindowTurn",
+        "TurnContext",
+        "Resolution",
+        "resolve_references",
+    ):
+        from . import resolution
+
+        return getattr(resolution, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
