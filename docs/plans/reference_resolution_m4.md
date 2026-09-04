@@ -773,16 +773,324 @@ probe for `anthropic`.
 
 ## Documentation
 
+### Feature Documentation
+- [ ] Create `docs/features/reference-resolution.md` — the four-way status ladder with one worked
+      example per status, the `TurnContext` header, the onset rule for `valid_from`, the
+      `res:{status}` tag contract, the `ResolutionRecord` shape for M7 consumers, and the
+      `M4_RESOLUTION_ENABLED` kill switch with its degraded behaviour spelled out.
+- [ ] Add the row to `docs/features/README.md`'s index table.
+- [ ] Cross-link from `docs/features/auditable-extraction.md` (M3 hands off here — and its
+      "distillation is M4's job" note now has a destination) and from
+      `docs/features/provenance-journal.md` (`statement` vs `verbatim`, and who sets `valid_from`).
+- [ ] `docs/features/validity-and-supersession.md` — one paragraph: capture-time `valid_from` now
+      has a producer, and why a capture never conflicts on an interval (spike-3).
+
+### External Documentation Site
+- [ ] Add `features/reference-resolution.md` to `mkdocs.yml` nav, in the memory-primitives group
+      immediately after `features/auditable-extraction.md` (`mkdocs.yml:52`).
+- [ ] Document the ten `M4_*` constants in `docs/guides/tuning-magic-numbers.md`, including the
+      env kill switch.
+- [ ] `mkdocs build --strict` passes.
+
+### Inline Documentation
+- [ ] Module docstring on `resolution.py` stating the four statuses, the fail-open contract, and
+      that the model never emits an epoch number.
+- [ ] Docstrings on every new public name; the `valid_from` onset rule spelled out where it is
+      computed, not only in the plan.
+- [ ] Rewrite the stale comment at `provenance_journal.py:1119-1142` to point at #606 instead of
+      #563, recording that M4 declined the conversion and why.
+- [ ] Update `decision_log.py:760-767`'s "Distillation is M4's job" comment to describe what M4
+      now actually does on that line.
+
 ## Success Criteria
+
+- [ ] Given a turn containing a pronoun, a relative date, and a definite reference, the stage
+      emits resolutions with correct absolute anchoring when the window determines them
+      (issue AC #1).
+- [ ] When the window does not determine a referent, the output is a typed abstention —
+      `evidence_gap` with 2–4 candidates and one question, or `indeterminate` — never a silent
+      guess (issue AC #2).
+- [ ] `verbatim` is byte-identical to the candidate span on every record regardless of resolution
+      outcome, including the degraded path (issue AC #3).
+- [ ] `assumed` records carry a one-line stated assumption in the sidecar **and** a `res:assumed`
+      tag on the journal entry itself, retrievable without a sidecar join (issue AC #4).
+- [ ] `tests/test_reference_resolution.py` covers all four statuses (issue AC #5).
+- [ ] An onset reference emits `valid_from`; a deadline reference does not; two onsets emit none.
+- [ ] With `M4_RESOLUTION_ENABLED = False`, the auditable path's output is byte-identical to
+      M3's: `statement == verbatim`, `valid_from == captured_at`, no `res:` tag, no sidecar row.
+- [ ] `speaker` and a true `captured_at` reach the journal entry when a `TurnContext` supplies
+      them — closing the seam M3 left unused.
+- [ ] Full suite green on a pinned test DB, with the DB stated alongside the count.
+- [ ] `mypy src/` shows no new errors versus base, measured in the same redis-py environment.
+- [ ] Tests pass (`/do-test`), documentation updated (`/do-docs`).
 
 ## Team Orchestration
 
+The lead agent coordinates and never builds directly.
+
+### Team Members
+
+- **Builder (resolution core)**
+  - Name: `resolution-builder`
+  - Role: the pure module — types, prompt, schema, the LLM call, and Python re-validation
+  - Agent Type: builder
+  - Resume: true
+
+- **Builder (persistence + plumbing)**
+  - Name: `plumbing-builder`
+  - Role: `ResolutionRecord`/`ResolutionLog`, the `Defaults.M4_*` block, and the three call-layer
+    widenings
+  - Agent Type: builder
+  - Domain: Redis/Popoto data — models must declare `Field` instances only, key patterns follow
+    `ClassName:key_value`, no Redis modules (Valkey compatibility), constants pinned in
+    `Defaults` not exposed as kwargs
+  - Resume: true
+
+- **Test engineer**
+  - Name: `resolution-tester`
+  - Role: `tests/test_reference_resolution.py` and the updates to the four existing suites
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Validator**
+  - Name: `resolution-validator`
+  - Role: verifies acceptance criteria and the kill-switch parity claim against a pinned DB
+  - Agent Type: validator
+  - Resume: true
+
+- **Documentarian**
+  - Name: `resolution-documentarian`
+  - Role: feature doc, nav, cross-links, constants guide, and the two stale in-code comments
+  - Agent Type: documentarian
+  - Resume: true
+
 ## Step by Step Tasks
+
+Tasks 1 and 2 are independent and parallel; everything downstream serialises, because tasks 3–5
+all edit call sites that tasks 1–2 define.
+
+### 1. Resolution core module
+- **Task ID**: build-resolution-core
+- **Depends On**: none
+- **Validates**: `tests/test_reference_resolution.py` (create)
+- **Informed By**: spike-4 (statement ≠ verbatim is accepted by M1); Research (GA
+  `output_config` path, flat schema, BioCoref verbatim constraint, ISO-8601-only dates)
+- **Assigned To**: resolution-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Create `src/popoto/extraction/resolution.py` with **no Redis import**: `ResolutionStatus`,
+  `ReferenceKind`, `TemporalRole`, `Reference`, `WindowTurn`, `TurnContext`, `Resolution`.
+- Pin `RESOLUTION_MODEL = "claude-haiku-4-5-20251001"`, `RESOLUTION_MAX_TOKENS`,
+  `RESOLUTION_PROMPT`, `RESOLUTION_SCHEMA` in-module under a "Pinned, non-user-configurable
+  constants" header, copying `verdict.py:205-263`'s convention verbatim in spirit.
+- Implement `_request_resolution(client, candidate, turn_text, context)` mirroring
+  `verdict.py:283-309`: GA `output_config={"format": {"type": "json_schema", ...}}`,
+  `additionalProperties: False`, one nesting level.
+- Implement `_parse_reply(...)` with every check in Technical Approach §2, including the
+  substring-at-offsets check and the per-status required-field matrix.
+- Implement `_to_epoch(iso, tz)` using `datetime.fromisoformat` + `zoneinfo.ZoneInfo`; naive values
+  take the context zone; an unknown zone falls back to UTC with a warning and `degraded=True`.
+  **The model never emits an epoch number.**
+- Implement the `valid_from` onset rule: exactly one `relative_time` + `resolved|assumed` +
+  `onset` → emit; zero or 2+ → `None` (and 2+ floors the aggregate status at `assumed`).
+- Implement `resolve_references(candidate, turn_text, context, client=None) -> Resolution`:
+  never raises, never returns `None`, honours `Defaults.M4_RESOLUTION_ENABLED`, and uses the same
+  monkeypatchable `anthropic_module` probe as `verdict.py:54-63`.
+- Export the public names through `popoto.extraction.__getattr__` (`__init__.py:243-268`) so
+  importing the package still does not probe `anthropic`.
+
+### 2. Constants block
+- **Task ID**: build-constants
+- **Depends On**: none
+- **Validates**: `tests/benchmarks/test_defaults_sync.py`
+- **Assigned To**: plumbing-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Add the `# -- reference resolution (extraction/resolution.py, #563) --` banner to
+  `src/popoto/fields/constants.py` after the M3 block (`:445-455`), with the ten `M4_*` constants
+  from Technical Approach §8, each carrying an inline comment stating why it is not a tunable.
+- Build `M4_RESOLUTION_ENABLED` with the module's existing `_read_*` env-helper convention
+  (`:44-126`), default **True**, so PyPI adopters get a deploy-level kill switch.
+- Update `tests/benchmarks/test_defaults_sync.py` in the same commit.
+
+### 3. Sidecar model and log
+- **Task ID**: build-resolution-log
+- **Depends On**: build-resolution-core, build-constants
+- **Validates**: `tests/test_reference_resolution.py`
+- **Informed By**: spike-2 (`res:*` tags survive the firewall and are queryable)
+- **Assigned To**: plumbing-builder
+- **Agent Type**: builder
+- **Domain**: Redis/Popoto data
+- **Parallel**: false
+- Create `src/popoto/extraction/resolution_log.py` with `ResolutionRecord(Model)`: `agent_id`,
+  `turn_id`, `candidate_id` as `KeyField`s (composite identity — **never** `AutoKeyField`, per
+  `decision_log.py:13-23`), plus non-indexed `status`, `statement`, `verbatim`, `references_json`,
+  `valid_from`, `entry_id`, `speaker`, `captured_at`, `timezone`, `window_truncated`, `degraded`,
+  `written_at`.
+- Serialise `references` with `json.dumps` into a `StringField` (**not** msgpack — the record is
+  meant to be readable by M7 and by a human with `redis-cli`).
+- Implement `ResolutionLog.write(...)` (idempotent by composite key) and
+  `ResolutionLog.get(agent_id, turn_id, candidate_id)`; `write` failures log a warning and return
+  `False` rather than raising.
+- No TTL, matching M3's decision log; retention/sweeps are M9 (#568).
+
+### 4. Pipeline plumbing
+- **Task ID**: build-plumbing
+- **Depends On**: build-resolution-log
+- **Validates**: `tests/test_auditable_extraction.py`, `tests/test_subconscious_memory.py`
+- **Informed By**: spike-1 (`append(at=<past>)` stores the backdated `valid_from` exactly);
+  spike-1b (future onsets legal)
+- **Assigned To**: plumbing-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- `AuditableExtractionConfig` (`decision_log.py:1047-1071`): add `resolution_provider: Any = None`
+  and document it as the test seam.
+- `DecisionLog.assemble` (`:609`), `_reconcile_pending` (`:697`) and `_append_and_transition`
+  (`:752`): add `resolution=None`; derive `speaker`/`captured_at` from `resolution.context` when
+  the caller did not supply them; pass `statement=resolution.statement`,
+  `at=resolution.valid_from`, `captured_at=…`, and append `f"res:{resolution.status.value}"` to
+  `subjects`. `verbatim=candidate.text` **must not change**.
+- Call `ResolutionLog.write(...)` **after** a successful append so it can carry `entry_id`; a
+  failure is a logged warning and never changes the return value (Race 2).
+- `SubconsciousMemory.extract_memories` (`subconscious_memory.py:426`) and
+  `_extract_memories_auditable` (`:655`): add `context=None`, default to `TurnContext.now()`, and
+  add `_resolve_for(candidate, turn_text, context)` mirroring `_verdict_for`'s
+  provider-or-callable dispatch and its raise→degrade contract (`:622-653`).
+- `ExtractedFact` (`extraction/__init__.py:39-75`): add `verbatim`, `resolution_status`,
+  `assumption`, all defaulting to `None`; set `text=resolution.statement` on the auditable path.
+- When `Defaults.M4_RESOLUTION_ENABLED` is false, skip the call entirely — no tag, no sidecar, no
+  `at=` — so the path is byte-identical to M3.
+
+### 5. Tests
+- **Task ID**: build-tests
+- **Depends On**: build-plumbing
+- **Validates**: `tests/test_reference_resolution.py` (create), plus the five files in Test Impact
+- **Assigned To**: resolution-tester
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Create `tests/test_reference_resolution.py` with hand-rolled fakes (no `unittest.mock`),
+  following `test_auditable_extraction.py:80-206`: a `FakeClient` returning canned JSON and a
+  `_StubResolution` provider.
+- One test class per status: `resolved`, `assumed`, `evidence_gap`, `indeterminate` — each
+  asserting the stored `statement`, the untouched `verbatim`, the `res:` tag on the entry, and the
+  sidecar contents.
+- The `valid_from` matrix: onset / deadline / mention / zero onsets / two onsets / future onset /
+  non-UTC zone / DST-boundary date / unknown zone.
+- Every bullet in Failure Path Test Strategy.
+- The kill-switch parity test: with `M4_RESOLUTION_ENABLED = False`, assert `statement ==
+  verbatim`, no `res:` tag, no sidecar row (restore the flag in an autouse fixture, following
+  `test_provenance_journal.py:146-159`).
+- Update the five existing files per Test Impact, including teaching `_FakeJournal` about
+  `captured_at`/`at`.
+
+### 6. Validation
+- **Task ID**: validate-resolution
+- **Depends On**: build-tests
+- **Assigned To**: resolution-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification table on a **pinned** `POPOTO_TEST_DB` (not 15, not 0) and report the DB
+  alongside every count.
+- Confirm the editable install resolves to this checkout and that the full extras are installed
+  before trusting any number (CLAUDE.md's five worktree gotchas).
+- Measure `mypy src/` against base in the same redis-py environment and report the delta with the
+  redis-py version stated.
+
+### 7. Stale-comment corrections
+- **Task ID**: build-comment-fixes
+- **Depends On**: build-plumbing
+- **Assigned To**: resolution-documentarian
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Rewrite `provenance_journal.py:1119-1142`'s comment: M4 declined the `save_and_supersede`
+  conversion, the work is tracked as **#606**, and the reason is that M4 never reaches the
+  annotation branch. Remove the "#563" attribution.
+- Update `decision_log.py:760-767` to describe what M4 now does rather than promising it.
+
+### 8. Documentation
+- **Task ID**: document-feature
+- **Depends On**: build-comment-fixes, validate-resolution
+- **Assigned To**: resolution-documentarian
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Everything in the Documentation section.
+
+### 9. Final validation
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: resolution-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Re-run the Verification table, confirm every Success Criterion, and produce the final report
+  with the environment stated.
 
 ## Verification
 
+| Check | Command | Expected |
+|-------|---------|----------|
+| New suite passes | `python -m pytest tests/test_reference_resolution.py -q` | exit code 0 |
+| M3 suite still passes | `python -m pytest tests/test_auditable_extraction.py -q` | exit code 0 |
+| M1/V0 suites unmoved | `python -m pytest tests/test_provenance_journal.py tests/test_validity_field.py -q` | exit code 0 |
+| Constants sync | `python -m pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
+| Full suite | `python -m pytest -q` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Format clean | `python -m black --check src/ tests/` | exit code 0 |
+| Type check | `python -m mypy src/` | exit code 0 |
+| Docs build | `python -m mkdocs build --strict` | exit code 0 |
+| All four statuses tested | `grep -c -E "evidence_gap\|indeterminate\|res:assumed\|res:resolved" tests/test_reference_resolution.py` | output > 3 |
+| Resolution core is Redis-free | `grep -cE "^from \.\.(fields\|models)\|POPOTO_REDIS_DB\|import redis" src/popoto/extraction/resolution.py` | match count == 0 |
+| No conflict-absorbing retry (anti-criterion, #588) | `grep -c "get_valid_from" src/popoto/extraction/resolution.py src/popoto/extraction/resolution_log.py src/popoto/extraction/decision_log.py` | match count == 0 |
+| No entity-graph rabbit hole (anti-criterion) | `grep -ciE "entity_graph\|cross_session\|entity_link" src/popoto/extraction/resolution.py` | match count == 0 |
+| No date-parser dependency (anti-criterion) | `grep -cE "dateparser\|dateutil" src/popoto/extraction/resolution.py pyproject.toml` | match count == 0 |
+| No numeric confidence field reintroduced (anti-criterion) | `grep -ciE "confidence *[:=]" src/popoto/extraction/resolution.py src/popoto/extraction/resolution_log.py` | match count == 0 |
+| verbatim never rewritten (anti-criterion) | `grep -c "verbatim=resolution" src/popoto/extraction/decision_log.py` | match count == 0 |
+| M4 constants pinned in Defaults | `grep -c "M4_" src/popoto/fields/constants.py` | output > 9 |
+| Kill switch exists | `python -c "from popoto.fields.constants import Defaults; print(Defaults.M4_RESOLUTION_ENABLED)"` | output contains True |
+| Stale #563 attribution removed | `grep -c "#563" src/popoto/recipes/provenance_journal.py` | match count == 0 |
+| Feature doc in nav | `grep -c "features/reference-resolution.md" mkdocs.yml` | output > 0 |
+
+Run every `pytest` row with `POPOTO_TEST_DB` pinned to a free database (not 15, not 0) and state
+the database alongside the result. The six tests that fail by construction on a non-15 DB
+(`docs/sdlc/do-sdlc.md`) are expected noise, not regressions.
+
 ## Critique Results
+
+<!-- Populated by /do-plan-critique. Empty until critique runs. -->
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
 
 ---
 
 ## Open Questions
+
+The issue listed four questions for the planner. Three are answered above and are recorded here
+with their answers; only the ones marked **needs input** are still open.
+
+1. **Window size?** *Answered:* `M4_WINDOW_MAX_TURNS = 8` turns **and**
+   `M4_WINDOW_MAX_CHARS = 4000` characters, whichever binds first, truncating oldest-first and
+   recording that truncation on the record. Pinned magic numbers, not kwargs. Two bounds rather
+   than one because a turn count alone does not bound a prompt and a character count alone can
+   slice a turn in half.
+2. **Does the four-way status live on the journal entry or in a sidecar?** *Answered:* **both,
+   split by role.** The status rides on the entry as the indexed `res:{status}` subject tag (so
+   the flag is inseparable from the fact); the evidence — assumption lines, `evidence_gap`
+   candidates, questions, the context header — lives in the `ResolutionRecord` sidecar. Adding
+   fields to `JournalEntry` is refused: it is shipped, append-only, guarded by
+   `_require_journal_shape`, and explicitly not subclassable.
+3. **How are `assumed` flags guaranteed to travel with the fact when surfaced?** *Answered:* by
+   the tag in (2), verified retrievable in spike-2 through the ordinary journal query path with no
+   sidecar join. A test asserts it.
+4. **The `valid_from` onset rule — needs input.** The 2026-08-16 amendment lists both *"since
+   March"* and *"by Friday"* as `valid_from` producers. This plan emits for **onsets only**: a
+   deadline would open the interval in the future and make the fact invisible to as-of retrieval
+   until then (Risk 3). I believe the amendment's phrasing was illustrative rather than
+   prescriptive, but it is a deliberate narrowing of a written requirement — please confirm.
+5. **Two-or-more onsets: abstain or pick the earliest? — needs input.** The plan abstains (no
+   `valid_from`, status floored at `assumed`). Picking the earliest is defensible and loses less
+   information; abstaining is safer and cheaper to reverse. Which is preferred?
+6. **Should a `TurnContext` with no window be allowed to run the stage at all? — needs input.**
+   The plan says yes (degraded: the candidate's own full turn plus the clock still resolves most
+   relative dates and some pronouns), on the default-ON doctrine. The alternative is to skip
+   resolution when no window is supplied, which is more conservative but makes the capability
+   invisible to every existing caller — none of which pass a window today.
