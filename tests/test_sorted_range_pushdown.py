@@ -11,6 +11,7 @@ The negative cases are the point of this file. Guard conditions live in
 ``Query._sorted_pushdown_args``.
 """
 
+import asyncio
 import os
 import sys
 
@@ -21,7 +22,9 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
 from src.popoto import Q
+from src.popoto.fields.constants import Defaults
 from src.popoto.redis_db import POPOTO_REDIS_DB
+import src.popoto.redis_db as redis_db_module
 
 
 class PushdownDoc(popoto.Model):
@@ -38,9 +41,19 @@ POPULATION = 60
 
 @pytest.fixture(autouse=True)
 def clean_docs():
+    """Clear this model's keys and reset the cached async connection.
+
+    The async reset lives here rather than in a second autouse fixture so the
+    sync tests in this file keep exactly one flush around them. The async Redis
+    connection is bound to an event loop and pytest-asyncio builds a fresh loop
+    per test, so a leaked client raises "Future attached to a different loop".
+    """
     _flush()
+    redis_db_module._POPOTO_ASYNC_REDIS_DB = None
+    redis_db_module._async_redis_lock = asyncio.Lock()
     yield
     _flush()
+    redis_db_module._POPOTO_ASYNC_REDIS_DB = None
 
 
 def _flush():
@@ -510,3 +523,261 @@ def test_exhausted_range_short_on_orphans_still_warns(caplog):
     assert (
         "Re-reading the full range" not in joined
     ), f"an exhausted range must not trigger a pointless re-read: {joined}"
+
+
+# ---------------------------------------------------------------------------
+# Async parity: async_filter must apply the same bounds as _execute_filter
+#
+# Two different clients are in play and patching the wrong one gives a vacuous
+# assertion. Hydration runs on the async pipeline (Query._async_get_many_objects),
+# so hydration counts must patch redis.asyncio.client.Pipeline. The sorted range
+# read runs on the sync client inside to_thread, so direction assertions must
+# patch redis.client.Redis.
+# ---------------------------------------------------------------------------
+
+
+class AsyncHydrationCounter:
+    """Count async hydration commands, one per object actually loaded.
+
+    Patches both ``hgetall`` and ``hmget`` on the async pipeline and sums them:
+    ``_async_get_many_objects`` hydrates with ``hmget`` when ``values=`` is
+    passed and ``hgetall`` otherwise, so counting only one of the two reads 0
+    for half the query shapes. Counting both keeps the counter honest if a
+    ``values=`` case is added later.
+    """
+
+    def __enter__(self):
+        import redis.asyncio.client as async_client
+
+        self.count = 0
+        self._orig_hgetall = async_client.Pipeline.hgetall
+        self._orig_hmget = async_client.Pipeline.hmget
+        counter = self
+
+        def hgetall(pipeline_self, name):
+            counter.count += 1
+            return counter._orig_hgetall(pipeline_self, name)
+
+        def hmget(pipeline_self, name, keys, *args):
+            counter.count += 1
+            return counter._orig_hmget(pipeline_self, name, keys, *args)
+
+        async_client.Pipeline.hgetall = hgetall
+        async_client.Pipeline.hmget = hmget
+        return self
+
+    def __exit__(self, *exc):
+        import redis.asyncio.client as async_client
+
+        async_client.Pipeline.hgetall = self._orig_hgetall
+        async_client.Pipeline.hmget = self._orig_hmget
+
+
+class RangeCallRecorder:
+    """Record the sorted-range reads issued on the sync client."""
+
+    def __enter__(self):
+        import redis
+
+        self.calls = []
+        self._orig_asc = redis.client.Redis.zrangebyscore
+        self._orig_desc = redis.client.Redis.zrevrangebyscore
+        recorder = self
+
+        def zrangebyscore(client_self, name, *args, **kwargs):
+            recorder.calls.append(("zrangebyscore", name, kwargs.get("num")))
+            return recorder._orig_asc(client_self, name, *args, **kwargs)
+
+        def zrevrangebyscore(client_self, name, *args, **kwargs):
+            recorder.calls.append(("zrevrangebyscore", name, kwargs.get("num")))
+            return recorder._orig_desc(client_self, name, *args, **kwargs)
+
+        redis.client.Redis.zrangebyscore = zrangebyscore
+        redis.client.Redis.zrevrangebyscore = zrevrangebyscore
+        return self
+
+    def __exit__(self, *exc):
+        import redis
+
+        redis.client.Redis.zrangebyscore = self._orig_asc
+        redis.client.Redis.zrevrangebyscore = self._orig_desc
+
+    def for_field(self, field_name):
+        return [c for c in self.calls if field_name in str(c[1])]
+
+
+@pytest.mark.asyncio
+async def test_async_bounded_query_hydrates_only_limit():
+    """The headline defect: async_filter hydrated the whole range.
+
+    Both bounds are asserted. Without the lower bound a counter that observes
+    nothing at all -- the trap of patching the sync pipeline -- would pass.
+    """
+    _seed()
+    with AsyncHydrationCounter() as counter:
+        results = await PushdownDoc.query.async_filter(
+            room_id="r1",
+            last_active_at__gte=0,
+            order_by="-last_active_at",
+            limit=5,
+        )
+
+    assert [d.doc_id for d in results] == ["d59", "d58", "d57", "d56", "d55"]
+    assert 5 <= counter.count <= 5 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN, (
+        f"async hydration must be bounded by limit + margin, "
+        f"got {counter.count} of a {POPULATION}-row population"
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_range_read_is_bounded_and_direction_correct():
+    """A descending async query must issue ZREVRANGEBYSCORE, with a num bound."""
+    _seed()
+    with RangeCallRecorder() as recorder:
+        await PushdownDoc.query.async_filter(
+            room_id="r1",
+            last_active_at__gte=0,
+            order_by="-last_active_at",
+            limit=5,
+        )
+    calls = recorder.for_field("last_active_at")
+    assert calls, "the query must read the sorted range"
+    assert all(
+        c[0] == "zrevrangebyscore" for c in calls
+    ), f"a descending query must not read ascending: {calls}"
+    assert all(
+        c[2] == 5 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN for c in calls
+    ), f"the range read must carry the bound: {calls}"
+
+    with RangeCallRecorder() as recorder:
+        await PushdownDoc.query.async_filter(
+            room_id="r1",
+            last_active_at__gte=0,
+            order_by="last_active_at",
+            limit=5,
+        )
+    calls = recorder.for_field("last_active_at")
+    assert calls and all(
+        c[0] == "zrangebyscore" for c in calls
+    ), f"an ascending query must read ascending: {calls}"
+
+
+@pytest.mark.asyncio
+async def test_async_and_sync_agree_across_limits_and_directions():
+    """Parity is the whole point: the bound may not change the answer."""
+    _seed()
+    for order_by in ("last_active_at", "-last_active_at"):
+        for limit in (1, 5, 17, POPULATION + 10):
+            sync_rows = [
+                d.doc_id
+                for d in PushdownDoc.query.filter(
+                    room_id="r1",
+                    last_active_at__gte=0,
+                    order_by=order_by,
+                    limit=limit,
+                )
+            ]
+            async_rows = [
+                d.doc_id
+                for d in await PushdownDoc.query.async_filter(
+                    room_id="r1",
+                    last_active_at__gte=0,
+                    order_by=order_by,
+                    limit=limit,
+                )
+            ]
+            assert async_rows == sync_rows, f"{order_by} limit={limit}"
+
+
+@pytest.mark.asyncio
+async def test_async_orphan_density_re_reads_and_returns_full(caplog):
+    """Orphans past the margin must force a full re-read, not a short answer.
+
+    The retry passes _allow_pushdown=False; hardcoding True there would
+    re-apply the bound and return the same short result.
+    """
+    _seed(count=40)
+    for i in range(39, 39 - 15, -1):
+        removed = POPOTO_REDIS_DB.delete(f"PushdownDoc:d{i}:r1")
+        assert removed == 1, f"expected to orphan PushdownDoc:d{i}:r1"
+
+    with caplog.at_level("WARNING", logger="POPOTO.Query"):
+        results = await PushdownDoc.query.async_filter(
+            room_id="r1",
+            last_active_at__gte=0,
+            order_by="-last_active_at",
+            limit=5,
+        )
+
+    assert len(results) == 5, "the re-read must restore a complete answer"
+    assert [d.doc_id for d in results] == ["d24", "d23", "d22", "d21", "d20"]
+    joined = "\n".join(r.message for r in caplog.records if r.levelname == "WARNING")
+    assert "Re-reading the full range" in joined, joined
+    assert "clean_indexes" in joined, joined
+
+
+@pytest.mark.asyncio
+async def test_async_pending_client_filter_suppresses_the_bound():
+    """A pending plain-field filter must see every candidate before truncation.
+
+    `tag` is an unindexed plain Field, so it is filtered client-side after
+    hydration. Bounding before that filter runs would cut rows it would keep.
+    """
+    for i in range(30):
+        PushdownDoc(
+            room_id="r2",
+            doc_id=f"c{i}",
+            last_active_at=float(i),
+            tag="hit" if i < 3 else "miss",
+            rank=0.0,
+            bucket="a",
+        ).save()
+
+    results = await PushdownDoc.query.async_filter(
+        room_id="r2",
+        last_active_at__gte=0,
+        tag="hit",
+        order_by="-last_active_at",
+        limit=5,
+    )
+    assert sorted(d.doc_id for d in results) == ["c0", "c1", "c2"], (
+        "the client-side filter must run over the full candidate set, "
+        f"got {[d.doc_id for d in results]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_async_filters_do_not_clobber_each_other():
+    """Query is one instance per model class, shared by every coroutine.
+
+    Reading self._pushdown_* after an await lets a second coroutine's
+    filter_for_keys_set overwrite the first one's bookkeeping: the bound goes
+    missing, the re-read is skipped, and the caller silently gets short results.
+    Orphans are seeded so the short-result guard is live in every coroutine.
+    """
+    rooms = {"a": 40, "b": 30, "c": 50, "d": 35}
+    for room, count in rooms.items():
+        _seed(room=room, count=count)
+        for i in range(count - 1, count - 12, -1):
+            POPOTO_REDIS_DB.delete(f"PushdownDoc:d{i}:{room}")
+
+    async def one(room, count, limit):
+        rows = await PushdownDoc.query.async_filter(
+            room_id=room,
+            last_active_at__gte=0,
+            order_by="-last_active_at",
+            limit=limit,
+        )
+        top = count - 12  # the highest doc index that still has a hash
+        expected = [f"d{i}" for i in range(top, top - limit, -1)]
+        return room, [d.doc_id for d in rows], expected
+
+    for _ in range(10):
+        outcomes = await asyncio.gather(
+            *(
+                one(room, count, limit)
+                for (room, count), limit in zip(rooms.items(), (5, 7, 4, 6))
+            )
+        )
+        for room, got, expected in outcomes:
+            assert got == expected, f"room {room}: got {got}, expected {expected}"

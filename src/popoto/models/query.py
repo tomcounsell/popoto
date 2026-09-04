@@ -88,7 +88,7 @@ class _PushdownState:
     ``self._pushdown_*`` again.
     """
 
-    sorted_field_order: "Optional[list]" = None
+    sorted_field_order: "Optional[list[Any]]" = None
     sorted_field_name: "Optional[str]" = None
     pending_client_filters: "dict[str, Any]" = dataclass_field(default_factory=dict)
     pushdown_limit: "Optional[int]" = None
@@ -103,9 +103,9 @@ class _PushdownState:
 # carries an autouse fixture solely to reassign it per test). The
 # WeakKeyDictionary self-cleans as loops are collected, so a per-test loop needs
 # no fixture. The threading.Lock guards the dict only; no I/O happens under it.
-_PUSHDOWN_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = (
-    weakref.WeakKeyDictionary()
-)
+_PUSHDOWN_LOCKS: (
+    "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]"
+) = weakref.WeakKeyDictionary()
 _PUSHDOWN_LOCKS_GUARD = threading.Lock()
 
 
@@ -3522,7 +3522,7 @@ class Query:
             return [r for r in results if r is not None]
         return results
 
-    async def async_filter(self, **kwargs) -> list:
+    async def async_filter(self, *, _allow_pushdown: bool = True, **kwargs) -> list:
         """Async version of filter() using native async Redis.
 
         Filters model instances based on field values using non-blocking I/O.
@@ -3535,6 +3535,10 @@ class Query:
         Precedence: explicit order_by > sorted field order > Meta.order_by
 
         Args:
+            _allow_pushdown: If False, read the full sorted range even when the
+                query qualifies for a bounded read. Set on the one retry that
+                stale index members can force. Keyword-only so it stays out of
+                **kwargs, which go straight to filter_for_keys_set.
             **kwargs: Filter parameters (field values, limit, order_by, values)
 
         Returns:
@@ -3550,8 +3554,17 @@ class Query:
         self._geo_distances = {}
         self._geo_distance_unit = None
 
-        # Get keys using sync method in thread pool (field query implementations are sync)
-        db_keys_set = await to_thread(self.filter_for_keys_set, **kwargs)
+        # Get keys using sync method in thread pool (field query implementations
+        # are sync). Arming the pushdown, running the query and snapshotting its
+        # bookkeeping all happen inside that one hop, under a per-loop lock:
+        # `self` is shared by every caller on this model class, so anything read
+        # off it after an await may belong to another coroutine. Everything
+        # below reads `state`, never self._pushdown_*. The lock covers only this
+        # hop; hydration below stays fully concurrent.
+        async with _pushdown_lock_for_running_loop():
+            db_keys_set, state = await to_thread(
+                self._filter_keys_with_pushdown, _allow_pushdown, kwargs
+            )
         if not len(db_keys_set):
             return []
 
@@ -3560,21 +3573,28 @@ class Query:
         if (
             "order_by" not in kwargs
             and self.model_class._meta.order_by
-            and not getattr(self, "_sorted_field_order", None)
+            and not state.sorted_field_order
         ):
             kwargs["order_by"] = self.model_class._meta.order_by
 
         # Use sorted field order if available and no explicit order_by
-        sorted_field_order = getattr(self, "_sorted_field_order", None)
+        sorted_field_order = state.sorted_field_order
         explicit_order_by = kwargs.get("order_by", None)
         # Meta.order_by is a default - sorted field order takes precedence over it
         if sorted_field_order and not explicit_order_by:
             db_keys_set = sorted_field_order  # Use ordered list instead of set
 
+        # Bound the key list before hydration when the range read could not be
+        # bounded itself, exactly as _execute_filter does. There is no Q-object
+        # path here, so q_objects is always None.
+        db_keys_set = self._bound_keys_before_hydration(
+            db_keys_set, None, _allow_pushdown, kwargs, state=state
+        )
+
         # Use native async for bulk object loading. As in _execute_filter, a
         # pending client-side filter suppresses the pre-hydration limit so the
         # filter sees every candidate; prepare_results re-applies the limit.
-        client_filters_pending = bool(getattr(self, "_pending_client_filters", None))
+        client_filters_pending = bool(state.pending_client_filters)
         objects = await self._async_get_many_objects(
             self.model_class,
             db_keys_set,
@@ -3583,8 +3603,11 @@ class Query:
             values=kwargs.get("values", None),
         )
 
+        if self._short_result_action(len(objects), _allow_pushdown, state):
+            return await self.async_filter(_allow_pushdown=False, **kwargs)
+
         # Apply client-side filters for plain (unindexed) fields
-        client_filters = getattr(self, "_pending_client_filters", {})
+        client_filters = state.pending_client_filters
         if client_filters:
             filtered = []
             for obj in objects:
