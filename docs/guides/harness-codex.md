@@ -87,6 +87,19 @@ For a boundary enforced by Redis rather than by a query filter, point each
 project at its own `POPOTO_MEMORY_URL` database (any database but 0, which
 is refused — see [Harness Integration](../features/harness-integration.md#database-0-is-refused)).
 
+## Corpus growth and eviction
+
+!!! danger "Upgrading to 1.9.0+ on an existing corpus can delete records"
+    `DefaultMemory` caps itself at 1000 records per `agent_id`. If your
+    corpus is already over that when you upgrade, the first save afterward
+    deletes the *entire* excess at once, synchronously, inside that one
+    save — not a gradual trim, and no tombstone. Check the record count
+    with `popoto-memory doctor` before upgrading. `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0`
+    (no config edit needed) disables eviction first if you want to size or
+    stage the cleanup yourself. See
+    [Corpus growth](../features/harness-integration.md#corpus-growth) for
+    the full mechanics.
+
 ## Context limit
 
 Codex caps injected context at 2500 tokens (`additionalContextLimit`). The

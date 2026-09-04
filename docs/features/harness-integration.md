@@ -286,7 +286,11 @@ What to read:
   visible. A hook that stopped firing shows a stale timestamp, or `never`.
 - **`failures`** counts swallowed exceptions per operation. Every one of
   them also wrote a line to the log, and the last five lines are printed
-  underneath.
+  underneath. `evicted` (see [Corpus growth](#corpus-growth)) and
+  `heuristic_notice` are reports rather than integration errors, so they are
+  excluded from this line and from the `failures:` payload over MCP; a
+  non-zero `evicted` count instead prints its own data-loss line naming the
+  count and `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`.
 - **`url source`** says which variable produced the URL — `POPOTO_MEMORY_URL`,
   `REDIS_URL`, or `default`. It is the fastest way to find out that the
   memories you are looking for went to a database you did not intend. Any
@@ -344,7 +348,7 @@ asserts the four names literally.
 | `memory_search` | Find something specific mid-task that was not already injected |
 | `memory_save` | Store a deliberate fact the turn text would not preserve |
 | `memory_feedback` | Mark a memory `contradicted` or `acted`, adjusting its confidence without deleting it |
-| `memory_status` | Connection, scope, retrieval mode, record count, failures |
+| `memory_status` | Connection, scope, retrieval mode, record count, failures (an `evicted` count — records selected for `DefaultMemory` eviction — is reported separately from `failures`, see [Corpus growth](#corpus-growth)) |
 
 Errors come back as MCP error results with a readable message, never a
 traceback rendered as tool output.
@@ -413,9 +417,39 @@ getting recalled or acted on stays; one nobody has touched goes first.
 The cap exists because nothing on the default path evicted before: a
 long-lived install grew one record per turn, forever. **If your corpus is
 already above 1000 records for an agent, the first save after upgrading
-starts deleting.** Check with `doctor` before you upgrade. To change the
-cap, subclass `DefaultMemory` and set `_max_records_per_agent` (`0` or
-`None` disables eviction entirely).
+deletes the entire excess at once** — `zcard - cap` records, synchronously,
+inside that one `save()` call, not a gradual per-save trim. Measured at
+roughly 0.7 ms per record, so an agent 50,000 over the cap blocks that save
+for ~35 seconds, inside a hook process whose harness timeout is 10 seconds.
+Check with `doctor` before you upgrade.
+
+The escape hatch that works with no Python seam is the deploy-level
+`POPOTO_DEFAULT_MEMORY_MAX_RECORDS` environment variable — the population
+this matters most for is hook adopters using `DefaultMemory` directly, who
+cannot edit model code. It is read fresh on every save, so it can be flipped
+without a restart. `0`/`off`/`false`/`no` disables eviction; a positive
+integer sets the cap (`=1` is a cap of one record, not "enabled"); unset
+defers to the class attribute; a malformed value warns once (deduped) and is
+ignored. It can lower, raise, or disable the *default* cap, and it can
+disable a subclass's cap too — but it can **never** re-arm eviction on a
+subclass that already set `_max_records_per_agent` falsy. That opt-out is
+still the documented subclass-level escape hatch (set `_max_records_per_agent`
+to change the number, or falsy to disable eviction entirely) and always wins
+over the env var.
+
+**The `evicted` counter.** Each eviction burst `INCRBY`s
+`$popoto_memory:counter:{agent_id}:evicted` by the number of records
+*selected* for eviction, before any delete runs — so it is a durable,
+non-log signal that reaches a hook subprocess whose stderr the harness
+suppresses. It counts records the cap selected, not records actually
+deleted (the loop skips the saving record's own key and can route a missing
+hash to an index repair instead of a deletion), so the invariant is
+`counter >= records deleted`, with equality on the clean path. It surfaces
+in `MemoryService.status()`, the MCP `memory_status` tool, and
+`popoto-memory doctor`, which prints a data-loss line naming the count and
+`POPOTO_DEFAULT_MEMORY_MAX_RECORDS` when it is non-zero. It is a **report,
+not a failure** — `evicted` (and `heuristic_notice`) are excluded from the
+`failures` line in `doctor` and the `failures:` payload over MCP.
 
 [`MemoryLifecycle`](../recipes.md) remains the tiered alternative, but it
 requires a `tier` KeyField that `DefaultMemory` does not declare, so it is

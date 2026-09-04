@@ -50,6 +50,16 @@ COUNTER_KEY_PREFIX = "$popoto_memory:counter"
 """Redis key prefix for failure and activity counters. ``INCR`` is atomic,
 so ``doctor`` can read these while a hook writes them."""
 
+NON_FAILURE_COUNTERS = frozenset({"evicted", "heuristic_notice"})
+"""Counter names that are *reports*, not integration errors.
+
+Both renderers bucket every counter that does not end in ``_ok`` under
+"failures"; these two are neither successes nor failures. ``evicted`` is the
+``DefaultMemory`` data-loss report (#596) and ``heuristic_notice`` is the
+one-time ingest-mode marker set by :meth:`MemoryService._warn_heuristic_cost`.
+Subtract this set from any failure bucket rather than re-spelling the names.
+"""
+
 PENDING_KEY_PREFIX = "$popoto_memory:pending"
 """Redis key prefix for the read-hook-to-write-hook handoff."""
 

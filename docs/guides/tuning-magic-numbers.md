@@ -92,6 +92,18 @@ this gate makes and the enumerated holes in it (canonical git SHAs and UUIDs
 are excluded from entropy scoring, for example) — those are shape decisions,
 not values a sweep would tune.
 
+`DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT` (1000) is also a pinned safety rail,
+not a swept constant, but unlike the other kill switches above it is a
+*value* override rather than a bare disable: the `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`
+environment variable, read at call time on every `DefaultMemory.save()`, can
+lower, raise, or disable the cap it gates. `0`/`off` disables eviction; a
+positive integer sets the cap. It exists for hook adopters who use
+`DefaultMemory` directly and have no Python seam to subclass. It never
+re-arms eviction on a subclass that set `_max_records_per_agent` falsy —
+that opt-out always wins. See
+[Corpus growth](../features/harness-integration.md#corpus-growth) for the
+data-loss behavior on the first save after upgrading an over-cap deployment.
+
 ### DecayingSortedField / CyclicDecayField
 
 | Constant | Default | Optimal Range | Sensitivity |

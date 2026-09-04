@@ -167,6 +167,21 @@ def _test_db():
     return POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db")
 
 
+def _resolved_default_memory_cap():
+    """The cap ``DefaultMemory.save()`` would actually apply right now (#596).
+
+    Mirrors the asymmetric resolution in ``DefaultMemory.save()``: a falsy
+    class attribute is an opt-out the env var never re-arms.
+    """
+    from popoto.fields.constants import _read_default_memory_max_records
+
+    attr = DefaultMemory._max_records_per_agent
+    env = _read_default_memory_max_records()
+    if not attr:
+        return attr
+    return env if env is not None else attr
+
+
 # ---------------------------------------------------------------------------
 # Isolation
 # ---------------------------------------------------------------------------
@@ -537,15 +552,26 @@ class TestConsistency:
         ]
         assert leftovers == [], f"index keys still hold expired members: {leftovers}"
 
-    def test_default_memory_growth_is_bounded(self):
+    def test_default_memory_growth_is_bounded(self, monkeypatch):
         """Memories per agent must be capped, by TTL or by count.
 
         Nothing on the default path evicts. One record per turn for the life
         of the install is not a memory system, it is a log. Contract: after
         writing 1,100 memories for one agent, either every hash carries a
         TTL or the partition holds at most 1,000.
+
+        ``POPOTO_DEFAULT_MEMORY_MAX_RECORDS`` (#596) can move the cap at run
+        time, so an ambient value on an operator's box or a CI runner would
+        silently change what this contract asserts: ``=0`` disarms eviction and
+        makes the test fail spuriously, while a *smaller* value keeps the count
+        under 1,000 and makes the ``if`` below never fire -- a vacuous pass.
+        The env var is therefore cleared, and the resolved cap is asserted.
         """
+        monkeypatch.delenv("POPOTO_DEFAULT_MEMORY_MAX_RECORDS", raising=False)
         cap = 1000
+        assert (
+            _resolved_default_memory_cap() == cap
+        ), "the contract's hardcoded cap no longer matches the resolved one"
         agent = "contract-growth"
         _seed(agent, cap + 100, prefix="Fact")
         count = DefaultMemory.query.filter(agent_id=agent).count()

@@ -263,6 +263,8 @@ def _feedback(service: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _status(service: Any) -> Dict[str, Any]:
+    from .service import NON_FAILURE_COUNTERS
+
     info = service.status()
     if not info.get("redis_reachable"):
         return _error(
@@ -278,7 +280,9 @@ def _status(service: Any) -> Dict[str, Any]:
         f"ingest: {info['ingest']}",
     ]
     failures = {
-        k: v for k, v in (info.get("counters") or {}).items() if not k.endswith("_ok")
+        k: v
+        for k, v in (info.get("counters") or {}).items()
+        if not k.endswith("_ok") and k not in NON_FAILURE_COUNTERS
     }
     lines.append("failures: " + (json.dumps(failures) if failures else "none"))
     return _ok("\n".join(lines), info)
