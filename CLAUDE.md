@@ -34,6 +34,10 @@ A `.worktrees/` checkout can report a confident, wrong number in five ways — e
 
 Rule: state the environment alongside any count, and reproduce a subagent's metric before relaying it.
 
+## Dependency Updates
+
+`.github/dependabot.yml` schedules weekly grouped version-update PRs for the root `uv` project and for `github-actions`; minor and patch bumps arrive as one PR per ecosystem, majors one at a time. The scheduled lane is `versioning-strategy: lockfile-only`, so `uv.lock` moves and `pyproject.toml`'s lower bounds are never machine-edited — popoto is a published library and a raised floor propagates to every downstream consumer. `examples/` is excluded because its lockfile cannot be regenerated at all; see #611.
+
 ## Debugging with Redis/Valkey CLI
 
 `redis-cli`/`valkey-cli` (identical commands) for inspecting state. Popoto key patterns:

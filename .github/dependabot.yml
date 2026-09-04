@@ -1,0 +1,95 @@
+# Dependabot version updates.
+#
+# Without this file Dependabot runs in security-only mode: it opens a PR when an
+# advisory names a package in a committed lockfile, and never otherwise (#551).
+# uv.lock then drifts against pyproject.toml between CVEs, and the drift only
+# ever surfaces as an alert backlog -- 49 alerts have been closed that way.
+#
+# Grouped security updates are enabled separately in repository settings. They
+# bypass both `cooldown` and `open-pull-requests-limit` and are unaffected by the
+# `applies-to: version-updates` groups below, so nothing here slows an advisory
+# response.
+#
+# examples/ is deliberately absent. examples/pyproject.toml declares
+# requires-python ">=3.8" while depending on popoto (">=3.10") as an editable
+# path dependency, so examples/uv.lock cannot be regenerated at all. Fixing that
+# forces a from-scratch relock that jumps popoto 1.0.0b1 -> 1.8.2 and textual
+# 0.73 -> current major, which breaks examples/popoto_kitchen/ -- and nothing in
+# CI exercises that directory, so the migration has no automated signal. Tracked
+# separately in #611.
+
+version: 2
+
+updates:
+  # Root Python project. `uv` (not `pip`) is the correct ecosystem: it reads
+  # pyproject.toml and uv.lock directly.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+
+    # popoto is a published library. Every dependency constraint in
+    # pyproject.toml is a lower bound, and raising one raises the install floor
+    # for every downstream consumer. lockfile-only keeps scheduled updates
+    # inside uv.lock, which is what all six historical Dependabot commits here
+    # already did. Support for this key on the uv ecosystem was confirmed in
+    # dependabot-core#12162 (closed 2026-02-13) even though the reference docs
+    # still omit it; if Dependabot ever rejects the key, delete these two lines
+    # rather than switching ecosystems.
+    versioning-strategy: "lockfile-only"
+
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+
+    # Routine minor/patch churn lands as one PR a week. Majors stay ungrouped so
+    # each arrives on its own branch and gets its own review.
+    groups:
+      uv-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Dependabot's own default is 3 days as of July 2026. A week gives the
+    # ecosystem longer to flag a bad or malicious release before it reaches a
+    # PR here. Security updates are exempt.
+    cooldown:
+      default-days: 7
+
+  # Workflow action versions live in .github/workflows/*.yml, not in any
+  # lockfile, so security-only mode gave them no coverage at all. checkout@v4,
+  # setup-python@v5 and setup-uv@v5 have never been version-checked by
+  # anything; this entry covers them. gh-action-pypi-publish is pinned to the
+  # branch ref `release/v1`, and Dependabot only bumps actions pinned to a tag
+  # or a SHA, so that one stays uncovered until it is repinned. This entry is a
+  # deliberate widening beyond the literal ask in #551, which names only the uv
+  # ecosystem.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Same 7-day window as the uv entry. Without this block the entry would
+    # silently fall back to Dependabot's own 3-day default.
+    cooldown:
+      default-days: 7
