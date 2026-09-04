@@ -192,7 +192,7 @@ from ..fields.shortcuts import (
     TagField,
 )
 from ..fields.supersession import SupersessionProtocol
-from ..fields.validity_field import ValidityField, _map_lua_error
+from ..fields.validity_field import ValidityField, map_lua_error
 from ..models.base import Model
 from ..privacy.never_record import NeverRecordMixin, scan_never_record
 from ..redis_db import POPOTO_REDIS_DB
@@ -1171,7 +1171,7 @@ class ProvenanceJournal:
             # script reads as a caller assertion: a target hard-deleted between
             # the pre-flight above and EXEC now returns MEMBER_ABSENT where it
             # previously took the idempotent no-op branch.
-            raise _map_lua_error(e) from e
+            raise map_lua_error(e) from e
         target_closed = False
         if close_index is not None and close_index < len(results):
             # SUPERSEDE_LUA returns the closed member key, or '' when its

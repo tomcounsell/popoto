@@ -148,7 +148,7 @@ class ValidityValidFromConflictError(ValidityError):
     """
 
 
-#: Token -> exception dispatch, consulted in order by :func:`_map_lua_error`.
+#: Token -> exception dispatch, consulted in order by :func:`map_lua_error`.
 #:
 #: An ordered tuple rather than a dict on purpose: matching is by *substring* of
 #: ``str(ResponseError)`` (Redis versions differ on whether ``error_reply``
@@ -161,12 +161,18 @@ _LUA_ERROR_MAP = (
 )
 
 
-def _map_lua_error(e: BaseException) -> BaseException:
+def map_lua_error(e: BaseException) -> BaseException:
     """Return the typed exception for a :data:`SUPERSEDE_LUA` error reply.
+
+    Package-internal, deliberately without a leading underscore: three call
+    sites across two packages import it (``supersession``,
+    ``recipes.provenance_journal``), which is more reach than a private name
+    honestly describes. It stays out of ``popoto.__all__`` -- internal to the
+    package, not to the module.
 
     **Returns** the mapped exception instance, or ``e`` itself when no token
     matches. It never raises: every call site is spelled
-    ``raise _map_lua_error(e) from e``, so a helper that raised internally would
+    ``raise map_lua_error(e) from e``, so a helper that raised internally would
     leave that expression unfinished, and one that returned ``None`` would turn
     the call site into a ``TypeError``.
 
@@ -1011,7 +1017,7 @@ class ValidityField(Field):
         try:
             result = run_lua(POPOTO_REDIS_DB, SUPERSEDE_LUA, 6, *args)
         except redis.exceptions.ResponseError as e:
-            raise _map_lua_error(e) from e
+            raise map_lua_error(e) from e
         closed = _as_str(result) if result else ""
         return closed or None
 

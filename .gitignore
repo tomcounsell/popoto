@@ -133,4 +133,3 @@ data/
 # by `git add -A` as embedded-repo gitlinks — five of them landed in a commit
 # on this branch before being caught.
 .worktrees/
-PROGRESS.md

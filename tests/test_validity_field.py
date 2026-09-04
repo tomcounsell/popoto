@@ -2013,17 +2013,17 @@ class TestMembershipGuardInLua:
         ]
         for token, expected in cases:
             error = redis.exceptions.ResponseError(f"{token} some detail")
-            assert isinstance(validity_module._map_lua_error(error), expected)
+            assert isinstance(validity_module.map_lua_error(error), expected)
 
     def test_an_unrecognized_response_error_is_returned_unchanged(self):
         """No token matched: the helper returns ``e`` itself, and never raises.
 
-        Both call sites are spelled ``raise _map_lua_error(e) from e``, so a
+        Both call sites are spelled ``raise map_lua_error(e) from e``, so a
         helper that raised internally would leave that expression unfinished and
         one that returned ``None`` would make the call site a ``TypeError``.
         """
         error = redis.exceptions.ResponseError("WRONGTYPE something else entirely")
-        assert validity_module._map_lua_error(error) is error
+        assert validity_module.map_lua_error(error) is error
 
     # -- 16/18. The combined entry point (D6) ----------------------------
 

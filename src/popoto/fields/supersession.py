@@ -77,7 +77,7 @@ from ..redis_db import POPOTO_REDIS_DB
 from .validity_field import (
     ValidityField,
     ValidityMemberAbsentError,
-    _map_lua_error,
+    map_lua_error,
 )
 
 logger = logging.getLogger("POPOTO.SupersessionProtocol")
@@ -699,7 +699,7 @@ def _save_and_close(
     try:
         results = pipe.execute()
     except redis.exceptions.ResponseError as e:
-        raise _map_lua_error(e) from e
+        raise map_lua_error(e) from e
     closed = results[close_index] if close_index < len(results) else None
     if isinstance(closed, bytes):
         closed = closed.decode()
