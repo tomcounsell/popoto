@@ -862,7 +862,178 @@ Run from the checkout under test; `<n>` is the private `POPOTO_TEST_DB`.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Run:** 2026-09-04 · depth FULL (3 lenses: Risk & Robustness, Scope & Value,
+History & Consistency) · **Verdict: NEEDS REVISION (1 blocker)**
+
+> Note on roster: no Agent/Task dispatch tool was available in this session, so
+> the three lenses were applied directly by the critique driver rather than by
+> three forked critics. Every finding below is grounded in a verified read of
+> `src/popoto/models/query.py`, `src/popoto/fields/constants.py` and
+> `tests/test_sorted_range_pushdown.py` at `HEAD`, not on the plan's own claims.
+
+### Findings Summary
+
+| Severity | Critic | Finding | Location |
+|---|---|---|---|
+| BLOCKER | Risk & Robustness | B1 — Every anti-criterion in the Verification table is inert: markdown-escaped pipes (`\|`) leak into the shell/ERE commands, so all four anti-criteria pass vacuously. | Verification table |
+| CONCERN | History & Consistency | C1 — Tasks 3 and 4 mandate the exact-equality hydration assertions that the plan's own Rabbit Holes forbid; builder gets two contradictory instructions. | Rabbit Holes vs. Tasks 3-4 |
+| CONCERN | Risk & Robustness | C2 — The `Meta`-supplied descending branch of `_bound_keys_before_hydration` (`query.py:2329`) is left unpinned; a regression there returns wrong rows silently and every planned test stays green. | Data Flow step 6; Tasks 3-4 |
+| CONCERN | Risk & Robustness | C3 — Task 1 is `Parallel: true` but edits the same file as tasks 2-4; concurrent dispatch means two writers on one file. | Step by Step Tasks, task 1 |
+| CONCERN | Scope & Value | C4 — Open Question 1 is unresolved, yet Success Criteria hardcode 36 collected / 3422 passed; cutting the async `Meta` tests makes both criteria false failures. | Open Questions 1 vs. Success Criteria |
+| CONCERN | Risk & Robustness | C5 — The last Prerequisite fails as written: `POPOTO_TEST_DB` is unset, and `<n>` is left unbound in the leak-check rows. | Prerequisites |
+| NIT | Scope & Value | N1 — Plan says "roughly 110 lines"; issue #559's Deliverable still says "roughly 80 lines". | Problem statement |
+| NIT | History & Consistency | N2 — `git diff --name-only origin/main` expectation ignores this plan doc, which the critique and revision passes both modify. | Task 6 / Verification |
+| NIT | Risk & Robustness | N3 — `--collect-only -q \| tail -1` is fragile; `grep -c '::'` is stable. | Verification |
+| NIT | History & Consistency | N4 — Documentation section says "no feature documentation changes required" while Success Criteria carries "Documentation updated (`/do-docs`)". | Documentation vs. Success Criteria |
+| NIT | History & Consistency | N5 — Baseline commit `7f057f9` is no longer the `origin/main` tip; should read "at or above". | Freshness Check |
+
+### Blockers
+
+**B1 — Every anti-criterion in the Verification table is inert: markdown-escaped
+pipes (`\|`) leak into the shell/ERE commands.**
+*Location:* Verification table (rows "no new xfail/skip", "no async parity
+duplicate", "no bare margin literal", "no production change", "No leaked Redis
+state").
+*Finding:* The rows are written as e.g.
+`grep -cE '^\+.*(xfail\|mark\.skip)'`. In ERE, `\|` matches a **literal pipe
+character**, so the pattern searches for the string `xfail|mark.skip` and can
+never match. Verified: a line containing `@pytest.mark.xfail(strict=True)` scores
+`0` under the escaped form and `1` under the correct form. The rows using `\|` as
+a *shell* pipe (`... \| wc -l \| tr -d ' '`) do not run at all — `grep` receives a
+literal `|` as an argument. Risk 1's named mitigation ("the Verification table
+carries an explicit anti-criterion asserting the diff adds zero `xfail` markers")
+is therefore not implemented, and the plan's entire anti-regression apparatus
+passes vacuously.
+*Suggestion:* Fence each command so markdown does not require pipe escaping (use
+a fenced code block per row, or a single "Verification commands" code block that
+the table references by number), and restate the expectation as an exit code
+rather than a match count.
+*Implementation Note:* Inside a markdown table cell, `|` **must** be escaped, so a
+piped command cannot be written correctly there — the fix is to move the command
+out of the table, not to unescape it in place. The corrected forms are
+`grep -cE '^\+.*(xfail|mark\.skip)'`,
+`grep -cE '^\+.*def test_async_(and_sync|bounded_query|range_read)'`,
+`grep -cE '^\+.*(num=11|MARGIN = 8)'`. Note `grep -c` exits **1** when the count is
+0, so an "expect 0" row must be asserted as `[ "$(… | grep -cE …)" = 0 ]`, never as
+"exit code 0".
+
+### Concerns
+
+**C1 — Tasks 3 and 4 mandate the exact-equality hydration assertions that the
+plan's own Rabbit Holes forbid.**
+*Location:* Rabbit Holes ("Tightening the counters to an exact object count …
+Assert boundaries, not equalities") vs. Task 3 (`counter.count == 2 * 20`) and
+Task 4 (`counter.count == 20`).
+*Finding:* A declared Rabbit Hole appears verbatim as planned work. The builder
+has two contradictory instructions and no tiebreak.
+*Suggestion:* Either carve out an explicit exception in Rabbit Holes for the
+"bound must have **declined**" case, or restate tasks 3/4 as lower bounds.
+*Implementation Note:* The declining case genuinely needs a lower bound, not an
+equality: assert `counter.count >= 2 * 20` (sync) / `counter.count >= 20` (async)
+plus `counter.count > 2 * (3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN)`. An
+equality also breaks the moment `get_many_objects`' KeyField pre-slice path is
+ever reached, and it is only 40 today because `_execute_filter` leaves
+`kwargs["order_by"]` unset when `_sorted_field_order` is truthy (`query.py:3049-3055`).
+
+**C2 — The `Meta`-supplied *descending* branch of `_bound_keys_before_hydration`
+(`query.py:2329`) is left unpinned, and a regression there returns wrong rows
+silently.**
+*Location:* Data Flow step 6; Solution Key Elements; Tasks 3-4.
+*Finding:* The three planned models carry no second indexed field, so no planned
+test can reach the key-list-slice path with the bound still live. In the
+`Meta`-desc tests the Redis-side bound fires first, so
+`_bound_keys_before_hydration` returns at `if state.pushdown_limit: return db_keys`
+(`query.py:2321`) and never evaluates the `Meta` resolution at 2329. Only the
+*declining* branch of 2329 is covered (by the other-field tests). Dropping
+`or self.model_class._meta.order_by` from line 2329 would leave `desc=False`, slice
+the **ascending** head instead of the descending tail, and return the oldest rows
+— and every planned test would stay green. This is the exact "silently drop it"
+failure the plan exists to prevent.
+*Suggestion:* Give `PushdownDocMetaDesc` a `bucket = popoto.IndexedField(type=str,
+null=True)` and add one test that filters on it so the Redis bound declines and the
+key-list slice applies with `Meta`-supplied direction.
+*Implementation Note:* Model the query on the existing
+`test_key_list_slice_bounds_hydration_with_second_indexed_filter`
+(`tests/test_sorted_range_pushdown.py:255`): a second indexed predicate blocks
+`_sorted_pushdown_args` (its `remaining` check) but not
+`_bound_keys_before_hydration`, which is precisely the shape that reaches 2329
+with `state.pushdown_limit` still `None`.
+
+**C3 — Task 1 is `Parallel: true` but edits the same file as tasks 2-4.**
+*Location:* Step by Step Tasks, task 1 (`build-count`).
+*Finding:* `build-count` and `build-meta-models` both depend only on
+`read-current` and both modify `tests/test_sorted_range_pushdown.py`. Concurrent
+dispatch means two writers on one file.
+*Suggestion:* Set task 1 `Parallel: false`, or state that it must land before
+`build-meta-models`.
+*Implementation Note:* Task 1 needs no new model (it reuses `PushdownDoc` and
+`_seed()`), so serializing it first is free; sequencing 1 → 2 → 3 → 4 costs
+nothing and removes the hazard entirely.
+
+**C4 — Open Question 1 is unresolved, yet the acceptance numbers already assume
+its answer.**
+*Location:* Open Questions 1 vs. Success Criteria ("collects **36**", "`5 failed,
+3422 passed`") and Verification ("output contains 36").
+*Finding:* The plan asks the reader to "confirm, or cut" the two async `Meta`
+tests, but cutting them makes 36 → 34 and 3422 → 3420, turning two pinned
+success criteria into false failures.
+*Suggestion:* Resolve the question in the revision pass (the plan's own reasoning
+supports keeping them) and delete the option, or parameterize the two counts.
+*Implementation Note:* Keeping them is the defensible call: #602 armed the shared
+`_sorted_pushdown_args` / `_bound_keys_before_hydration` guards on the async path
+and added no `Meta` coverage, so async `Meta`-other-field is the only test that
+pins `query.py:2329` on the async side. Cutting it would leave the async decline
+branch entirely unguarded.
+
+**C5 — The last Prerequisite fails as written in the current shell.**
+*Location:* Prerequisites, row "A private test DB is exported".
+*Finding:* `POPOTO_TEST_DB` is **unset** in this checkout's environment; the check
+`test -n "$POPOTO_TEST_DB"` fails today. The other four prerequisites pass
+(`popoto.__file__` → `/Users/valorengels/src/popoto/src/popoto/__init__.py`;
+`numpy`/`sentence_transformers` import; `redis-cli -n 12 ping` → PONG;
+`git merge-base --is-ancestor 7f057f9 HEAD` → 0).
+*Suggestion:* State the concrete DB the build must export (the plan measured on
+12) rather than leaving `<n>` unbound, and make exporting it the first line of
+task 0.
+*Implementation Note:* `POPOTO_TEST_DB` only binds the pytest plugin — it does
+nothing for the ad-hoc `redis-cli -n <n> keys '*Pushdown*'` verification rows,
+which take `<n>` separately. Pin one number in both places or the leak check
+inspects a different DB than the suite used.
+
+### Nits
+
+- **N1** — Problem says "roughly 110 lines"; issue #559's Deliverable still says
+  "roughly 80 lines". Harmless, but Open Question 2's issue-body rewrite should
+  reconcile it.
+- **N2** — Task 6 / Verification expect `git diff --name-only origin/main` to show
+  only `tests/test_sorted_range_pushdown.py`, but this critique and the revision
+  pass both modify this plan doc. Say "plus `docs/plans/sorted_pushdown_coverage_gaps.md`".
+- **N3** — `--collect-only -q | tail -1` is fragile (pytest's last `-q` collect line
+  varies by plugin set). `--collect-only -q | grep -c '::'` is stable.
+- **N4** — Documentation says "no feature documentation changes required" while
+  Success Criteria carries "Documentation updated (`/do-docs`)". Boilerplate
+  tension; state that the docs stage is expected to be a no-op cascade.
+- **N5** — "Baseline commit: `7f057f9` (`origin/main` at revision time)" is no
+  longer the `origin/main` tip (three plan-doc commits have landed since). The
+  ancestor check still holds; the sentence should say "at or above".
+
+### Verified-correct (checked, no finding)
+
+Every file:line claim in the Freshness Check re-verified at `HEAD`:
+`_sorted_pushdown_args` 2405 / `Meta` resolution 2445; `_bound_keys_before_hydration`
+2284 / resolution 2329; `SORTED_PUSHDOWN_OVERFETCH_MARGIN = 8` at `constants.py:358`;
+`QueryBuilder.count` 1814 (`return self._query.count(**self._filters)`, no
+`_limit_value`); `Query.count` 3238; `_filter_keys_with_pushdown` sets
+`_pushdown_allowed` at 2277; `async_filter` 3525; slice call sites 3071 (sync) /
+3590 (async); `prepare_results` `_meta.order_by` fallback 3203-3204. Test module
+has **27 test functions** as stated. `git grep PushdownDocMeta tests/` is empty
+(Risk 4 holds). `Meta.order_by` field-existence validation confirmed at
+`base.py:460-464`, so `order_by = "doc_id"` is legal. `filter_for_keys_set`
+(`query.py:2503-2507`) resets `_sorted_field_order` / `_pending_client_filters` /
+`_pushdown_*` on entry, so task 1's ordering of assertions (b) and (c) on the shared
+per-class `Query` singleton is safe. Task 5's guard-mutation validation is sound:
+deleting either the 2445 or the 2329 `Meta` return reddens the other-field tests
+by different routes.
 
 ---
 
