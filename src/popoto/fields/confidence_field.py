@@ -42,6 +42,7 @@ import msgpack
 import redis
 
 from ..exceptions import ModelException
+from ..models.canonical_key import canonical_key_str
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
@@ -312,7 +313,7 @@ class ConfidenceField(Field):
             for partition_field_name in self.partition_by:
                 val = getattr(model_instance, partition_field_name, None)
                 if val is not None:
-                    key += f":{val}"
+                    key += f":{canonical_key_str(val)}"
         return key
 
     def get_data_hash_key_from_values(
@@ -347,7 +348,7 @@ class ConfidenceField(Field):
                         f"{', '.join(self.partition_by)}. "
                         f"Query must include filter(s) for: {pf}"
                     )
-                key += f":{val}"
+                key += f":{canonical_key_str(val)}"
         return key
 
     def get_old_data_hash_key(self, model_instance, field_name):
@@ -371,7 +372,7 @@ class ConfidenceField(Field):
             for pf in self.partition_by:
                 val = saved.get(pf)
                 if val is not None:
-                    key += f":{val}"
+                    key += f":{canonical_key_str(val)}"
         return key
 
     @classmethod

@@ -1249,6 +1249,16 @@ except Exception as e:
     to another), Popoto automatically removes the entry from the old partition's sorted
     set and adds it to the new one. No manual cleanup is needed.
 
+!!! note "Datetime partition values are canonicalized to UTC"
+    When a `partition_by` field holds a `datetime`, the partition segment is
+    canonicalized to UTC before it becomes part of the key. An aware value, its
+    equivalent in another offset, and the naive form of the same instant (naive is
+    assumed UTC) all collapse to one partition, so a query cannot miss rows just
+    because a value decoded differently than it was written. Every other partition
+    value type renders exactly as `str(value)`, unchanged. Setting
+    `POPOTO_DATETIME_KEY_LEGACY=1` restores the pre-canonical rendering for a fleet
+    mid-rollout, at the cost of reinstating the split.
+
 !!! note "Deprecation Notice"
     The `sort_by` parameter is deprecated and will be removed in a future major version.
     Use `partition_by` instead. `sort_by` still works but emits a `DeprecationWarning`.
@@ -2003,6 +2013,15 @@ TenantMemory(key="x", tenant="acme").save()
 # Writes to stream:mutations:beta
 TenantMemory(key="y", tenant="beta").save()
 ```
+
+!!! note "Datetime partition values are canonicalized to UTC"
+    If `_stream_partition_field` names a `datetime` field, the segment appended to the
+    stream name is canonicalized to UTC, so aware, offset and naive representations of
+    one instant route to a single stream rather than several. Every other partition
+    value type renders exactly as `str(value)`, so the `stream:mutations:acme` form
+    above is unchanged. A `None` partition value still writes to the unpartitioned
+    `stream:mutations`. Setting `POPOTO_DATETIME_KEY_LEGACY=1` restores the
+    pre-canonical rendering.
 
 ### Custom Events (Non-Save Operations)
 

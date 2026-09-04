@@ -58,6 +58,7 @@ from asyncio import to_thread
 from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
+from .canonical_key import canonical_key_str
 from .db_key import DB_key
 
 if TYPE_CHECKING:
@@ -435,7 +436,9 @@ class QueryBuilder:
 
         # Build the sorted set key respecting partition_by
         try:
-            partition_values = [str(self._filters[pf]) for pf in field.partition_by]
+            partition_values = [
+                canonical_key_str(self._filters[pf]) for pf in field.partition_by
+            ]
         except KeyError:
             missing = [pf for pf in field.partition_by if pf not in self._filters]
             raise QueryException(
@@ -1376,7 +1379,9 @@ class QueryBuilder:
         # --- SortedFieldMixin: use existing sorted set directly ---
         if isinstance(field, SortedFieldMixin):
             try:
-                partition_values = [str(self._filters[pf]) for pf in field.partition_by]
+                partition_values = [
+                    canonical_key_str(self._filters[pf]) for pf in field.partition_by
+                ]
             except KeyError:
                 missing = [pf for pf in field.partition_by if pf not in self._filters]
                 raise QueryException(
@@ -1418,7 +1423,9 @@ class QueryBuilder:
         model_name = model_class.__name__
 
         try:
-            partition_values = [str(self._filters[pf]) for pf in field.partition_by]
+            partition_values = [
+                canonical_key_str(self._filters[pf]) for pf in field.partition_by
+            ]
         except KeyError:
             missing = [pf for pf in field.partition_by if pf not in self._filters]
             raise QueryException(
