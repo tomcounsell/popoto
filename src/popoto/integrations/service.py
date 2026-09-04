@@ -39,7 +39,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from ..redis_db import OUTAGE_ERRORS
 from .config import redact_url, PENDING_TTL_SECONDS, MemoryConfig, bind_connection
@@ -79,7 +79,10 @@ ever firing its write event (or a crashed session) would otherwise grow the
 handoff list without bound."""
 
 
-def _decode_pending_entry(raw: Any) -> Tuple[bool, Optional[str], List[str]]:
+def _decode_pending_entry(
+    raw: Any,
+    on_corrupt: Optional[Callable[[BaseException], None]] = None,
+) -> Tuple[bool, Optional[str], List[str]]:
     """Decode one pending-list element into ``(tagged, turn_id, keys)``.
 
     The single decode step both branches of
@@ -95,13 +98,19 @@ def _decode_pending_entry(raw: Any) -> Tuple[bool, Optional[str], List[str]]:
     distinguishes an entry with *no* ``t`` key from one whose ``t`` is
     merely null, which is what bounds the upgrade-in-flight fallback.
     Anything else is corrupt and decodes to no keys rather than raising: a
-    poisoned entry must cost one turn's outcome report, not the turn.
+    poisoned entry must cost one turn's outcome report, not the turn. It is
+    still reported -- ``on_corrupt`` receives the decode error so the caller
+    can log and count it, because an entry silently decoding to nothing and
+    an entry legitimately holding no keys are otherwise indistinguishable in
+    the log, and only one of them is a bug.
     """
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8", errors="replace")
     try:
         elem = json.loads(raw)
-    except Exception:
+    except Exception as exc:
+        if on_corrupt is not None:
+            on_corrupt(exc)
         return False, None, []
     if isinstance(elem, dict):
         tagged = "t" in elem
@@ -110,6 +119,8 @@ def _decode_pending_entry(raw: Any) -> Tuple[bool, Optional[str], List[str]]:
     elif isinstance(elem, list):
         tagged, turn, keys = False, None, elem
     else:
+        if on_corrupt is not None:
+            on_corrupt(TypeError(f"pending entry is a {type(elem).__name__}"))
         return False, None, []
     if not isinstance(turn, str):
         turn = None
@@ -578,6 +589,16 @@ class MemoryService:
     def _pending_key(self, session_id: str) -> str:
         return f"{PENDING_KEY_PREFIX}:{self.config.agent_id}:{session_id}"
 
+    def _report_corrupt_pending(self, exc: BaseException) -> None:
+        """Log and count one undecodable pending entry.
+
+        Filed under ``pending_pop`` rather than a name of its own: from
+        ``doctor``'s side this is the same symptom as any other failed
+        outcome report, and a counter nobody recognizes is worse than a
+        familiar one.
+        """
+        self._record_failure("pending_pop", exc)
+
     def _has_pending_turn(self, redis_key: str, turn_id: str) -> bool:
         """Whether an entry for ``turn_id`` is already staged on the list."""
         for raw in self.redis.lrange(redis_key, 0, -1) or []:
@@ -631,6 +652,12 @@ class MemoryService:
                 # claimable entry that no pop will ever consume, not to
                 # serialize writers -- a lock would cost every turn a round
                 # trip to prevent a case that costs one stale list element.
+                #
+                # It keys on the turn id alone, so a second push for one turn
+                # carrying *different* records drops those records from the
+                # handoff: they are still injected and still suppressed, they
+                # just get no outcome report. One turn resolves once, which is
+                # the contract; a turn assembling twice is the anomaly.
                 if self._has_pending_turn(redis_key, turn_id):
                     return
                 payload = json.dumps(
@@ -736,7 +763,9 @@ class MemoryService:
             if turn_id and self.config.turn_keyed:
                 saw_tagged = False
                 for raw in self.redis.lrange(redis_key, 0, -1) or []:
-                    tagged, turn, keys = _decode_pending_entry(raw)
+                    tagged, turn, keys = _decode_pending_entry(
+                        raw, on_corrupt=self._report_corrupt_pending
+                    )
                     saw_tagged = saw_tagged or tagged
                     if turn is None or turn != turn_id:
                         continue
@@ -752,7 +781,9 @@ class MemoryService:
             raw = self.redis.lpop(redis_key)
             if not raw:
                 return []
-            _tagged, _turn, keys = _decode_pending_entry(raw)
+            _tagged, _turn, keys = _decode_pending_entry(
+                raw, on_corrupt=self._report_corrupt_pending
+            )
             return keys
         except Exception as exc:
             self._record_failure("pending_pop", exc)

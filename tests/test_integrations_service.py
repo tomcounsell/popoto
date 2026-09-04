@@ -546,6 +546,11 @@ def test_corrupt_pending_entry_is_logged_and_skipped(tmp_path):
 
     assert service._pop_pending("s1", turn_id="t1") == [key_of(record)]
 
+    # Skipped, but not silently: an entry that decodes to nothing and an
+    # entry that legitimately holds no keys must be distinguishable here.
+    assert service.status()["counters"].get("pending_pop") == 1
+    assert "JSONDecodeError" in service.config.log_path.read_text()
+
     # And the same garbage on the positional path is a quiet no-op.
     assert service.feedback("s1", outcome="acted", turn_id=None) == 0
     assert POPOTO_REDIS_DB.llen(redis_key) == 0
