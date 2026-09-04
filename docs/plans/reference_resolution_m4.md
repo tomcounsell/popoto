@@ -1026,32 +1026,92 @@ all edit call sites that tasks 1–2 define.
 
 ## Verification
 
+**Run protocol.** Before the table, export a pinned test database — `export POPOTO_TEST_DB=<n>`
+where `<n>` is free, **not 15** (every worktree shares it) and **not 0** (the live agent store;
+the plugin rejects it anyway). Avoid **12**, which `tests/test_pytest_plugin.py`'s
+`_ENV_OVERRIDE_CHILD_DB` subprocess tests use. Every measurement below must be reported *with* the
+database number and the redis-py version; a bare count is not usable (CLAUDE.md, `do-sdlc.md`).
+
+Round 1 found five grep rows broken by escaped alternations under `-E` (`a\|b` matches a literal
+pipe, so four anti-criterion guards were permanently false-green). Every row below was re-checked
+mechanically at revision time. Anti-criterion rows now use `! grep -q …` with an **exit-code**
+expectation rather than `grep -c`, because `grep -c` over multiple files prints one `path:count`
+line per file — never a single number — and exits 1, not 0, when nothing matches.
+
 | Check | Command | Expected |
 |-------|---------|----------|
 | New suite passes | `python -m pytest tests/test_reference_resolution.py -q` | exit code 0 |
 | M3 suite still passes | `python -m pytest tests/test_auditable_extraction.py -q` | exit code 0 |
 | M1/V0 suites unmoved | `python -m pytest tests/test_provenance_journal.py tests/test_validity_field.py -q` | exit code 0 |
 | Constants sync | `python -m pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
-| Full suite | `python -m pytest -q` | exit code 0 |
-| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Full suite | `python -m pytest -q` | exit code 0 — see **Full-suite gate** below |
 | Format clean | `python -m black --check src/ tests/` | exit code 0 |
-| Type check | `python -m mypy src/` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Type check (delta, not exit code) | `python -m mypy src/ 2>&1 \| tail -1`, run on base and on branch in the same venv | branch error count **≤** base count — see **mypy gate** below |
 | Docs build | `python -m mkdocs build --strict` | exit code 0 |
-| All four statuses tested | `grep -c -E "evidence_gap\|indeterminate\|res:assumed\|res:resolved" tests/test_reference_resolution.py` | output > 3 |
-| Resolution core is Redis-free | `grep -cE "^from \.\.(fields\|models)\|POPOTO_REDIS_DB\|import redis" src/popoto/extraction/resolution.py` | match count == 0 |
-| No conflict-absorbing retry (anti-criterion, #588) | `grep -c "get_valid_from" src/popoto/extraction/resolution.py src/popoto/extraction/resolution_log.py src/popoto/extraction/decision_log.py` | match count == 0 |
-| No entity-graph rabbit hole (anti-criterion) | `grep -ciE "entity_graph\|cross_session\|entity_link" src/popoto/extraction/resolution.py` | match count == 0 |
-| No date-parser dependency (anti-criterion) | `grep -cE "dateparser\|dateutil" src/popoto/extraction/resolution.py pyproject.toml` | match count == 0 |
-| No numeric confidence field reintroduced (anti-criterion) | `grep -ciE "confidence *[:=]" src/popoto/extraction/resolution.py src/popoto/extraction/resolution_log.py` | match count == 0 |
-| verbatim never rewritten (anti-criterion) | `grep -c "verbatim=resolution" src/popoto/extraction/decision_log.py` | match count == 0 |
-| M4 constants pinned in Defaults | `grep -c "M4_" src/popoto/fields/constants.py` | output > 9 |
-| Kill switch exists | `python -c "from popoto.fields.constants import Defaults; print(Defaults.M4_RESOLUTION_ENABLED)"` | output contains True |
-| Stale #563 attribution removed | `grep -c "#563" src/popoto/recipes/provenance_journal.py` | match count == 0 |
+| All four statuses tested | `grep -cE "evidence_gap\|indeterminate\|res:assumed\|res:resolved" tests/test_reference_resolution.py` | output > 3 |
+| Degraded tag asserted (fifth literal) | `grep -c "res:degraded" tests/test_reference_resolution.py` | output > 0 |
+| Resolution core is Redis-free | `! grep -qE "POPOTO_REDIS_DB\|^import redis\|^from \.\.redis_db\|^from \.\.models" src/popoto/extraction/resolution.py` | exit code 0 |
+| No conflict-absorbing retry (anti-criterion, #588) | `! grep -q "get_valid_from" src/popoto/extraction/resolution.py src/popoto/extraction/resolution_log.py src/popoto/extraction/decision_log.py` | exit code 0 |
+| No entity-graph rabbit hole (anti-criterion) | `! grep -qiE "entity_graph\|cross_session\|entity_link" src/popoto/extraction/resolution.py` | exit code 0 |
+| No date-parser dependency (anti-criterion) | `! grep -qE "dateparser\|dateutil" src/popoto/extraction/resolution.py pyproject.toml` | exit code 0 |
+| No numeric confidence field reintroduced (anti-criterion) | `! grep -qiE "confidence *[:=]" src/popoto/extraction/resolution.py src/popoto/extraction/resolution_log.py` | exit code 0 |
+| Non-finite floats guarded in the pure module (blocker 3) | `grep -c "isfinite" src/popoto/extraction/resolution.py` | output > 1 |
+| M4 constants pinned in Defaults | `grep -c "M4_" src/popoto/fields/constants.py` | output > 10 (eleven constants) |
+| Kill switch exists | `python -c "from popoto.fields.constants import Defaults; print(Defaults.M4_RESOLUTION_ENABLED)"` | output contains `True` |
+| `valid_from` role set is a constant, not a literal (Q4) | `python -c "from popoto.fields.constants import Defaults; print(Defaults.M4_VALID_FROM_ROLES)"` | output contains `onset` |
+| Stale #563 attribution removed | `! grep -q "#563" src/popoto/recipes/provenance_journal.py` | exit code 0 |
 | Feature doc in nav | `grep -c "features/reference-resolution.md" mkdocs.yml` | output > 0 |
 
-Run every `pytest` row with `POPOTO_TEST_DB` pinned to a free database (not 15, not 0) and state
-the database alongside the result. The six tests that fail by construction on a non-15 DB
-(`docs/sdlc/do-sdlc.md`) are expected noise, not regressions.
+**Note on the two `grep -cE` rows above.** Both target a *single* file, where `grep -c` does print a
+bare number; the `\|` inside them is markdown table escaping only — the shell sees `|`. When copying
+a row out of this table into a terminal, unescape the pipes. This was verified empirically at
+revision time: on a file containing both words, `grep -c -E "a\|b"` prints `0` and exits 1, while
+`grep -cE "a|b"` prints `2`.
+
+### Full-suite gate (round-1 blocker 2)
+
+Round 1 was right that "exit code 0" contradicted the plan's own footnote that six tests fail by
+construction on a non-15 DB while every pytest row mandates a non-15 DB. The contradiction is
+resolved by measurement, not by an allowlist — **the footnote was stale**:
+
+- The set named in `docs/sdlc/do-sdlc.md:123-131` is `tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db`,
+  `::test_swap_happens_before_test_modules_are_imported`,
+  `TestAsyncIntegration::test_async_connection_on_test_db`,
+  `TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db`,
+  `::test_canonical_redis_db_on_test_db`, and `tests/test_version.py::test_version_matches_pyproject`.
+- **PR #605 (`bb38f42`, "resolve the expected test DB instead of hardcoding 15") deleted every
+  `assert db == 15`.** Those five now resolve the expected database through the session-scoped
+  `expected_test_db` fixture / `_resolve_test_db(pytestconfig)`
+  (`tests/test_pytest_plugin.py:55-69, 106-112, 114-131, 225-238, 336, 414-432`). The only
+  surviving hardcoded `15`s are at `:832` and `:866`, inside subprocess fixtures that pin their
+  own DB and are unaffected by `POPOTO_TEST_DB`.
+- **Measured at `da8c98d`, redis-py 7.1.1, `POPOTO_TEST_DB=11`:**
+  `python -m pytest tests/test_pytest_plugin.py tests/test_version.py -q` → **45 passed**. The
+  expected-noise set is **empty** on a pinned non-15 DB.
+
+So the gate is plain **exit code 0**, and it is satisfiable. Residual rule for the validator: if one
+of those six *does* fail on the chosen DB, (a) name it, (b) re-run that exact node ID with
+`POPOTO_TEST_DB=15`, and (c) only then classify it as environmental. Anything failing outside that
+named set is a regression. `test_version_matches_pyproject` is sensitive to a **stale editable
+install**, not to the DB — the Prerequisites table covers that separately.
+
+### mypy gate (round-1 blocker 1)
+
+`python -m mypy src/` does **not** exit 0 on this repo: measured at `da8c98d` under **redis-py
+7.1.1**, it reports `Found 1178 errors in 71 files (checked 98 source files)`. An exit-code-0 row
+was unsatisfiable and is replaced by a delta:
+
+```bash
+python -m mypy src/ 2>&1 | tail -1   # base (merge-base checkout, same venv)
+python -m mypy src/ 2>&1 | tail -1   # branch (same venv, same redis-py)
+```
+
+Pass condition: **branch error count ≤ base error count**, with the redis-py version stated
+alongside both numbers. Per CLAUDE.md the delta is redis-py-version-dependent — 7.x flags
+`Awaitable[T] | T` sites that 8.x narrows — so base and branch numbers measured in *different*
+environments are not a delta and must not be reported as one. Recorded base for this work:
+**1178 errors / 71 files at `da8c98d`, redis-py 7.1.1, Python 3.12.13**.
 
 ## Critique Results
 
