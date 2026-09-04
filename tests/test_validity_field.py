@@ -976,17 +976,46 @@ class TestSupersedeLuaPhaseSplit:
         problems = module.check(module.extract_script(module.SOURCE.read_text()))
         assert problems == []
 
-    def test_the_checker_detects_a_write_above_the_marker(self):
-        """The guard's own guard: prove the matcher can see a bad ordering."""
+    @pytest.mark.parametrize(
+        "write",
+        [
+            "redis.call('ZADD', KEYS[1], 0, 'x')",
+            # The point of the read-allowlist inversion: a command nobody
+            # thought to enumerate must still be caught.
+            "redis.call('SADD', KEYS[1], 'x')",
+            "redis.call('ZINCRBY', KEYS[1], 1, 'x')",
+            "redis.call('EXPIRE', KEYS[1], 60)",
+            # Lua takes either quote style; so must the guard.
+            'redis.call("HSET", KEYS[1], "f", "v")',
+        ],
+    )
+    def test_the_checker_detects_a_write_above_the_marker(self, write):
+        """The guard's own guard, at the boundary rather than one known entry.
+
+        A write-allowlist would pass four of these five silently.
+        """
         module = self._load()
         bad = (
             "if mode ~= 'open' then\n"
             "  redis.call('EXISTS', KEYS[1])\n"
             "end\n"
-            "redis.call('ZADD', KEYS[1], 0, 'x')\n"
+            f"{write}\n"
             "-- MUTATION PHASE\n"
         )
-        assert any("ZADD" in problem for problem in module.check(bad))
+        assert module.check(bad) != []
+
+    def test_the_checker_does_not_flag_reads_above_the_marker(self):
+        """The validation phase is *supposed* to read; only writes are bugs."""
+        module = self._load()
+        good = (
+            "if mode ~= 'open' then\n"
+            "  redis.call('EXISTS', KEYS[1])\n"
+            "  local s = redis.call('ZSCORE', KEYS[1], old_member)\n"
+            "end\n"
+            "-- MUTATION PHASE\n"
+            "redis.call('ZADD', KEYS[1], 0, 'x')\n"
+        )
+        assert module.check(good) == []
 
 
 # ---------------------------------------------------------------------------

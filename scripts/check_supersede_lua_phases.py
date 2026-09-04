@@ -9,8 +9,11 @@ rather than a comment nobody re-reads.
 It prints ``BAD: <reason>`` and exits 1 when:
 
 * the ``-- MUTATION PHASE`` marker is missing;
-* any writing ``redis.call`` (``ZADD``/``HSET``/``SET``/``ZREM``/``HDEL``/``DEL``)
-  appears above the marker;
+* any ``redis.call`` above the marker names a command outside :data:`READ_COMMANDS`
+  -- an allowlist of *reads*, deliberately inverted. Enumerating writes instead
+  would fail open: the next edit to reach for ``SADD``, ``ZINCRBY``, ``EXPIRE`` or
+  any command nobody thought to list would pass a gate whose entire purpose is
+  catching the edit nobody thought about;
 * the first ``EXISTS`` is not inside the ``mode ~= 'open'`` block -- gating mode
   ``'open'`` would fail every save on a model whose hash is written after the
   field hooks (plan Risk 1).
@@ -29,7 +32,18 @@ SOURCE = pathlib.Path(__file__).resolve().parent.parent / (
 )
 
 MARKER = "-- MUTATION PHASE"
-WRITE_COMMANDS = ("ZADD", "HSET", "SET", "ZREM", "HDEL", "DEL")
+
+#: Commands the validation phase is allowed to issue. Everything else counts as
+#: a write. Reads only -- adding to this list is a deliberate act, which is the
+#: point: the failure mode worth engineering against is an unnoticed write, not
+#: an unnoticed read.
+READ_COMMANDS = frozenset(
+    {"EXISTS", "GET", "MGET", "ZSCORE", "ZRANGEBYSCORE", "HGET", "HMGET", "TYPE"}
+)
+
+#: Both quote styles, since Lua accepts either and a guard that reads only one
+#: is a guard with a hole in it.
+CALL_RE = re.compile(r"""redis\.call\(\s*['"]([A-Za-z]+)['"]""")
 
 
 def extract_script(text: str) -> str:
@@ -49,14 +63,15 @@ def check(body: str) -> "list[str]":
 
     for lineno, line in enumerate(head.splitlines(), 1):
         code = line.split("--", 1)[0]
-        for command in WRITE_COMMANDS:
-            if re.search(r"redis\.call\(\s*'%s'" % command, code):
+        for command in CALL_RE.findall(code):
+            if command.upper() not in READ_COMMANDS:
                 problems.append(
-                    f"write command {command} at line {lineno} of the "
-                    "validation phase (above the MUTATION PHASE marker)"
+                    f"non-read command {command} at line {lineno} of the "
+                    "validation phase (above the MUTATION PHASE marker); if it "
+                    "is genuinely a read, add it to READ_COMMANDS"
                 )
 
-    exists_match = re.search(r"redis\.call\(\s*'EXISTS'", body)
+    exists_match = re.search(r"""redis\.call\(\s*['"]EXISTS['"]""", body)
     if exists_match is None:
         problems.append("no EXISTS membership guard in the script")
     else:
