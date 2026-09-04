@@ -411,10 +411,8 @@ below apply to both unless noted.
    mechanism behind gap 1. (Scoping added by round-2 critique N2: `QueryBuilder.count`
    short-circuits `if self._q_objects: return len(self.all())` at 1821-1822 *before*
    `return self._query.count(**self._filters)`, and `.all()` **does** forward
-   `_limit_value`. Not actionable for this build — no planned test uses Q objects,
-   and the Q + partitioned-`SortedField` shape raises `KeyError: 'room_id'` at
-   `sorted_field_mixin.py:753` independently — but do not generalize the invariant
-   to the Q form. See No-Gos.)
+   `_limit_value`. Not actionable for this build — no planned test uses Q objects
+   — but do not generalize the invariant to the Q form. See No-Gos.)
 3. **Arming the gate**:
    - sync — `Query._execute_filter` sets `self._pushdown_allowed = _allow_pushdown`
      (`query.py:3040`), `finally`-reset at `3044`.
@@ -764,8 +762,16 @@ that resolves to the familiar `5 failed, 3424 passed, 26 skipped`.
 - **The `Q`-object form of `count()`** (round-2 critique N2). `QueryBuilder.count`
   short-circuits to `len(self.all())` when `_q_objects` is set, and `.all()` *does*
   forward `_limit_value` — so the "count is never truncated" invariant is scoped to
-  the non-Q path. Untestable here anyway: `Q` + a partitioned `SortedField` raises
-  `KeyError: 'room_id'` at `sorted_field_mixin.py:753`. File separately if wanted.
+  the non-Q path. Out of scope because a fix is a production change and this issue
+  is test-only, **not** because the shape is untestable. An earlier draft of this
+  No-Go claimed `Q` + a partitioned `SortedField` raises `KeyError: 'room_id'` at
+  `sorted_field_mixin.py:753`; that is wrong and was corrected during PR #608
+  review. No `KeyError` occurs. The partition key must simply travel *inside* the
+  `Q` — `filter(room_id=...).filter(q)` raises `QueryException` from
+  `sorted_field_mixin.py:760` because `evaluate_q` (`q.py:222`) evaluates each `Q`
+  without sibling kwargs, while `filter(Q(room_id=..., last_active_at__gte=0))`
+  runs and returns the truncated tally (5 instead of 20 at `limit(5)` over a
+  20-row partition). Filed as **#610**.
 - **`Meta.order_by` validation edge cases** (non-string, unknown field name).
   Validated at model-definition time, not query time.
 - **Anything outside `tests/`.** This issue is test-only.
