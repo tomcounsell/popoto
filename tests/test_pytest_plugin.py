@@ -36,9 +36,11 @@ _DB_AT_IMPORT_TIME = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.
     "db", 0
 )
 
-# The DB that TestIsolationWarning._inert_env pins children to via REDIS_URL, and
-# that the inert-plumbing test seeds its marker key on. Single source of truth so
-# the helper's URL and the parent-side probe client can never drift apart.
+# Mirrors the DB that TestIsolationWarning._inert_env pins children to via
+# REDIS_URL (#595, a No-Go to edit), and the DB the inert-plumbing test seeds its
+# marker key on. If that helper's DB ever changes, this must change with it --
+# the probe sources below interpolate this constant so a mismatch fails loudly
+# rather than silently asserting against the wrong database.
 _INERT_PROBE_DB = 14
 
 # The DB the env-beats-ini child is pinned to. Deliberately a literal, not a value
@@ -61,8 +63,6 @@ def expected_test_db(pytestconfig):
     make those guards conditional (#577). Such tests resolve inline instead, after
     the guard has already run.
     """
-    from popoto.pytest_plugin import _resolve_test_db
-
     db = _resolve_test_db(pytestconfig)
     if db is None:
         pytest.skip("plugin is inert (no popoto_test_db opt-in) — nothing to assert")
@@ -412,7 +412,7 @@ class TestSrcPopotoImportPaths:
         )
 
     def test_canonical_redis_db_on_test_db(self, pytestconfig):
-        """The canonical popoto.redis_db.POPOTO_REDIS_DB must be on DB 15.
+        """The canonical popoto.redis_db.POPOTO_REDIS_DB must be on the resolved test DB.
 
         Baseline check that confirms the session fixture has run and the canonical
         connection has been swapped to the test DB. This test runs in all environments
@@ -1061,14 +1061,21 @@ class TestResolutionChain:
         repo_root = TestIsolationWarning._repo_root()
         probe = tmp_path / "test_env_beats_ini_probe.py"
         probe.write_text(textwrap.dedent("""
-                def test_probe():
+                def test_probe(pytestconfig):
+                    # Prove the ini opt-in really reached this child: without
+                    # this, the test would still pass on the env var alone and
+                    # the "beats" half would be hollow.
+                    assert pytestconfig.getini("popoto_test_db") == "15"
+
                     from popoto import redis_db
 
                     db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
                         "db"
                     )
-                    assert db == 12, f"expected env override to win with DB 12, got {db}"
-            """))
+                    assert db == __CHILD_DB__, (
+                        f"expected env override to win with DB __CHILD_DB__, got {db}"
+                    )
+            """).replace("__CHILD_DB__", str(_ENV_OVERRIDE_CHILD_DB)))
         env = TestIsolationWarning._base_env(repo_root)
         env["POPOTO_TEST_DB"] = str(_ENV_OVERRIDE_CHILD_DB)
         env["REDIS_URL"] = f"redis://localhost:6379/{_INERT_PROBE_DB}"
@@ -1131,8 +1138,10 @@ class TestResolutionChain:
                     db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
                         "db"
                     )
-                    assert db == 14, f"inert plugin swapped the DB: got {db}"
-            """))
+                    assert db == __PROBE_DB__, (
+                        f"inert plugin swapped the DB: got {db}"
+                    )
+            """).replace("__PROBE_DB__", str(_INERT_PROBE_DB)))
 
         try:
             probe_client.set(marker, "survives")
