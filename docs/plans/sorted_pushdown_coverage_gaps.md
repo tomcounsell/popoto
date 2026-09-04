@@ -451,7 +451,7 @@ deliverables and pre-built both async helpers).
 | venv resolves to the checkout under test | `.venv/bin/python -c "import popoto; print(popoto.__file__)"` and confirm the path is this checkout's `src/` | CLAUDE.md worktree gotcha #1 — this exact mistake invalidated the prior plan's first spike pass |
 | Checkout is at or above `7f057f9` | `git merge-base --is-ancestor 7f057f9 HEAD` | #602 must be present; the whole re-scope depends on it |
 | Full extras installed (no ~95 deselects) | `.venv/bin/python -c "import numpy, sentence_transformers"` | CLAUDE.md gotcha #2 |
-| Redis/Valkey reachable on the chosen DB | `redis-cli -n <N> ping` | Suite needs a live server |
+| Redis/Valkey reachable on the chosen DB | `redis-cli -n 12 ping` | Suite needs a live server |
 | A private test DB is exported | `export POPOTO_TEST_DB=12; test "$POPOTO_TEST_DB" != 0` | DB 15 is shared by every concurrent worktree; DB 0 is the live agent store |
 
 **The build pins `POPOTO_TEST_DB=12` (critique C5).** It was unset when the
@@ -807,7 +807,7 @@ changes required" and "the docs stage must run" are not in tension.
 
 - **Builder (pushdown-tests)**
   - Name: `pushdown-test-builder`
-  - Role: write the six new tests, the three `Meta` model classes, and the
+  - Role: write the eight new tests, the three `Meta` model classes, and the
     seeding helper in `tests/test_sorted_range_pushdown.py`
   - Agent Type: test-engineer
   - Resume: true
