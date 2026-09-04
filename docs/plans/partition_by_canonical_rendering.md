@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/575, https://github.com/tomcounsell/popoto/issues/570
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-04T07:20:30Z
+revision_applied_at: 2026-09-04T07:38:41Z
 ---
 
 # #575 / #570 — Route SortedField(partition_by=...) values through canonical_key_str()
@@ -262,8 +262,20 @@ and so all sites agree with the #548-canonical stored key that the orphan purge 
      Success Criterion 2 depends on, so the note lands in context.
    - `docs/multi-tenancy.md:78` — the existing `partition_by` caveat paragraph gains the same
      one-liner.
-   - `CHANGELOG.md` entry naming the key-bytes change for datetime partitions only, plus the
-     three-clause orphan-recovery sentence from the Risks item.
+   - `CHANGELOG.md` entry naming the key-bytes change for datetime partitions only. It must
+     **not** advertise `Model.clean_indexes()` as the recovery route — it cannot recover these
+     keys (see the Risks item). Required content, three clauses:
+     1. **What changed** — partition segments for `datetime` `partition_by` values are now
+        rendered canonically (UTC); every other partition value type is byte-identical to before.
+     2. **Precondition** — only deployments that declare a datetime `partition_by` are affected.
+        Absent datetime partitions in the wild, there is nothing to do and no migration is needed.
+     3. **Exposure for affected deployments** — pre-change partition keys (sorted-field ZSETs,
+        ConfidenceField companion hashes, EventStream keys) are left stranded: unreferenced by
+        reads and writes, but not deleted. There is **no** automatic cleaner — `clean_indexes()`
+        only removes index members whose instance hash no longer exists, and these members are
+        live, so it removes nothing. Recovery, if wanted, is manual and cheap: re-save the
+        affected rows (which writes the canonical key), then `SCAN` the legacy partition key
+        patterns and `DEL` them.
    *Verify:* `mkdocs build --strict` succeeds (or `scripts/ci-local.sh docs`);
    `grep -c -i "canonicaliz" docs/fields.md docs/multi-tenancy.md` each ≥ 1.
 9. **PR body.** Contains `Closes #575` and `Closes #570`, plus the escape-hatch disclosure if any
@@ -343,20 +355,26 @@ key-bytes change for a **non**-datetime type — stop and report (scope guard).
 - **1.8.0/1.9.x forward-compat**: partition key bytes change only for datetime partitions,
   which the docs never advertised and no report uses. State this in the CHANGELOG anyway
   (lesson of #476).
-- **Orphan recovery differs by field type (round-2 CONCERN).** For a deployment that *does* have
-  a datetime `partition_by`, pre-change keys become unreachable, and "no migration tooling"
-  (`## No-Gos`) must not be read as "nothing to recover". The CHANGELOG note needs three clauses:
-  1. **Sorted-set orphans are recoverable** — `Model.clean_indexes()` (`base.py:3686`) scans all
-     five index types including sorted fields.
-  2. **ConfidenceField / EventStream orphans have no cleaner** — their companion hashes
-     (`$ConfidencF:{Model}:{field}:data:{partition}`) and stream keys (`stream:{name}:{partition}`)
-     are not index entries; recover by hand via `SCAN` on those patterns.
-  3. **Precondition** — only datetime `partition_by` values are affected; all other types are
-     byte-identical, so most deployments have nothing to do.
-  Note also that the on_save/on_delete old-partition cleanup (sites 2 and 3) builds the *canonical*
-  old key from `_saved_field_values` after this change, so it cannot remove a legacy-keyed member
-  — the one automatic cleanup that exists is blinded by the same change. This is documentation
-  only and does not breach the `## No-Gos` "no migration/audit tooling" line.
+- **Stranded legacy partition keys — no automatic cleaner exists (round-2 CONCERN, corrected by
+  the round-3 BLOCKER).** For a deployment that *does* declare a datetime `partition_by`,
+  pre-change keys become unreferenced and stay resident. `Model.clean_indexes()` does **not**
+  recover them, and the plan must not claim it does: `_collect_orphans` keeps a key only when
+  `EXISTS` on the referenced instance hash **misses**, and the sorted-field pass *does* discover
+  the legacy ZSETs (it scans `redis_key + "*"`), but every member it checks points at a live
+  instance hash — so `orphans` comes back empty and nothing is removed. The legacy ZSET therefore
+  persists indefinitely as a shadow index: never read (queries build the canonical key), never
+  written, never collected. The same holds for ConfidenceField companion hashes
+  (`$ConfidencF:{Model}:{field}:data:{partition}`) and EventStream keys
+  (`stream:{name}:{partition}`), which are not index entries at all. The one automatic cleanup
+  that does exist — the on_save/on_delete old-partition removal at sites 2 and 3 — is blinded by
+  this same change: after it, it builds the *canonical* old key from `_saved_field_values` and so
+  cannot match a legacy-keyed member. **The only recovery path, identical for all three field
+  types, is manual:** re-save the affected rows (a re-save writes the canonical key via `on_save`)
+  and then `SCAN` the legacy partition key patterns and `DEL` them. **Precondition:** only
+  datetime `partition_by` values are affected — every other type is byte-identical — so a
+  deployment with no datetime partition declaration has nothing to do. This is documentation only
+  and does not breach the `## No-Gos` "no migration/audit tooling" line; the #476 lesson is to be
+  honest about mixed-representation exposure, not to invent a procedure.
 - **DB 0 hazard**: ad-hoc repro scripts default to DB 0, a LIVE agent store. Use
   `POPOTO_TEST_DB=9` and pin `REDIS_URL=redis://localhost:6379/9` before `import popoto` (#577).
 
@@ -385,7 +403,8 @@ key-bytes change for a **non**-datetime type — stop and report (scope guard).
 
 - `docs/fields.md:1205` `## partition_by` — datetime partition values canonicalize to UTC.
 - `docs/multi-tenancy.md:78` — same one-liner in the existing `partition_by` caveat paragraph.
-- `CHANGELOG.md` — key-bytes change (datetime partitions only) + orphan-recovery clauses.
+- `CHANGELOG.md` — key-bytes change (datetime partitions only) + stranded-key exposure clauses
+  (no automatic cleaner; manual re-save + `SCAN`/`DEL` only).
 - **Not** `docs/query.md`: it has zero partition content (round-2 CONCERN); dropped as a target
   rather than left naming a section that does not exist.
 
@@ -562,3 +581,12 @@ builders, so it adds no twelfth site.
 | CONCERN | history-consistency | `## Solution` claims the change makes "all sites agree with the #548-canonical stored key that the orphan purge parses back out". That is false for 4 of the 11 sites and contradicts the Freshness Check's own limit #1 and the `## No-Gos` escaping line. `DB_key.__str__` renders `self.clean(canonical_key_str(partial))` (`db_key.py:281`), and `clean()` escapes hyphens **and** colons: the canonical `2026-08-07T05:00:00.000000Z` becomes `2026/-08/-07T05{&#58;}00{&#58;}00.000000Z`, whereas ConfidenceField (`key += f":{val}"`) and EventStream (`f"{base_key}:{partition_value}"`) emit the raw form. Post-change those keys still share no bytes with any `DB_key`-built key. A builder acting on the Solution sentence would reach for `DB_key.clean()`, which the No-Gos forbid. | Qualify the sentence: the agreement claim holds for the **seven DB_key-routed SortedField sites only**; the four raw-concatenation sites (ConfidenceField ×3, EventStream ×1) are aligned with *each other and with themselves across time*, not with the stored key. State the escaped-vs-raw byte example so the limit is unmissable at the point BUILD reads it. |
 | CONCERN | risk-robustness (operator) | The CHANGELOG's third clause tells operators "only datetime `partition_by` values are affected; most deployments have nothing to do", but gives them no way to learn which bucket they are in. Combined with the corrected clause 1, an affected operator gets neither detection nor an automatic fix. | Ship a detection snippet in the CHANGELOG alongside the precondition. Verified working: `field.partition_by` is the partition-name tuple and `Model._meta.fields[pf].type` is the Python type, so `[(M.__name__, f, pf) for f in M._meta.sorted_field_names for pf in (M._meta.fields[f].partition_by or ()) if M._meta.fields[pf].type is datetime.datetime]` enumerates affected declarations; run the same comprehension over `M._meta.fields` for `ConfidenceField` and over `_stream_partition_field` for `EventStreamMixin`. |
 | NIT | history-consistency | The round-2 Risks item cites `Model.clean_indexes()` at **`base.py:3686`**; `clean_indexes` is defined at **3711**, and 3686 is inside `_purge_orphan_keys` (the `for field_name in meta.sorted_field_names:` loop). This is the same raw-line-number drift the round-1 NIT eliminated, whose stated remedy was "All line citations replaced by symbol anchors" — round 2 reintroduced one, pointing into the wrong method. | Drop the line number; anchor on the symbol `Model.clean_indexes` as round 1 required. |
+
+## Deviations / Notes
+
+- supervisor-authorized G2 override, path a, round-3 blocker folded
+- Round-3 pass scope was exactly the round-3 BLOCKER (the false `clean_indexes()` recovery claim
+  in `## Risks / Rabbit Holes` and the CHANGELOG wording it fed in task 8), plus the
+  `revision_applied` / `revision_applied_at` stamp. No further critique dispatch on this run;
+  BUILD follows immediately. The round-3 NIT (raw line number `base.py:3686`) is resolved
+  incidentally — the rewritten Risks item anchors on symbols only.
