@@ -56,8 +56,14 @@ from .fields.existence_filter import ExistenceFilter, FrequencySketch
 from .fields.bm25_field import BM25Field
 from .fields.constants import TemporalPeriod, InteractionWeight, Defaults
 from .fields.observation import ObservationProtocol, RecallProposal
-from .fields.validity_field import ValidityField
-from .fields.supersession import SupersessionProtocol
+from .fields.validity_field import (
+    ValidityField,
+    ValidityError,
+    ValidityMemberAbsentError,
+    ValidityCloseBeforeStartError,
+    ValidityValidFromConflictError,
+)
+from .fields.supersession import SupersessionProtocol, SupersedeResult
 from .fields.prediction_ledger import PredictionLedgerMixin
 from .fields.geo_field import GeoField
 
@@ -217,7 +223,12 @@ __all__ = [
     "ObservationProtocol",
     "RecallProposal",
     "ValidityField",
+    "ValidityError",
+    "ValidityMemberAbsentError",
+    "ValidityCloseBeforeStartError",
+    "ValidityValidFromConflictError",
     "SupersessionProtocol",
+    "SupersedeResult",
     "PredictionLedgerMixin",
     "GeoField",
     "DataFrameField",

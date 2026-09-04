@@ -1957,7 +1957,9 @@ class TestExcludeKeys:
         agent = "excl-none"
         self._seed(agent, 3)
         a = self._assembler()
-        base = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        base = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         with_none = a.assemble(
             query_cues={"topic": "excl"},
             partition_filters={"agent_id": agent},
@@ -1970,7 +1972,9 @@ class TestExcludeKeys:
         agent = "excl-empty"
         self._seed(agent, 3)
         a = self._assembler()
-        base = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        base = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         empty = a.assemble(
             query_cues={"topic": "excl"},
             partition_filters={"agent_id": agent},
@@ -1982,7 +1986,9 @@ class TestExcludeKeys:
         agent = "excl-drop"
         self._seed(agent, 3)
         a = self._assembler()
-        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        first = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         assert first.records
         drop = first.records[0].db_key.redis_key
 
@@ -1999,7 +2005,9 @@ class TestExcludeKeys:
         agent = "excl-backfill"
         self._seed(agent, 4)
         a = self._assembler(max_items=2)
-        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        first = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         assert len(first.records) == 2
         drop = {r.db_key.redis_key for r in first.records}
 
@@ -2016,7 +2024,9 @@ class TestExcludeKeys:
         agent = "excl-not-delete"
         self._seed(agent, 2)
         a = self._assembler()
-        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        first = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         drop = first.records[0].db_key.redis_key
 
         a.assemble(
@@ -2024,14 +2034,18 @@ class TestExcludeKeys:
             partition_filters={"agent_id": agent},
             exclude_keys={drop},
         )
-        again = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        again = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         assert drop in {r.db_key.redis_key for r in again.records}
 
     def test_excluding_everything_yields_empty_not_error(self):
         agent = "excl-all"
         self._seed(agent, 2)
         a = self._assembler()
-        first = a.assemble(query_cues={"topic": "excl"}, partition_filters={"agent_id": agent})
+        first = a.assemble(
+            query_cues={"topic": "excl"}, partition_filters={"agent_id": agent}
+        )
         every = {r.db_key.redis_key for r in first.records}
 
         result = a.assemble(
@@ -2040,7 +2054,6 @@ class TestExcludeKeys:
             exclude_keys=every,
         )
         assert result.records == []
-
 
     def test_suppression_does_not_starve_retrieval(self):
         """Headroom keeps a growing exclusion set from emptying the candidates.

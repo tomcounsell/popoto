@@ -176,6 +176,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union
 
 import redis.client
+import redis.exceptions
 
 from ..exceptions import JournalBlockedError
 from ..fields.constants import Defaults
@@ -191,7 +192,7 @@ from ..fields.shortcuts import (
     TagField,
 )
 from ..fields.supersession import SupersessionProtocol
-from ..fields.validity_field import ValidityField
+from ..fields.validity_field import ValidityField, map_lua_error
 from ..models.base import Model
 from ..privacy.never_record import NeverRecordMixin, scan_never_record
 from ..redis_db import POPOTO_REDIS_DB
@@ -1115,14 +1116,18 @@ class ProvenanceJournal:
                     f"is a bug in this module, not a caller error."
                 )
             close_index = len(pipe.command_stack)
-            # execute_supersede, NOT SupersessionProtocol.invalidate (#588):
-            # SupersessionProtocol resolves its member keys through
-            # ``POPOTO_REDIS_DB.exists(...)``, and the successor's HSET is only
-            # *queued* at this point, so EXISTS returns 0, the call takes its
-            # "unsaved successor -> no-op" branch, and returns None -- which is
-            # indistinguishable from its normal pipeline-mode return. The
-            # target would stay open with no error anywhere. Do not "simplify"
-            # this back to the protocol; it is a read-side API here.
+            # execute_supersede, NOT SupersessionProtocol (#588 is fixed; this
+            # is still the right call). The protocol's pipeline API works now --
+            # membership is decided inside SUPERSEDE_LUA at the instant of the
+            # write -- but M1 needs two things the protocol does not offer on
+            # this path: an *explicit* ``old_member`` (the annotation target is
+            # named by the caller and validated by the pre-flight, not resolved
+            # through an identity pointer), and ``assert_valid_from=False``
+            # because valid-time is already set at construction. Converting this
+            # to ``save_and_supersede`` is M4's design work (#563), not a
+            # simplification to make here: the pre-flight above carries
+            # firewall, cross-agent-ownership, and kind/target checks the
+            # protocol cannot express.
             ValidityField.execute_supersede(
                 model,
                 VALIDITY_FIELD_NAME,
@@ -1152,7 +1157,21 @@ class ProvenanceJournal:
                 close_index=close_index,
             )
 
-        results = pipe.execute()
+        try:
+            results = pipe.execute()
+        except redis.exceptions.ResponseError as e:
+            # The entry HSET is above the EVAL in this MULTI and has already
+            # applied; Redis does not roll back a transaction when one command
+            # errors. The annotation is real provenance and stays -- suppressing
+            # it to match a failed close would lose information an append-only
+            # journal exists to keep. Only the close failed, so surface *which*,
+            # typed, rather than a raw Lua token string (#588 D8).
+            #
+            # Reachable because M1 names ``old_member`` explicitly, which the
+            # script reads as a caller assertion: a target hard-deleted between
+            # the pre-flight above and EXEC now returns MEMBER_ABSENT where it
+            # previously took the idempotent no-op branch.
+            raise map_lua_error(e) from e
         target_closed = False
         if close_index is not None and close_index < len(results):
             # SUPERSEDE_LUA returns the closed member key, or '' when its

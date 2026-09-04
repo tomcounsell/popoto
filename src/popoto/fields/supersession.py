@@ -27,11 +27,19 @@ Design notes:
     - **All mutations route through** ``ValidityField.execute_supersede``. This
       module never issues a ``ZADD``/``HSET`` of its own, so there is exactly one
       place that knows ``SUPERSEDE_LUA``'s KEYS/ARGV order.
-    - **Graceful degradation, narrowly scoped.** Only *key resolution* is
-      wrapped in ``except (TypeError, ValueError)`` — an unsaved instance
-      degrades to a no-op before any Redis write is issued, so no partial index
-      state is possible. Errors raised by the script itself (notably a close-at
-      that precedes the record's own ``valid_from``) propagate as ``ValueError``.
+    - **Membership is decided inside the script, and an absent member raises**
+      (#588). ``_member_key`` resolves a key string and issues no Redis command;
+      ``SUPERSEDE_LUA`` runs the ``EXISTS`` check at the instant of the write, so
+      pipeline mode and immediate mode behave identically. An unsaved instance
+      therefore raises :class:`~popoto.fields.validity_field.\
+ValidityMemberAbsentError` — a ``ValueError`` subclass — instead of returning
+      ``None``, which was byte-identical to the normal pipeline-mode return and
+      gave the caller no signal at all. Nothing is written on that path: the
+      script errors before its first write command.
+    - **The one exception is the observation signal path.**
+      ``ObservationProtocol._apply_supersession`` keeps a client-side ``EXISTS``
+      probe of its own, because telemetry must not raise and, by construction,
+      never has a same-transaction successor.
     - **Cycle-safe traversal.** ``chain()`` carries a ``seen`` set and treats a
       link naming a record with no interval entry as a chain end, so a corrupt
       or hard-deleted chain terminates instead of hanging.
@@ -59,12 +67,18 @@ Example:
 import hashlib
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Union
 
 import redis.client
+import redis.exceptions
 
 from ..redis_db import POPOTO_REDIS_DB
-from .validity_field import ValidityField
+from .validity_field import (
+    ValidityField,
+    ValidityMemberAbsentError,
+    map_lua_error,
+)
 
 logger = logging.getLogger("POPOTO.SupersessionProtocol")
 
@@ -87,6 +101,29 @@ IDENTITY_DIGEST_BYTES = 8
 
 Hashing (rather than embedding the caller's text) is what keeps arbitrary user
 strings out of the Redis keyspace."""
+
+
+@dataclass(frozen=True)
+class SupersedeResult:
+    """Outcome of :meth:`SupersessionProtocol.save_and_supersede` (plan D6).
+
+    Attributes:
+        instance: The successor, saved (or queued for saving).
+        closed_key: The superseded record's Redis key, or ``None``. On a
+            caller-supplied pipeline ``None`` means *unknown until you execute*,
+            not "nothing was closed" — read :attr:`close_index` out of your own
+            ``execute()`` results for the truth. This is the same
+            honest-unknown contract as ``AnnotationResult.target_closed=None``.
+        pipeline: The caller's pipeline, unexecuted; ``None`` when this call
+            owned and executed its own.
+        close_index: Index of the queued supersede command in the caller's
+            pipeline, or ``None`` when the pipeline was owned here.
+    """
+
+    instance: Any
+    closed_key: Optional[str] = None
+    pipeline: Optional[redis.client.Pipeline] = None
+    close_index: Optional[int] = None
 
 
 class SupersessionProtocol:
@@ -177,12 +214,25 @@ class SupersessionProtocol:
             The closed (superseded) record's Redis key, or ``None`` when there
             was no incumbent for this identity — the first claim about an
             identity simply opens, writing no chain link. Also ``None`` when a
-            ``pipeline`` was supplied, or when ``new_instance`` is unsaved.
+            ``pipeline`` was supplied (the script has not run yet).
 
         Raises:
-            ValueError: If ``identity_key`` is malformed, or if ``at`` precedes
-                the incumbent's own ``valid_from`` (a zero-or-negative-length
-                interval is a caller bug, not a state to store silently).
+            ValueError: If ``identity_key`` is malformed.
+            ValidityMemberAbsentError: If ``new_instance`` does not exist at the
+                instant of the write — an unsaved instance, or one hard-deleted
+                since. **Changed in 1.9.0**: this used to return ``None``, which
+                was indistinguishable from the pipeline-mode return. Nothing is
+                written on this path. In pipeline mode the error surfaces from
+                ``pipe.execute()``; use :meth:`save_and_supersede` to get it
+                typed.
+            ValidityCloseBeforeStartError: If ``at`` precedes the incumbent's own
+                ``valid_from`` (a zero-or-negative-length interval is a caller
+                bug, not a state to store silently).
+
+        Note:
+            ``at`` is a *close-time* assertion about the incumbent, never a
+            start-time assertion about ``new_instance``. To set a successor's
+            valid-time, construct it with ``validity=t`` (plan D3).
         """
         digest = _coerce_identity(identity_key)
         resolved = _resolve_field_name(new_instance, field_name)
@@ -190,11 +240,13 @@ class SupersessionProtocol:
             return None
         new_member = _member_key(new_instance)
         if new_member is None:
-            # Unsaved instance. Degrade before any write is issued, so no
-            # partial index state (no valid_from entry, no chain link, no
-            # pointer) can exist.
-            logger.debug("supersede: unsaved instance, no-op")
-            return None
+            # Key resolution itself failed, so there is nothing to name in the
+            # script. The membership decision is the script's (#588); this is
+            # only the unresolvable case.
+            raise ValidityMemberAbsentError(
+                "SupersessionProtocol.supersede: could not resolve a Redis key "
+                f"for {new_instance!r}"
+            )
 
         clock = time.time()
         instant = clock if at is None else float(at)
@@ -229,28 +281,43 @@ class SupersessionProtocol:
             pipeline: Optional Redis pipeline; the ``EVAL`` is queued onto it.
 
         Returns:
-            The closed record's Redis key, or ``None`` if it was already closed,
-            unsaved, or a ``pipeline`` was supplied.
+            The closed record's Redis key, or ``None`` if it was already closed
+            or a ``pipeline`` was supplied.
 
         Raises:
-            ValueError: If ``at`` precedes the record's own ``valid_from``.
+            ValidityMemberAbsentError: If ``instance`` or ``superseded_by`` does
+                not exist at the instant of the write. **Changed in 1.9.0**:
+                this used to return ``None``. Nothing is written on this path.
+            ValidityCloseBeforeStartError: If ``at`` precedes the record's own
+                ``valid_from``.
+
+        Note:
+            A same-pipeline successor now works and is the recommended spelling::
+
+                pipe = popoto.get_redis().pipeline()
+                new.save(pipeline=pipe)
+                SupersessionProtocol.invalidate(
+                    old, superseded_by=new, pipeline=pipe
+                )
+                pipe.execute()
         """
         resolved = _resolve_field_name(instance, field_name)
         if resolved is None:
             return None
         old_member = _member_key(instance)
         if old_member is None:
-            logger.debug("invalidate: unsaved instance, no-op")
-            return None
+            raise ValidityMemberAbsentError(
+                "SupersessionProtocol.invalidate: could not resolve a Redis key "
+                f"for {instance!r}"
+            )
         new_member = ""
         if superseded_by is not None:
             new_member = _member_key(superseded_by) or ""
             if not new_member:
-                # An unsaved successor would produce a chain link to a record
-                # that does not exist. Degrade the whole call rather than close
-                # the incumbent into a dangling chain.
-                logger.debug("invalidate: unsaved successor, no-op")
-                return None
+                raise ValidityMemberAbsentError(
+                    "SupersessionProtocol.invalidate: could not resolve a Redis "
+                    f"key for the successor {superseded_by!r}"
+                )
 
         clock = time.time()
         instant = clock if at is None else float(at)
@@ -262,6 +329,116 @@ class SupersessionProtocol:
             clock=clock,
             instant=instant,
             pipeline=pipeline,
+        )
+
+    @staticmethod
+    def save_and_supersede(
+        new_instance: Any,
+        *,
+        identity_key: Union[str, Sequence[str]],
+        at: Optional[float] = None,
+        field_name: Optional[str] = None,
+        pipeline: Optional[redis.client.Pipeline] = None,
+    ) -> SupersedeResult:
+        """Save ``new_instance`` and close the identity's incumbent, atomically.
+
+        The append-and-close shape a bitemporal store wants, as one supported
+        call instead of a pipeline the caller assembles by hand: the successor's
+        hash, its indexes, its open interval, the incumbent's close, both chain
+        links, and the pointer repoint all apply in a single MULTI/EXEC, so no
+        reader ever sees both records open or neither present.
+
+        This is also the only place a caller gets a *typed* error in pipeline
+        shape (plan D4): ``execute_supersede``'s remap cannot live on its own
+        pipeline branch, because redis-py raises during ``execute()`` result
+        parsing long after that method returned. This method owns the
+        ``execute()``, so it can remap.
+
+        Args:
+            new_instance: The unsaved model instance carrying the new claim.
+            identity_key: A digest from :meth:`identity_key`, or a
+                ``(subject, predicate)`` pair to normalize here.
+            at: Valid-time instant of the transition. Defaults to now.
+            field_name: Name of the ``ValidityField``. Auto-detected when
+                omitted.
+            pipeline: Optional caller pipeline to compose onto. When given,
+                nothing is executed here — see :class:`SupersedeResult`.
+
+        Returns:
+            A :class:`SupersedeResult`.
+
+        Raises:
+            ValueError: If the model declares no ``ValidityField``, if
+                ``identity_key`` is malformed, or if ``pipeline`` is not a
+                transactional Redis pipeline in a queueing state.
+            RuntimeError: If ``new_instance.save()`` returns falsy — the
+                never-record firewall and the write filter decline a save by
+                returning rather than raising, and queuing a close behind a
+                record that was never written is exactly the failure this
+                guards.
+            ValidityMemberAbsentError: If the incumbent named by the identity
+                pointer was hard-deleted, or the successor's save was declined.
+            ValidityCloseBeforeStartError: If ``at`` precedes the incumbent's
+                stored ``valid_from``.
+        """
+        digest = _coerce_identity(identity_key)
+        return _save_and_close(
+            new_instance,
+            field_name=field_name,
+            at=at,
+            pipeline=pipeline,
+            mode="supersede",
+            identity_digest=digest,
+            old_member="",
+            entry_point="save_and_supersede",
+        )
+
+    @staticmethod
+    def save_and_invalidate(
+        new_instance: Any,
+        *,
+        closes: Any,
+        at: Optional[float] = None,
+        field_name: Optional[str] = None,
+        pipeline: Optional[redis.client.Pipeline] = None,
+    ) -> SupersedeResult:
+        """Save ``new_instance`` and close ``closes``, atomically.
+
+        The identity-free form of :meth:`save_and_supersede`: the incumbent is
+        named explicitly rather than resolved through an open-claim pointer, and
+        being named makes it a caller *assertion* — a ``closes`` that does not
+        exist at EXEC time raises rather than being read as "no incumbent".
+
+        Args:
+            new_instance: The unsaved successor.
+            closes: The saved record this successor replaces.
+            at: Valid-time instant of the transition. Defaults to now.
+            field_name: Name of the ``ValidityField``. Auto-detected when
+                omitted.
+            pipeline: Optional caller pipeline to compose onto.
+
+        Returns:
+            A :class:`SupersedeResult` whose ``closed_key`` is ``closes``'s
+            Redis key when this call closed it.
+
+        Raises:
+            The same set as :meth:`save_and_supersede`.
+        """
+        old_member = _member_key(closes)
+        if not old_member:
+            raise ValidityMemberAbsentError(
+                "SupersessionProtocol.save_and_invalidate: could not resolve a "
+                f"Redis key for closes={closes!r}"
+            )
+        return _save_and_close(
+            new_instance,
+            field_name=field_name,
+            at=at,
+            pipeline=pipeline,
+            mode="invalidate",
+            identity_digest="",
+            old_member=old_member,
+            entry_point="save_and_invalidate",
         )
 
     # ------------------------------------------------------------------
@@ -320,14 +497,23 @@ class SupersessionProtocol:
         resolved = _resolve_field_name(instance, field_name)
         if resolved is None:
             return []
+        model = type(instance)
+        valid_from_key, _ = ValidityField.get_interval_keys(model, resolved)
+
         anchor = _member_key(instance)
         if anchor is None:
             return []
+        # Membership, not resolvability. ``_member_key`` no longer probes
+        # (#588 D1), so the "unsaved instance -> []" contract this method
+        # documents has to live here. ``ZSCORE`` rather than ``EXISTS`` on
+        # purpose: it is the same rule ``_walk_links`` already applies to a
+        # dangling link, so an anchor and a link are judged by one criterion.
+        # Read-only path; ``_member_key`` still issues zero commands.
+        if POPOTO_REDIS_DB.zscore(valid_from_key, anchor) is None:
+            return []
 
-        model = type(instance)
         fwd_key = ValidityField.get_chain_fwd_key(model, resolved)
         rev_key = ValidityField.get_chain_rev_key(model, resolved)
-        valid_from_key, _ = ValidityField.get_interval_keys(model, resolved)
 
         seen = {anchor}
         older = _walk_links(rev_key, anchor, valid_from_key, seen)
@@ -374,23 +560,155 @@ def _coerce_identity(identity_key: Union[str, Sequence[str]]) -> str:
 
 
 def _member_key(instance: Any) -> Optional[str]:
-    """Return a persisted instance's Redis key, or ``None`` if it is not persisted.
+    """Return an instance's Redis key string, or ``None`` if it cannot be resolved.
 
-    An unsaved instance does *not* raise on ``db_key.redis_key`` — a model with
-    an unset ``KeyField`` cheerfully yields ``"Model:None"``, which would open a
-    validity interval for a record that does not exist and leave permanent
-    orphan index state. So membership is established by an ``EXISTS`` against
-    the record hash, and every mutation resolves its keys through here *before*
-    issuing any write. That ordering is what makes the unsaved-instance path a
-    true no-op rather than a partial one.
+    Resolution only. This function issues **no Redis command** — membership is
+    decided inside ``SUPERSEDE_LUA`` at the instant of the write (#588). The
+    ``EXISTS`` probe that used to live here answered the right question at a
+    moment when the answer could not stay true: the write it guarded happens
+    later, inside the script, at EXEC time. In pipeline mode "later" is
+    unbounded, which is how a same-transaction successor came back as ``0`` and
+    turned an ``invalidate`` into a silent no-op.
+
+    ``"Model:None"`` (a model with an unset ``KeyField``) is returned from here
+    like any other string and is rejected by the script's ``EXISTS`` check,
+    because it genuinely does not exist.
     """
     try:
         member = instance.db_key.redis_key
     except (TypeError, ValueError):
         return None
-    if not member or not POPOTO_REDIS_DB.exists(member):
-        return None
-    return member
+    return member or None
+
+
+def _validate_caller_pipeline(pipeline: Any, entry_point: str) -> None:
+    """Refuse a pipeline that cannot deliver the atomicity this API promises.
+
+    The same three checks, and the same reasoning, as
+    ``ProvenanceJournal._write``'s pre-flight: a non-transactional pipeline
+    voids the guarantee outright, and a ``WATCH``ing pipeline that has not been
+    put into ``MULTI`` executes each command immediately instead of queueing, so
+    ``Model.save()`` would apply part-way and the close would land against a
+    half-written record.
+
+    ``watching and not explicit_transaction`` is the precise condition, NOT
+    ``watching`` alone: ``watch()`` + ``multi()`` is redis-py's standard
+    optimistic-locking pattern and queues normally.
+    """
+    if not isinstance(pipeline, redis.client.Pipeline):
+        raise ValueError(
+            f"SupersessionProtocol.{entry_point}: pipeline must be a redis "
+            f"Pipeline, got {type(pipeline).__name__}"
+        )
+    if pipeline.transaction is not True:
+        raise ValueError(
+            f"SupersessionProtocol.{entry_point}: pipeline(transaction=False) "
+            "voids the save-and-close atomicity guarantee. Use "
+            "popoto.get_redis().pipeline() (transactional by default)."
+        )
+    if getattr(pipeline, "watching", False) and not getattr(
+        pipeline, "explicit_transaction", False
+    ):
+        raise ValueError(
+            f"SupersessionProtocol.{entry_point}: a WATCHing pipeline that is "
+            "not yet in MULTI executes commands immediately instead of "
+            "queueing, so the save would apply while the close did not. Call "
+            "pipeline.multi() to open the transaction -- that keeps your "
+            "optimistic lock and makes the save-and-close atomic -- or use a "
+            "fresh pipeline. Do NOT call UNWATCH: it would discard the lock "
+            "you took."
+        )
+
+
+def _save_and_close(
+    new_instance: Any,
+    *,
+    field_name: Optional[str],
+    at: Optional[float],
+    pipeline: Optional[redis.client.Pipeline],
+    mode: str,
+    identity_digest: str,
+    old_member: str,
+    entry_point: str,
+) -> SupersedeResult:
+    """Shared body of ``save_and_supersede`` / ``save_and_invalidate`` (plan D6)."""
+    resolved = _resolve_field_name(new_instance, field_name)
+    if resolved is None:
+        # This entry point is explicit, so silence would be wrong -- unlike
+        # ``supersede``, which is also reached from the observation signal path.
+        raise ValueError(
+            f"SupersessionProtocol.{entry_point}: "
+            f"{type(new_instance).__name__} declares no ValidityField"
+        )
+
+    owns_pipeline = pipeline is None
+    if pipeline is not None:
+        _validate_caller_pipeline(pipeline, entry_point)
+        pipe = pipeline
+    else:
+        pipe = POPOTO_REDIS_DB.pipeline()
+
+    saved = new_instance.save(pipeline=pipe)
+    if not saved:
+        raise RuntimeError(
+            f"SupersessionProtocol.{entry_point}: save() of "
+            f"{type(new_instance).__name__} was declined (never-record "
+            "firewall or write filter), so the close would have been queued "
+            "behind a record that was never written."
+        )
+
+    new_member = _member_key(new_instance)
+    if not new_member:
+        raise ValidityMemberAbsentError(
+            f"SupersessionProtocol.{entry_point}: could not resolve a Redis key "
+            f"for {new_instance!r} after save()"
+        )
+
+    clock = time.time()
+    instant = clock if at is None else float(at)
+    close_index = len(pipe.command_stack)
+    ValidityField.execute_supersede(
+        new_instance,
+        resolved,
+        new_member=new_member,
+        mode=mode,
+        now=clock,
+        valid_from=instant,
+        ingested_at=clock,
+        close_at=instant,
+        old_member=old_member,
+        identity_digest=identity_digest,
+        # Plan D3: ``at`` is a close-time assertion about the incumbent, never a
+        # start-time assertion about the successor.
+        assert_valid_from=False,
+        pipeline=pipe,
+    )
+
+    if not owns_pipeline:
+        # The caller owns execution, so nothing has run yet and there is no
+        # truthful answer to "what was closed". ``closed_key=None`` here means
+        # *unknown until you execute*; ``close_index`` is how the caller learns
+        # the truth from their own results.
+        return SupersedeResult(
+            instance=new_instance,
+            closed_key=None,
+            pipeline=pipe,
+            close_index=close_index,
+        )
+
+    try:
+        results = pipe.execute()
+    except redis.exceptions.ResponseError as e:
+        raise map_lua_error(e) from e
+    closed = results[close_index] if close_index < len(results) else None
+    if isinstance(closed, bytes):
+        closed = closed.decode()
+    return SupersedeResult(
+        instance=new_instance,
+        closed_key=str(closed) if closed else None,
+        pipeline=None,
+        close_index=None,
+    )
 
 
 def _resolve_field_name(instance: Any, field_name: Optional[str]) -> Optional[str]:

@@ -478,12 +478,33 @@ def _apply_supersession(
     if not any(isinstance(field, ValidityField) for field in fields.values()):
         return
 
+    # The EXISTS probe #588 removed from ``_member_key`` survives here, and only
+    # here. This path is a *signal*: ``on_context_used`` reports outcomes for a
+    # batch of memories and must not raise because one of them was never saved,
+    # and in pipeline mode a script error at EXEC would abort effects already
+    # queued for the rest of the batch.
+    #
+    # The probe is safe on this path and nowhere else, for a reason worth
+    # writing down: the observation path never has a same-pipeline successor.
+    # Both records are, by construction, already-saved memories the agent was
+    # shown. The TOCTOU window that makes a client-side probe wrong in the
+    # general case does not exist here.
+    for role, obj in (("instance", instance), ("successor", successor)):
+        key = getattr(getattr(obj, "db_key", None), "redis_key", None)
+        if not key or not POPOTO_REDIS_DB.exists(key):
+            logger.debug("supersession: %s %r not persisted, degrading", role, key)
+            return
+
     try:
         SupersessionProtocol.invalidate(
             instance, superseded_by=successor, pipeline=pipeline
         )
     except (TypeError, ValueError):
-        pass  # Graceful degradation for unsaved instances
+        # Second layer, kept deliberately: the new typed validity errors
+        # subclass ValueError (#588 D4), so a race that hard-deletes a record
+        # between the probe above and the write still degrades rather than
+        # escaping a telemetry callback.
+        pass
 
 
 def _apply_used(instance, pipeline):

@@ -67,7 +67,11 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest
 import redis.exceptions
 from src import popoto
-from src.popoto import ValidityField
+from src.popoto import (
+    ValidityField,
+    ValidityMemberAbsentError,
+    ValidityValidFromConflictError,
+)
 from src.popoto.exceptions import AppendOnlyViolation, JournalBlockedError
 from src.popoto.fields.constants import Defaults, _read_journal_coupling_switch
 from src.popoto.fields.supersession import SupersessionProtocol
@@ -326,10 +330,13 @@ class _CommandRecorder:
 def _supersede_mode(args):
     """Return ``ARGV[5]`` of a queued ``SUPERSEDE_LUA`` EVAL, or ``None``.
 
-    Layout: ``EVAL script numkeys KEYS[1..6] ARGV[1..7]`` -- so ``ARGV[5]`` is
-    positional index 13, and anything shorter is a different script.
+    Layout: ``EVALSHA sha numkeys KEYS[1..6] ARGV[1..8]`` -- so ``ARGV[5]`` is
+    positional index 13, and anything of a different length is a different
+    script. The exact length (not a lower bound) keeps this a real oracle:
+    #588 appended ARGV[8], taking the list from 16 to 17, and a ``>=`` bound
+    would have absorbed that silently.
     """
-    if len(args) < 16:
+    if len(args) != 17:
         return None
     if str(args[2]) != "6":
         return None
@@ -1342,6 +1349,55 @@ class TestPreFlightValidation:
 
 
 class TestAnnotationAtomicity:
+    def test_a_target_deleted_between_pre_flight_and_exec_raises_typed(
+        self, monkeypatch
+    ):
+        """#588 D8 / round-2 C2: committed entry PLUS a typed error.
+
+        M1 names ``old_member`` explicitly, and the new script rule reads an
+        explicit incumbent as a caller *assertion* -- so a target hard-deleted
+        between the D7 pre-flight and ``EXEC`` now returns ``MEMBER_ABSENT``
+        where it previously took the idempotent no-op branch.
+
+        Redis does not roll back a ``MULTI`` when one command errors, and the
+        entry's ``HSET`` sits above the ``EVAL`` in the queue. That outcome is
+        the intended contract, recorded rather than papered over: the annotation
+        is real provenance and an append-only journal must keep it. What is
+        *not* acceptable is the raw ``ResponseError``, which would force the
+        caller to string-match Lua tokens.
+
+        A test asserting only the raise would let a future change start
+        silently swallowing the entry, so both halves are pinned.
+        """
+        t0 = time.time() - 100.0
+        target = _append(at=t0)
+        target_key = target.db_key.redis_key
+        entry_keys = []
+
+        real_execute_supersede = ValidityField.execute_supersede
+
+        def deleting_seam(*args, **kwargs):
+            # The pre-flight has returned and the entry is queued; delete the
+            # target now, before the pipeline executes.
+            entry_keys.append(kwargs.get("new_member"))
+            POPOTO_REDIS_DB.delete(target_key)
+            return real_execute_supersede(*args, **kwargs)
+
+        monkeypatch.setattr(
+            ValidityField, "execute_supersede", staticmethod(deleting_seam)
+        )
+
+        with pytest.raises(ValidityMemberAbsentError):
+            ProvenanceJournal.supersede(
+                target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
+            )
+
+        monkeypatch.undo()
+        assert entry_keys and entry_keys[0]
+        assert POPOTO_REDIS_DB.exists(
+            entry_keys[0]
+        ), "the annotation is real provenance and must survive a failed close"
+
     """Shape assertions, never a literal total command count.
 
     A real ``JournalEntry`` queues the hash write, the class SADD, four indexed
@@ -1498,15 +1554,14 @@ class TestAnnotationAtomicity:
                 target, agent_id=AGENT, statement="a correction", at=backdated
             )
 
-    def test_supersession_protocol_silently_no_ops_for_a_pipelined_successor(self):
-        """#588 finding 1, pinned against raw V0 and against M1's write path.
+    def test_supersession_protocol_closes_a_pipelined_successor(self):
+        """#588 finding 1, fixed: membership is decided inside the script.
 
-        ``SupersessionProtocol`` resolves member keys through
-        ``POPOTO_REDIS_DB.exists(...)``. The successor's HSET is only *queued*,
-        so ``EXISTS`` returns 0, the call takes its "unsaved successor -> no-op"
-        branch, and returns ``None`` — indistinguishable from its normal
-        pipeline-mode return. That is why M1 calls ``execute_supersede``
-        directly.
+        The successor's ``HSET`` is only *queued* when ``invalidate`` is called,
+        but by the time ``SUPERSEDE_LUA``'s body runs inside ``MULTI`` it has
+        applied, so the script's ``EXISTS`` sees it. The call that used to queue
+        nothing and return ``None`` now queues a real ``invalidate`` and closes
+        the target.
         """
         t0 = time.time() - 100.0
         target = _append(at=t0)
@@ -1521,10 +1576,13 @@ class TestAnnotationAtomicity:
         pipe.execute()
 
         modes = [_supersede_mode(entry[0]) for entry in stack]
-        assert "invalidate" not in modes, "V0 silently queued nothing (#588)"
-        assert _interval(target)[1] == float("inf")
+        assert "invalidate" in modes, "#588: the invalidate must be queued"
+        assert _interval(target)[1] != float("inf")
         keys = _keys()
-        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
+        assert (
+            _as_str(POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key))
+            == successor.db_key.redis_key
+        )
 
         # M1's write path closes the same target, in one transaction.
         second_target = _append(at=t0)
@@ -1580,6 +1638,21 @@ class TestAnnotationAtomicity:
             "V0's ZADD NX skew is gone -- #588's second finding may be fixed; "
             "re-check M1's construction-time valid_from workaround"
         )
+
+        # Third arm (#588): the same input, but *asserted*, is now a typed
+        # error rather than a silent loss to ZADD NX. This is what makes
+        # valid-time single-writer -- ``assert_valid_from=False`` (what M1 and
+        # SupersessionProtocol pass) keeps the NX idempotence above.
+        with pytest.raises(ValidityValidFromConflictError):
+            ValidityField.execute_supersede(
+                JournalEntry,
+                VALIDITY_FIELD_NAME,
+                new_member=raw_successor.db_key.redis_key,
+                mode="open",
+                now=requested,
+                valid_from=requested,
+                assert_valid_from=True,
+            )
 
     def test_an_xadd_failure_inside_the_pipeline_aborts_the_whole_annotation(
         self, monkeypatch

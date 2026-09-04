@@ -7,7 +7,7 @@ created: 2026-09-02
 tracking: https://github.com/tomcounsell/popoto/issues/588
 last_comment_id: 5508044139
 revision_applied: true
-revision_applied_at: 2026-09-03T09:43:27Z
+revision_applied_at: 2026-09-03T10:05:00Z
 ---
 
 # #588 — Move the supersession membership guard into SUPERSEDE_LUA, and make valid-time single-writer
@@ -71,11 +71,12 @@ call instead of a pipeline the caller assembles by hand.
 
 ## Freshness Check
 
-**Baseline commit:** `d8914fc` (`origin/main`, 2026-09-03) — superseding the first-pass
-baseline `44abc17` and the post-#594 baseline `c7fc167`. `git diff --stat c7fc167 d8914fc --
-src/ tests/` is **empty**: every commit between them (`4612883`, `a6c81ce`, `1494969`,
-`593edc4`, `a2266bc`, `7ad9c8f`, `0d4dc66`, `d8914fc`) is a plan-document edit for #588,
-#595, or #596. So every line number verified at `c7fc167` is still exact at `d8914fc`, and
+**Baseline commit:** `c7fc167` **or later** — superseding the first-pass baseline `44abc17`.
+`src/` and `tests/` are byte-identical from `c7fc167` through `13e3ee5` (verified at each of
+`d8914fc` and `13e3ee5` via `git diff --stat <base> <head> -- src/ tests/`, **empty** both
+times): every commit in that range is a plan-document edit for #588, #595, or #596. This
+wording is deliberately drift-tolerant — a sibling pipeline committing a plan doc does not
+invalidate it (round-3 N3). So every line number verified at `c7fc167` is still exact, and
 the branch may be cut from **`c7fc167` or later** — but the baseline suite and mypy counts
 must be *measured* at the commit actually checked out (Task 4). See **Post-#594
 re-verification** below for the authoritative line-number table; where this section and that
@@ -1495,11 +1496,13 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
   hook definition, and take the D5 fallback rather than growing it if review objects.
 - **Per-task verification for the dispatch site** (run before handing off to Task 2):
   `grep -n 'pre_save_validate' src/popoto/models/base.py` must return **exactly one** line, and
-  its number must be `> 1292` and `< 1296` (offset by the lines this task adds). A second hit
-  means the round-1 two-site placement crept back in.
+  it must sit above the unique line `new_db_key = DB_key(self.db_key)`. Anchor on that text,
+  not on line numbers — the numbers shift once this task inserts the dispatch block. A second
+  hit means the round-1 two-site placement crept back in.
 - Extract the `_LUA_ERROR_MAP` dispatch into a module-level `_map_lua_error(e)` helper in
   `validity_field.py` (used by `execute_supersede`'s non-pipeline branch and, per D8, by
-  `ProvenanceJournal._write`). It re-raises the original unchanged when no token matches.
+  `ProvenanceJournal._write`). It **returns** the mapped exception, or `e` itself when no
+  token matches — it never raises. Call sites always `raise _map_lua_error(e) from e`.
 - Add `ValidityField.get_valid_from()` (D5 half 2).
 - Add `scripts/check_supersede_lua_phases.py` — the executable anti-criterion for the phase
   rule. It parses `SUPERSEDE_LUA`, prints `BAD` when the `MUTATION PHASE` marker is missing,
@@ -1664,9 +1667,9 @@ Tier 1 as listed in the plan template. Both builders carry `Domain: Redis/Popoto
 | ARGV[8] is nil-safe | `grep -c "ARGV\[8\] or ''" src/popoto/fields/validity_field.py` | output > 0 |
 | No new Defaults constant | `git diff origin/main -- src/popoto/fields/constants.py \| grep -c '^+.*VALIDITY'` | match count == 0 |
 | ANTI: `pre_save_validate` is dispatched from exactly one site, above the partial/full split (B1) | `grep -n 'pre_save_validate' src/popoto/models/base.py` | exactly one line, numbered above the `if update_fields is not None:` split |
-| ANTI: the dispatch is not inside either eager-loop arm (B1) | `python -c "import re;s=open('src/popoto/models/base.py').read().split(chr(10));i=[n for n,l in enumerate(s,1) if 'pre_save_validate' in l];j=[n for n,l in enumerate(s,1) if 'if update_fields is not None:' in l];print(i[0]<j[0])"` | output contains True |
+| ANTI: the dispatch is not inside either eager-loop arm (B1) | `python -c "s=open('src/popoto/models/base.py').read().split(chr(10));i=[n for n,l in enumerate(s,1) if 'pre_save_validate' in l];k=[n for n,l in enumerate(s,1) if 'new_db_key = DB_key(self.db_key)' in l];print(len(i)==1 and i[0]<k[0])"` | output contains True |
 | `chain()` keeps the unsaved contract (B2) | `pytest tests/test_validity_field.py -q -k 'chain or degrades_with_no_partial_state'` | exit code 0 |
-| M1 surfaces a typed error, not a raw ResponseError (C2/D8) | `grep -c '_map_lua_error' src/popoto/recipes/provenance_journal.py` | output > 0 |
+| M1 surfaces a typed error, not a raw ResponseError (C2/D8) | `grep -c 'map_lua_error' src/popoto/recipes/provenance_journal.py` | output > 0 |
 | CHANGELOG carries the divergence remediation recipe (C1) | `grep -c 'get_valid_from' CHANGELOG.md` | output > 0 |
 
 ### Red-state proof (run at `44abc17`, critique revision pass)
@@ -1774,6 +1777,70 @@ numbers were off by a little and are corrected below.
 | **C1** — pre-existing divergence makes records unsaveable | **Accepted, took both proposed parts.** (a) The single dispatch iterates `update_fields` when one is supplied, so a partial save of an unrelated column cannot trip a pre-existing divergence. (b) D5 gains a "Pre-existing divergence, and how an operator gets out of it" block with two two-line remediations (adopt `get_valid_from()`, or plain `ZADD` with no `NX`), reproduced in the CHANGELOG. Update System's "No data migration" is restated precisely — shapes unchanged, but a diverged record refuses a full re-save until reconciled. New test 20 pins all three arms (partial save succeeds, full save raises, remediated full save succeeds); new Verification row greps the CHANGELOG for the recipe; the feature docs gain a "Reconciling a record that already diverges" subsection. |
 | **C2** — M1's failure mode changes and ships unexercised | **Accepted; decided on the record rather than deferred.** Verified M1's explicit `old_member=target_key` at `provenance_journal.py:1126-1137` and the bare `results = pipe.execute()` at **`:1155`** (the critique cited `:1157`, which is inside the comment above it). New **D8** section: committed-entry-plus-typed-error *is* the intended contract — the annotation is real provenance and an append-only journal must keep it — but the raw `ResponseError` is not, so `_write` gains exactly one `try/except ResponseError: raise _map_lua_error(e) from e`. Task 1 extracts `_map_lua_error` from D4's dispatch table so both call sites share one table; Task 2 does the wrap; new test 21 (in `test_provenance_journal.py`) asserts the exception type **and** the entry's presence. No-Gos amended to name the two narrow `provenance_journal.py` edits explicitly, and `test_provenance_journal.py:1453` is flagged for a read-and-decide rather than a blind edit. |
 | **N1** — stale baseline `c7fc167` | **Accepted.** Re-verified: `git diff --stat c7fc167 d8914fc -- src/ tests/` is empty, and all eight intervening commits are plan-document edits for #588/#595/#596. Baseline restated as `d8914fc` in the Freshness Check header, the Post-#594 re-verification header, the Prerequisites baseline-suite row, the Task 4 baseline instruction, and the Task 4 test-count note — with the "`c7fc167` or later" equivalence stated so an already-cut branch stays valid. The `44abc17` red-state proof table is left as-is: it is a historical record of when those rows were proven, not a baseline instruction. |
+
+### Critique round 3 (2026-09-03, FULL depth, baseline `13e3ee5`)
+
+<!-- Third war room, dispatched over the round-2-revised plan. All five round-2 resolutions
+(B1/B2/C1/C2/N1) were independently re-verified against source at `13e3ee5` and confirmed
+landed and correct; scrutiny focused on the newly-added verification rows, the D8 wrapper,
+and the single-dispatch-site mechanics. Lenses ran in-process (no Agent tool exposed in the
+executing context), same as round 2. -->
+
+**Verdict: NEEDS REVISION** — 1 blocker, 0 concerns, 2 nits. The blocker is a one-line
+verification-row correction; no design decision (D1–D8) is questioned.
+
+| Severity | Finding | Addressed By | Implementation Note |
+|----------|---------|--------------|---------------------|
+| BLOCKER | **B1v — the new automated ANTI row for the dispatch site fails on a fully correct implementation.** The row "ANTI: the dispatch is not inside either eager-loop arm (B1)" computes `i[0] < j[0]` where `j` collects every line matching `'if update_fields is not None:'` — but that string occurs **twice** in `models/base.py`: at `:1031` (inside `pre_save`'s `update_fields` name validation) and at `:1296` (the save-path partial/full split the row means). `j[0]` is therefore `1031`, and a dispatch correctly placed at `~:1294` — exactly where Task 1 and D5 mandate — makes the row print `False`. Reproduced against `13e3ee5`: `j = [1031, 1296]`, `1294 < 1031` → `False`. This is the same defect class as round-1 BLOCKER 2 (a Verification row that contradicts the plan's own mandate) recurring in the row added to fix round-2 B1. | Verification table (second B1 ANTI row); Task 1 per-task verification | Anchor on the unique line instead of the ambiguous one: `new_db_key = DB_key(self.db_key)` occurs exactly once in `base.py` (`:1294`, verified at `13e3ee5`). Corrected row: `python -c "s=open('src/popoto/models/base.py').read().split(chr(10));i=[n for n,l in enumerate(s,1) if 'pre_save_validate' in l];k=[n for n,l in enumerate(s,1) if 'new_db_key = DB_key(self.db_key)' in l];print(len(i)==1 and i[0]<k[0])"` expecting `True` — this also folds in the "exactly one site" check, making the separate manual-judgment grep row redundant (keep it or drop it, but the automated row is the gate). While editing, also strip the literal `> 1292 and < 1296` line numbers from Task 1's per-task verification — after the ~10-line dispatch block is inserted they are self-invalidating; anchor that check on the same `new_db_key` text, not on numbers. Prove the corrected row both ways before recording: `True` with a single pre-split dispatch, `False` with a dispatch pasted inside either eager loop. |
+| NIT | **N2 — `_map_lua_error`'s no-match contract is stated two incompatible ways.** Task 1 says the helper "re-raises the original unchanged when no token matches", but both call sites are spelled `raise _map_lua_error(e) from e`, which requires the helper to *return* an exception — if it raises internally on no-match, the call-site expression never completes (harmless but confusing); if it returns `None` on no-match, the call site is a `TypeError`. | Task 1 (`_map_lua_error` bullet); D8 snippet | Pin one contract: `_map_lua_error(e)` **returns** the mapped exception instance, or returns `e` itself when no token matches; call sites always `raise _map_lua_error(e) from e`. One sentence in Task 1 and the D8 comment. |
+| NIT | **N3 — baseline drift, again, and again benign.** The Freshness header names `d8914fc`; `origin/main` is now `13e3ee5` (five further commits, all plan-document edits for #588/#595/#596). Verified `git diff --stat d8914fc 13e3ee5 -- src/ tests/` is empty, so every cited line number is still exact. Task 4's "d8914fc or later — record the SHA" wording already tolerates this; only the header sentence lags. | Freshness Check header | Either restate as `13e3ee5` or reword the header to the same "`d8914fc` or later; `src/`+`tests/` byte-identical through `13e3ee5`" form Task 4 uses, so the header stops needing an edit every time a sibling pipeline commits a plan doc. |
+
+### Round-3 resolution (applied 2026-09-03, supervisor-directed; no round-4 critique)
+
+All three round-3 findings are fixed in this revision. Per supervisor directive the plan goes
+straight to BUILD — no further critique cycle.
+
+- **B1v — fixed.** The second B1 ANTI row now anchors on the unique `new_db_key =
+  DB_key(self.db_key)` and folds in the single-site check: `len(i)==1 and i[0]<k[0]`. Task 1's
+  per-task verification no longer cites the self-invalidating `> 1292 and < 1296` literals; it
+  anchors on the same `new_db_key` text. Proved both ways against `062e107` as the critique
+  required: a single dispatch inserted above `new_db_key` → `True`; the same dispatch moved
+  below it (inside the eager-loop arm) → `False`; a two-site placement → `False`. The old row
+  was confirmed broken on the correct case — it printed `False` with `j = [1031, 1297]`.
+- **N2 — fixed.** Task 1 now pins the contract: `_map_lua_error(e)` **returns** the mapped
+  exception, or `e` itself on no match, and never raises; call sites always
+  `raise _map_lua_error(e) from e`.
+- **N3 — fixed.** The Freshness header is reworded to the drift-tolerant form Task 4 already
+  uses, so a sibling pipeline's plan-doc commit no longer invalidates it.
+
+**Round-2 resolutions verified against source at `13e3ee5` (all confirmed):** B1 — the four-arm
+table's anchors are exact (`pre_save` gate `:1289-1292`, `new_db_key` `:1294`, split `:1296`;
+partial-external returns `:1382`, full-external returns `:1578`; eager loops `:1388-1404` /
+`:1593-1608` inside the `else:` arms). B2 — `chain()`'s anchor gate at `supersession.py:323-325`
+with `get_interval_keys` below it at `:330`, exactly as the fix describes; the hoist is coherent
+(`resolved` is bound at `:320`, above the moved lookup). C1 — dispatch snippet iterates
+`update_fields` when supplied; remediation recipe and test 20 present. C2/D8 — the bare
+`results = pipe.execute()` is at `provenance_journal.py:1155` as cited; independently confirmed
+that both `test_provenance_journal.py:1413` and `:1453` drive `execute_supersede` directly on a
+caller pipeline (not through `_write`), so D8's wrapper contradicts neither test as written.
+N1 — drift tolerance wording present in Task 4.
+
+**Structural checks (round 3)**: required sections PASS; task numbering PASS (1–6, linear,
+no cycles, every task carries a validation target); file paths PASS (only
+`scripts/check_supersede_lua_phases.py` absent — Task 1's own deliverable); prerequisites PASS
+(Redis DB 15 PONG; editable install resolves to the main checkout; `numpy`/
+`sentence_transformers`/`mcp` import; baseline suite not run by the critique); cross-references
+PASS (every Success Criterion maps to a task; No-Gos and Rabbit Holes appear nowhere as planned
+work).
+
+**Recording note**: `sdlc-tool` is on PATH but this critique was dispatched without a `run_id`,
+which `verdict record` hard-requires (`RUN_ID_REQUIRED`); per the #588 session's instruction the
+refusal is reported rather than worked around, and the verdict is recorded here and in the
+critique report instead.
+
+### Revision applied (round 3)
+
+_Not yet applied — the table above is the work order for the next `/do-plan` pass._
 
 ---
 

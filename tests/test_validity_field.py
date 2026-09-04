@@ -32,9 +32,11 @@ Tests cover:
   must be "carry", not the inherited "rebuild")
 """
 
+import importlib.util
 import inspect
 import io
 import os
+import pathlib
 import re
 import statistics
 import sys
@@ -46,7 +48,17 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import msgpack
 import pytest
 from src import popoto
-from src.popoto import SupersessionProtocol, ValidityField
+from src.popoto import (
+    SupersedeResult,
+    SupersessionProtocol,
+    ValidityCloseBeforeStartError,
+    ValidityField,
+    ValidityMemberAbsentError,
+    ValidityValidFromConflictError,
+)
+import redis.client
+import redis.exceptions
+from src.popoto.fields import supersession as supersession_module
 from src.popoto.fields import validity_field as validity_module
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.constants import Defaults
@@ -60,7 +72,7 @@ from src.popoto.fields.observation import ObservationProtocol
 from src.popoto.models.query import Query, QueryBuilder
 from src.popoto.recipes import context_assembler as assembler_module
 from src.popoto.recipes.context_assembler import ContextAssembler
-from src.popoto.redis_db import POPOTO_REDIS_DB
+from src.popoto.redis_db import POPOTO_REDIS_DB, run_lua
 from src.popoto.transfer import export_records, import_records
 
 # --- Test Models ---
@@ -119,6 +131,22 @@ class PlainMemory(popoto.Model):
     agent_id = popoto.KeyField()
     content = popoto.StringField(default="")
     relevance = DecayingSortedField(partition_by="agent_id")
+
+
+class IndexedValidFact(popoto.Model):
+    """One IndexedField alongside a ValidityField (#588 D5 half 1).
+
+    No other model in this file pairs the two, which is exactly why the D5 gap
+    was invisible: ``IndexedFieldMixin`` fields commit their hash value and index
+    entry *eagerly, against live Redis*, before ``ValidityField.on_save`` runs.
+    A validity check that lived in ``on_save`` would therefore reject a save that
+    had already written the indexed field. ``JournalEntry`` — the shipped
+    reference model — has four ``IndexedField``s next to its ``ValidityField``.
+    """
+
+    name = popoto.UniqueKeyField()
+    label = popoto.IndexedField(type=str, default="")
+    validity = ValidityField()
 
 
 class BenchFact(popoto.Model):
@@ -182,6 +210,7 @@ ALL_MODELS = [
     ValidMemory,
     PlainMemory,
     BenchFact,
+    IndexedValidFact,
     ObservedFact,
     PlainObservedFact,
     ObservedMemory,
@@ -193,6 +222,7 @@ VALIDITY_MODELS = [
     (TTLFact, "validity"),
     (ValidMemory, "validity"),
     (BenchFact, "validity"),
+    (IndexedValidFact, "validity"),
     (ObservedFact, "validity"),
     (ObservedMemory, "validity"),
 ]
@@ -920,6 +950,76 @@ class TestDecayEvalCallSites:
         assert "DECAY_SCORE_LUA" not in inspect.getsource(Query.top_by_decay)
 
 
+class TestSupersedeLuaPhaseSplit:
+    """Run ``scripts/check_supersede_lua_phases.py`` as part of the suite (#588).
+
+    The script is the executable anti-criterion for SUPERSEDE_LUA's
+    validation-before-mutation ordering, which is where the script gets its
+    all-or-nothing property from — Redis Lua has no rollback. Invoking it from a
+    test is what makes it a gate; left as a script nobody runs it would be the
+    comment it was written to replace.
+    """
+
+    @staticmethod
+    def _load():
+        root = pathlib.Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location(
+            "check_supersede_lua_phases",
+            root / "scripts" / "check_supersede_lua_phases.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_validation_phase_precedes_every_write(self):
+        module = self._load()
+        problems = module.check(module.extract_script(module.SOURCE.read_text()))
+        assert problems == []
+
+    @pytest.mark.parametrize(
+        "write",
+        [
+            "redis.call('ZADD', KEYS[1], 0, 'x')",
+            # The point of the read-allowlist inversion: a command nobody
+            # thought to enumerate must still be caught.
+            "redis.call('SADD', KEYS[1], 'x')",
+            "redis.call('ZINCRBY', KEYS[1], 1, 'x')",
+            "redis.call('EXPIRE', KEYS[1], 60)",
+            # Lua takes either quote style; so must the guard.
+            'redis.call("HSET", KEYS[1], "f", "v")',
+            # pcall differs from call only in error handling, not in writing.
+            "redis.pcall('ZADD', KEYS[1], 0, 'x')",
+        ],
+    )
+    def test_the_checker_detects_a_write_above_the_marker(self, write):
+        """The guard's own guard, at the boundary rather than one known entry.
+
+        A write-allowlist would pass four of these five silently.
+        """
+        module = self._load()
+        bad = (
+            "if mode ~= 'open' then\n"
+            "  redis.call('EXISTS', KEYS[1])\n"
+            "end\n"
+            f"{write}\n"
+            "-- MUTATION PHASE\n"
+        )
+        assert module.check(bad) != []
+
+    def test_the_checker_does_not_flag_reads_above_the_marker(self):
+        """The validation phase is *supposed* to read; only writes are bugs."""
+        module = self._load()
+        good = (
+            "if mode ~= 'open' then\n"
+            "  redis.call('EXISTS', KEYS[1])\n"
+            "  local s = redis.call('ZSCORE', KEYS[1], old_member)\n"
+            "end\n"
+            "-- MUTATION PHASE\n"
+            "redis.call('ZADD', KEYS[1], 0, 'x')\n"
+        )
+        assert module.check(good) == []
+
+
 # ---------------------------------------------------------------------------
 # G. Gate-disabled byte parity with the pre-#580 script
 # ---------------------------------------------------------------------------
@@ -1398,12 +1498,22 @@ class TestFailurePaths:
         assert _interval(ValidFact, "validity", record)[1] == float("inf")
         assert _names(ValidFact.query.filter(validity__current=True)) == ["a"]
 
-    def test_unsaved_instance_degrades_with_no_partial_state(self):
+    def test_unsaved_instance_raises_with_no_partial_state(self):
+        """#588: an unsaved member raises instead of silently returning None.
+
+        The no-write half of the old contract is unchanged and is the more
+        important half — the script errors before its first write command, so
+        all six keys stay untouched. What changed is the signal: ``None`` was
+        byte-identical to the normal pipeline-mode return, so a caller could not
+        tell "declined" from "nothing to close".
+        """
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         unsaved = ValidFact(name="never-saved")
 
-        assert SupersessionProtocol.supersede(unsaved, identity_key=identity) is None
-        assert SupersessionProtocol.invalidate(unsaved) is None
+        with pytest.raises(ValidityMemberAbsentError):
+            SupersessionProtocol.supersede(unsaved, identity_key=identity)
+        with pytest.raises(ValidityMemberAbsentError):
+            SupersessionProtocol.invalidate(unsaved)
         assert SupersessionProtocol.chain(unsaved) == []
         assert SupersessionProtocol.superseded_by(unsaved) is None
 
@@ -1416,12 +1526,11 @@ class TestFailurePaths:
         pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
         assert POPOTO_REDIS_DB.get(pointer) is None
 
-    def test_invalidate_with_an_unsaved_successor_is_a_no_op(self):
+    def test_invalidate_with_an_unsaved_successor_raises(self):
+        """#588: the incumbent must still be untouched, but the caller is told."""
         old = _save(ValidFact, name="old")
-        assert (
+        with pytest.raises(ValidityMemberAbsentError):
             SupersessionProtocol.invalidate(old, superseded_by=ValidFact(name="ghost"))
-            is None
-        )
         assert _interval(ValidFact, "validity", old)[1] == float("inf")
 
     def test_protocol_on_a_model_without_a_validity_field_is_a_no_op(self):
@@ -1523,6 +1632,609 @@ def _report_contradicted(instance, superseded_by=None):
     )
 
 
+# ---------------------------------------------------------------------------
+# The membership guard, evaluated inside SUPERSEDE_LUA (#588)
+# ---------------------------------------------------------------------------
+
+
+def _keyspace_snapshot(model, field_name):
+    """Every byte of the six derived keys, as a comparable structure.
+
+    Includes the per-identity open pointers, which ``get_all_keys`` excludes
+    because they are parameterized by identity digest.
+    """
+    keys = ValidityField.get_all_keys(model, field_name)
+    prefix = ValidityField.get_prefix_db_key(model, field_name).redis_key
+    snapshot = {}
+    for name in ("valid_from", "invalid_at", "ingested_at"):
+        snapshot[name] = sorted(
+            (m.decode() if isinstance(m, bytes) else m, s)
+            for m, s in POPOTO_REDIS_DB.zrange(keys[name], 0, -1, withscores=True)
+        )
+    for name in ("chain_fwd", "chain_rev"):
+        snapshot[name] = sorted(
+            (
+                k.decode() if isinstance(k, bytes) else k,
+                v.decode() if isinstance(v, bytes) else v,
+            )
+            for k, v in POPOTO_REDIS_DB.hgetall(keys[name]).items()
+        )
+    pointers = {}
+    for raw in POPOTO_REDIS_DB.keys(f"{prefix}:open:*"):
+        key = raw.decode() if isinstance(raw, bytes) else raw
+        value = POPOTO_REDIS_DB.get(key)
+        pointers[key] = value.decode() if isinstance(value, bytes) else value
+    snapshot["pointers"] = sorted(pointers.items())
+    return snapshot
+
+
+def _six_keys_are_empty(model, field_name):
+    """True when nothing at all has been written for this model/field."""
+    snapshot = _keyspace_snapshot(model, field_name)
+    return all(not part for part in snapshot.values())
+
+
+class TestMembershipGuardInLua:
+    """#588 — membership is decided inside the script, at the instant of the write.
+
+    The client-side ``EXISTS`` probe that used to live in ``_member_key``
+    answered the right question at a moment when the answer could not stay true:
+    the write it guarded happens later, inside ``SUPERSEDE_LUA``, at EXEC time.
+    In pipeline mode "later" is unbounded, which is how a same-transaction
+    successor came back as ``0`` and turned an ``invalidate`` into a silent
+    no-op.
+    """
+
+    # -- 1. The issue's reproduction, verbatim ---------------------------
+
+    def test_same_pipeline_successor_closes_the_incumbent(self):
+        """The exact four-line shape from the issue, which used to do nothing."""
+        e1 = _save(ValidFact, name="e1")
+        e2 = ValidFact(name="e2")
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        e2.save(pipeline=pipe)
+        SupersessionProtocol.invalidate(e1, superseded_by=e2, pipeline=pipe)
+        pipe.execute()
+
+        assert _interval(ValidFact, "validity", e1)[1] != float("inf")
+        fwd, rev = _chain_links(ValidFact, "validity", e1, e2)
+        assert fwd == e2.db_key.redis_key
+        assert rev == e1.db_key.redis_key
+        assert _names(ValidFact.query.filter(validity__current=True)) == ["e2"]
+
+    # -- 2/3. Pipeline / immediate parity --------------------------------
+
+    def test_pipeline_and_immediate_modes_produce_identical_state(self):
+        """One parity assertion, not two independent ones.
+
+        The whole point of moving the check into the script is that the two
+        modes stop diverging, so the assertion compares the two keyspaces
+        rather than checking each against a hand-written expectation.
+        """
+        at = time.time() + 100.0
+
+        old = _save(ValidFact, name="old")
+        new = _save(ValidFact, name="new")
+        SupersessionProtocol.invalidate(old, at=at, superseded_by=new)
+        immediate = _keyspace_snapshot(ValidFact, "validity")
+
+        _reset()
+
+        old = _save(ValidFact, name="old")
+        new = _save(ValidFact, name="new")
+        pipe = POPOTO_REDIS_DB.pipeline()
+        SupersessionProtocol.invalidate(old, at=at, superseded_by=new, pipeline=pipe)
+        pipe.execute()
+        pipelined = _keyspace_snapshot(ValidFact, "validity")
+
+        # The interval starts differ (two save clocks), so compare the parts the
+        # supersede itself owns: the close score, both chain links, the pointer.
+        assert pipelined["chain_fwd"] == immediate["chain_fwd"]
+        assert pipelined["chain_rev"] == immediate["chain_rev"]
+        assert pipelined["pointers"] == immediate["pointers"]
+        assert [s for _, s in pipelined["invalid_at"]] == [
+            s for _, s in immediate["invalid_at"]
+        ]
+
+    def test_absent_successor_fails_the_same_way_in_both_modes(self):
+        """Immediate mode raises directly; pipeline mode raises at execute()."""
+        old = _save(ValidFact, name="old")
+        ghost = ValidFact(name="ghost")
+
+        with pytest.raises(ValidityMemberAbsentError):
+            SupersessionProtocol.invalidate(old, superseded_by=ghost)
+        assert _interval(ValidFact, "validity", old)[1] == float("inf")
+        immediate = _keyspace_snapshot(ValidFact, "validity")
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        SupersessionProtocol.invalidate(old, superseded_by=ghost, pipeline=pipe)
+        with pytest.raises(redis.exceptions.ResponseError):
+            pipe.execute()
+        assert _keyspace_snapshot(ValidFact, "validity") == immediate
+
+        # And through the combined entry point, which owns its execute() and so
+        # can hand back the typed exception (plan D4/D6).
+        with pytest.raises(ValidityMemberAbsentError):
+            SupersessionProtocol.save_and_invalidate(
+                ValidFact(name="successor"), closes=ValidFact(name="also-a-ghost")
+            )
+
+    # -- 4. "Model:None" ------------------------------------------------
+
+    def test_model_none_successor_is_rejected_with_six_keys_untouched(self):
+        """The literal case the removed client-side probe existed to prevent.
+
+        It is still rejected — not by a client-side probe, but because the
+        record genuinely does not exist when the script looks.
+        """
+        old = _save(ValidFact, name="old")
+        before = _keyspace_snapshot(ValidFact, "validity")
+
+        with pytest.raises(ValidityMemberAbsentError):
+            ValidityField.execute_supersede(
+                ValidFact,
+                "validity",
+                new_member="ValidFact:None",
+                mode="invalidate",
+                old_member=old.db_key.redis_key,
+            )
+        assert _keyspace_snapshot(ValidFact, "validity") == before
+
+    # -- 5/6. Asserted vs hinted incumbent (Risk 3) ----------------------
+
+    def test_absent_explicit_old_member_raises(self):
+        """An incumbent named in ARGV[7] is a caller assertion."""
+        new = _save(ValidFact, name="new")
+        with pytest.raises(ValidityMemberAbsentError, match="incumbent"):
+            ValidityField.execute_supersede(
+                ValidFact,
+                "validity",
+                new_member=new.db_key.redis_key,
+                mode="invalidate",
+                old_member="ValidFact:hard-deleted",
+            )
+
+    def test_absent_pointer_resolved_incumbent_is_read_as_no_incumbent(self):
+        """A restored/dangling pointer must not brick the identity (Risk 3).
+
+        ``import_state`` restores open-claim pointers with a plain ``SET``. If
+        the pointed-at record was not carried in the same transfer, erroring
+        here would make a partial import permanently un-supersedable — so a
+        pointer is a hint, not an assertion.
+        """
+        identity = SupersessionProtocol.identity_key("user_42", "plan")
+        pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
+        POPOTO_REDIS_DB.set(pointer, "ValidFact:never-imported")
+
+        new = _save(ValidFact, name="new")
+        assert SupersessionProtocol.supersede(new, identity_key=identity) is None
+        raw = POPOTO_REDIS_DB.get(pointer)
+        assert (raw.decode() if isinstance(raw, bytes) else raw) == (
+            new.db_key.redis_key
+        )
+
+    # -- 7/8. _member_key is pure ---------------------------------------
+
+    def test_member_key_issues_zero_redis_commands(self, monkeypatch):
+        """Success Criterion: key resolution is pure (plan D1).
+
+        The ``ZSCORE`` the unsaved contract now needs lives in ``chain()``, not
+        here, so this counter stays at zero for every client method.
+        """
+        record = _save(ValidFact, name="a")
+        counted = [
+            "exists",
+            "get",
+            "zscore",
+            "hget",
+            "hgetall",
+            "zadd",
+            "hset",
+            "set",
+            "eval",
+            "evalsha",
+        ]
+        counter = _CallCounter(monkeypatch, counted)
+        assert supersession_module._member_key(record) == record.db_key.redis_key
+        assert {k: v for k, v in counter.counts.items() if v} == {}
+
+    def test_member_key_returns_none_only_when_resolution_fails(self):
+        class _Raises:
+            @property
+            def db_key(self):
+                raise ValueError("no key")
+
+        class _Empty:
+            class db_key:
+                redis_key = ""
+
+        assert supersession_module._member_key(_Raises()) is None
+        assert supersession_module._member_key(_Empty()) is None
+        unsaved = ValidFact(name="never-saved")
+        # Resolvable, therefore returned -- the script rejects it, not this.
+        assert supersession_module._member_key(unsaved) is not None
+
+    # -- 9. Mode 'open' is never guarded (Risk 1) ------------------------
+
+    def test_mode_open_is_never_membership_guarded(self):
+        """Gating mode 'open' would fail every save on some write paths.
+
+        ``ValidityField.on_save`` runs in mode ``'open'`` with the record being
+        saved as ``new_member``. On a write path where the hash lands after the
+        field hooks, an ``EXISTS`` there would reject every save on the model.
+        """
+        record = IndexedValidFact(name="opens", label="a")
+        record.save()
+        assert _interval(IndexedValidFact, "validity", record)[1] == float("inf")
+
+        # And directly: mode 'open' against a member that does not exist at all
+        # still opens an interval rather than erroring.
+        ValidityField.execute_supersede(
+            IndexedValidFact,
+            "validity",
+            new_member="IndexedValidFact:not-a-record",
+            mode="open",
+        )
+        keys = ValidityField.get_all_keys(IndexedValidFact, "validity")
+        assert (
+            POPOTO_REDIS_DB.zscore(keys["valid_from"], "IndexedValidFact:not-a-record")
+            is not None
+        )
+
+    # -- 10. ARGV[8] nil-safety (Risk 4) ---------------------------------
+
+    def test_seven_argv_caller_behaves_like_an_unasserted_call(self):
+        """``ARGV[8] or ''`` degrades to "not asserted", i.e. today's behavior."""
+        record = _save(ValidFact, name="a")
+        member = record.db_key.redis_key
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], member)
+
+        run_lua(
+            POPOTO_REDIS_DB,
+            validity_module.SUPERSEDE_LUA,
+            6,
+            keys["valid_from"],
+            keys["invalid_at"],
+            keys["ingested_at"],
+            "",
+            keys["chain_fwd"],
+            keys["chain_rev"],
+            member,
+            repr(time.time()),
+            repr(stored - 30 * 86400.0),  # a disagreeing start
+            "",
+            "open",
+            "",
+            "",
+            # ARGV[8] deliberately absent -- seven ARGV, as a pre-#588 caller
+        )
+        # No error, and NX kept the original start: identical to ARGV[8] == ''.
+        assert POPOTO_REDIS_DB.zscore(keys["valid_from"], member) == stored
+
+    # -- 11/12/13/14. Valid-time has one writer --------------------------
+
+    def test_asserted_valid_from_disagreement_raises(self):
+        record = _save(ValidFact, name="a")
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key)
+        with pytest.raises(ValidityValidFromConflictError):
+            ValidityField.execute_supersede(
+                ValidFact,
+                "validity",
+                new_member=record.db_key.redis_key,
+                mode="open",
+                valid_from=stored - 30 * 86400.0,
+                assert_valid_from=True,
+            )
+
+    def test_asserted_valid_from_agreement_does_not_raise(self):
+        """Equality is exact — both sides come from one repr/tonumber round trip.
+
+        An epsilon here would create a band of silently-accepted divergence,
+        which is the bug.
+        """
+        record = _save(ValidFact, name="a")
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key)
+        ValidityField.execute_supersede(
+            ValidFact,
+            "validity",
+            new_member=record.db_key.redis_key,
+            mode="open",
+            valid_from=stored,
+            assert_valid_from=True,
+        )
+        assert POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key) == (
+            stored
+        )
+
+    def test_the_reporters_thirty_day_divergence_cannot_be_written(self):
+        """End to end, in the reporter's own shape.
+
+        Save with no event time (hash ``validity`` nil, index takes the save
+        clock), then re-save carrying a corrected event time 30 days earlier.
+        The hash used to accept the correction while ``ZADD NX`` refused it,
+        leaving one record with two readable surfaces answering 30 days apart
+        and no error anywhere.
+        """
+        record = ValidFact(name="a")
+        record.save()
+        effective = ValidityField.get_valid_from(
+            ValidFact, "validity", member_key=record.db_key.redis_key
+        )
+        assert effective is not None
+
+        record.validity = effective - 30 * 86400.0
+        with pytest.raises(ValidityValidFromConflictError):
+            record.save()
+
+        # Hash and index still agree: nothing was written by the rejected save.
+        assert (
+            ValidityField.get_valid_from(
+                ValidFact, "validity", member_key=record.db_key.redis_key
+            )
+            == effective
+        )
+        reloaded = ValidFact.query.get(name="a")
+        assert reloaded.validity in (None, effective)
+
+    def test_unasserted_valid_from_disagreement_is_still_an_nx_no_op(self):
+        """Q2's answer, unchanged: without an assertion, NX wins silently.
+
+        ``SupersessionProtocol``'s ``at=`` is a close-time assertion about the
+        incumbent, not a start-time assertion about the successor — asserting it
+        would raise on every ordinary supersede.
+        """
+        record = _save(ValidFact, name="a")
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key)
+        ValidityField.execute_supersede(
+            ValidFact,
+            "validity",
+            new_member=record.db_key.redis_key,
+            mode="open",
+            valid_from=stored - 30 * 86400.0,
+            assert_valid_from=False,
+        )
+        assert POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key) == (
+            stored
+        )
+
+    # -- 15. Token -> exception dispatch ---------------------------------
+
+    def test_every_lua_token_maps_to_its_exception(self):
+        cases = [
+            (validity_module.MEMBER_ABSENT_ERROR, ValidityMemberAbsentError),
+            (validity_module.CLOSE_BEFORE_START_ERROR, ValidityCloseBeforeStartError),
+            (
+                validity_module.VALID_FROM_CONFLICT_ERROR,
+                ValidityValidFromConflictError,
+            ),
+        ]
+        for token, expected in cases:
+            error = redis.exceptions.ResponseError(f"{token} some detail")
+            assert isinstance(validity_module.map_lua_error(error), expected)
+
+    def test_an_unrecognized_response_error_is_returned_unchanged(self):
+        """No token matched: the helper returns ``e`` itself, and never raises.
+
+        Both call sites are spelled ``raise map_lua_error(e) from e``, so a
+        helper that raised internally would leave that expression unfinished and
+        one that returned ``None`` would make the call site a ``TypeError``.
+        """
+        error = redis.exceptions.ResponseError("WRONGTYPE something else entirely")
+        assert validity_module.map_lua_error(error) is error
+
+    # -- 16/18. The combined entry point (D6) ----------------------------
+
+    def test_save_and_supersede_is_one_multi_exec(self, monkeypatch):
+        identity = SupersessionProtocol.identity_key("user_42", "plan")
+        old = _save(ValidFact, name="free")
+        SupersessionProtocol.supersede(old, identity_key=identity)
+
+        executes = []
+        real_execute = redis.client.Pipeline.execute
+
+        def counting_execute(self, *args, **kwargs):
+            executes.append(self.transaction)
+            return real_execute(self, *args, **kwargs)
+
+        monkeypatch.setattr(redis.client.Pipeline, "execute", counting_execute)
+        counter = _CallCounter(monkeypatch, MUTATING_CLIENT_METHODS)
+
+        result = SupersessionProtocol.save_and_supersede(
+            ValidFact(name="enterprise"), identity_key=identity
+        )
+
+        assert isinstance(result, SupersedeResult)
+        assert result.closed_key == old.db_key.redis_key
+        assert result.pipeline is None and result.close_index is None
+        assert executes == [True], executes
+        outside = {k: v for k, v in counter.counts.items() if v}
+        assert outside == {}, f"mutating calls outside the pipeline: {outside}"
+
+    def test_save_and_supersede_on_a_caller_pipeline_reports_honest_unknown(self):
+        identity = SupersessionProtocol.identity_key("user_42", "plan")
+        old = _save(ValidFact, name="free")
+        SupersessionProtocol.supersede(old, identity_key=identity)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        result = SupersessionProtocol.save_and_supersede(
+            ValidFact(name="enterprise"), identity_key=identity, pipeline=pipe
+        )
+        # ``None`` here means *unknown until you execute*, not "nothing closed".
+        assert result.closed_key is None
+        assert result.close_index is not None
+        assert result.pipeline is pipe
+
+        results = pipe.execute()
+        closed = results[result.close_index]
+        assert (closed.decode() if isinstance(closed, bytes) else closed) == (
+            old.db_key.redis_key
+        )
+
+    def test_save_and_supersede_refuses_a_non_transactional_pipeline(self):
+        identity = SupersessionProtocol.identity_key("user_42", "plan")
+        pipe = POPOTO_REDIS_DB.pipeline(transaction=False)
+        with pytest.raises(ValueError, match="transaction=False"):
+            SupersessionProtocol.save_and_supersede(
+                ValidFact(name="x"), identity_key=identity, pipeline=pipe
+            )
+
+    def test_save_and_supersede_needs_a_validity_field(self):
+        identity = SupersessionProtocol.identity_key("user_42", "plan")
+        with pytest.raises(ValueError, match="no ValidityField"):
+            SupersessionProtocol.save_and_supersede(
+                PlainFact(name="p"), identity_key=identity
+            )
+
+    def test_save_and_invalidate_end_to_end(self):
+        old = _save(ValidFact, name="old")
+        new = ValidFact(name="new")
+        result = SupersessionProtocol.save_and_invalidate(new, closes=old)
+
+        assert result.closed_key == old.db_key.redis_key
+        assert _interval(ValidFact, "validity", old)[1] != float("inf")
+        fwd, rev = _chain_links(ValidFact, "validity", old, new)
+        assert fwd == new.db_key.redis_key
+        assert rev == old.db_key.redis_key
+        assert _names(ValidFact.query.filter(validity__current=True)) == ["new"]
+
+    # -- 17. The eager indexed-field phase (BLOCKER 1) -------------------
+
+    def test_a_rejected_declared_resave_writes_nothing_on_an_indexed_model(self):
+        """D5 half 1: the pre-scan has to run before the EAGER indexed phase.
+
+        ``Model.save()`` runs every ``IndexedFieldMixin`` field's ``on_save``
+        eagerly, with ``pipeline=None``, directly against live Redis, before the
+        internal pipeline is even constructed (the #476 unique-conflict fix).
+        ``ValidityField`` is not an ``IndexedFieldMixin``, so a check living in
+        its ``on_save`` would only be reached *after* ``label`` had already
+        committed both its hash value and its index entry.
+
+        Red-state note: run this against a D5 implementation that lives in
+        ``on_save`` and it FAILS on the ``"a"``/``"b"`` assertion. That failure
+        is the proof the pre-scan is load-bearing.
+        """
+        t0 = time.time() - 3600.0
+        record = IndexedValidFact(name="r", label="a", validity=t0)
+        record.save()
+        before = _keyspace_snapshot(IndexedValidFact, "validity")
+
+        record.label = "b"
+        record.validity = t0 - 30 * 86400.0
+        with pytest.raises(ValidityValidFromConflictError):
+            record.save()
+
+        assert IndexedValidFact.query.get(name="r").label == "a"
+        assert POPOTO_REDIS_DB.exists("$IndexF:IndexedValidFact:label:a")
+        assert not POPOTO_REDIS_DB.exists("$IndexF:IndexedValidFact:label:b")
+        assert _keyspace_snapshot(IndexedValidFact, "validity") == before
+
+    def test_a_rejected_declared_resave_queues_nothing_onto_a_caller_pipeline(self):
+        """The external-pipeline arm of the same guarantee.
+
+        Both eager loops sit inside the ``else:`` arm of an external-pipeline
+        test that has already returned, so the dispatch has to be the single
+        pre-split site — otherwise this arm silently skips validation entirely
+        (round-2 B1).
+        """
+        t0 = time.time() - 3600.0
+        record = IndexedValidFact(name="r", label="a", validity=t0)
+        record.save()
+        before = _keyspace_snapshot(IndexedValidFact, "validity")
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        record.label = "b"
+        record.validity = t0 - 30 * 86400.0
+        with pytest.raises(ValidityValidFromConflictError):
+            record.save(pipeline=pipe)
+        assert len(pipe.command_stack) == 0
+
+        pipe.reset()
+        assert IndexedValidFact.query.get(name="r").label == "a"
+        assert not POPOTO_REDIS_DB.exists("$IndexF:IndexedValidFact:label:b")
+        assert _keyspace_snapshot(IndexedValidFact, "validity") == before
+
+    # -- 19. chain(unsaved) == [] (BLOCKER B2) ---------------------------
+
+    def test_chain_of_an_unsaved_instance_is_empty(self):
+        """The unsaved contract moved into ``chain()`` when the probe left D1.
+
+        ``ZSCORE`` rather than ``EXISTS`` on purpose: it is the same rule
+        ``_walk_links`` already applies to a dangling link, so an anchor and a
+        link are judged by one criterion.
+
+        Red-state note: run this against a D1 implementation without the
+        ``chain()`` gate and it returns ``[unsaved]``.
+        """
+        unsaved = ValidFact(name="never-saved")
+        assert SupersessionProtocol.chain(unsaved) == []
+        assert SupersessionProtocol.superseded_by(unsaved) is None
+        assert SupersessionProtocol.supersedes(unsaved) is None
+
+    # -- 20. Pre-existing divergence, and the operator's exit ------------
+
+    def test_a_record_that_already_diverges_has_a_documented_exit(self):
+        """C1: divergence already stored must not brick the record.
+
+        A record carrying the reporter's divergence refuses a *full* re-save
+        until reconciled, but a partial save of an unrelated column is
+        unaffected, and either documented remediation clears it.
+        """
+        record = IndexedValidFact(name="r", label="a", validity=time.time())
+        record.save()
+        member = record.db_key.redis_key
+        vf_key, _ = ValidityField.get_interval_keys(IndexedValidFact, "validity")
+        diverged = float(record.validity) - 30 * 86400.0
+        POPOTO_REDIS_DB.zadd(vf_key, {member: diverged})  # no NX: overwrite
+
+        # (a) a partial save of an unrelated column still succeeds -- the
+        #     dispatch is scoped to update_fields.
+        record.label = "b"
+        record.save(update_fields=["label"])  # must not raise
+        assert IndexedValidFact.query.get(name="r").label == "b"
+
+        # (b) a full save raises.
+        with pytest.raises(ValidityValidFromConflictError):
+            record.save()
+
+        # (c) remediation 1: adopt the effective (index) start.
+        effective = ValidityField.get_valid_from(
+            IndexedValidFact, "validity", member_key=member
+        )
+        assert effective == diverged
+        record.validity = effective
+        record.save()  # must not raise
+        assert ValidityField.get_valid_from(
+            IndexedValidFact, "validity", member_key=member
+        ) == float(record.validity)
+
+    def test_the_second_remediation_makes_the_declared_value_authoritative(self):
+        """C1 remediation 2: a plain ZADD (no NX) overwrites the refused score."""
+        record = IndexedValidFact(name="r", label="a", validity=time.time())
+        record.save()
+        member = record.db_key.redis_key
+        vf_key, _ = ValidityField.get_interval_keys(IndexedValidFact, "validity")
+        declared = float(record.validity) - 30 * 86400.0
+        POPOTO_REDIS_DB.zadd(vf_key, {member: float(record.validity) + 1.0})
+
+        record.validity = declared
+        with pytest.raises(ValidityValidFromConflictError):
+            record.save()
+
+        POPOTO_REDIS_DB.zadd(vf_key, {member: declared})
+        record.save()  # must not raise
+        assert (
+            ValidityField.get_valid_from(
+                IndexedValidFact, "validity", member_key=member
+            )
+            == declared
+        )
+
+
 class TestContradictedSupersessionWiring:
     """``_apply_contradicted`` -> ``_apply_supersession`` (plan Failure Paths).
 
@@ -1618,6 +2330,27 @@ class TestContradictedSupersessionWiring:
         assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
         assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
         assert _names(ObservedFact.query.filter(validity__current=True)) == ["old"]
+
+    def test_the_degradation_is_logged_rather_than_merely_silent(self, caplog):
+        """#588 D7: "silently degraded" is observable, not asserted-by-absence.
+
+        The client-side ``EXISTS`` probe removed from ``_member_key`` survives
+        on this one path, because ``on_context_used`` is telemetry and must not
+        raise for one stale instance in a batch. The probe is safe *here*
+        because the observation path never has a same-pipeline successor — both
+        records are already-saved memories the agent was shown — so the TOCTOU
+        window that makes it wrong in general does not exist.
+        """
+        old = _save(ObservedFact, name="old")
+        ghost = ObservedFact(name="ghost")
+
+        with caplog.at_level("DEBUG", logger="POPOTO.ObservationProtocol"):
+            _report_contradicted(old, superseded_by=ghost)
+
+        assert any(
+            "not persisted, degrading" in record.message for record in caplog.records
+        ), [r.message for r in caplog.records]
+        assert _interval(ObservedFact, "validity", old)[1] == float("inf")
 
     def test_unsaved_contradicted_instance_degrades_with_no_partial_state(self):
         """The reported instance itself is unsaved: silent, and no index state.

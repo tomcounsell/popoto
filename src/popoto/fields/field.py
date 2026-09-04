@@ -48,7 +48,7 @@ See Also:
 
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 import redis
 
 from ..exceptions import ModelException
@@ -615,6 +615,41 @@ class Field(metaclass=FieldBase):
             need to extend this key further to distinguish between structures.
         """
         return DB_key(cls.field_class_key, model._meta.db_class_key, *field_names)
+
+    @classmethod
+    def pre_save_validate(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Raise to abort a save before ANY write is issued or queued.
+
+        Runs from ONE site in ``Model.save()`` -- after the ``pre_save`` gate and
+        before the partial/full save split -- so it covers all four save arms,
+        including the two external-pipeline arms that return before either eager
+        indexed-field loop is reached. That is what distinguishes it from
+        :meth:`on_save`, which on the internal-pipeline arms has already let
+        every ``IndexedFieldMixin`` field commit its hash value and index entry,
+        and on the external-pipeline arms runs only as a queued command.
+
+        On a partial save the dispatch is scoped to ``update_fields``, so a save
+        of an unrelated column cannot trip a validation this field owns.
+
+        Default: no-op. Implement it only for a check that must precede every
+        write on the model, not merely every write this field owns.
+
+        Args:
+            model_instance: The Model instance being saved.
+            field_name: Name of this field on the model.
+            field_value: Current value of the field (may be None).
+            **kwargs: Additional context, forwarded from ``Model.save()``.
+
+        Returns:
+            ``None``. Signal a refusal by raising.
+        """
+        return None
 
     @classmethod
     def on_save(

@@ -242,10 +242,134 @@ enforced inside the one script:
 - **Idempotent under retry.** A `ZSCORE != +inf` guard refuses to re-close an
   already-closed record, so two writers racing the same identity serialize
   into a two-link chain rather than forking.
-- **Graceful degradation on unsaved instances.** Key resolution is wrapped in
-  `except (TypeError, ValueError)`; an unsaved instance degrades to a no-op
-  *before* any write is issued, so no partial index state (no `valid_from`
-  entry, no chain link, no pointer) is ever left behind.
+- **Membership is decided inside the script, at the instant of the write.**
+  `SUPERSEDE_LUA` runs an `EXISTS` against each member the caller named, in the
+  same atomic script invocation that writes. A member that does not exist raises
+  `ValidityMemberAbsentError` and nothing at all is written — the script's
+  validation phase returns before its first write command, so no partial index
+  state (no `valid_from` entry, no chain link, no pointer) is possible.
+
+    Deciding it client-side, during key resolution, would answer the right
+    question at a moment when the answer cannot stay true: the write it guards
+    happens later, inside the script, at EXEC time. See **Same-transaction
+    successor** below for the shape that difference makes possible.
+
+## Same-transaction successor
+
+Append the new claim and close the old claim's validity interval in a single
+`MULTI`/`EXEC`, so no reader ever sees both open or neither present:
+
+```python
+pipe = popoto.get_redis().pipeline()
+new.save(pipeline=pipe)
+SupersessionProtocol.invalidate(old, superseded_by=new, pipeline=pipe)
+pipe.execute()
+```
+
+This is the recommended spelling, and it works because the membership guard is
+inside the script. `new.save(pipeline=pipe)` only *queues* the successor's
+`HSET`; a probe running at call time would see no such key and have to treat the
+successor as unsaved. The guard runs instead when the script's body executes
+inside `MULTI`, by which point the `HSET` has applied.
+
+For the same shape with the save included, and with a *typed* error instead of a
+raw `ResponseError`, use the combined entry point:
+
+```python
+result = SupersessionProtocol.save_and_supersede(
+    new, identity_key=("user_42", "plan")
+)
+result.closed_key  # the superseded record's Redis key, or None
+
+# The identity-free form, naming the incumbent explicitly:
+SupersessionProtocol.save_and_invalidate(new, closes=old)
+```
+
+Both own their pipeline by default, so the save and the close are atomic by
+construction. Pass `pipeline=` to compose onto a caller pipeline instead; the
+returned `SupersedeResult` then reports `closed_key=None` — meaning *unknown
+until you execute*, not "nothing was closed" — plus a `close_index` you read out
+of your own `execute()` results.
+
+## Typed errors
+
+Every `SUPERSEDE_LUA` failure has exactly one Python counterpart. All three
+subclass `ValidityError`, which subclasses `ValueError` — so existing
+`except (TypeError, ValueError)` handlers and `pytest.raises(ValueError)`
+assertions keep their meaning.
+
+| Lua reply token | Exception | Meaning |
+|---|---|---|
+| `POPOTO_VALIDITY_MEMBER_ABSENT <role> <key>` | `ValidityMemberAbsentError` | The successor, or an explicitly-named incumbent, did not exist at write time |
+| `POPOTO_VALIDITY_CLOSE_BEFORE_START` | `ValidityCloseBeforeStartError` | The close instant precedes the record's own stored `valid_from` |
+| `POPOTO_VALIDITY_VALID_FROM_CONFLICT <stored> <requested>` | `ValidityValidFromConflictError` | An asserted `valid_from` disagrees with the stored start |
+
+An incumbent resolved from the open-claim pointer is a *hint*, not an assertion:
+a pointer left naming a hard-deleted record reads as "no incumbent", the same way
+`chain()` reads a dangling link. Only an incumbent the caller named explicitly
+raises. That is what keeps a partial `import_state` transfer supersedable.
+
+**Pipeline-mode caveat.** The `ResponseError` -> typed-exception remap lives on
+`execute_supersede`'s non-pipeline branch. On a caller-supplied pipeline,
+redis-py raises during `pipe.execute()` result parsing — long after
+`execute_supersede` returned — so you get a raw
+`redis.exceptions.ResponseError`. `save_and_supersede` / `save_and_invalidate`
+own their `execute()` and are the supported way to get a typed error in pipeline
+shape.
+
+## Valid-time has one writer
+
+The field value at construction is the single authoritative writer of
+valid-time:
+
+```python
+Fact(fact_id="plan-2", validity=event_time).save()
+```
+
+`at=` on `supersede()` / `invalidate()` is a **close-time** assertion about the
+incumbent, never a start-time assertion about the successor. Asserting it for
+the successor would raise on every ordinary supersede, since the successor's
+stored start is its own save clock.
+
+Two readings of "valid from" exist and they differ legitimately:
+
+- `instance.validity` is the **declared** value. `None` means "not declared,
+  defaulted to the save clock".
+- `ValidityField.get_valid_from(Model, "validity", member_key=...)` is the
+  **effective** value — the index score, which is what every `as_of` query
+  answers against.
+
+A re-save that *declares* a start disagreeing with the stored one now raises
+`ValidityValidFromConflictError` rather than losing silently to the script's
+`ZADD NX`. The check runs from a `Field.pre_save_validate` hook dispatched from a
+single site in `Model.save()`, above the partial/full split and above both eager
+indexed-field phases, so a rejected save writes nothing at all: not the model
+hash, not a sibling `IndexedField`'s index entry, not an interval. On the
+external-pipeline path it queues nothing onto the caller's pipeline for that
+call.
+
+### Reconciling a record that already diverges
+
+There is **no data migration** — no stored key, score, or hash field changes
+shape, and no backfill runs. But a record that already carries a hash/index
+divergence will refuse a *full* `save()` until an operator reconciles it. A
+partial save of an unrelated column is unaffected, because the dispatch is scoped
+to `update_fields`.
+
+```python
+# Adopt the index -- the value every as_of query already answers against:
+effective = ValidityField.get_valid_from(
+    Fact, "validity", member_key=obj.db_key.redis_key
+)
+obj.validity = effective
+obj.save()
+
+# Or make the declared value authoritative -- plain ZADD, no NX, so it
+# overwrites the score ZADD NX refused to update:
+vf_key, _ = ValidityField.get_interval_keys(Fact, "validity")
+popoto.get_redis().zadd(vf_key, {obj.db_key.redis_key: float(obj.validity)})
+obj.save()
+```
 
 ### Bidirectional chain traversal
 
@@ -261,6 +385,14 @@ Traversal terminates on a cycle (a `seen` set) and on a dangling link — a
 chain HASH entry naming a record whose `valid_from` entry no longer exists,
 which happens when `on_delete` has scrubbed that record's own chain *fields*
 but a neighbor's link still names it as a *value*.
+
+`chain()` returns `[]` for an unsaved instance. That guard lives in `chain()`
+itself, using the same `ZSCORE`-on-`valid_from` rule the walk already applies to
+a dangling link — an anchor and a link are judged by one criterion. It is
+deliberately *not* inherited from key resolution: key resolution issues no Redis
+command at all, so that the mutation paths pay one fewer round trip and the
+membership decision stays where it belongs, inside the script. Reads never raise;
+`superseded_by()` / `supersedes()` on an unsaved instance still return `None`.
 
 ## Three gating layers
 
@@ -391,8 +523,8 @@ including `DefaultMemory`, does.
 - [Provenance Journal](provenance-journal.md) — this feature's first real
   consumer: `JournalEntry` composes `ValidityField` for its membership axis,
   calls `execute_supersede` directly on the annotate-and-close write path
-  (never `SupersessionProtocol`, which no-ops against a same-pipeline
-  successor), and uses `chain()` for provenance display only, never for
+  (it needs an explicit incumbent and a construction-time valid-from, not the
+  identity pointer), and uses `chain()` for provenance display only, never for
   membership
 - [ObservationProtocol](observation-protocol.md) — the outcome vocabulary
   that reports contradiction; `_apply_contradicted` writes provenance through

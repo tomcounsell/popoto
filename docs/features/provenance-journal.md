@@ -286,14 +286,27 @@ docstrings on each method for the exact raise conditions.
 `supersede()` and `retract()` queue two things into a single Redis
 `MULTI`/`EXEC`: the annotation's `save()`, and `ValidityField.execute_supersede(
 ..., mode="invalidate", old_member=<target key>, new_member=<annotation key>)`.
-The write path calls `execute_supersede` directly and never routes through
-`SupersessionProtocol` — `SupersessionProtocol.invalidate` resolves its member
-keys with `POPOTO_REDIS_DB.exists(...)`, and inside a pipeline the successor's
-`HSET` is only *queued*, not executed, so `EXISTS` returns 0 and the call
-silently takes its "unsaved successor → no-op" branch: no invalidate script
-runs, the target stays open, and nothing signals the failure. `execute_supersede`
-has no such existence check, so it is the correct seam for a write that has
-not committed yet.
+The write path calls `execute_supersede` directly rather than routing through
+`SupersessionProtocol`. Not because the protocol cannot survive a pipeline —
+membership is decided inside `SUPERSEDE_LUA` at the instant of the write, so
+[the same-pipeline shape works](validity-and-supersession.md#same-transaction-successor)
+and `SupersessionProtocol.save_and_supersede` is the supported combined entry
+point elsewhere. The reason is that this path needs an *explicit* incumbent (the
+annotation target is named by the caller and validated by the pre-flight, not
+resolved through an identity pointer) and it sets valid-time at construction
+rather than asserting it through the script. Converging the two is the retrieval
+milestone's design work — the pre-flight carries firewall, cross-agent
+ownership, and kind/target checks the protocol cannot express.
+
+**What an explicit incumbent costs.** Naming the incumbent makes it a caller
+*assertion*, so a target hard-deleted between the pre-flight and `EXEC` returns
+`POPOTO_VALIDITY_MEMBER_ABSENT` rather than taking an idempotent no-op branch.
+Redis does not roll back the rest of the `MULTI` and the entry's `HSET` sits
+above the `EVAL` in the queue, so the outcome is: **the journal entry commits,
+and `_write` raises `ValidityMemberAbsentError`.** That is the intended
+contract — the annotation is real provenance and an append-only journal must
+keep it — and the exception is typed rather than a raw
+`redis.exceptions.ResponseError`, so callers never string-match Lua tokens.
 
 **The property that holds:** no interleaving reader observes the annotation
 without the close. Between the transaction opening and `EXEC`, no other
