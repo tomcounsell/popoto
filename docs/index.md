@@ -112,6 +112,16 @@ dependency, and the suite carries explicit Valkey-safety tests asserting that
 indexes stay on plain types. Point `REDIS_URL` at a
 [Valkey](https://valkey.io) server and the same code runs.
 
+Since August 2026 that claim also rests on observed CI. The test suite —
+everything except the `slow`-marked stress tests — runs against a real Valkey
+server on every pull request and every push to `main`, as a separately named
+`pytest (Valkey)` check in
+[`tests.yml`](https://github.com/tomcounsell/popoto/blob/main/.github/workflows/tests.yml),
+pinned to `valkey/valkey:8-alpine` alongside the Redis job's `redis:7-alpine`.
+The job asserts via `INFO server` that the container really is Valkey before
+pytest starts, and there has been no Valkey-only failure across 60 completed
+runs.
+
 ```python
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```

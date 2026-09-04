@@ -7,18 +7,21 @@
 pytest                    # full suite; requires Redis/Valkey on localhost:6379
 pytest -k "test_name"     # single test
 mypy src/                 # type check
-black src/ tests/         # format — this repo has NO ruff (line length 88; isort 79)
+ruff check src/           # lint — gated by lint.yml
+black src/ tests/         # format (line length 88; isort 79)
 mkdocs build --strict     # docs gate
 scripts/ci-local.sh       # tests + stress + docs; --all adds build, lock, guard
 ```
 
 Primary source dir is `src/`; tests live in `tests/`. `scripts/ci-local.sh`
-mirrors the GitHub workflows locally (`tests` ← test-valkey.yml, `stress` ←
-stress-tests.yml, `docs` ← deploy-docs.yml, `build` ← release.yml, `lock` ←
-lock-check.yml, `guard` ← guard-main-push.yml) and is the preferred full run.
-Valkey is deliberately not run locally: redis-py talks to Redis and Valkey
-identically and the project forbids Redis modules, so local Redis covers the
-same ground; GitHub runs the real Valkey job on PR.
+mirrors the GitHub workflows locally (`lint` ← lint.yml, `tests` ← tests.yml,
+`docs` ← deploy-docs.yml, `build` ← release.yml, `lock` ← lock-check.yml,
+`guard` ← guard-main-push.yml) and is the preferred full run. `stress` mirrors
+no workflow at all: tests.yml runs `-m "not slow"`, so the stress suite is a
+local-only gate. Valkey is deliberately not run locally: redis-py talks to
+Redis and Valkey identically and the project forbids Redis modules, so local
+Redis covers the same ground; tests.yml runs the real Valkey job on every PR
+and every push to `main`.
 
 ## Test isolation: DB 15, and the six expected failures
 

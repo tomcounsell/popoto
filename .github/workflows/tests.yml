@@ -19,8 +19,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A newer push to a PR supersedes the older run for that PR. Runs on main are
-# never cancelled, so every merged commit keeps a complete result.
+# A newer push to a PR cancels the older run for that PR. On main,
+# cancel-in-progress is false, so a run that has started always finishes -- but
+# a run still queued when the next push arrives is superseded by it, which is
+# why some main runs show as cancelled with no jobs.
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -147,6 +149,13 @@ jobs:
           name = str(info.get("server_name", "redis")).lower()
           print("server_name:", name)
           print("version:", info.get("redis_version"))
+          # Valkey reports its Redis-compatibility version in redis_version
+          # (7.2.4 on valkey:8-alpine). Read both key names: the real server
+          # version is not guaranteed to be published under server_version.
+          print(
+              "server_version:",
+              info.get("server_version") or info.get("valkey_version"),
+          )
           if name != "valkey":
               print("::error::Expected a Valkey server, got", name)
               sys.exit(1)

@@ -89,7 +89,7 @@ Every number below comes from a harness in this repository, with its result JSON
 
 **Judged end-to-end accuracy trails retrieval quality by a wide margin.** On LoCoMo, judged answer accuracy is 0.3636 (28 of 77 scored items, 95% CI ≈ 0.25 to 0.47, `gpt-4o-mini` as both generator and judge under the pinned Mem0/GAM protocol), against retrieval that finds the right evidence far more often. Those are different metric families and are never combined. Finding the right evidence is far more reliable than answering from it, and closing that gap is the open work. Scope and interval: [Benchmarks](https://popoto.io/benchmarks/).
 
-**Valkey is a first-class target.** Popoto uses core Redis data types and commands only, with no Redis-module dependency, and the suite carries explicit Valkey-safety tests asserting that indexes stay on plain types. The same code runs against either server.
+**Valkey is a first-class target.** Popoto uses core Redis data types and commands only, with no Redis-module dependency, and the suite carries explicit Valkey-safety tests asserting that indexes stay on plain types. Since August 2026 the test suite — everything except the `slow`-marked stress tests — also runs against a real Valkey server on every pull request and every push to `main`, as a separately named `pytest (Valkey)` check in [`tests.yml`](.github/workflows/tests.yml), pinned to `valkey/valkey:8-alpine` alongside the Redis job's `redis:7-alpine`. The job asserts via `INFO server` that the container really is Valkey before pytest starts, and there has been no Valkey-only failure across 60 completed runs. The same code runs against either server.
 
 ## Redis / Valkey ORM
 
