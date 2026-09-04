@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-09-04
 tracking: https://github.com/tomcounsell/popoto/issues/550
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-04
 ---
 
 # Install-Size Claim: One Measured Number, One Stated Environment
@@ -227,9 +229,28 @@ Five prose edits across four files. No code, no tests, no dependency changes.
 
 1. `README.md:23` — replace `8.7 MB` with `9.0 MB` and extend the environment clause to name the resolved redis-py version and the measurement date.
 2. `docs/index.md:15` — same substitution, in the hero's shorter register.
-3. `docs/plans/docs_repositioning.md:50` — `7.9 MB` → `9.0 MB`; `32 packages / 105 MB` → `34 packages / 151 MB`; add the measurement date.
-4. `docs/plans/docs_repositioning.md:112` — same two substitutions in the compressed `3-package/…` form.
-5. `docs/plans/harness_integration.md:165` — `7.9 MB` → `9.0 MB`, and reword the regression budget so it is a budget on the *popoto-attributable* portion. redis-py's growth is outside popoto's control and must not read as a popoto regression.
+3. `docs/plans/docs_repositioning.md:50` — `7.9 MB` → `9.0 MB`; `32 packages / 105 MB` → `34 packages / 151 MB`; add the environment clause (`Python 3.12`, `redis-py 8.1.0`) and the measurement date.
+4. `docs/plans/docs_repositioning.md:112` — same substitutions in the compressed `3-package/…` form, with the same environment clause.
+5. `docs/plans/harness_integration.md:165` — `7.9 MB` → `9.0 MB` with the environment clause, and reword the regression budget so it is a budget on the *popoto-attributable* portion. redis-py's growth is outside popoto's control and must not read as a popoto regression.
+
+**Every rewritten figure carries `Python 3.12` and `redis-py 8.1.0` on the same
+line.** That is a single uniform rule across all four target files, and it is what
+the two environment rows in the Verification table check. It is also the actual fix
+from spike-2: a bare number goes stale silently, a number beside its resolution
+does not.
+
+**`docs_repositioning.md` is a closed record** (`status: Complete`, shipped in
+PR #531; confirmed by `git log -3 -- docs/plans/docs_repositioning.md`, whose most
+recent commit is `2b123ed` "Plan complete (docs_repositioning): shipped in PR
+#531"). Its two lines are corrected in place rather than left stale, because a
+reader of that document has no signal that its numbers are superseded. To avoid
+silently falsifying a dated research record, each corrected line gains a short
+italic correction note pointing at this plan, which holds the superseded figures
+and the re-measurement. The note must **not** restate the old numbers inline, or
+the stale-figure greps would match it.
+
+`harness_integration.md` is by contrast `status: Planning` — genuinely in-flight —
+so its regression budget is a live gate and is rewritten outright.
 
 On item 5, the sentence today says the whole 3-package total "must not regress."
 Under an unpinned `redis>=4.4.4` that is a promise popoto cannot keep, as spike-2
@@ -247,6 +268,35 @@ core install, which is the thing that plan is actually gating.
 
 > Three packages, 9.0 MB of site-packages in a clean Python 3.12 venv
 > (redis-py 8.1.0, measured 2026-09-04), no API key.
+
+**Suggested replacement wording for `docs/plans/docs_repositioning.md:50`:**
+
+> - mem0ai installs 34 packages / 151 MB / requires an OpenAI key; popoto installs
+>   3 packages / 9.0 MB / zero keys, verified in a clean venv (Python 3.12,
+>   redis-py 8.1.0, mem0ai 2.0.20, measured 2026-09-04). This is an unclaimed
+>   differentiator. *(Figures corrected 2026-09-04 per #550; the superseded
+>   originals and the re-measurement are recorded in
+>   `docs/plans/install_size_claim.md`.)*
+
+**Suggested replacement wording for `docs/plans/docs_repositioning.md:112`:**
+
+> - Promote undersold assets: #489 negative result; 3-package/9.0 MB/zero-key
+>   install (Python 3.12, redis-py 8.1.0, measured 2026-09-04) vs mem0ai 2.0.20's
+>   34/151 MB/key-required; Valkey support; transparency practice (judge-prompt
+>   SHA, environment capture, published negative results).
+
+**Suggested replacement wording for `docs/plans/harness_integration.md:165`:**
+
+> - **New dependencies**: `mcp` (the Python MCP SDK) under a new `popoto[mcp]`
+>   extra. Core install stays at 3 packages — 9.0 MB of site-packages on Python
+>   3.12 with redis-py 8.1.0, measured 2026-09-04 — and zero API keys. The
+>   published differentiator is the package count and the zero-key property; the
+>   byte figure tracks whatever the unpinned `redis>=4.4.4` floor resolves to and
+>   is not popoto's to hold flat. What must not regress is popoto's own
+>   contribution: adding the `mcp` extra must not increase the *core* install's
+>   package count, and must not increase the popoto-attributable share of the
+>   install size. The hook path deliberately does **not** require `mcp`; hooks
+>   work on a bare `pip install popoto`.
 
 ### Decision: keep the mem0ai comparison
 
@@ -346,28 +396,37 @@ edits themselves.
 
 ## Success Criteria
 
-- [ ] `9.0 MB` is the only install-size figure in the repo for the core install
-- [ ] No occurrence of `8.7 MB`, `7.9 MB`, `105 MB`, or `32 packages` remains
-- [ ] Every occurrence of the figure names Python 3.12 and redis-py 8.1.0
-- [ ] `harness_integration.md`'s regression budget cites 9.0 MB and scopes the budget to what the `mcp` extra adds
+- [ ] `9.0 MB` is the only install-size figure among the four target claim sites
+      (`README.md`, `docs/index.md`, `docs/plans/docs_repositioning.md`,
+      `docs/plans/harness_integration.md`). The figures in this plan's Spike
+      Results (6.1 / 7.5 / 8.1 / 10.3 MB) are dated measurement records, not
+      claims, and are deliberately excluded from that criterion.
+- [ ] No occurrence of `8.7 MB`, `7.9 MB`, `105 MB`, or `32 packages` remains in
+      the four target files
+- [ ] Every occurrence of the figure in those files names Python 3.12 and
+      redis-py 8.1.0 on the same line
+- [ ] `harness_integration.md`'s regression budget cites 9.0 MB and scopes the
+      non-regression promise to popoto's own contribution rather than the
+      absolute 3-package total
+- [ ] `docs_repositioning.md`, a closed record, carries a dated correction note
+      pointing at this plan rather than a silent rewrite
 - [ ] The mem0ai comparison reads 34 packages / 151 MB with its measurement date
 - [ ] `mkdocs build --strict` passes
-- [ ] Documentation updated (`/do-docs`)
+- [ ] Documentation cascade run (`/do-docs`, task 4)
 
 ## Team Orchestration
 
 ### Team Members
 
-- **Documentarian (install-size copy)**
-  - Name: `install-size-scribe`
-  - Role: Apply the five prose edits across the four files
-  - Agent Type: documentarian
-  - Resume: true
+Solo dev, matching the Small appetite. The change is five prose edits; a
+two-agent documentarian/validator split was declared in the pre-critique draft
+and has been collapsed. The builder applies the edits and then runs the
+Verification table itself.
 
-- **Validator (install-size claim)**
-  - Name: `install-size-validator`
-  - Role: Grep the tree for stale figures, confirm the new figure and its environment clause, build the docs
-  - Agent Type: validator
+- **Builder/validator (install-size copy)**
+  - Name: `install-size-scribe`
+  - Role: Apply the prose edits across the four files, then run every row of the Verification table
+  - Agent Type: documentarian
   - Resume: true
 
 ## Step by Step Tasks
@@ -378,7 +437,6 @@ edits themselves.
 - **Validates**: no test files; verified by grep in the Verification table
 - **Informed By**: spike-1 (9.0 MB, PyPI, redis-py 8.1.0), spike-3 (measure from PyPI, not the checkout)
 - **Assigned To**: install-size-scribe
-- **Agent Type**: documentarian
 - **Parallel**: true
 - Replace `8.7 MB` at `README.md:23` with `9.0 MB` and extend the environment clause per the suggested wording
 - Replace `8.7 MB` at `docs/index.md:15` likewise
@@ -390,47 +448,75 @@ edits themselves.
 - **Validates**: no test files; verified by grep in the Verification table
 - **Informed By**: spike-2 (the budget must scope to popoto's own delta), spike-4 (mem0ai 34 / 151 MB)
 - **Assigned To**: install-size-scribe
-- **Agent Type**: documentarian
 - **Parallel**: true
-- `docs/plans/docs_repositioning.md:50` and `:112`: `7.9 MB` → `9.0 MB`, `32 packages` → `34 packages`, `105 MB` → `151 MB`, add the 2026-09-04 measurement date
-- `docs/plans/harness_integration.md:165`: `7.9 MB` → `9.0 MB`, and reword so the non-regression promise covers what the `popoto[mcp]` extra adds to the core install rather than the absolute 3-package total
-- Check `git log -3 -- docs/plans/harness_integration.md` first; coordinate if another branch is editing it
+- `docs/plans/docs_repositioning.md:50` and `:112`: apply the suggested wording — `7.9 MB` → `9.0 MB`, `32 packages` → `34 packages`, `105 MB` → `151 MB`, plus the `Python 3.12, redis-py 8.1.0` clause, the 2026-09-04 date, and the correction note pointing at this plan. The note must not restate the superseded numbers.
+- `docs/plans/harness_integration.md:165`: apply the suggested wording — `7.9 MB` → `9.0 MB` with the environment clause, and reword so the non-regression promise covers popoto's own contribution rather than the absolute 3-package total
+- `git log -3` was run on both files at revision time: `docs_repositioning.md` is `status: Complete` (last commit `2b123ed`, shipped PR #531) and `harness_integration.md` is `status: Planning` (last commit `e220b2e`, shipped PR #546). Neither has an open branch editing the target lines; re-check before editing and coordinate rather than force if that has changed.
 
 ### 3. Validate
 - **Task ID**: validate-install-size
 - **Depends On**: build-shipped-docs, build-plan-docs
-- **Assigned To**: install-size-validator
-- **Agent Type**: validator
+- **Assigned To**: install-size-scribe
 - **Parallel**: false
-- Run every command in the Verification table
-- Confirm the untouched package-count-only lines are byte-identical to main
+- Run every command in the Verification table, reading counted output rather than exit status for the four stale-figure rows
+- Confirm the untouched package-count-only lines are byte-identical to `origin/main`
 - Report pass/fail
+
+### 4. Documentation cascade
+- **Task ID**: docs-cascade
+- **Depends On**: validate-install-size
+- **Assigned To**: install-size-scribe
+- **Parallel**: false
+- Run `/do-docs` so the change is checked against the rest of the documentation tree before merge
+- This task exists so the "Documentation updated" success criterion maps to a step; the critique flagged that it previously mapped to none
 
 ## Verification
 
+The four "no stale figure" rows are scoped to the four target claim sites and
+**must not** be run as `grep -r … docs/`: this plan file quotes `8.7 MB`,
+`7.9 MB`, `105 MB` and `32 packages` many times as historical record, and nothing
+removes that prose, so a recursive grep over `docs/` can never reach zero.
+
+`grep -c` exits 1 when a file has no match, so every row below is judged on
+**counted output, never on `$?`**. Run the four stale-figure rows under `set +e`,
+or use the `| grep -v ":0$" | wc -l` form given, which exits 0 either way.
+
+Let `TARGETS="README.md docs/index.md docs/plans/docs_repositioning.md docs/plans/harness_integration.md"`.
+
 | Check | Command | Expected |
 |-------|---------|----------|
-| No stale 8.7 MB | `grep -rc "8\.7 MB" README.md docs/` | match count == 0 |
-| No stale 7.9 MB | `grep -rc "7\.9 MB" README.md docs/` | match count == 0 |
-| No stale mem0ai size | `grep -rc "105 MB" README.md docs/` | match count == 0 |
-| No stale mem0ai count | `grep -rc "32 packages" README.md docs/` | match count == 0 |
+| No stale 8.7 MB | `grep -c "8\.7 MB" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale 7.9 MB | `grep -c "7\.9 MB" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale mem0ai size | `grep -c "105 MB" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
+| No stale mem0ai count | `grep -c "32 packages" $TARGETS \| grep -v ":0$" \| wc -l` | output is `0` |
 | README carries the figure | `grep -c "9\.0 MB" README.md` | output > 0 |
 | Docs hero carries the figure | `grep -c "9\.0 MB" docs/index.md` | output > 0 |
-| Repositioning plan updated | `grep -c "9\.0 MB" docs/plans/docs_repositioning.md` | output > 0 |
+| Repositioning plan updated | `grep -c "9\.0 MB" docs/plans/docs_repositioning.md` | output is `2` |
 | Harness budget updated | `grep -c "9\.0 MB" docs/plans/harness_integration.md` | output > 0 |
-| Environment stated beside every figure | `grep -rn "9\.0 MB" README.md docs/ \| grep -vc "3\.12"` | match count == 0 |
-| redis-py version stated beside every figure | `grep -rn "9\.0 MB" README.md docs/ \| grep -vic "redis"` | match count == 0 |
-| mem0ai comparison refreshed | `grep -c "151 MB" docs/plans/docs_repositioning.md` | output > 0 |
-| Package-count-only lines untouched | `git diff --stat main -- docs/llms.txt` | output does not contain llms.txt |
-| No dependency metadata changed | `git diff --exit-code main -- pyproject.toml` | exit code 0 |
+| Python version stated beside every figure | `grep -h "9\.0 MB" $TARGETS \| grep -vc "3\.12" \| cat` | output is `0` |
+| redis-py version stated beside every figure | `grep -h "9\.0 MB" $TARGETS \| grep -vic "redis-py 8\.1\.0" \| cat` | output is `0` |
+| mem0ai comparison refreshed | `grep -c "151 MB" docs/plans/docs_repositioning.md` | output is `2` |
+| Closed record annotated | `grep -c "install_size_claim.md" docs/plans/docs_repositioning.md` | output > 0 |
+| Package-count-only lines untouched | `git diff --stat origin/main -- docs/llms.txt` | empty output |
+| Untouched claim lines byte-identical | `git diff origin/main -- README.md docs/index.md \| grep -c "^[-+].*three packages"` | output is `0` |
+| No dependency metadata changed | `git diff --exit-code origin/main -- pyproject.toml` | exit code 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
+| Only the four target files changed | `git diff --name-only origin/main` | exactly the 4 targets plus `docs/plans/install_size_claim.md` |
 
 ## Critique Results
 
 <!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 
+**Critique run:** 2026-09-04, FULL depth (Risk & Robustness, Scope & Value, History & Consistency). **Verdict:** NEEDS REVISION (2 blockers, 3 concerns, 1 nit). **Revision applied** 2026-09-04: all 2 blockers, all 3 concerns and the nit are addressed below. One critique round only, per the routing instruction.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | Risk & Robustness, History & Consistency | The four "No stale ..." rows in the Verification table grep `README.md docs/`, which recursively includes this plan file. This document quotes `8.7 MB` 16x, `7.9 MB` 14x, `105 MB` 12x and `32 packages` 7x as historical record, and no task removes that prose, so the four checks can never report zero matches even after a perfect edit. The gate is unsatisfiable by construction. | Verification table rewritten: rows scoped to the four target files, never `docs/` recursively; a note above the table states why | Replace the four commands with file-scoped equivalents: `grep -rc "8\.7 MB" README.md docs/index.md docs/plans/docs_repositioning.md docs/plans/harness_integration.md` (repeat for `7\.9 MB`, `105 MB`, `32 packages`), each still expecting match count == 0. Equivalently add `--exclude=install_size_claim.md`. |
+| BLOCKER | Risk & Robustness, Scope & Value | Verification rows "Environment stated beside every figure" and "redis-py version stated beside every figure" require `3.12` and `redis` on the same line as every `9.0 MB` occurrence, but Technical Approach items 3-5 and Tasks 1-2 only add the measurement date to the `docs/plans/` lines. `docs_repositioning.md:50`/`:112` and `harness_integration.md:165` contain neither `3.12` nor `redis` today, so following the tasks literally produces lines that fail the plan's own checks. | Technical Approach items 3-5 now require `Python 3.12` and `redis-py 8.1.0` on the same line as every rewritten figure, uniformly across all four files; suggested wording added for each of the three plan-doc lines | Either extend items 3-5 to write the figure as `9.0 MB (Python 3.12, redis-py 8.1.0)` on those three lines, or rescope the two environment-clause Verification rows to `README.md docs/index.md` only. Pick one; do not leave both as written. |
+| CONCERN | History & Consistency | Success Criterion "`9.0 MB` is the only install-size figure in the repo for the core install" is contradicted by this plan's own permanent content: spike-2 records 6.1 MB and 7.5 MB, spike-3 records 10.3 MB, and the method note records 8.1 MB. All survive the merge. | Success Criterion 1 rewritten to scope to the four target claim sites and to name the Spike Results figures as excluded historical records | Reword to: "`9.0 MB` is the only install-size figure among the four target claim sites (`README.md`, `docs/index.md`, `docs/plans/docs_repositioning.md`, `docs/plans/harness_integration.md`); the Spike Results figures (6.1/7.5/8.1/10.3 MB) are historical measurement records, not claims, and are excluded." |
+| CONCERN | Risk & Robustness | `grep -rc PATTERN <files>` exits status 1 when every file has zero matches, so the four "match count == 0" rows and Task 3's "Run every command in the Verification table" misreport the passing case as a failure under `set -e`. | All four rows restated in the `\| grep -v ":0$" \| wc -l` form with an explicit instruction to judge on counted output, never `$?` | State the expectation as output-based, not exit-code-based: `grep -rc ... \| grep -v ":0$" \| wc -l` expecting `0`, or prefix each row with `set +e`. The validator must read counted output, never `$?`, for these four rows. |
+| CONCERN | Scope & Value | The plan overwrites historical figures in `docs/plans/docs_repositioning.md` without stating whether that document is a closed decision record or active work. `harness_integration.md` gets that justification (Risk 4, "in-flight"); `docs_repositioning.md` gets none. | `git log -3` run on both plan docs; `docs_repositioning.md` confirmed `status: Complete` (shipped PR #531). Its lines are corrected in place **and** annotated with a dated correction note pointing at this plan, so the record is not silently falsified. `harness_integration.md` is `status: Planning`, so its budget is rewritten outright | Run `git log -3 -- docs/plans/docs_repositioning.md` (same technique Task 2 already mandates for `harness_integration.md`). If the plan is closed/shipped, append a dated erratum line rather than rewriting the original measurement in place. |
+| NIT | Scope & Value | A two-agent Team Orchestration section (documentarian + validator, both `Resume: true`) is declared for what the plan itself calls "five sentences of prose" under a Solo-dev Small appetite. | Collapsed to a single solo-dev role that applies the edits and then runs the Verification table | n/a |
 
 ## Open Questions
 
