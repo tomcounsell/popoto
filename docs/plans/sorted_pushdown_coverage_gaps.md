@@ -1578,6 +1578,206 @@ them. **No scope change:** the task list is unchanged at 0 → 1 → 2 → 3 →
 
 ---
 
+## Critique Results — Round 3
+
+**Run:** 2026-09-04 · run `753c237513c44a21843ded67800f63a2` · depth FULL
+(3 lenses: Risk & Robustness, Scope & Value, History & Consistency) ·
+**Verdict: NEEDS REVISION (1 blocker)** — 1 blocker, 3 concerns, 4 nits.
+
+> Roster note: no Agent/Task dispatch tool exists in this session (same as rounds
+> 1 and 2), so the three lenses were applied directly by the critique driver
+> rather than by three forked critics. Every finding below is grounded in a live
+> measurement at `HEAD` = `bb38f42`, not on the plan's claims.
+>
+> **Root cause of this round:** `origin/main` moved past the plan's `7f057f9`
+> baseline while the plan was being revised. `bb38f42` (PR #605, issue #549,
+> merged 2026-09-04T14:24Z) rewrote `tests/test_pytest_plugin.py` — the exact
+> file the plan's environment section is built on — and `90fc3d3` (PR #601,
+> issue #588) touched `src/`. The plan's only drift detector is
+> `git merge-base --is-ancestor 7f057f9 HEAD`, which still passes, so the plan
+> cannot see either.
+
+### Findings Summary
+
+| Severity | Critic | Finding | Location |
+|---|---|---|---|
+| BLOCKER | Risk & Robustness | B1 — The plan pins `POPOTO_TEST_DB=12` in eight places; `tests/test_pytest_plugin.py:52` now declares `_ENV_OVERRIDE_CHILD_DB = 12`, so DB 12 is the one number that fails by construction on current main. | Prerequisites; task 0; task 6; Verification script `DB=12`; Race Conditions |
+| CONCERN | History & Consistency | C1 — The five `assert db == 15` failures the plan documents as expected noise no longer exist; #605 deleted them. Measured on DB 11: `45 passed, 0 failed`. | Success Criteria; Race Conditions |
+| CONCERN | Risk & Robustness | C2 — Freshness Check's "`7f057f9` is the last commit to touch `src/` or `tests/`" is false at `HEAD`, and the ancestor-only prerequisite structurally cannot detect the drift that produced B1. | Freshness Check; Prerequisites |
+| CONCERN | Risk & Robustness | C3 — The "no bare margin literal" anti-criterion is inert (measured: scores `0` against `2 * 11` and `3 + 8`), and its positive twin only requires `-gt 0`, so "use `Defaults`, never hardcode" is unenforced. | Verification script |
+| NIT | Scope & Value | N1 — The informational reference `5 failed, 3416 passed, 26 skipped` is doubly stale (#601 and #605 both landed after it). | Race Conditions; Success Criteria |
+| NIT | Scope & Value | N2 — Module collected count `38` is pinned as an absolute — the same defect class round-2 C3 fixed for the suite count only. | Success Criteria; task 6; Verification script |
+| NIT | History & Consistency | N3 — Task 2 never states the non-reversed `doc_id` prefix (`m{i:03d}`) that tasks 3/3a/4/4a assert as `["m019","m018","m017"]`. | Task 2 `build-meta-models` |
+| NIT | History & Consistency | N4 — Sorted-set key prefix is written `$SortF`; the real prefix is `$SortedF` (`sorted_field_mixin.py:427`). | Architectural Impact; Risk 2 |
+
+### Blockers
+
+**B1 — `POPOTO_TEST_DB=12` is now the one DB number that fails by construction.**
+*Location:* Prerequisites (row "A private test DB is exported"); task 0's first
+action; task 6; the Verification script's `DB=12`; Race Conditions.
+*Finding:* PR #605 (`bb38f42`, merged after the plan's `7f057f9` baseline) added
+`_ENV_OVERRIDE_CHILD_DB = 12` at `tests/test_pytest_plugin.py:52` and, at
+`:1056`, a loud guard:
+`assert _resolve_test_db(pytestconfig) != _ENV_OVERRIDE_CHILD_DB`. Measured:
+
+| command | result |
+|---|---|
+| `POPOTO_TEST_DB=12 pytest tests/test_pytest_plugin.py tests/test_version.py -q` | **1 failed**, 44 passed — `TestResolutionChain::test_env_var_beats_ini_option`, *"Parent session is on DB 12, which this test's child process flushes."* |
+| `POPOTO_TEST_DB=11 …` (same command) | **45 passed** |
+
+The plan pins 12 as a *prerequisite*, so a builder following it lands on the
+single forbidden value. The guard exists because that test's child subprocess
+**flushes DB 12** — the same class of mid-run flush hazard CLAUDE.md and
+`docs/plans` history already record twice.
+*Suggestion:* Repin to a DB that is not 12 and not 15 — DB 11 measured empty
+(`dbsize 0`) and green — and record 12 alongside 0 and 15 as unusable.
+*Implementation Note:* Change the number in **both** kinds of site together, per
+the plan's own C5 note: every `POPOTO_TEST_DB=12` occurrence *and* every
+`redis-cli -n 12` occurrence, plus `DB=12` in the Verification script. The
+constant to check against before repinning is `_ENV_OVERRIDE_CHILD_DB` at
+`tests/test_pytest_plugin.py:52` — it is a literal in the test file and can move
+again, so state the DB choice as "not 0, not 15, not `_ENV_OVERRIDE_CHILD_DB`"
+rather than only as a bare number.
+
+### Concerns
+
+**C1 — The documented "expected noise" baseline no longer exists.**
+*Location:* Success Criteria ("The failures must be exactly the documented
+`assert db == 15` set for a non-15 `POPOTO_TEST_DB`"); Race Conditions (the
+five named test ids).
+*Finding:* PR #605's entire purpose was to delete that noise — its commit
+message: *"The five `== 15` assertions in `tests/test_pytest_plugin.py` made the
+documented `POPOTO_TEST_DB` override unusable."* All five now resolve the
+expected DB instead of hardcoding 15. Measured on DB 11:
+`tests/test_pytest_plugin.py` + `tests/test_version.py` → **45 passed, 0
+failed**. The only surviving literal `== 15` assertions are at `:832` and `:866`,
+and both live inside subprocess probe *source strings*, not parent assertions.
+The plan's criterion is therefore unsatisfiable as written: a validator looking
+for five expected failures finds zero and has no instruction for that case.
+*Suggestion:* Restate the expectation as **zero** failures on the chosen non-15
+DB, and keep `failed_after == failed_before` as the actual gate.
+*Implementation Note:* Do not simply delete the five test ids — replace them with
+a pointer to `#549` / PR #605 so a future reader does not "restore" the old
+expectation. The delta gate already handles whatever the true baseline is; this
+criterion is the human-readable cross-check and must match reality or it will be
+overridden by hand.
+
+**C2 — The plan's only drift detector cannot see the drift that produced B1.**
+*Location:* Freshness Check ("Baseline commit: `7f057f9` — the last commit to
+touch `src/` or `tests/` as of 2026-09-04"); Prerequisites (row "Checkout is at
+or above `7f057f9`").
+*Finding:* False at `HEAD` = `bb38f42`. `git log 7f057f9..HEAD -- src tests`
+returns two commits: `90fc3d3` (#588 / PR #601, `src/`) and `bb38f42` (#605,
+`tests/`). The prerequisite is `git merge-base --is-ancestor 7f057f9 HEAD`, which
+passes on *any* descendant — so it certifies "#602 is present" and nothing more.
+Round-2 critique N5 already softened the baseline sentence to "at or above";
+what it did not do is give the builder a way to notice when something lands on
+top. B1 is the direct consequence.
+*Suggestion:* Add a prerequisite that enumerates post-baseline commits and
+requires the builder to read them before trusting the environment claims.
+*Implementation Note:* Concretely, a Prerequisites row with check command
+`git fetch origin --quiet && git log --oneline 7f057f9..origin/main -- src tests`
+and purpose "any commit listed here may have invalidated the DB pin, the expected
+failure set, or a `query.py` line reference — read it before running task 0."
+This is a *read* gate, not an assertion: a non-empty list is normal in a repo
+with 5+ concurrent lanes, so failing on non-empty would be false-alarm noise.
+
+**C3 — The "no hardcoded margin" criterion is unenforced in both directions.**
+*Location:* Verification script, `check "no bare margin literal"` and
+`[ … grep -c '^+.*SORTED_PUSHDOWN_OVERFETCH_MARGIN' ] -gt 0`.
+*Finding:* Measured against a synthetic diff containing
+`+    assert counter.count <= 2 * 11` and `+    assert counter.count <= 2 * (3 + 8)`
+— both exactly what the Success Criterion "no bare `8` or `11` in the new
+assertions" exists to forbid — the anti-criterion
+`grep -cE '^\+.*(num=11|MARGIN = 8)'` scores **0**, i.e. PASS. Neither `num=11`
+nor `MARGIN = 8` is a string any test in this plan would ever write; the pattern
+was built for production-code shapes. Its positive twin is equally weak: it
+requires only `-gt 0`, so **one** correct usage anywhere in the diff satisfies it
+while the other seven bounds hardcode. This is the same vacuous-anti-criterion
+defect round-1 B1 found and fixed for the `xfail` row — that row was re-verified
+this round and **does** fire correctly (scores `1` on
+`@pytest.mark.xfail(strict=True, …)`).
+*Suggestion:* Anchor the anti-criterion on the assertion lines the criterion is
+actually about, and make the positive check count usages rather than merely
+detect one.
+*Implementation Note:* Replace with
+`check "no bare margin literal" "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*counter\.count.*[^_A-Za-z0-9](8|11)([^0-9]|$)')"`
+— scoping to lines mentioning `counter.count` is what keeps `limit=3`, `range(20)`
+and docstring prose from matching. Pair it with a counted positive check: seven of
+the eight new tests carry a margin-expressed bound (all but
+`test_count_is_not_truncated_by_a_limit`), so
+`check "margin used in every bound" "7" "$(… grep -c '^+.*SORTED_PUSHDOWN_OVERFETCH_MARGIN')"`
+is exact — but state the expected number in the plan so a scope change moves it
+deliberately rather than silently. Self-check both patterns against a synthetic
+diff before trusting a PASS, exactly as the existing note at the end of the
+Verification section requires.
+
+### Nits
+
+- **N1** — `5 failed, 3416 passed, 26 skipped` (Race Conditions, Success
+  Criteria) was measured on `7f057f9`; `#601` and `#605` have both landed since
+  and #605 alone added ~14 tests to `tests/test_pytest_plugin.py`. The plan
+  already labels the figure informational and gates on a delta, so nothing is
+  broken — but it is now wrong in both the `failed` and the `passed` column and
+  is cited as a "magnitude sanity check". Re-measure it at build time or drop the
+  numbers and keep only the delta rule.
+- **N2** — "collects **38**" is pinned absolute in Success Criteria, task 6 and
+  the Verification script. Round-2 C3 fixed exactly this defect class for the
+  *suite* count but left the *module* count absolute; `tests/test_sorted_range_pushdown.py`
+  has taken commits from two other lanes in the last two days (#594, #602), so the
+  exposure is real. Task 0 already records the pre-change count, so the fix is
+  free: assert `collected_after == collected_before + 8`.
+- **N3** — Task 2 pins `_seed_meta(Model, n, reverse_ids=False, **extra)` and
+  specifies `z{n-1-i:03d}` for the reversed case, but never states the
+  non-reversed form. Tasks 3, 3a, 4 and 4a all assert `["m019","m018","m017"]` /
+  `["m000","m001","m002"]`, so the prefix must be `m{i:03d}` — inferable, but a
+  builder that writes `d{i:03d}` (matching the existing `_seed()`) reddens four
+  tests for a naming reason. State it in task 2.
+- **N4** — Architectural Impact and Risk 2 write the sorted-set key as
+  `$SortF:<ClassName>:<field>:<partition>`. The real prefix is `$SortedF`
+  (`src/popoto/fields/sorted_field_mixin.py:427`). Nothing depends on it — the
+  `_flush()` glob is `*PushdownDoc*` and the class name is embedded either way —
+  but the plan cites the key shape as the *reason* the glob is sufficient, so the
+  cited evidence should be right.
+
+### Structural Check Results
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections | PASS | All present and non-empty |
+| Task numbering | PASS | 0 → 1 → 2 → 3 → 3a → 4 → 4a → 5 → 6; no gaps |
+| Dependencies valid | PASS | Strict serial chain, no cycles; every task carries a validation command |
+| File paths exist | PASS | All cited paths exist |
+| Prerequisites met | **FAIL (4/5)** | venv → `/Users/valorengels/src/popoto/src/popoto/__init__.py` ✓; `merge-base --is-ancestor 7f057f9 HEAD` ✓; `numpy`/`sentence_transformers` ✓; `redis-cli -n 12 ping` → PONG, `dbsize 0` ✓. **The DB pin itself is invalid — see B1.** |
+| Cross-references | PASS | Every Success Criterion maps to a task; no No-Go or Rabbit Hole appears as planned work |
+
+**Independently re-verified at `HEAD` = `bb38f42` (no finding):**
+every `query.py` line reference in the plan — `_filter_keys_with_pushdown` 2264,
+`_pushdown_allowed` 2277, `_bound_keys_before_hydration` 2284, `if
+state.pushdown_limit:` 2319 / `return db_keys` 2320, `Meta` resolution 2329 with
+the `isinstance` guard at 2332 and the field-name decline at 2335,
+`_sorted_pushdown_args` 2405 / resolution 2445, `filter_for_keys_set` 2464 with
+the `_sorted_field_order` reset at 2504, the `_sorted_pushdown_args` call at 2538,
+`QueryBuilder.count` 1814 with the Q short-circuit at 1821-1822, `_execute_filter`
+gate 3040 / reset 3044, slice call sites 3071 and 3590, `prepare_results` fallback
+3203, `Query.count` 3238, `async_filter` 3525, the pushdown lock 3564;
+`SORTED_PUSHDOWN_OVERFETCH_MARGIN = 8` at `constants.py:358`; `addopts = "-v"` at
+`pyproject.toml:123`; `Defaults` already imported at
+`tests/test_sorted_range_pushdown.py:25`;
+`test_key_list_slice_bounds_hydration_with_second_indexed_filter` at 255;
+`AsyncHydrationCounter.__enter__` at 549 (synchronous, as spike-5 states);
+`_flush()` glob `*PushdownDoc*` at 60; `Meta.order_by` field-existence validation
+at `base.py:459-465`, so `order_by = "doc_id"` on a KeyField is legal. Module
+collects **30** with **27** test functions; zero occurrences of `count(` and zero
+of `class Meta` in the module; `git grep PushdownDocMeta tests/` empty (Risk 4
+holds); the `xfail` anti-criterion fires correctly (scores `1`).
+
+**Cleanup:** no `src/` or `tests/` modification made by this critique
+(`git status --short` clean apart from other lanes' plan docs); no throwaway test
+modules created; `redis-cli -n 12 dbsize` → 0 and `-n 11` → 0 after the probe runs.
+
+---
+
 ## Open Questions
 
 **None. All resolved in the 2026-09-04 revision pass** — the plan is settled and
