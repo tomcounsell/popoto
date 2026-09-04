@@ -283,6 +283,26 @@ class TestExtractMemories:
         # WriteFilter discards importance < 0.2
         assert len(saved) == 0
 
+    def test_extract_accepts_context_kwarg_on_the_default_path(self, sm):
+        """M4 (#563) threads a new ``context=`` kwarg through extract_memories.
+
+        On the default (non-auditable) path it is accepted and ignored --
+        it only matters on the auditable path (see
+        tests/test_reference_resolution.py). Existing callers that omit it
+        (every test above this one) must keep working unchanged.
+        """
+        from popoto.extraction.resolution import TurnContext
+
+        response = "We deploy using blue-green strategy."
+        without_context = sm.extract_memories(response, importance=0.6)
+        with_context = sm.extract_memories(
+            response, importance=0.6, context=TurnContext.now()
+        )
+
+        assert len(without_context) == 1
+        assert len(with_context) == 1
+        assert without_context[0].content == with_context[0].content
+
 
 # ===========================================================================
 # report_outcomes

@@ -750,6 +750,33 @@ class TestExtractionEdgeCases:
 
 
 # ===========================================================================
+# M4 (#563): the new `context=` kwarg on extract_memories
+# ===========================================================================
+
+
+class TestExtractMemoriesContextKwarg:
+    """extract_memories grew a `context=` kwarg (M4, #563). On the default
+    (non-auditable) path it is accepted and ignored -- resolution only runs
+    on the auditable path (see tests/test_reference_resolution.py). This
+    proves real end-to-end saves are unaffected, against real Redis.
+    """
+
+    def test_context_kwarg_does_not_change_default_path_behaviour(self, sm):
+        from popoto.extraction.resolution import TurnContext
+
+        response = "Alice deployed the service. Bob reviewed the change."
+
+        without_context = sm.extract_memories(response, importance=0.6)
+        _clean_all()
+        with_context = sm.extract_memories(
+            response, importance=0.6, context=TurnContext.now()
+        )
+
+        assert len(without_context) == len(with_context) == 2
+        assert {m.content for m in without_context} == {m.content for m in with_context}
+
+
+# ===========================================================================
 # Gap 7: Configurable Field Names
 # ===========================================================================
 
