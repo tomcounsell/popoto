@@ -4,10 +4,10 @@ type: bug
 appetite: Small
 owner: Valor Engels
 created: 2026-09-03
-tracking: https://github.com/tomcounsell/popoto/issues/575
+tracking: https://github.com/tomcounsell/popoto/issues/575, https://github.com/tomcounsell/popoto/issues/570
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-04T06:44:04Z
+revision_applied_at: 2026-09-04T06:57:30Z
 ---
 
 # #575 / #570 — Route SortedField(partition_by=...) values through canonical_key_str()
@@ -22,9 +22,10 @@ instant can land in different partitions depending on how it decoded. Silent, no
 only as queries returning fewer rows than expected.
 
 The Freshness Check below revises one premise: they are **not** consistent with every partition
-render in the codebase. `base.py:3667` (orphan purge) appends the raw value, which `DB_key`
-canonicalizes as of #548, so that path already disagrees with the seven `str()` sites for a
-datetime partition. The scope and the fix are unchanged; the urgency framing is.
+render in the codebase. The orphan-purge path in `Model._purge_orphan_keys` derives its zset key
+from the row's **stored** redis key, whose KeyField segment has been canonical since #548 — so
+for a datetime partition it already disagrees with the seven `str()` sites. The scope and the fix
+are unchanged; the urgency framing is.
 
 Two issues describe this: #575 (the generic finding, with the suggested `canonical_key_str`
 fix) and #570 (the datetime-specific duplicate, filed with a measure-first framing). One fix
@@ -57,9 +58,23 @@ Anchored by enclosing symbol, because line numbers drift under concurrent lanes:
 | 7 | `src/popoto/models/query.py` | 1421 | `_materialize_decay_field` | same comprehension |
 
 Seven SortedField sites, same count as the issue (its prose says "six", its list has seven).
-Recipe call sites (`recipes/context_assembler.py:627`, `recipes/default_memory.py:194`) and
-`cyclic_decay_field.py:402,413,423,435` go through these builders and inherit the fix; they
-need no edit.
+
+**Sibling sites — corrected characterization (round-1 NIT).** Recipe call sites
+(`recipes/context_assembler.py:627`, `recipes/default_memory.py:194`) and
+`cyclic_decay_field.py:402,413` route through `get_partitioned_sortedset_db_key` and are true
+passive inheritors. `cyclic_decay_field.py:423,435` (`get_cycles_hash_key_from_parts`,
+`get_pressure_hash_key_from_parts`) are **not**: they pass *raw* partition values into
+`get_sortedset_db_key`, which `DB_key.__str__` already canonicalizes as of #548. They are
+therefore a **second live divergence today** from the seven `str()` sites, not sites that merely
+inherit the fix. No edit is needed at those four lines — post-fix all of them converge on the
+canonical form — but the plan's earlier description of them was wrong and is corrected here.
+
+Two further sites in `src/popoto/fields/` render a partition value outside `DB_key` (round-1
+CONCERN): `confidence_field.py:315,350,374` and `event_stream.py:119`. Both are in scope; see
+below. `prediction_ledger._error_key` takes a caller-supplied label, not a model field, and is
+genuinely out of scope.
+
+**Full in-scope inventory: 11 sites** — 7 SortedField + 3 ConfidenceField + 1 EventStream.
 
 ### The plan's own inventory grep was defective — replaced
 
@@ -68,29 +83,45 @@ need no edit.
 exactly the partial conversion this plan calls "worse than none". Use instead:
 
 ```bash
-grep -rn "append(str(\|\[str(self\._filters\|str(query_params\[partition\|str(getattr(model_instance, partition" \
-  src/popoto/fields/sorted_field_mixin.py src/popoto/models/query.py
+# widened to all of src/popoto/fields/ + query.py so a sibling site cannot hide (round-1 CONCERN)
+grep -rn "append(str(\|\[str(self\._filters\|str(query_params\[partition\|str(getattr(model_instance, partition\|key += f\":{val}\"\|f\"{base_key}:{partition_value}\"" \
+  src/popoto/fields/ src/popoto/models/query.py
 ```
 
-and confirm the result is the seven rows above (modulo line drift) before editing.
+Pre-edit this returns exactly **11** rows: the seven above, plus `confidence_field.py:315,350,374`
+and `event_stream.py:119`. Confirm that count (modulo line drift) before editing.
 
-### Premise correction: the sites are NOT all consistent today
+### Premise correction: the sites are NOT all consistent today — and *why* (round-1 CONCERN)
 
-`DB_key.__str__` (`src/popoto/models/db_key.py:276-281`) already renders **every non-DB_key
-partial through `canonical_key_str`** as of #548. A partition value appended raw is therefore
-already canonical; a value pre-rendered with `str()` arrives as a `str` and canonicalization
-no-ops on it. `src/popoto/models/base.py:3667` (orphan-purge, `zset_key.append(values[name])`)
-appends the **raw** value — so on current main the purge path and the write/query paths already
-disagree for a `datetime` partition value. The issue's "all sites internally consistent, no bug
-today" framing is stale: the defect is live (silently purging nothing) under the same
-datetime-partition precondition, not merely latent. `base.py:3667` is the alignment target and
-must NOT be changed.
+The mechanism this plan gave in round 1 was **wrong** and is corrected here.
+`Model._purge_orphan_keys` does *not* "append a raw datetime". It builds
+`values: dict[str, str]` by parsing the row's already-stored redis key with
+`DB_key.from_redis_key(key)` — the entries are already-unescaped **strings**, and
+`canonical_key_str`/`DB_key.__str__` both no-op on a `str`.
 
-Consequence for the fix shape: at these seven sites, `canonical_key_str(v)` and simply dropping
-the `str()` wrapper produce identical bytes. Prefer the explicit `canonical_key_str(v)` so the
-intent survives future refactors that stop routing through `DB_key`.
+The divergence is nonetheless real, with a different cause: **as of #548 the KeyField segment in
+the stored redis key is written in canonical form**, so the string the purge path parses back out
+is the *canonical* rendering, while the seven SortedField sites build their zset key from the
+live attribute through `str(value)` — the legacy rendering. For a datetime partition the two
+disagree, and the purge silently removes nothing. The issue's "all sites internally consistent,
+no bug today" framing is stale: the defect is live under the datetime-partition precondition, not
+merely latent.
 
-### New sibling site: ConfidenceField (scope decision)
+The purge path is the **alignment target** and must NOT be changed. Anchor it by symbol, not line
+(the round-1 citation `base.py:3667` was off by one — 3667 is the `for name in partition:` header,
+the append is the next line): `Model._purge_orphan_keys`, the `for field_name in
+meta.sorted_field_names:` loop, statement `zset_key.append(values[name])`.
+
+**The round-1 Risks item derived from the wrong mechanism is retracted.** "It is correct *because*
+it appends raw; a cleanup that wraps it in `str()` would reintroduce the divergence" is false —
+`str()` on a `str` is a no-op. If a clarifying comment is added at that site it must point at
+`DB_key.from_redis_key` + #548 KeyField canonicalization, **not** at `DB_key.__str__`.
+
+Consequence for the fix shape: at the seven SortedField sites, `canonical_key_str(v)` and simply
+dropping the `str()` wrapper produce identical bytes. Prefer the explicit `canonical_key_str(v)`
+so the intent survives future refactors that stop routing through `DB_key`.
+
+### Sibling site: ConfidenceField (scope decision — in scope, with a stated limit)
 
 `ConfidenceField` mirrors SortedField's `partition_by` API but builds its companion-hash key by
 string concatenation off an already-rendered `redis_key`, bypassing `DB_key` entirely:
@@ -98,8 +129,38 @@ string concatenation off an already-rendered `redis_key`, bypassing `DB_key` ent
 (`get_data_hash_key_from_values`), `:374` (`get_old_data_hash_key`) — each `key += f":{val}"`.
 Same bug class, same no-op property, three one-line changes.
 
-**Decision: in scope.** Escape hatch: if converting these requires touching anything beyond the
-three interpolations, drop them, file a follow-up issue, and say so in the PR body.
+**Decision: in scope.** Two limits must be stated so BUILD does not over-reach (round-1 CONCERN):
+
+1. **Escaping parity with `DB_key` is explicitly NOT attempted.** These keys are raw
+   concatenation with no `DB_key.clean()`. The canonical datetime form contains colons, so the
+   partition boundary remains ambiguous after the change — exactly as ambiguous as it is today,
+   since `str(datetime)` also contains colons. The change aligns ConfidenceField keys with the
+   *same* canonical rendering the SortedField sites will use; it does **not** make them
+   byte-comparable to any `DB_key`-built key. Escaping is a separate, larger change and is a
+   No-Go here.
+2. **The `None` asymmetry must be preserved verbatim.** `get_data_hash_key` (:313-315) and
+   `get_old_data_hash_key` (:372-374) *skip* a `None` partition value; `get_data_hash_key_from_values`
+   (:344-350) *raises* `QueryException`. Call `canonical_key_str(val)` **inside** the existing
+   `if val is not None:` / post-raise guards so neither behavior moves. Do not hoist the call
+   above a guard — `canonical_key_str(None)` returns the string `"None"` and would turn a skip
+   into an appended `:None` segment.
+
+Escape hatch: if converting these requires touching anything beyond the three interpolations,
+drop them, file a follow-up issue, and say so in the PR body.
+
+### Sibling site: EventStreamMixin (scope decision — in scope)
+
+`src/popoto/fields/event_stream.py:119` builds the partitioned stream key as
+`base_key = f"{base_key}:{partition_value}"` from a raw model attribute, bypassing `DB_key` — the
+identical bug class ConfidenceField was scoped in for. Round 1 flagged that leaving it out while
+the Success-Criteria grep covered only `sorted_field_mixin.py` + `query.py` would make the grep
+return zero *while the site remained*: the "partial conversion is worse than none" outcome this
+plan names as its own top risk.
+
+**Decision: in scope.** Convert to `f"{base_key}:{canonical_key_str(partition_value)}"` **inside**
+the existing `if partition_value is not None:` guard (same None-preservation rule as
+ConfidenceField). The widened grep above covers `src/popoto/fields/` so this site can no longer
+hide from the criteria.
 
 ### Helper unchanged
 
