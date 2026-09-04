@@ -20,6 +20,7 @@ Variable                                Default                        Note
 ``POPOTO_MEMORY_INGEST``                ``raw``                        ``raw`` | ``heuristic``
 ``POPOTO_MEMORY_ENABLED``               ``1``                          Kill switch, no config edit needed
 ``POPOTO_MEMORY_LOG``                   ``~/.popoto/memory.log``       Where swallowed errors land
+``POPOTO_MEMORY_TURN_KEYED``            ``1``                          ``0`` restores the pre-#574 session FIFO handoff
 ======================================  =============================  ====
 
 **The ``max_items`` / ``max_tokens`` divergence is deliberate and is the
@@ -127,6 +128,14 @@ class MemoryConfig:
             established Popoto connection unless this is ``True``, which is
             what keeps an in-process caller (a test, a Hermes handler) on
             the connection it already configured.
+        turn_keyed: When ``True`` (the default) the read-to-write handoff is
+            keyed on the harness's per-turn identifier, so an outcome report
+            resolves the turn that actually staged it or resolves nothing.
+            When ``False`` the handoff is the pre-#574 session-wide FIFO, in
+            both its behavior and its on-disk encoding. Set from
+            ``POPOTO_MEMORY_TURN_KEYED``; this is the deploy-level escape
+            hatch for an operator running Popoto from PyPI who cannot edit
+            code.
     """
 
     url: str = DEFAULT_URL
@@ -139,6 +148,7 @@ class MemoryConfig:
     url_is_explicit: bool = False
     url_source: str = "default"
     allow_db0: bool = False
+    turn_keyed: bool = True
 
     @classmethod
     def from_env(
@@ -193,6 +203,7 @@ class MemoryConfig:
             url_is_explicit=bool(explicit_url),
             url_source=url_source,
             allow_db0=_as_bool(env.get(ALLOW_DB0_ENV), False),
+            turn_keyed=_as_bool(env.get("POPOTO_MEMORY_TURN_KEYED"), True),
         )
 
 

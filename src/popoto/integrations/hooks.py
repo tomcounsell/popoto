@@ -80,6 +80,11 @@ text, so no transcript file is ever parsed and no JSONL schema change can
 break capture."""
 
 _QUERY_FIELDS = ("prompt", "user_message", "user_prompt", "message", "query")
+# Per-turn identifiers. Claude Code sends ``prompt_id`` on UserPromptSubmit,
+# Stop, SubagentStop and PostToolUse; Codex sends ``turn_id``. The camelCase
+# spellings are probed for symmetry with the other field tuples, not because a
+# harness is known to use them.
+_TURN_FIELDS = ("prompt_id", "turn_id", "promptId", "turnId")
 _RESPONSE_FIELDS = (
     "last_assistant_message",
     "assistant_message",
@@ -90,7 +95,7 @@ _RESPONSE_FIELDS = (
 
 
 class NormalizedEvent:
-    """A harness payload reduced to the four facts the service needs.
+    """A harness payload reduced to the five facts the service needs.
 
     Attributes:
         event: The raw ``hook_event_name`` as sent by the harness.
@@ -101,9 +106,17 @@ class NormalizedEvent:
         cwd: Working directory the harness reports, used to derive the
             default agent id. The harness's cwd is more accurate than the
             hook process's own, which some harnesses do not set.
+        turn_id: The harness's own per-turn identifier, or ``None``. Claude
+            Code sends ``prompt_id`` and Codex sends ``turn_id``, both on the
+            read event *and* the write event of the same turn, which is what
+            lets the service pair an outcome report with the read that staged
+            it. Hermes and OpenClaw send neither, so this is ``None`` for them
+            and the service falls back to its session-wide FIFO. Populated on
+            read, write and ignore events alike: it is a fact about the
+            payload, not about the branch.
     """
 
-    __slots__ = ("event", "kind", "text", "session_id", "cwd")
+    __slots__ = ("event", "kind", "text", "session_id", "cwd", "turn_id")
 
     def __init__(
         self,
@@ -112,12 +125,14 @@ class NormalizedEvent:
         text: str,
         session_id: Optional[str],
         cwd: Optional[str],
+        turn_id: Optional[str] = None,
     ):
         self.event = event
         self.kind = kind
         self.text = text
         self.session_id = session_id
         self.cwd = cwd
+        self.turn_id = turn_id
 
 
 def _first_string(payload: Dict[str, Any], names: Tuple[str, ...]) -> str:
@@ -147,7 +162,10 @@ def normalize(payload: Dict[str, Any]) -> NormalizedEvent:
 
     Returns:
         A :class:`NormalizedEvent`; ``kind`` is ``"ignore"`` for events this
-        integration does not handle, which is most of them.
+        integration does not handle, which is most of them. ``turn_id`` carries
+        the harness's per-turn identifier when it sends one (Claude Code
+        ``prompt_id``, Codex ``turn_id``) and is ``None`` otherwise, which is
+        what selects the turn-keyed handoff over the session FIFO.
     """
     event = ""
     for name in ("hook_event_name", "hookEventName", "event", "event_type", "type"):
@@ -170,15 +188,32 @@ def normalize(payload: Dict[str, Any]) -> NormalizedEvent:
             cwd = value.strip()
             break
 
+    # The harness's own per-turn identifier. Probed with the same one-level
+    # nested search, ``isinstance(str)`` guard and ``.strip()`` truthiness rule
+    # the other fields use, so a non-string ``prompt_id`` yields ``None``
+    # rather than a TypeError, and an empty or whitespace-only value takes the
+    # FIFO path instead of staging an entry tagged with the empty string.
+    turn_id = _first_string(payload, _TURN_FIELDS).strip() or None
+
     if event in READ_EVENTS:
         return NormalizedEvent(
-            event, "read", _first_string(payload, _QUERY_FIELDS), session_id, cwd
+            event,
+            "read",
+            _first_string(payload, _QUERY_FIELDS),
+            session_id,
+            cwd,
+            turn_id,
         )
     if event in WRITE_EVENTS:
         return NormalizedEvent(
-            event, "write", _first_string(payload, _RESPONSE_FIELDS), session_id, cwd
+            event,
+            "write",
+            _first_string(payload, _RESPONSE_FIELDS),
+            session_id,
+            cwd,
+            turn_id,
         )
-    return NormalizedEvent(event, "ignore", "", session_id, cwd)
+    return NormalizedEvent(event, "ignore", "", session_id, cwd, turn_id)
 
 
 def render_context(event: NormalizedEvent, context: str) -> Dict[str, Any]:
@@ -238,7 +273,11 @@ def handle_payload(payload: Dict[str, Any], service: Any = None) -> Optional[str
         return None
 
     if event.kind == "read":
-        context = service.assemble(event.text, session_id=event.session_id)
+        context = service.assemble(
+            event.text,
+            session_id=event.session_id,
+            turn_id=event.turn_id,
+        )
         if not context.strip():
             return None
         return json.dumps(render_context(event, context))
@@ -250,7 +289,11 @@ def handle_payload(payload: Dict[str, Any], service: Any = None) -> Optional[str
         # "acted" (which strengthens ConfidenceField/decay clocks on every
         # turn and defeats decay entirely). "used" only confirms the staged
         # read. See fields/observation.py for the outcome effects matrix.
-        service.feedback(event.session_id, outcome="used")
+        service.feedback(
+            event.session_id,
+            outcome="used",
+            turn_id=event.turn_id,
+        )
     return None
 
 
