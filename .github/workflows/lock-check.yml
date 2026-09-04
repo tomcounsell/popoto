@@ -22,7 +22,7 @@ jobs:
   lock-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pin the uv version rather than tracking latest. An older uv rewrites
       # the lock in an earlier revision format (dropping upload-time metadata)
