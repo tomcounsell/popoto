@@ -798,6 +798,15 @@ pattern always matches itself.)
 | CHANGELOG entry | `grep -c "POPOTO_ALLOW_DB0_FLUSH" CHANGELOG.md` | output > 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 
+**redis-py dual-version result (Risk 3 / Task 5, performed).** The guard test
+file and the pipeline paths were run under both major versions on Python
+3.13.2: redis-py **8.1.0** (26 guard tests pass; full suite 3481 passed / 27
+skipped) and redis-py **7.1.1** (26 guard tests plus 43 pytest-plugin tests
+pass; sync and async pipelines both return the guarded subclass, chain
+normally, and refuse `FLUSHALL` at queue time and on the post-`watch()`
+immediate path). The `__class__`-reassignment form does not diverge between
+the two versions, so the fallback contemplated in Risk 3 is not needed.
+
 Report the mypy delta as base-vs-branch counts in a stated environment
 (`mypy src/` on the merge base, then on the branch, same interpreter and same
 redis-py version). The guard adds typed code only; the expected delta is zero

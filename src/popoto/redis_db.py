@@ -253,9 +253,15 @@ def _flush_refusal_reason(command: Any, db: Any, suggest: bool = True) -> str | 
     lines = [
         f"Popoto refused to run {name}: it would wipe {blast}.",
         f"This client is bound to database {bound_db}.",
-        "Database 0 is the default binding when REDIS_URL is unset, so this is "
-        "usually an ad-hoc script that meant to target an isolated database.",
     ]
+    if bound_db == 0:
+        # Only relevant when the caller actually landed on database 0. A
+        # FLUSHALL refused on a db-4 client would read as a non-sequitur.
+        lines.append(
+            "Database 0 is the default binding when REDIS_URL is unset, so this "
+            "is usually an ad-hoc script that meant to target an isolated "
+            "database."
+        )
 
     free_db = None
     if suggest:
