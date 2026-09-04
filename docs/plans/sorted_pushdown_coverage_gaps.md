@@ -30,12 +30,17 @@ Two behaviors that the production code *does* implement still have **no test at 
    `_bound_keys_before_hydration` (`query.py:2329`) resolve direction via
    `kwargs.get("order_by", None) or self.model_class._meta.order_by`, then return
    early when the resolved name is not the sorted field. Zero occurrences of
-   `Meta` in the test module. Three distinct branches are unverified:
+   `Meta` in the test module. Four distinct branches are unverified:
    - `Meta.order_by` naming the sorted field **descending** supplies direction
-     *and* keeps the bound;
+     *and* keeps the **Redis-side** bound (`query.py:2445`);
    - the same **ascending** (weak discriminator — see spike-3);
    - `Meta.order_by` naming a **different** field **declines** the pushdown,
-     because score order is not result order.
+     because score order is not result order;
+   - `Meta.order_by` naming the sorted field **descending** supplies direction to
+     the **pre-hydration key-list slice** (`query.py:2329`) when a second indexed
+     predicate has already declined the Redis-side bound. This branch is reached
+     by no other shape, and dropping it returns **wrong rows silently** — see
+     spike-6, added in the 2026-09-04 revision pass in response to critique C2.
 
 A third item from the original 2026-08-13 issue — **async pushdown parity** — is
 **no longer in scope**: PR #602 (issue #571, merged 2026-09-04) both implemented
@@ -52,14 +57,23 @@ the correct `doc_id`-ordered head. Both branches work and neither is pinned.
 `_sorted_pushdown_args`, `_bound_keys_before_hydration`, or `QueryBuilder.count`
 can silently drop any of it and the suite stays green.
 
-**Desired outcome:** roughly 110 lines added to
+**Desired outcome:** roughly 140 lines added to
 `tests/test_sorted_range_pushdown.py` pinning these behaviors as **hard
 assertions** — no `xfail`, no marker, nothing deferred. No file outside `tests/`
 changes.
 
+> **Line-count note (critique N1):** issue #559's Deliverable still reads
+> "roughly 80 lines", written on 2026-08-13 when the scope was three sync tests.
+> The current figure is ~140: eight tests, three model classes and a seeding
+> helper. The issue body is being rewritten in this revision pass (Open Question
+> 2, resolved) and the figure reconciled there. The plan is authoritative.
+
 ## Freshness Check
 
-**Baseline commit:** `7f057f9` (`origin/main` at revision time, 2026-09-04).
+**Baseline commit:** `7f057f9` — the last commit to touch `src/` or `tests/` as of
+2026-09-04. `origin/main` is now **at or above** it (plan-doc and critique commits
+have landed since, none of them touching code); every check below is written as
+an ancestor test, not a tip equality (critique N5).
 **Previous plan revision:** 2026-08-13 on branch `test/559-pushdown-coverage`
 (`a280c54`), against baseline `7ffc8e8`. That plan was never merged to `main`.
 **Issue filed at:** 2026-08-13T05:26:49Z.
@@ -314,6 +328,52 @@ Raw output: `7 passed in 0.23s`.
   **Counting convention, measured:** `HydrationCounter` counts **2 per object**
   (sync pipeline issues `hgetall` twice per key); `AsyncHydrationCounter` counts
   **1 per object**. Never write an assertion that assumes one convention on both.
+  **`AsyncHydrationCounter` is a *synchronous* context manager** — it defines
+  `__enter__`/`__exit__` only (`tests/test_sorted_range_pushdown.py:549`). Inside
+  an `async def` test it is still `with AsyncHydrationCounter() as counter:`;
+  writing `async with` raises
+  `TypeError: 'AsyncHydrationCounter' object does not support the asynchronous
+  context manager protocol` (hit live during the spike-6 run, 2026-09-04).
+
+### spike-6: Does any planned test reach the `Meta` resolution in `_bound_keys_before_hydration`? (new, added by the revision pass for critique C2)
+- **Assumption**: "the three originally-planned `Meta` models never reach
+  `query.py:2329` with the bound still live, so the `Meta`-supplied **descending**
+  branch of the key-list slice is unpinned."
+- **Method**: prototype (throwaway `tests/test_zz_spike559b.py`, deleted after the
+  run) + guard mutation
+- **Environment**: main checkout `/Users/valorengels/src/popoto` at `dc0cf0b`
+  (`7f057f9` is an ancestor; no `src/` change since), `.venv/bin/python`,
+  `POPOTO_TEST_DB=9`, `pytest -q -p no:randomly`. DB 9 swept afterwards
+  (`redis-cli -n 9 keys '*PushdownDoc*'` → empty, `dbsize` → 0). DB 9 rather than
+  the spike-2/3/4 DB 12 only because five other lanes were live.
+- **Finding**: **Assumption confirmed, and the fix verified.** Giving
+  `PushdownDocMetaDesc` a `bucket = popoto.IndexedField(type=str, null=True)` and
+  filtering on it declines `_sorted_pushdown_args` (its `remaining` check) while
+  leaving the slice live, so `state.pushdown_limit` is `None` at `query.py:2321`
+  and execution reaches the `Meta` resolution at 2329. Measured, 20 records,
+  `limit=3`, **no** explicit `order_by`:
+
+  | case | results | hydration count |
+  |---|---|---|
+  | sync, `Meta` desc + `bucket="a"` filter | `['m019','m018','m017']` | **22** = `2 x (3 + 8)` |
+  | async, same | `['m019','m018','m017']` | **11** = `1 x (3 + 8)` |
+  | sync, `Meta`-other-field (C1 re-measure) | `['z000','z001','z002']` | **40** (full) |
+  | async, `Meta`-other-field (C1 re-measure) | `['z000','z001','z002']` | **20** (full) |
+
+  **Guard mutation:** deleting `or self.model_class._meta.order_by` from
+  `query.py:2329` leaves `desc=False`, slices the ascending **head**, and returns
+  `['m010','m009','m008']` — wrong rows, not short ones — on **both** paths. Every
+  originally-planned test stayed green under that mutation; only the new
+  `bucket`-filtered tests go red. `src/` was restored from a scratchpad copy and
+  `git status --short` confirmed empty.
+- **Confidence**: high
+- **Impact on plan**: `PushdownDocMetaDesc` gains a `bucket` IndexedField, and two
+  tests are added (task 3a sync, task 4a async) — bringing the total to **eight**.
+  Critique C2 asked for one; the async twin is included because
+  `_bound_keys_before_hydration` takes a different state route on each path
+  (shared `self` vs. the `state=` snapshot #602 introduced) and the plan pairs
+  every other `Meta` case sync/async. `bucket` is added **only** to
+  `PushdownDocMetaDesc`; the asc and other-field models keep the minimal shape.
 
 ## Data Flow
 
