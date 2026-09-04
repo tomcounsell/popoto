@@ -564,6 +564,7 @@ class Model(metaclass=ModelBase):
     """
 
     query: Query
+    _meta: "ModelOptions"
 
     def __init__(self, **kwargs):
         """Initialize a model instance with field values.

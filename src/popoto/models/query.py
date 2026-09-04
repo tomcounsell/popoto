@@ -3295,7 +3295,7 @@ class Query:
     @classmethod
     def get_many_objects(
         cls,
-        model: "Model",
+        model: "type[Model]",
         db_keys: set,
         order_by_attr_name: str = None,
         limit: int = None,

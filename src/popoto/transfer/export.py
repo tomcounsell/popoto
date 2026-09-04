@@ -18,12 +18,29 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, Protocol, TextIO, cast
 
 from .format import build_manifest, dump_line, to_jsonable
 from .results import ExportResult
 
+if TYPE_CHECKING:  # pragma: no cover - types only, never imported at runtime
+    from ..models.base import Model
+
 logger = logging.getLogger("popoto")
+
+
+class _ExportsState(Protocol):
+    """The duck-typed model-level contract this module's docstring describes.
+
+    Naming it lets the ``klass.export_state(instance)`` call below be *checked*
+    rather than suppressed. The ``"export_state" not in klass.__dict__``
+    guard immediately above the cast is what makes the cast sound.
+    """
+
+    __name__: str
+
+    @staticmethod
+    def export_state(instance: Any) -> Any: ...
 
 DEFAULT_CHUNK_SIZE = 500
 """Keys hydrated per round trip.
@@ -41,7 +58,9 @@ def _as_str(key: Any) -> str:
     return key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
 
 
-def _render_filter(q_objects, filters: dict) -> "str | None":
+def _render_filter(
+    q_objects: "list[Any]", filters: "dict[str, Any]"
+) -> "str | None":
     """Render filter provenance from Q objects plus plain kwargs.
 
     ``Q.__repr__`` already produces ``(Q(a='b') OR ~Q(c__lt=2))``, so it is
@@ -57,7 +76,7 @@ def _render_filter(q_objects, filters: dict) -> "str | None":
     return " AND ".join(parts)
 
 
-def field_provenance(model_field: Any) -> "dict | None":
+def field_provenance(model_field: Any) -> "dict[str, Any] | None":
     """Return ``{provider, model, dimensions}`` for a field that has a provider.
 
     Duck-typed on the presence of a ``provider`` attribute that exposes
@@ -96,9 +115,11 @@ def field_provenance(model_field: Any) -> "dict | None":
     }
 
 
-def collect_embedding_provenance(model_class) -> dict:
+def collect_embedding_provenance(
+    model_class: "type[Model]",
+) -> "dict[str, dict[str, Any]]":
     """Return per-field provider fingerprints for every provider-backed field."""
-    provenance = {}
+    provenance: "dict[str, dict[str, Any]]" = {}
     for field_name, model_field in model_class._meta.fields.items():
         found = field_provenance(model_field)
         if found is not None:
@@ -106,9 +127,9 @@ def collect_embedding_provenance(model_class) -> dict:
     return provenance
 
 
-def collect_field_policies(model_class) -> dict:
+def collect_field_policies(model_class: "type[Model]") -> "dict[str, dict[str, Any]]":
     """Return the per-field ``roundtrip_policy`` roll-up for the manifest."""
-    policies = {}
+    policies: "dict[str, dict[str, Any]]" = {}
     for field_name, model_field in model_class._meta.fields.items():
         policies[field_name] = {
             "class": type(model_field).__name__,
@@ -118,7 +139,7 @@ def collect_field_policies(model_class) -> dict:
     return policies
 
 
-def collect_mixin_policies(model_class) -> dict:
+def collect_mixin_policies(model_class: "type[Model]") -> "dict[str, dict[str, Any]]":
     """Return the per-model-level-mixin ``roundtrip_policy`` roll-up.
 
     Duck-typed on a class declaring ``roundtrip_policy`` or ``export_state``
@@ -126,7 +147,7 @@ def collect_mixin_policies(model_class) -> dict:
     Redis state appears in the report with no change here. ``Model`` itself
     declares neither, so a model with no mixins yields ``{}``.
     """
-    policies = {}
+    policies: "dict[str, dict[str, Any]]" = {}
     for klass in model_class.__mro__:
         own = klass.__dict__
         if "roundtrip_policy" not in own and "export_state" not in own:
@@ -138,7 +159,7 @@ def collect_mixin_policies(model_class) -> dict:
     return policies
 
 
-def _record_values(model_class, instance) -> dict:
+def _record_values(model_class: "type[Model]", instance: "Model") -> "dict[str, Any]":
     """Return the record's field values, including implicit key fields.
 
     ``to_dict()`` iterates ``_meta.explicit_fields``, so a model relying on the
@@ -162,9 +183,11 @@ def _record_values(model_class, instance) -> dict:
     return values
 
 
-def _field_state(model_class, instance, result: ExportResult) -> dict:
+def _field_state(
+    model_class: "type[Model]", instance: "Model", result: ExportResult
+) -> "dict[str, Any]":
     """Collect field-level carried state, keyed by field name."""
-    state = {}
+    state: "dict[str, Any]" = {}
     for field_name, model_field in model_class._meta.fields.items():
         exporter = getattr(model_field, "export_state", None)
         if exporter is None:
@@ -184,14 +207,18 @@ def _field_state(model_class, instance, result: ExportResult) -> dict:
     return state
 
 
-def _model_state(instance, result: ExportResult) -> dict:
+def _model_state(instance: "Model", result: ExportResult) -> "dict[str, Any]":
     """Collect model-level carried state, keyed by declaring class name."""
-    state = {}
+    state: "dict[str, Any]" = {}
     for klass in type(instance).__mro__:
         if "export_state" not in klass.__dict__:
             continue
+        # The guard above is what makes this cast sound: the class declares
+        # export_state as its own attribute. _ExportsState names that
+        # duck-typed contract so the call is checked, not suppressed.
+        exporting_class = cast("_ExportsState", klass)
         try:
-            carried = klass.export_state(instance)
+            carried = exporting_class.export_state(instance)
         except Exception as exc:
             result.warnings.append(
                 f"{klass.__name__}.export_state raised on "
@@ -203,7 +230,9 @@ def _model_state(instance, result: ExportResult) -> dict:
     return state
 
 
-def _matches_client_filters(instance, client_filters: dict) -> bool:
+def _matches_client_filters(
+    instance: "Model", client_filters: "dict[str, Any]"
+) -> bool:
     """Re-apply the query layer's post-hydration equality filters."""
     for field_name, expected in client_filters.items():
         if getattr(instance, field_name, None) != expected:
@@ -212,11 +241,11 @@ def _matches_client_filters(instance, client_filters: dict) -> bool:
 
 
 def export_records(
-    model_class,
-    *q_objects,
+    model_class: "type[Model]",
+    *q_objects: Any,
     stream: "TextIO | None" = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-    **filters,
+    **filters: Any,
 ) -> ExportResult:
     """Export a model's records as JSON Lines.
 

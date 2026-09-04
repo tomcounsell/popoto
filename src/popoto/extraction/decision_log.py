@@ -853,7 +853,7 @@ class DecisionLog:
         # DecisionRecord (the class) is the correct argument here;
         # get_many_objects' signature is typed for a Model instance because
         # most callers hold one -- an ORM-descriptor false positive.
-        rows = Query.get_many_objects(DecisionRecord, {key})  # type: ignore[arg-type]
+        rows = Query.get_many_objects(DecisionRecord, {key})
         return rows[0] if rows else None
 
     def list_for_agent(self, agent_id: str) -> List[DecisionRecord]:
@@ -879,7 +879,7 @@ class DecisionLog:
         if not keys:
             return []
         # Same ORM-descriptor false positive as DecisionLog.get() above.
-        return Query.get_many_objects(DecisionRecord, keys)  # type: ignore[arg-type]
+        return Query.get_many_objects(DecisionRecord, keys)
 
     def list_pending(
         self, agent_id: str, older_than: Optional[float] = None

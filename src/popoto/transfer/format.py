@@ -29,7 +29,7 @@ import base64
 import datetime
 import json
 from importlib.metadata import PackageNotFoundError, version as _get_version
-from typing import Any, Iterator, TextIO
+from typing import Any, Callable, Iterator, TextIO
 
 from ..models.encoding import DECODERS_BY_KEYSTRING, TYPE_ENCODER_DECODERS
 
@@ -58,7 +58,7 @@ def popoto_version() -> str:
         return "0.0.0+unknown"
 
 
-def _encoder_for(value: Any):
+def _encoder_for(value: Any) -> "Callable[[Any], dict[str, Any]] | None":
     """Return the registry encoder for ``value``'s type, or ``None``.
 
     Exact-type lookup first (the common case and the cheap one), then a
@@ -171,12 +171,12 @@ def from_jsonable(value: Any) -> Any:
 def build_manifest(
     model_name: str,
     filter_repr: "str | None",
-    filter_kwargs: dict,
+    filter_kwargs: "dict[str, Any]",
     matched_count: int,
-    fields: dict,
-    mixins: dict,
-    embedding_provenance: dict,
-) -> dict:
+    fields: "dict[str, Any]",
+    mixins: "dict[str, Any]",
+    embedding_provenance: "dict[str, Any]",
+) -> "dict[str, Any]":
     """Assemble the manifest object written as the export's first line.
 
     ``filter`` and ``matched_count`` are deliberately separate members: a
@@ -212,7 +212,7 @@ def build_manifest(
     }
 
 
-def dump_line(obj: dict) -> str:
+def dump_line(obj: "dict[str, Any]") -> str:
     """Serialize one manifest or record object as a newline-terminated line."""
     return json.dumps(obj, ensure_ascii=False, sort_keys=False) + "\n"
 
@@ -229,7 +229,7 @@ def iter_lines(stream: TextIO) -> Iterator["tuple[int, str]"]:
         yield line_number, raw
 
 
-def parse_line(raw: str) -> dict:
+def parse_line(raw: str) -> "dict[str, Any]":
     """Parse one JSON Lines line into a dict.
 
     Raises:

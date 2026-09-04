@@ -9,7 +9,7 @@ non-landed record.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Any, Iterable
 
 LANDED = "landed"
 SKIPPED = "skipped"
@@ -66,13 +66,13 @@ class ExportResult:
 
     model: str
     filter: "str | None" = None
-    filter_kwargs: dict = field(default_factory=dict)
+    filter_kwargs: "dict[str, Any]" = field(default_factory=dict)
     matched_count: int = 0
     record_count: int = 0
     vanished: int = 0
     filtered_out: int = 0
-    warnings: list = field(default_factory=list)
-    errors: list = field(default_factory=list)
+    warnings: "list[str]" = field(default_factory=list)
+    errors: "list[str]" = field(default_factory=list)
     data: "str | None" = None
 
     def summary(self) -> str:
@@ -138,9 +138,9 @@ class ImportReport:
     """
 
     model: str
-    outcomes: list = field(default_factory=list)
-    fidelity: dict = field(default_factory=dict)
-    warnings: list = field(default_factory=list)
+    outcomes: "list[RecordOutcome]" = field(default_factory=list)
+    fidelity: "dict[str, dict[str, Any]]" = field(default_factory=dict)
+    warnings: "list[str]" = field(default_factory=list)
     write_gate_bypassed: int = 0
     source_matched_count: "int | None" = None
 
