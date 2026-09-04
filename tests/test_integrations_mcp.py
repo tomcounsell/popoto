@@ -17,7 +17,10 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from popoto.integrations import mcp_server  # noqa: E402
 from popoto.integrations.config import MemoryConfig  # noqa: E402
-from popoto.integrations.service import MemoryService  # noqa: E402
+from popoto.integrations.service import (  # noqa: E402
+    COUNTER_KEY_PREFIX,
+    MemoryService,
+)
 from popoto.recipes import DefaultMemory  # noqa: E402
 from popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
@@ -228,6 +231,23 @@ def test_status_reports_the_live_configuration(tmp_path):
     assert f"agent: {AGENT}" in result["text"]
     assert "retrieval: lexical" in result["text"]
     assert "records: 1" in result["text"]
+
+
+def test_status_keeps_the_evicted_counter_out_of_failures(tmp_path):
+    """``evicted`` is a data-loss report (#596), not an integration error.
+
+    The renderer filters ``NON_FAILURE_COUNTERS`` out of the ``failures:``
+    payload; without that filter this counter would ship as
+    ``failures: {"evicted": 7}`` and mislabel deliberate cap enforcement.
+    """
+    service = make_service(tmp_path)
+    POPOTO_REDIS_DB.incrby(f"{COUNTER_KEY_PREFIX}:{AGENT}:evicted", 7)
+
+    result = mcp_server.dispatch("memory_status", {}, service)
+
+    assert result["is_error"] is False
+    assert "failures: none" in result["text"]
+    assert "evicted" not in result["text"]
 
 
 # --- error rendering --------------------------------------------------------------------

@@ -298,13 +298,13 @@ Every task carries its own green signal; run it before moving on.
    be in the child env before `import popoto` or the script writes the live DB 0 (CLAUDE.md, #577).
    Assert the child's record count exceeds 1000 with nothing evicted.
    → `pytest tests/test_default_memory_eviction.py -k subprocess -q`
-7. Harden `tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded`
+7. Harden `tests/test_production_contracts.py::TestConsistency::test_default_memory_growth_is_bounded`
    (line ~540): it hardcodes `cap = 1000`, so an operator or CI box with the new env var exported
    would silently change what that contract asserts. Add `monkeypatch.delenv("POPOTO_DEFAULT_MEMORY_MAX_RECORDS",
    raising=False)` so the contract keeps testing the default.
    Optionally also assert inside the test that the resolved cap is 1000, so a *smaller* ambient
    value cannot make the contract vacuous.
-   → `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0 pytest tests/test_production_contracts.py::TestGrowth::test_default_memory_growth_is_bounded -q`
+   → `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0 pytest tests/test_production_contracts.py::TestConsistency::test_default_memory_growth_is_bounded -q`
    — `=0` is the discriminating value (round-2 C3): with eviction disabled and no `delenv` the store
    holds 1100 > 1000, the assertion fires and the test fails; with the `delenv` it passes. A value
    of `=5` does **not** discriminate: the test only asserts when `count > 1000`, so under a cap of 5

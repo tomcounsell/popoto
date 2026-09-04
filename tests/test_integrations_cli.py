@@ -16,6 +16,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from popoto.integrations.cli import main  # noqa: E402
+from popoto.integrations.service import COUNTER_KEY_PREFIX  # noqa: E402
+from popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
 BAD_URL = "redis://localhost:6379/"
 
@@ -42,6 +44,35 @@ def test_doctor_json_mode_prints_the_rejection_instead_of_a_traceback(
     out = capsys.readouterr().out
     assert "no database number" in out
     assert "Traceback" not in out
+
+
+def test_doctor_reports_evictions_as_data_loss_not_failures(monkeypatch, capsys):
+    """A non-zero ``evicted`` counter is a data-loss report (#596).
+
+    Doctor must render it on its own ``DATA LOSS`` line naming the count and
+    ``POPOTO_DEFAULT_MEMORY_MAX_RECORDS`` -- and must *not* bucket it under
+    ``FAILURES``, which would mislabel deliberate cap enforcement as an
+    integration error.
+    """
+    agent = "test-integrations-cli-evicted"
+    monkeypatch.delenv("POPOTO_MEMORY_URL", raising=False)
+    monkeypatch.setenv("POPOTO_MEMORY_AGENT_ID", agent)
+    counter_key = f"{COUNTER_KEY_PREFIX}:{agent}:evicted"
+    POPOTO_REDIS_DB.set(counter_key, 12)
+    try:
+        exit_code = main(["doctor", "--no-latency"])
+    finally:
+        POPOTO_REDIS_DB.delete(counter_key)
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "DATA LOSS" in out
+    assert "12 records selected for eviction" in out
+    assert "POPOTO_DEFAULT_MEMORY_MAX_RECORDS" in out
+    # The report line is the ONLY place the counter surfaces: no FAILURES
+    # bucket appears for an agent whose sole counter is `evicted`.
+    assert "FAILURES" not in out
+    assert "failures       none" in out
 
 
 def test_demo_prints_the_rejection_instead_of_a_traceback(monkeypatch, capsys):
