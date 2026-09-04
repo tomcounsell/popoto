@@ -1780,6 +1780,35 @@ class QueryBuilder:
         Returns:
             List of Model instances, or list of dicts if values() was called.
         """
+        return self._execute(no_track=self._no_track)
+
+    def _execute(self, *, apply_limit: bool = True, no_track: bool = False) -> list:
+        """Execute the accumulated filters, ordering, and limit.
+
+        This is the shared execution seam behind `all()` and the `Q`-object
+        branch of `count()`. `all()` calls it with the builder's limit applied
+        (`apply_limit=True`, the default) so it returns a bounded page.
+        `count()` calls it with `apply_limit=False` so it returns the full
+        matching population regardless of any `limit()` on the builder — a
+        limit bounds the rows a caller receives, it must never bound a tally.
+
+        Args:
+            apply_limit: When True (default), bound the results to
+                `self._limit_value` as `all()` does. When False (used by
+                `count()`), no limit is applied and the full match set is
+                returned/hydrated.
+            no_track: Forwarded to `Query._execute_filter` as `_no_track`.
+                `all()` passes the builder's own `self._no_track` here, so
+                read tracking behaves exactly as before for every ORM read.
+                `count()` passes `no_track=True` unconditionally: a tally is
+                not a read and must record no accesses. Without this, an
+                unbounded `Q` + `limit` count would fire a population-scale
+                `RPUSH`+`EXPIRE` write per instance via `_fire_on_read`
+                instead of the bounded page's worth.
+
+        Returns:
+            List of Model instances, or list of dicts if values() was called.
+        """
         kwargs = self._filters.copy()
 
         if self._computed_sort_fn is not None:
@@ -1794,7 +1823,7 @@ class QueryBuilder:
             if self._values_tuple is not None:
                 kwargs["values"] = self._values_tuple
             results = self._query._execute_filter(
-                q_objects=self._q_objects, _no_track=self._no_track, **kwargs
+                q_objects=self._q_objects, _no_track=no_track, **kwargs
             )
             # Apply computed sort (O(N log N) on full result set)
             results = sorted(
@@ -1803,30 +1832,41 @@ class QueryBuilder:
                 reverse=self._computed_sort_reverse,
             )
             # Apply limit after sorting
-            if self._limit_value is not None:
+            if apply_limit and self._limit_value is not None:
                 results = results[: self._limit_value]
             return results
 
         # Standard path: no computed_sort
-        if self._limit_value is not None:
+        if apply_limit and self._limit_value is not None:
             kwargs["limit"] = self._limit_value
         if self._order_by_value is not None:
             kwargs["order_by"] = self._order_by_value
         if self._values_tuple is not None:
             kwargs["values"] = self._values_tuple
         return self._query._execute_filter(
-            q_objects=self._q_objects, _no_track=self._no_track, **kwargs
+            q_objects=self._q_objects, _no_track=no_track, **kwargs
         )
 
     def count(self) -> int:
         """Count matching results without loading objects.
+
+        Invariant: a `limit()` on the builder bounds the rows returned by
+        `all()`; it never bounds the tally returned by `count()`. This holds
+        on both branches below. The plain-field branch delegates to
+        `Query.count(**self._filters)`, which never receives `limit` at all,
+        so it complies implicitly. The `Q`-object branch must comply
+        explicitly: it calls the shared `_execute()` seam with
+        `apply_limit=False` so the full match set is counted, and with
+        `no_track=True` because a tally is not a read and must not trigger
+        read-tracking writes for the (potentially whole-population) rows it
+        hydrates to count them.
 
         Returns:
             Integer count of matching instances
         """
         # For Q objects, we need to execute the full query and count
         if self._q_objects:
-            return len(self.all())
+            return len(self._execute(apply_limit=False, no_track=True))
         return self._query.count(**self._filters)
 
     def first(self) -> "Model":
