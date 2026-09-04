@@ -1188,35 +1188,93 @@ Risk & Robustness, Scope & Value, History & Consistency, plus automated structur
 
 ---
 
-## Open Questions
+## Decisions (formerly Open Questions)
 
-The issue listed four questions for the planner. Three are answered above and are recorded here
-with their answers; only the ones marked **needs input** are still open.
+Round 1's blocker 4 was correct: questions 4, 5 and 6 were marked "needs input" while the plan had
+already hard-committed their answers in Success Criteria, Technical Approach §4 and Risk 3, with
+frontmatter `status: Ready`. That is resolved here — **there are no open questions left**. Every
+item below is a decision of record with its argument, its reversal cost, and the test that pins it.
+Where a decision diverges from a written requirement, the divergence is stated in the open and
+flagged for the maintainer rather than left implicit.
 
-1. **Window size?** *Answered:* `M4_WINDOW_MAX_TURNS = 8` turns **and**
-   `M4_WINDOW_MAX_CHARS = 4000` characters, whichever binds first, truncating oldest-first and
-   recording that truncation on the record. Pinned magic numbers, not kwargs. Two bounds rather
-   than one because a turn count alone does not bound a prompt and a character count alone can
-   slice a turn in half.
-2. **Does the four-way status live on the journal entry or in a sidecar?** *Answered:* **both,
-   split by role.** The status rides on the entry as the indexed `res:{status}` subject tag (so
-   the flag is inseparable from the fact); the evidence — assumption lines, `evidence_gap`
-   candidates, questions, the context header — lives in the `ResolutionRecord` sidecar. Adding
-   fields to `JournalEntry` is refused: it is shipped, append-only, guarded by
-   `_require_journal_shape`, and explicitly not subclassable.
-3. **How are `assumed` flags guaranteed to travel with the fact when surfaced?** *Answered:* by
-   the tag in (2), verified retrievable in spike-2 through the ordinary journal query path with no
-   sidecar join. A test asserts it.
-4. **The `valid_from` onset rule — needs input.** The 2026-08-16 amendment lists both *"since
-   March"* and *"by Friday"* as `valid_from` producers. This plan emits for **onsets only**: a
-   deadline would open the interval in the future and make the fact invisible to as-of retrieval
-   until then (Risk 3). I believe the amendment's phrasing was illustrative rather than
-   prescriptive, but it is a deliberate narrowing of a written requirement — please confirm.
-5. **Two-or-more onsets: abstain or pick the earliest? — needs input.** The plan abstains (no
-   `valid_from`, status floored at `assumed`). Picking the earliest is defensible and loses less
-   information; abstaining is safer and cheaper to reverse. Which is preferred?
-6. **Should a `TurnContext` with no window be allowed to run the stage at all? — needs input.**
-   The plan says yes (degraded: the candidate's own full turn plus the clock still resolves most
-   relative dates and some pronouns), on the default-ON doctrine. The alternative is to skip
-   resolution when no window is supplied, which is more conservative but makes the capability
-   invisible to every existing caller — none of which pass a window today.
+1. **Window size.** `M4_WINDOW_MAX_TURNS = 8` turns **and** `M4_WINDOW_MAX_CHARS = 4000`
+   characters, whichever binds first, truncating oldest-first and recording the truncation on the
+   `ResolutionRecord`. Pinned magic numbers, not kwargs. Two bounds rather than one because a turn
+   count alone does not bound a prompt and a character count alone can slice a turn in half.
+
+2. **Does the four-way status live on the journal entry or in a sidecar?** **Both, split by role.**
+   The status rides on the entry as the indexed `res:{status}` subject tag (so the flag is
+   inseparable from the fact); the evidence — assumption lines, `evidence_gap` candidates,
+   questions, the context header — lives in the `ResolutionRecord` sidecar. Adding fields to
+   `JournalEntry` is refused: it is shipped, append-only, guarded by `_require_journal_shape`, and
+   explicitly not subclassable.
+
+3. **How are `assumed` flags guaranteed to travel with the fact?** By the tag in (2), verified
+   retrievable in spike-2 through the ordinary journal query path with no sidecar join. A test
+   asserts it.
+
+4. **DECIDED — `valid_from` is emitted for onsets only, and the role set is a pinned constant.**
+
+   The 2026-08-16 amendment reads, verbatim:
+
+   > When a resolution anchors a time reference to an absolute date ("since March", "by Friday"
+   > resolved on a known Tuesday) with status `resolved` or `assumed`, the stage emits `valid_from`
+   > for the V0 #580 / M1 #560 validity interval. This module is the natural producer of valid-time
+   > values; no other scope change.
+
+   It names **both** *"since March"* and *"by Friday"*. This plan emits for **onsets only**, and
+   that is a **deliberate, argued narrowing of a written requirement — flagged here for the
+   maintainer, not silently absorbed.**
+
+   *Argument.* `valid_from` is not "a date the claim mentions"; under V0 membership
+   (`valid_from <= t AND invalid_at > t`) it is the instant the claim **becomes retrievable**.
+   *"File the report by Friday"* is true on Tuesday, when it was said. Emitting Friday as
+   `valid_from` would make the fact **invisible to as-of retrieval until Friday** — the deadline
+   would silently hide the very obligation it describes, for exactly the window in which it
+   matters. That is a data error, not a preference (Risk 3). Reading the amendment's parenthetical
+   as illustrative of *which references get anchored to an absolute date* — which is true of both
+   examples — rather than as *which anchored dates become `valid_from`*, is the only reading under
+   which the amendment does not ask for a self-hiding record.
+
+   *Reversal is one edit, and the opposite behaviour stays buildable.* The rule is not a literal in
+   the emission code. `Defaults.M4_VALID_FROM_ROLES = ("onset",)` is a pinned constant read by the
+   emission rule, and the emission test is **parameterised over the role set**, including a case
+   that sets it to `("onset", "deadline")` and asserts a deadline reference then *does* emit. So
+   "deadline emits" is exercised in CI and a maintainer reversal is a one-tuple change, never a
+   rewrite. The parameterised deadline case is a Success Criterion.
+
+   *Status:* proceeding on this decision. If the maintainer confirms the amendment was
+   prescriptive, flip `M4_VALID_FROM_ROLES` and the plan needs no other change.
+
+5. **DECIDED — two or more onsets in one candidate: abstain.** No `valid_from` is emitted, and the
+   aggregate status floors at `assumed` with a stated assumption line naming the competing onsets.
+
+   *Argument.* Picking the earliest loses less information only if the earliest is the right one;
+   when a single clause carries two onsets ("she's been on Atlas since March and lead since June")
+   the interval belongs to whichever sub-claim the statement is *about*, and nothing in the
+   reference list determines that. A wrong `valid_from` is silent and near-undetectable — it
+   shifts a record's entire retrieval window — whereas an absent one is M1's documented default
+   (the capture instant) and costs only precision. Abstention is also the cheaper reversal: if
+   measurement later shows earliest-onset is right almost always, that is a two-line change plus a
+   constant; unwinding wrongly-backdated intervals across a live journal is not.
+
+   *Testable:* the `valid_from` matrix (task 5) covers zero onsets → no emission; exactly one →
+   emission at that instant; **two → no emission, aggregate status `assumed`, a non-empty
+   assumption line present, and the entry tagged `res:assumed`**. Three branches, asserted
+   individually.
+
+6. **DECIDED — a `TurnContext` with no window still runs the stage, degraded.** Skipping resolution
+   when no window is supplied would make the capability invisible to every existing caller (none
+   pass a window today), which contradicts the repo's default-ON doctrine: capabilities auto-detect
+   and degrade, they do not sit dark waiting for opt-in. The candidate's own full turn plus the
+   context header still resolves most relative dates and some intra-turn pronouns, so the degraded
+   run has real value.
+
+   **Adopted with the round-1 concern attached:** running degraded is only safe if a reader can
+   tell it apart from a genuine abstention. `res:indeterminate` cannot carry that distinction —
+   both a missing `anthropic` client and a speaker who never settled the reference land on it.
+   So the tag vocabulary gains a **fifth literal, `res:degraded`** (Technical Approach §3b),
+   written whenever `Resolution.degraded is True` and taking precedence over the status literal.
+   A no-window run is *not* itself degraded — the stage ran and the model answered; only an
+   infrastructure or validation failure sets `degraded`. Window truncation and window absence are
+   recorded on the `ResolutionRecord` (`window_truncated`, empty window) for audit.
