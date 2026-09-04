@@ -64,6 +64,18 @@ class PlainModel(popoto.Model):
     content = popoto.StringField(default="")
 
 
+class TrackerOnlyMemory(AccessTrackerMixin, popoto.Model):
+    """Model with AccessTrackerMixin but NO decay fields at all.
+
+    Isolates the two ``confirm_access`` sites (``_apply_acted`` and
+    ``_apply_used``) from every cycle/decay call, so a regression in the
+    confirm_access guards cannot hide behind a decay guard (#583).
+    """
+
+    name = popoto.UniqueKeyField()
+    content = popoto.StringField(default="")
+
+
 class NoPressureMemory(AccessTrackerMixin, popoto.Model):
     """Model with CyclicDecayField but pressure_rate=0."""
 
@@ -1248,9 +1260,11 @@ class TestUnsavedDegradation:
     def _cleanup(self):
         FullMemory.delete_all()
         DecayOnlyMemory.delete_all()
+        TrackerOnlyMemory.delete_all()
         for pattern in (
             "$AT:FullMemory:*",
             "$AT:DecayOnlyMemory:*",
+            "$AT:TrackerOnlyMemory:*",
             "$CyclicDecayF:FullMemory:*",
         ):
             for key in POPOTO_REDIS_DB.keys(pattern):
@@ -1357,6 +1371,55 @@ class TestUnsavedDegradation:
 
             assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
             assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    # -- AccessTrackerMixin-only: isolates the two confirm_access sites --
+
+    def test_unsaved_tracker_only_acted_noop(self):
+        """Unsaved TrackerOnlyMemory + 'acted': no decay fields, so this reaches
+        the _apply_acted confirm_access guard with no cycle guard to hide behind."""
+        self._cleanup()
+        try:
+            item = TrackerOnlyMemory(name="unsaved-tracker-acted")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "acted"})
+
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    def test_unsaved_tracker_only_used_noop(self):
+        """Unsaved TrackerOnlyMemory + 'used': isolates the _apply_used
+        confirm_access guard on a model with no decay fields."""
+        self._cleanup()
+        try:
+            item = TrackerOnlyMemory(name="unsaved-tracker-used")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "used"})
+
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    def test_saved_tracker_only_still_confirms_access(self):
+        """Control for the two tests above: on a SAVED TrackerOnlyMemory the
+        confirm_access effect still lands, so the guards are not swallowing it."""
+        self._cleanup()
+        try:
+            item = TrackerOnlyMemory(name="saved-tracker-used", content="x")
+            item.save()
+            item.on_read()
+            assert _get_staged_count(item) == 1
+
+            ObservationProtocol.on_context_used([item], {item.db_key.redis_key: "used"})
+
+            assert _get_staged_count(item) == 0
+            assert item.access_count == 1
         finally:
             self._cleanup()
 
