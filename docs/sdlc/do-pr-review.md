@@ -73,10 +73,10 @@ one reviewer, one verdict.
 ```bash
 pytest                    # full suite; needs Redis/Valkey on localhost:6379
 pytest -k "test_name"     # single test
-mypy src/                 # type check
+scripts/mypy_ratchet.py   # type check as a ratchet vs scripts/mypy_baseline.json — gated by lint.yml
 black src/ tests/         # format
 mkdocs build --strict     # docs gate (mirrors deploy-docs.yml)
-scripts/ci-local.sh       # tests + stress + docs; --all adds build/lock/guard
+scripts/ci-local.sh       # lint + types + tests + stress + docs; --all adds build/lock/guard
 ```
 
 `scripts/ci-local.sh --all` runs the gates mirroring every workflow
@@ -135,10 +135,14 @@ four automatically; each one produced a wrong, confident number on PR #495.
 4. **Every worktree shares Redis DB 15.** Concurrent suites from other
    checkouts have produced 73–158 phantom failures. To separate contention from
    a real regression, check base out into the same worktree and compare.
-5. **mypy error deltas are redis-py-version-dependent** (not automated).
+5. **mypy error deltas are redis-py-version-dependent** (now partly automated).
    redis-py types every command `Awaitable[T] | T` for both sync and async
-   clients, so 7.x flags sites 8.x narrows. Measure base-vs-branch in both a
-   7.x and an 8.x environment before trusting a delta.
+   clients, so 7.x flags sites 8.x narrows — measured at 52 errors on the #506
+   baseline (1120 under `redis==8.1.0`, 1172 under `redis==7.1.1`). Missing
+   optional extras move it too: `ignore_missing_imports = True` resolves an
+   absent package to `Any`. `scripts/mypy_ratchet.py` refuses to compare when
+   the running versions do not match `scripts/mypy_baseline.json`, so a
+   mismatched delta is now printed rather than silently wrong.
 
 **Rule: state the environment (Python version, redis-py version, extras
 installed, `POPOTO_TEST_DB`) alongside any count you put in the review.** A
@@ -159,8 +163,12 @@ finding-verification rule it does not support a blocker.
 - **Relationship laziness.** `Relationship` values are stored as redis_key
   strings and loaded on access. A change that makes them eager reintroduces
   infinite recursion on circular references.
-- **Format/type gates.** `black src/ tests/` clean and `mypy src/` with no new
-  errors (measured per gotcha 5) are gates, not nits.
+- **Format/type gates.** `black src/ tests/` clean and
+  `scripts/mypy_ratchet.py` exiting 0 are gates, not nits. The type gate is a
+  ratchet: a PR may leave `src/` with four figures of errors, but it may not
+  ADD one, and `integrations/`/`privacy/` must stay at zero. A PR that lowers
+  the count should bank it by committing `--update`'s new
+  `scripts/mypy_baseline.json`; CI warns rather than fails when it does not.
 - **UI screenshots.** Popoto is a library with a mkdocs site and no app to
   drive — the visual proof gate is a no-op in practice. If a diff genuinely
   touches rendered docs HTML/CSS, the global gate still applies.

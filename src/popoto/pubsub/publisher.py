@@ -153,9 +153,9 @@ class Publisher(ABC):
 
     def publish(
         self,
-        data: dict = None,
-        channel_name: str = None,
-        pipeline: redis.client.Pipeline = None,
+        data: dict | None = None,
+        channel_name: str | None = None,
+        pipeline: redis.client.Pipeline | None = None,
     ):
         """Publish *data* as msgpack to the given (or default) channel.
 

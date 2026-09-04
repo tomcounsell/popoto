@@ -35,7 +35,7 @@ class FilesystemStore(AbstractContentStore):
         assert content == b"hello world"
     """
 
-    def __init__(self, base_path: str = None, extension: str = ".txt"):
+    def __init__(self, base_path: str | None = None, extension: str = ".txt"):
         if base_path is None:
             base_path = os.environ.get(
                 "POPOTO_CONTENT_PATH",

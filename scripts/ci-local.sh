@@ -8,6 +8,7 @@
 #   Gate      Mirrors workflow        What it runs
 #   ----      ----------------        ------------
 #   lint      lint.yml                ruff check src/ + black --check src/ tests/
+#   types     lint.yml                scripts/mypy_ratchet.py (mypy error ratchet)
 #   tests     tests.yml               full pytest suite against local Redis
 #   stress    (local only)            pytest tests/test_stress.py (+durations)
 #   docs      deploy-docs.yml         mkdocs build --strict (the deploy gate)
@@ -23,10 +24,16 @@
 # The stress suite has no workflow: tests.yml runs `-m "not slow"`, so stress
 # is a local-only gate.
 #
+# The types gate runs WITHOUT --strict-env, unlike lint.yml. Your venv is
+# unlikely to match the baseline's pinned mypy/redis-py/Python exactly, and the
+# count moves with all three, so locally the script says so and refuses to
+# compare rather than reporting a failure you cannot act on. CI is the
+# authority on the number.
+#
 # Usage:
-#   scripts/ci-local.sh              # default gates: lint + tests + stress + docs
+#   scripts/ci-local.sh              # default gates: lint + types + tests + stress + docs
 #   scripts/ci-local.sh --all        # everything, incl. build + lock + guard
-#   scripts/ci-local.sh --fast       # tests only (skip lint + stress + docs)
+#   scripts/ci-local.sh --fast       # tests only (skip lint + types + stress + docs)
 #   scripts/ci-local.sh tests docs   # run only the named gates
 #
 # Flags:
@@ -66,15 +73,15 @@ esac
 FAST=0
 for arg in "$@"; do
   case "$arg" in
-    --all)  GATES=(lint tests stress docs build lock guard) ;;
+    --all)  GATES=(lint types tests stress docs build lock guard) ;;
     --fast) GATES=(tests); FAST=1 ;;
-    lint|tests|stress|docs|build|lock|guard) GATES+=("$arg") ;;
+    lint|types|tests|stress|docs|build|lock|guard) GATES+=("$arg") ;;
     *) fail "unknown argument: $arg"; exit 2 ;;
   esac
 done
 # Default gate set when nothing specified.
 if [ "${#GATES[@]}" -eq 0 ]; then
-  GATES=(lint tests stress docs)
+  GATES=(lint types tests stress docs)
 fi
 
 # --- preflight ---------------------------------------------------------------
@@ -235,6 +242,17 @@ gate_lint() {
   fi
   return "$rc"
 }
+gate_types() {
+  # Mirrors the mypy job in lint.yml, minus --strict-env (see the note above).
+  # The script runs mypy once over src/ and compares the total against
+  # scripts/mypy_baseline.json: above baseline fails, at or below passes. A
+  # count below baseline prints a warning naming the --update command.
+  if ! "$PY" -c 'import mypy' >/dev/null 2>&1; then
+    warn "mypy not in .venv — run: pip install -e '.[dev]'"
+    return 0
+  fi
+  "$PY" scripts/mypy_ratchet.py
+}
 gate_tests() {
   # --fast deselects `slow`, which is what keeps the read-hook latency
   # measurement (tests/test_integrations_latency.py, 25 subprocess spawns)
@@ -316,6 +334,7 @@ printf '%sLocal CI%s  ·  gates: %s  ·  %s\n' "$B" "$X" "${GATES[*]}" "$REDIS_U
 for g in "${GATES[@]}"; do
   case "$g" in
     lint)   run_gate lint   gate_lint   ;;
+    types)  run_gate types  gate_types  ;;
     tests)  run_gate tests  gate_tests  ;;
     stress) run_gate stress gate_stress ;;
     docs)   run_gate docs   gate_docs   ;;

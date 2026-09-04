@@ -36,7 +36,7 @@ class OpenAIProvider(AbstractEmbeddingProvider):
 
     def __init__(
         self,
-        api_key: str = None,
+        api_key: str | None = None,
         model: str = "text-embedding-3-small",
         dim: int = 1536,
     ):

@@ -1,0 +1,32 @@
+{
+  "_comment": "Baseline for scripts/mypy_ratchet.py (#506). total is a ceiling, not an equality: the gate fails only when the count is ABOVE it. Packages in clean are pinned at exactly zero. Regenerate with 'python scripts/mypy_ratchet.py --update' and commit this file.",
+  "clean": [
+    "integrations",
+    "privacy"
+  ],
+  "environment": {
+    "install": "pip install -e \".[dev,embeddings,mcp]\" && pip install \"mypy==2.3.1\" \"redis==8.1.0\"",
+    "mypy": "2.3.1",
+    "python": "3.12",
+    "redis": "8.1.0"
+  },
+  "packages": {
+    "(root)": 32,
+    "embeddings": 2,
+    "extraction": 2,
+    "fields": 423,
+    "models": 423,
+    "pubsub": 11,
+    "recipes": 147,
+    "stores": 1,
+    "streams": 10,
+    "transfer": 49,
+    "utils": 20
+  },
+  "reference": {
+    "note": "Non-gating. setup.cfg sets ignore_missing_imports=True and redis-py types every command Awaitable[T] | T, so the count moves with the redis-py major. Recorded so a contributor on the uv.lock-resolved 7.1.1 can confirm the offset instead of investigating it.",
+    "offset_7_1_1_minus_8_1_0": 52,
+    "redis==7.1.1": 1172
+  },
+  "total": 1120
+}
