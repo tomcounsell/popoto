@@ -89,9 +89,7 @@ def run_demo(
     out.write(f"\n2. assemble  query: {DEMO_QUERY!r}\n")
     session_id = "demo-session"
     turn_id = "demo-turn-1"
-    context = service.assemble(
-        DEMO_QUERY, session_id=session_id, turn_id=turn_id
-    )
+    context = service.assemble(DEMO_QUERY, session_id=session_id, turn_id=turn_id)
     if not context.strip():
         out.write("   (nothing retrieved -- unexpected; see popoto-memory doctor)\n")
         _cleanup(seeded, keep, out)

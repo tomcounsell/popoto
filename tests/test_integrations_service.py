@@ -9,6 +9,7 @@ The service is constructed with an explicit ``MemoryConfig`` whose
 and the suite stays on the database the pytest plugin selected.
 """
 
+import json
 import os
 import sys
 
@@ -21,6 +22,7 @@ from popoto.integrations.config import MemoryConfig, derive_agent_id  # noqa: E4
 from popoto.integrations.service import (  # noqa: E402
     COUNTER_KEY_PREFIX,
     MemoryService,
+    _decode_pending_entry,
 )
 from popoto.recipes import DefaultMemory  # noqa: E402
 from popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
@@ -59,6 +61,10 @@ def _purge():
     ):
         for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=200):
             POPOTO_REDIS_DB.delete(key)
+
+
+def key_of(record):
+    return record.db_key.redis_key
 
 
 def seed(service, *contents):
@@ -279,19 +285,24 @@ def test_interleaved_turns_do_not_cross_report(tmp_path):
     The write hook runs async on Claude Code, so turn N's outcome report can
     land after turn N+1 has already assembled. A single pending slot per
     session would make turn N report against turn N+1's records.
+
+    ``turn_id=None`` throughout: this is the positional fallback a harness
+    that sends no turn identifier still relies on. The resolved keys are
+    asserted exactly, because ``first != second`` alone passes under the very
+    off-by-one misattribution #574 removes.
     """
     service = make_service(tmp_path)
-    seed(service, "Deploys are blue-green with automatic rollback")
-    seed(service, "Frontend bundles are built with esbuild not webpack")
+    deploys = seed(service, "Deploys are blue-green with automatic rollback")[0]
+    bundler = seed(service, "Frontend bundles are built with esbuild not webpack")[0]
 
-    service.assemble("how do deploys roll back?", session_id="s1")
-    service.assemble("what bundler do we use?", session_id="s1")
+    service.assemble("how do deploys roll back?", session_id="s1", turn_id=None)
+    service.assemble("what bundler do we use?", session_id="s1", turn_id=None)
 
-    first = service._pop_pending("s1")
-    second = service._pop_pending("s1")
-    assert first and second
-    assert first != second
-    assert service._pop_pending("s1") == []
+    first = service._pop_pending("s1", turn_id=None)
+    second = service._pop_pending("s1", turn_id=None)
+    assert first == [key_of(deploys)]
+    assert second == [key_of(bundler)]
+    assert service._pop_pending("s1", turn_id=None) == []
 
 
 def test_pending_list_is_capped(tmp_path):
@@ -307,17 +318,255 @@ def test_pending_list_is_capped(tmp_path):
         service,
         *[f"Deploys roll back automatically, note {i}" for i in range(turns * 5)],
     )
-    for _ in range(turns):
-        service.assemble("how do deploys roll back?", session_id="s1")
+    for i in range(turns):
+        service.assemble("how do deploys roll back?", session_id="s1", turn_id=f"t{i}")
     length = POPOTO_REDIS_DB.llen(service._pending_key("s1"))
     assert length == MAX_PENDING_TURNS
+    # The cap trims the oldest tagged entries, not the newest: the turns that
+    # survive must be the most recent ones, still claimable by name.
+    staged = [
+        _decode_pending_entry(raw)[1]
+        for raw in POPOTO_REDIS_DB.lrange(service._pending_key("s1"), 0, -1)
+    ]
+    assert staged == [f"t{i}" for i in range(turns - MAX_PENDING_TURNS, turns)]
 
 
 def test_pending_key_has_a_ttl(tmp_path):
     service = make_service(tmp_path)
     seed(service, "Deploys are blue-green with automatic rollback")
-    service.assemble("how do deploys roll back?", session_id="s1")
+    service.assemble("how do deploys roll back?", session_id="s1", turn_id="t1")
     assert POPOTO_REDIS_DB.ttl(service._pending_key("s1")) > 0
+    # The TTL is set by the same pipeline that writes the tagged payload, so
+    # assert the entry really took the turn-keyed shape and not the legacy one.
+    raw = POPOTO_REDIS_DB.lrange(service._pending_key("s1"), 0, -1)[0]
+    assert _decode_pending_entry(raw)[:2] == (True, "t1")
+
+
+# --- turn-keyed handoff (#574) -------------------------------------------------
+
+
+def test_feedback_resolves_the_turn_that_staged_it(tmp_path):
+    """Two turns staged in order, reported out of order, each claims its own.
+
+    The pairing is by name, so the report order is free. Under the positional
+    handoff the later report would have taken the head of the queue and
+    applied its outcome to the other turn's records.
+    """
+    service = make_service(tmp_path)
+    first, second = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+
+    service._push_pending("s1", [first], turn_id="t1")
+    service._push_pending("s1", [second], turn_id="t2")
+
+    assert service._pop_pending("s1", turn_id="t2") == [key_of(second)]
+    assert service._pop_pending("s1", turn_id="t1") == [key_of(first)]
+    assert POPOTO_REDIS_DB.llen(service._pending_key("s1")) == 0
+
+
+def test_interleaved_turns_from_two_sessions_do_not_cross(tmp_path):
+    """Two concurrent sessions, four turns, reported in a scrambled order.
+
+    Sessions already have their own pending list, so this pins the property
+    that turn keying does not weaken it: no report ever resolves a key that
+    belongs to the other session, whatever order the write hooks land in.
+    """
+    service = make_service(tmp_path)
+    a1, a2, b1, b2 = seed(
+        service,
+        "Session A turn one: deploys are blue-green",
+        "Session A turn two: bundles use esbuild",
+        "Session B turn one: rate limits live in the gateway",
+        "Session B turn two: staging resets nightly",
+    )
+
+    service._push_pending("sA", [a1], turn_id="t1")
+    service._push_pending("sB", [b1], turn_id="t1")
+    service._push_pending("sA", [a2], turn_id="t2")
+    service._push_pending("sB", [b2], turn_id="t2")
+
+    resolved = [
+        ("sB", service._pop_pending("sB", turn_id="t2")),
+        ("sA", service._pop_pending("sA", turn_id="t1")),
+        ("sB", service._pop_pending("sB", turn_id="t1")),
+        ("sA", service._pop_pending("sA", turn_id="t2")),
+    ]
+
+    assert [keys for _session, keys in resolved] == [
+        [key_of(b2)],
+        [key_of(a1)],
+        [key_of(b1)],
+        [key_of(a2)],
+    ]
+    a_keys = {key_of(a1), key_of(a2)}
+    b_keys = {key_of(b1), key_of(b2)}
+    for session, keys in resolved:
+        foreign = b_keys if session == "sA" else a_keys
+        assert not foreign.intersection(keys)
+    assert POPOTO_REDIS_DB.llen(service._pending_key("sA")) == 0
+    assert POPOTO_REDIS_DB.llen(service._pending_key("sB")) == 0
+
+
+def test_aborted_turn_does_not_shift_later_pairings(tmp_path):
+    """A turn whose write hook never fires must not shift the next one.
+
+    This is the #574 failure in its simplest form: with positional pairing,
+    turn 2's report pops turn 1's abandoned entry and every later pairing is
+    off by one for the life of the session.
+    """
+    service = make_service(tmp_path)
+    aborted, reported = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+
+    service._push_pending("s1", [aborted], turn_id="t1")
+    service._push_pending("s1", [reported], turn_id="t2")
+
+    assert service._pop_pending("s1", turn_id="t2") == [key_of(reported)]
+
+    remaining = POPOTO_REDIS_DB.lrange(service._pending_key("s1"), 0, -1)
+    assert len(remaining) == 1
+    assert _decode_pending_entry(remaining[0]) == (True, "t1", [key_of(aborted)])
+
+
+def test_subagent_stop_resolves_the_parent_turn_once(tmp_path):
+    """A session configured to fire its write event twice reports once.
+
+    ``SubagentStop`` plus ``Stop`` pops more than the read path pushed. The
+    second report for the same turn finds nothing left tagged with it and
+    resolves nothing, instead of consuming the next turn's entry.
+    """
+    service = make_service(tmp_path)
+    parent, later = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+
+    service._push_pending("s1", [parent], turn_id="t1")
+    service._push_pending("s1", [later], turn_id="t2")
+
+    assert service.feedback("s1", outcome="acted", turn_id="t1") == 1
+    # The duplicate must resolve nothing even with t2 already queued behind
+    # it -- under positional pairing this second report would have consumed
+    # t2's entry and returned 1.
+    assert service.feedback("s1", outcome="acted", turn_id="t1") == 0
+    assert service.feedback("s1", outcome="acted", turn_id="t2") == 1
+
+
+def test_untagged_harness_keeps_fifo_order(tmp_path):
+    """Hermes and OpenClaw send no turn id and keep the positional pairing.
+
+    The returned keys are asserted, not the count: the decode step must reach
+    into the payload, and a fallback that parsed a tagged entry as a bare
+    array would hand back ``["t", "k"]`` -- two strings, in order, resolving
+    nothing -- which any count-only or ordering-only assertion would pass.
+    """
+    service = make_service(tmp_path)
+    first, second = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+
+    service._push_pending("s1", [first], turn_id=None)
+    service._push_pending("s1", [second], turn_id=None)
+
+    assert service._pop_pending("s1", turn_id=None) == [key_of(first)]
+    assert service._pop_pending("s1", turn_id=None) == [key_of(second)]
+    assert service._pop_pending("s1", turn_id=None) == []
+
+
+def test_legacy_entries_are_claimed_after_an_upgrade(tmp_path):
+    """An entry staged before the upgrade is still claimable afterwards.
+
+    A session live across the version boundary has bare arrays on its list
+    and a turn id arriving on the write hook. Positional pairing is the only
+    pairing those entries ever had, so a list with no tags at all falls back
+    to it rather than stranding the outcome.
+    """
+    service = make_service(tmp_path)
+    record = seed(service, "Deploys are blue-green")[0]
+    POPOTO_REDIS_DB.rpush(service._pending_key("s1"), json.dumps([key_of(record)]))
+
+    assert service._pop_pending("s1", turn_id="t1") == [key_of(record)]
+    assert POPOTO_REDIS_DB.llen(service._pending_key("s1")) == 0
+
+
+def test_upgrade_fallback_stops_once_a_tagged_entry_exists(tmp_path):
+    """The upgrade fallback is bounded by the absence of any tag.
+
+    As soon as one tagged entry is on the list the session is post-upgrade,
+    and an unrecognized turn id is a miss rather than a licence to pop the
+    head -- reporting against whatever sits there is the misattribution this
+    change removes. Both elements stay put.
+    """
+    service = make_service(tmp_path)
+    legacy, tagged = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+    redis_key = service._pending_key("s1")
+    POPOTO_REDIS_DB.rpush(redis_key, json.dumps([key_of(legacy)]))
+    service._push_pending("s1", [tagged], turn_id="t1")
+
+    assert service._pop_pending("s1", turn_id="unknown-turn") == []
+
+    remaining = POPOTO_REDIS_DB.lrange(redis_key, 0, -1)
+    assert [_decode_pending_entry(raw) for raw in remaining] == [
+        (False, None, [key_of(legacy)]),
+        (True, "t1", [key_of(tagged)]),
+    ]
+    assert service.status()["counters"].get("pending_miss", 0) == 1
+
+
+def test_turn_keyed_kill_switch_restores_fifo(tmp_path):
+    """``POPOTO_MEMORY_TURN_KEYED=0`` restores the pre-#574 handoff whole.
+
+    Not just the claim half: entries go back to the bare-array shape, so a
+    deployment that flips the switch mid-session leaves nothing tagged behind
+    for a later reader to misread.
+    """
+    assert MemoryConfig.from_env({"POPOTO_MEMORY_TURN_KEYED": "0"}).turn_keyed is False
+
+    service = make_service(tmp_path, turn_keyed=False)
+    first, second = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+
+    service._push_pending("s1", [first], turn_id="t1")
+    service._push_pending("s1", [second], turn_id="t2")
+
+    staged = POPOTO_REDIS_DB.lrange(service._pending_key("s1"), 0, -1)
+    assert [_decode_pending_entry(raw) for raw in staged] == [
+        (False, None, [key_of(first)]),
+        (False, None, [key_of(second)]),
+    ]
+    # Positional even though a turn id is supplied, and t2's report takes the
+    # head of the queue: exactly the behavior the switch exists to restore.
+    assert service._pop_pending("s1", turn_id="t2") == [key_of(first)]
+    assert service._pop_pending("s1", turn_id="t1") == [key_of(second)]
+
+
+def test_corrupt_pending_entry_is_logged_and_skipped(tmp_path):
+    """A poisoned element costs one turn's outcome report, not the turn.
+
+    Nothing raises out of either claim path, and the garbage does not block
+    the tagged entry sitting behind it.
+    """
+    service = make_service(tmp_path)
+    record = seed(service, "Deploys are blue-green")[0]
+    redis_key = service._pending_key("s1")
+    POPOTO_REDIS_DB.rpush(redis_key, "{not json at all")
+    service._push_pending("s1", [record], turn_id="t1")
+
+    assert service._pop_pending("s1", turn_id="t1") == [key_of(record)]
+
+    # And the same garbage on the positional path is a quiet no-op.
+    assert service.feedback("s1", outcome="acted", turn_id=None) == 0
+    assert POPOTO_REDIS_DB.llen(redis_key) == 0
+
+
+def test_duplicate_push_for_same_turn_stages_one_claimable_entry(tmp_path):
+    """A redelivered read hook must not stage a second, unclaimable entry.
+
+    The dedupe check is advisory rather than atomic, but it covers the case
+    it exists for: one turn, staged twice, leaves exactly one entry, and only
+    the first report resolves anything.
+    """
+    service = make_service(tmp_path)
+    record = seed(service, "Deploys are blue-green")[0]
+
+    service._push_pending("s1", [record], turn_id="t1")
+    service._push_pending("s1", [record], turn_id="t1")
+
+    assert POPOTO_REDIS_DB.llen(service._pending_key("s1")) == 1
+    assert service.feedback("s1", outcome="acted", turn_id="t1") == 1
+    assert service.feedback("s1", outcome="acted", turn_id="t1") == 0
 
 
 # --- search and correct (the MCP half) -----------------------------------------
@@ -402,8 +651,13 @@ def test_status_survives_an_unreachable_server(tmp_path):
     assert any("unreachable" in err for err in info["errors"])
 
 
-def test_feedback_degrades_quietly_when_redis_is_down(tmp_path):
+@pytest.mark.parametrize("turn_id", [None, "t1"])
+def test_feedback_degrades_quietly_when_redis_is_down(tmp_path, turn_id):
     """A dead server must not raise on the outcome path.
+
+    Both claim paths are exercised: the positional ``LPOP`` fallback and the
+    turn-keyed ``LRANGE``/``LREM`` claim, which touches Redis one command
+    earlier and would otherwise be an uncovered way to raise into a user turn.
 
     Only the pending-handoff half of the service is exercised here, because
     the model's own client is the process-wide one and cannot be swapped per
@@ -421,7 +675,7 @@ def test_feedback_degrades_quietly_when_redis_is_down(tmp_path):
             url="redis://127.0.0.1:6399/0",
         )
     )
-    assert service.feedback("s1") == 0
+    assert service.feedback("s1", turn_id=turn_id) == 0
 
 
 def test_failures_are_logged_and_counted(tmp_path):
