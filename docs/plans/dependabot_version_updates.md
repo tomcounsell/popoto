@@ -334,8 +334,8 @@ No race conditions identified. The change adds a declarative config file consume
 
 ## No-Gos (Out of Scope)
 
-- `[SEPARATE-SLUG #TBD]` **Adding an `examples/` entry to the config, fixing `examples/pyproject.toml`'s `requires-python`, and regenerating `examples/uv.lock`.** Deferred for the reasons argued above: it is a Textual-plus-popoto API migration against a TUI with zero CI coverage, not a config change. Task 1 of this plan files the tracking issue and substitutes the real number for `#TBD` in this line; the plan must not merge with the placeholder intact.
-- `[SEPARATE-SLUG #TBD]` **Refreshing the root `uv.lock` via `uv lock --upgrade`.** The first scheduled Dependabot run produces this as its own reviewable PR with per-package changelogs. Folding it in here makes the config change unreviewable and requires uv `0.12.2` locally to match the CI gate. Covered by the same follow-up issue as the entry above, which records both deferrals.
+- `[SEPARATE-SLUG #611]` **Adding an `examples/` entry to the config, fixing `examples/pyproject.toml`'s `requires-python`, and regenerating `examples/uv.lock`.** Deferred for the reasons argued above: it is a Textual-plus-popoto API migration against a TUI with zero CI coverage, not a config change. Task 1 of this plan files the tracking issue and substitutes the real number for `#TBD` in this line; the plan must not merge with the placeholder intact.
+- `[SEPARATE-SLUG #611]` **Refreshing the root `uv.lock` via `uv lock --upgrade`.** The first scheduled Dependabot run produces this as its own reviewable PR with per-package changelogs. Folding it in here makes the config change unreviewable and requires uv `0.12.2` locally to match the CI gate. Covered by the same follow-up issue as the entry above, which records both deferrals.
 - `[EXTERNAL]` **Confirming that grouped security updates remain enabled in repository settings.** That toggle lives in the GitHub web UI under Settings → Code security, is not expressible in `dependabot.yml`, and requires admin access. Nothing in this plan changes it; it is named so a future reader does not mistake this file for the source of the existing grouped security PRs.
 - `[ORDERED]` **Verifying Dependabot parsed the config.** Dependabot only evaluates the file on the default branch, so this check cannot run until the PR merges. It is listed under post-merge verification below and is a merge follow-through, not a pre-merge gate.
 
@@ -373,7 +373,7 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 - [ ] No `directory:` key in the file names `examples`.
 - [ ] Neither `uv.lock` nor `examples/uv.lock` appears in the PR diff.
 - [ ] Neither `pyproject.toml` nor `examples/pyproject.toml` appears in the PR diff.
-- [ ] The follow-up issue for `examples/` plus the root lockfile refresh is filed, and its number replaces both `[SEPARATE-SLUG #TBD]` placeholders in the No-Gos section. Only the bracketed token must disappear; other references to `#TBD` in this plan are instructions about the placeholder and remain.
+- [ ] The follow-up issue for `examples/` plus the root lockfile refresh is filed, and its number replaces the placeholder in both No-Gos list items that begin `- `[SEPARATE-SLUG #TBD]``. Only those two lines change; this plan's other references to the token are instructions about the placeholder and remain.
 - [ ] `CLAUDE.md` records the dependency-update policy.
 - [ ] Tests pass (`/do-test`) — unchanged by this PR, but the gate runs.
 - [ ] Documentation updated (`/do-docs`).
@@ -438,7 +438,7 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 - **Parallel**: false
 - Run every row in the Verification table and report each result individually.
 - Confirm the PR diff contains exactly two files: `.github/dependabot.yml` and `CLAUDE.md`, plus this plan document's `#TBD` edit.
-- Confirm no `[SEPARATE-SLUG #TBD]` placeholder survives in this plan's No-Gos section. Match the bracketed token, not the bare string `#TBD` — this plan's own instructions about the placeholder mention it several times and are meant to survive substitution.
+- Confirm no unsubstituted placeholder survives in this plan's No-Gos section, matching the anchored list-item form `^- `[SEPARATE-SLUG #TBD]`` rather than the bare string `#TBD` or the bare bracketed token. This plan's own instructions about the placeholder quote both of those inline and are meant to survive substitution; only the two No-Gos list items are real placeholders.
 
 ## Verification
 
@@ -458,7 +458,7 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 | Cooldown set on every entry | `python3 -c "import yaml; d=yaml.safe_load(open('.github/dependabot.yml')); print([bool(u.get('cooldown')) for u in d['updates']])"` | output contains `[True, True]` |
 | No lockfile churn in this PR (anti-criterion) | `git diff --name-only origin/main...HEAD \| grep -c 'uv\.lock' \|\| true` | stdout is 0 |
 | No manifest churn in this PR (anti-criterion) | `git diff --name-only origin/main...HEAD \| grep -c 'pyproject\.toml' \|\| true` | stdout is 0 |
-| No unresolved issue placeholder (anti-criterion) | `grep -c '\[SEPARATE-SLUG #TBD\]' docs/plans/dependabot_version_updates.md \|\| true` | stdout is 0 |
+| No unresolved issue placeholder (anti-criterion) | `grep -c '^- `\[SEPARATE-SLUG #TBD\]`' docs/plans/dependabot_version_updates.md \|\| true` | stdout is 0 |
 | CLAUDE.md records the policy | `grep -ci 'dependabot' CLAUDE.md` | output > 0 |
 | Docs still build strict | `mkdocs build --strict` | exit code 0 |
 
@@ -490,7 +490,7 @@ The three anti-criterion rows above end in `|| true` on purpose: `grep -c` exits
 
 All four actionable findings are resolved in-plan; the two nits are accepted as noted.
 
-- **BLOCKER (`#TBD` gate unsatisfiable)** — the Verification row, task 4 bullet 3, and Success Criterion 7 now match the bracketed token `[SEPARATE-SLUG #TBD]` rather than the bare string. The plan's meta-references to `#TBD` are preserved deliberately.
+- **BLOCKER (`#TBD` gate unsatisfiable)** — the Verification row, task 4 bullet 3, and Success Criterion 7 now match the anchored No-Gos list-item form `^- `[SEPARATE-SLUG #TBD]`` rather than the bare string, and rather than the bare bracketed token, which this revision note and the critique table both quote inline. The plan's meta-references are preserved deliberately.
 - **CONCERN (cooldown asymmetry)** — the `github-actions` entry now carries the same `cooldown: default-days: 7` block as the `uv` entry, so the prose and the YAML agree. A Verification row checks cooldown on both entries.
 - **CONCERN (`grep -c` exit-code trap)** — all three anti-criterion rows end in `|| true`, and a note under the table tells the validator to read stdout rather than exit status.
 - **CONCERN (`lint` will not run)** — Flow and Risk 2 now state the real trigger set and record that `main` has no required-status-check protection, so an unrun workflow cannot deadlock a merge. `lint.yml`'s path filters are left alone.
