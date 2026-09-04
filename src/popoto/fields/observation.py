@@ -178,8 +178,20 @@ class ObservationProtocol:
             ValidityField — ``contradicted`` behaves exactly as before. See
             ``_apply_supersession``.
 
+        Unsaved instances:
+            An unsaved member of ``instances`` is skipped, for every outcome.
+            Its field effects raise internally and are swallowed, it
+            contributes no commands, and the remaining members of the batch
+            still get their full effects — one unsaved instance never aborts
+            the batch (issue #583). The model methods themselves
+            (``touch``, ``confirm_access``, ``strengthen_cycle``,
+            ``weaken_cycle``, ``resolve_pressure``) are unchanged and still
+            raise ``TypeError`` for direct callers; the degradation belongs
+            to this protocol layer only.
+
         Raises:
-            ValueError: If any outcome string is not a valid outcome.
+            ValueError: If any outcome string is not a valid outcome. Being
+                unsaved is never a reason this method raises.
         """
         if not instances:
             return
@@ -263,20 +275,29 @@ def _apply_acted(instance, pipeline):
     # Touch all DecayingSortedFields (refreshes decay clock)
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, DecayingSortedField):
-            instance.touch(field_name, pipeline=pipeline)
+            try:
+                instance.touch(field_name, pipeline=pipeline)
+            except (TypeError, ValueError):
+                pass  # Graceful degradation for unsaved instances
 
     # Confirm staged reads (AccessTrackerMixin)
     if hasattr(instance, "confirm_access") and callable(instance.confirm_access):
-        instance.confirm_access(pipeline=pipeline)
+        try:
+            instance.confirm_access(pipeline=pipeline)
+        except (TypeError, ValueError):
+            pass  # Graceful degradation for unsaved instances
 
     # Strengthen cycles and resolve pressure (CyclicDecayField)
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
-            instance.strengthen_cycle(
-                field_name, factor=ACTED_CYCLE_STRENGTHEN_FACTOR, pipeline=pipeline
-            )
-            if field.pressure_rate > 0:
-                instance.resolve_pressure(field_name, pipeline=pipeline)
+            try:
+                instance.strengthen_cycle(
+                    field_name, factor=ACTED_CYCLE_STRENGTHEN_FACTOR, pipeline=pipeline
+                )
+                if field.pressure_rate > 0:
+                    instance.resolve_pressure(field_name, pipeline=pipeline)
+            except (TypeError, ValueError):
+                pass  # Graceful degradation for unsaved instances
 
     # Corroborate confidence (ConfidenceField)
     from .confidence_field import ConfidenceField
@@ -318,9 +339,12 @@ def _apply_dismissed(instance, pipeline):
     # Weaken cycles
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
-            instance.weaken_cycle(
-                field_name, factor=DISMISSED_CYCLE_WEAKEN_FACTOR, pipeline=pipeline
-            )
+            try:
+                instance.weaken_cycle(
+                    field_name, factor=DISMISSED_CYCLE_WEAKEN_FACTOR, pipeline=pipeline
+                )
+            except (TypeError, ValueError):
+                pass  # Graceful degradation for unsaved instances
 
     # Auto-resolve predictions (PredictionLedgerMixin)
     from .prediction_ledger import PredictionLedgerMixin
@@ -378,9 +402,14 @@ def _apply_contradicted(instance, pipeline, superseded_by=None):
     # Aggressively weaken cycles (factor=0.5 vs 0.8 for dismissed)
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
-            instance.weaken_cycle(
-                field_name, factor=CONTRADICTED_CYCLE_WEAKEN_FACTOR, pipeline=pipeline
-            )
+            try:
+                instance.weaken_cycle(
+                    field_name,
+                    factor=CONTRADICTED_CYCLE_WEAKEN_FACTOR,
+                    pipeline=pipeline,
+                )
+            except (TypeError, ValueError):
+                pass  # Graceful degradation for unsaved instances
 
     # Contradict confidence (ConfidenceField)
     from .confidence_field import ConfidenceField
@@ -532,7 +561,10 @@ def _apply_used(instance, pipeline):
     # Confirm staged reads (AccessTrackerMixin) — this is the key behavioral
     # distinction from `_apply_deferred`, which discards staged reads.
     if hasattr(instance, "confirm_access") and callable(instance.confirm_access):
-        instance.confirm_access(pipeline=pipeline)
+        try:
+            instance.confirm_access(pipeline=pipeline)
+        except (TypeError, ValueError):
+            pass  # Graceful degradation for unsaved instances
 
     # Auto-resolve predictions (PredictionLedgerMixin)
     from .prediction_ledger import PredictionLedgerMixin

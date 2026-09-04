@@ -64,6 +64,18 @@ class PlainModel(popoto.Model):
     content = popoto.StringField(default="")
 
 
+class TrackerOnlyMemory(AccessTrackerMixin, popoto.Model):
+    """Model with AccessTrackerMixin but NO decay fields at all.
+
+    Isolates the two ``confirm_access`` sites (``_apply_acted`` and
+    ``_apply_used``) from every cycle/decay call, so a regression in the
+    confirm_access guards cannot hide behind a decay guard (#583).
+    """
+
+    name = popoto.UniqueKeyField()
+    content = popoto.StringField(default="")
+
+
 class NoPressureMemory(AccessTrackerMixin, popoto.Model):
     """Model with CyclicDecayField but pressure_rate=0."""
 
@@ -1223,3 +1235,396 @@ class TestAutoDischargeEpsilonBoundary:
             ), "pressure should have been auto-discharged"
         finally:
             self._cleanup()
+
+
+# =========================================================================
+# #583 — on_context_used must degrade on unsaved instances, never raise,
+# and never abort the batch mid-loop.
+# =========================================================================
+
+import ast  # noqa: E402
+
+
+def _at_meta_key(instance):
+    """Access-tracker meta hash key, without going through confirm_access."""
+    return instance._at_key("meta")
+
+
+def _at_access_log_key(instance):
+    return instance._at_key("access_log")
+
+
+class TestUnsavedDegradation:
+    """Unsaved instances must be silently skipped by on_context_used (#583)."""
+
+    def _cleanup(self):
+        FullMemory.delete_all()
+        DecayOnlyMemory.delete_all()
+        TrackerOnlyMemory.delete_all()
+        for pattern in (
+            "$AT:FullMemory:*",
+            "$AT:DecayOnlyMemory:*",
+            "$AT:TrackerOnlyMemory:*",
+            "$CyclicDecayF:FullMemory:*",
+        ):
+            for key in POPOTO_REDIS_DB.keys(pattern):
+                POPOTO_REDIS_DB.delete(key)
+
+    # -- unsaved FullMemory (AccessTracker + CyclicDecayField), one outcome each --
+
+    def test_unsaved_acted_noop(self):
+        """Unsaved FullMemory + 'acted' returns without raising; no cycles/AT keys written."""
+        self._cleanup()
+        try:
+            item = FullMemory(name="unsaved-acted")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "acted"})
+
+            assert _get_cycles(item) == []
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    def test_unsaved_dismissed_noop(self):
+        """Unsaved FullMemory + 'dismissed' returns without raising; no cycles key written."""
+        self._cleanup()
+        try:
+            item = FullMemory(name="unsaved-dismissed")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "dismissed"})
+
+            assert _get_cycles(item) == []
+        finally:
+            self._cleanup()
+
+    def test_unsaved_contradicted_noop(self):
+        """Unsaved FullMemory + 'contradicted' returns without raising; no cycles key written."""
+        self._cleanup()
+        try:
+            item = FullMemory(name="unsaved-contradicted")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "contradicted"})
+
+            assert _get_cycles(item) == []
+        finally:
+            self._cleanup()
+
+    def test_unsaved_used_noop(self):
+        """Unsaved FullMemory + 'used' returns without raising; no AT keys written."""
+        self._cleanup()
+        try:
+            item = FullMemory(name="unsaved-used")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "used"})
+
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    def test_unsaved_deferred_noop(self):
+        """Control: unsaved FullMemory + 'deferred' already degraded before this fix."""
+        self._cleanup()
+        try:
+            item = FullMemory(name="unsaved-deferred")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "deferred"})
+
+            assert _get_cycles(item) == []
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+        finally:
+            self._cleanup()
+
+    # -- unsaved DecayOnlyMemory (AccessTracker + DecayingSortedField, no CyclicDecayField) --
+
+    def test_unsaved_decay_only_acted_noop(self):
+        """Unsaved DecayOnlyMemory + 'acted' covers the touch() site with no CyclicDecayField."""
+        self._cleanup()
+        try:
+            item = DecayOnlyMemory(name="unsaved-decay-acted")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "acted"})
+
+            ss_key = DecayingSortedField.get_partitioned_sortedset_db_key(
+                item, "relevance"
+            ).redis_key
+            assert POPOTO_REDIS_DB.zscore(ss_key, key) is None
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+        finally:
+            self._cleanup()
+
+    def test_unsaved_decay_only_used_noop(self):
+        """Unsaved DecayOnlyMemory + 'used' covers the _apply_used confirm_access site."""
+        self._cleanup()
+        try:
+            item = DecayOnlyMemory(name="unsaved-decay-used")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "used"})
+
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    # -- AccessTrackerMixin-only: isolates the two confirm_access sites --
+
+    def test_unsaved_tracker_only_acted_noop(self):
+        """Unsaved TrackerOnlyMemory + 'acted': no decay fields, so this reaches
+        the _apply_acted confirm_access guard with no cycle guard to hide behind."""
+        self._cleanup()
+        try:
+            item = TrackerOnlyMemory(name="unsaved-tracker-acted")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "acted"})
+
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    def test_unsaved_tracker_only_used_noop(self):
+        """Unsaved TrackerOnlyMemory + 'used': isolates the _apply_used
+        confirm_access guard on a model with no decay fields."""
+        self._cleanup()
+        try:
+            item = TrackerOnlyMemory(name="unsaved-tracker-used")
+            key = item.db_key.redis_key
+
+            ObservationProtocol.on_context_used([item], {key: "used"})
+
+            assert not POPOTO_REDIS_DB.exists(_at_meta_key(item))
+            assert not POPOTO_REDIS_DB.exists(_at_access_log_key(item))
+        finally:
+            self._cleanup()
+
+    def test_saved_tracker_only_still_confirms_access(self):
+        """Control for the two tests above: on a SAVED TrackerOnlyMemory the
+        confirm_access effect still lands, so the guards are not swallowing it."""
+        self._cleanup()
+        try:
+            item = TrackerOnlyMemory(name="saved-tracker-used", content="x")
+            item.save()
+            item.on_read()
+            assert _get_staged_count(item) == 1
+
+            ObservationProtocol.on_context_used([item], {item.db_key.redis_key: "used"})
+
+            assert _get_staged_count(item) == 0
+            assert item.access_count == 1
+        finally:
+            self._cleanup()
+
+    # -- saved-instance control: guards must not swallow real effects --
+
+    def test_saved_instance_still_gets_effects(self):
+        """Control: saved FullMemory still moves cycle amplitudes on acted/dismissed/contradicted,
+        and 'used' still confirms the staged access. Without this, the guards could swallow
+        everything and the unsaved tests above would still pass."""
+        self._cleanup()
+        try:
+            # acted -> strengthen
+            item = FullMemory(name="saved-acted", content="x")
+            item.save()
+            original_amp = _get_cycles(item)[0][1]
+            ObservationProtocol.on_context_used(
+                [item], {item.db_key.redis_key: "acted"}
+            )
+            new_amp = _get_cycles(item)[0][1]
+            assert new_amp > original_amp
+
+            # dismissed -> weaken
+            item2 = FullMemory(name="saved-dismissed", content="x")
+            item2.save()
+            original_amp2 = _get_cycles(item2)[0][1]
+            ObservationProtocol.on_context_used(
+                [item2], {item2.db_key.redis_key: "dismissed"}
+            )
+            new_amp2 = _get_cycles(item2)[0][1]
+            assert new_amp2 < original_amp2
+
+            # contradicted -> weaken more aggressively
+            item3 = FullMemory(name="saved-contradicted", content="x")
+            item3.save()
+            original_amp3 = _get_cycles(item3)[0][1]
+            ObservationProtocol.on_context_used(
+                [item3], {item3.db_key.redis_key: "contradicted"}
+            )
+            new_amp3 = _get_cycles(item3)[0][1]
+            assert new_amp3 < original_amp3
+
+            # used -> confirms staged access
+            item4 = FullMemory(name="saved-used", content="x")
+            item4.save()
+            item4.on_read()
+            assert _get_staged_count(item4) == 1
+            ObservationProtocol.on_context_used(
+                [item4], {item4.db_key.redis_key: "used"}
+            )
+            assert _get_staged_count(item4) == 0
+            assert item4.access_count == 1
+        finally:
+            self._cleanup()
+
+    # -- mixed batch: unsaved first, saved second, in ONE on_context_used call --
+
+    def test_mixed_batch_unsaved_first_saved_effects_still_land(self):
+        """[unsaved, saved] in one call: the saved member's effects still land,
+        proving the loop no longer aborts mid-batch on the unsaved member."""
+        self._cleanup()
+        try:
+            unsaved = FullMemory(name="mixed-unsaved")
+            saved = FullMemory(name="mixed-saved", content="x")
+            saved.save()
+            original_amp = _get_cycles(saved)[0][1]
+
+            outcome_map = {
+                unsaved.db_key.redis_key: "acted",
+                saved.db_key.redis_key: "acted",
+            }
+            # Unsaved instance ordered FIRST.
+            ObservationProtocol.on_context_used([unsaved, saved], outcome_map)
+
+            # Unsaved member contributed nothing.
+            assert _get_cycles(unsaved) == []
+            # Saved member's effects landed despite the unsaved member preceding it.
+            new_amp = _get_cycles(saved)[0][1]
+            assert new_amp > original_amp
+        finally:
+            self._cleanup()
+
+    # -- blast-radius control: real corruption must remain observable --
+
+    def test_corrupt_cycles_payload_on_saved_instance_stays_observable(self):
+        """A corrupt, non-msgpack payload in a SAVED instance's cycles hash must still
+        produce an observable failure (amplitudes do not move). msgpack's
+        UnpackValueError is a ValueError subclass, so the new guards must not turn
+        real corruption into a silent success indistinguishable from a no-op."""
+        self._cleanup()
+        try:
+            item = FullMemory(name="corrupt-cycles", content="x")
+            item.save()
+
+            field = item._meta.fields["relevance"]
+            cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
+            member_key = item.db_key.redis_key
+
+            # Overwrite with a byte sequence msgpack cannot unpack as valid data.
+            POPOTO_REDIS_DB.hset(
+                cycles_hash_key, member_key, b"\xc1\xc1\xc1not-msgpack\xff\xfe"
+            )
+
+            with pytest.raises(ValueError):
+                # Direct call: proves the corruption is real (msgpack raises a
+                # ValueError subclass, e.g. FormatError/UnpackValueError) and
+                # raises outside the protocol layer's guard.
+                item.strengthen_cycle("relevance", factor=1.2)
+
+            # Through the protocol layer, the guard swallows the exception (by
+            # design — same as the unsaved-instance case), but the corrupt bytes
+            # must NOT have been silently replaced with valid amplitude data.
+            raw_before = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
+            ObservationProtocol.on_context_used(
+                [item], {item.db_key.redis_key: "acted"}
+            )
+            raw_after = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
+
+            # The payload is untouched — still the corrupt bytes, not silently
+            # "fixed" or replaced with a fresh valid amplitude list. This is the
+            # observable signal that the guard swallowed a real failure rather
+            # than performing (and hiding) a successful write.
+            assert raw_after == raw_before == b"\xc1\xc1\xc1not-msgpack\xff\xfe"
+        finally:
+            self._cleanup()
+
+    # -- empty batch regression --
+
+    def test_empty_batch_returns_none_no_raise(self):
+        """on_context_used([], {}) must remain a no-op regression after the fix."""
+        assert ObservationProtocol.on_context_used([], {}) is None
+
+    # -- static contract check: no bare raising calls left in observation.py --
+
+    def test_no_unguarded_raising_calls(self):
+        """AST walk over observation.py: every touch/confirm_access/strengthen_cycle/
+        weaken_cycle/resolve_pressure Call node must have an enclosing ast.Try whose
+        handlers catch TypeError."""
+        import src.popoto.fields.observation as obs_module
+
+        source_path = obs_module.__file__
+        with open(source_path, "r") as f:
+            source = f.read()
+        tree = ast.parse(source, filename=source_path)
+
+        guarded_methods = {
+            "touch",
+            "confirm_access",
+            "strengthen_cycle",
+            "weaken_cycle",
+            "resolve_pressure",
+        }
+
+        # Map each node to its parent so we can walk upward from a Call to find
+        # an enclosing Try.
+        parent_of = {}
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                parent_of[child] = parent
+
+        def enclosing_try_catches_type_error(node):
+            current = node
+            while current in parent_of:
+                current = parent_of[current]
+                if isinstance(current, ast.Try):
+                    for handler in current.handlers:
+                        htype = handler.type
+                        names = []
+                        if htype is None:
+                            continue
+                        if isinstance(htype, ast.Tuple):
+                            for elt in htype.elts:
+                                if isinstance(elt, ast.Name):
+                                    names.append(elt.id)
+                        elif isinstance(htype, ast.Name):
+                            names.append(htype.id)
+                        if "TypeError" in names:
+                            return True
+                    # This Try's handlers don't catch TypeError; keep walking
+                    # up in case of a nested Try (defensive, not expected here).
+                # Stop walking once we exit the function scope.
+                if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    break
+            return False
+
+        offending_lines = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in guarded_methods:
+                    # Only calls of the form instance.<method>(...) — the
+                    # receiver name varies (instance), but attr name is enough
+                    # given these method names are specific to this contract.
+                    if not enclosing_try_catches_type_error(node):
+                        offending_lines.append(node.lineno)
+
+        assert not offending_lines, (
+            f"Unguarded {sorted(guarded_methods)} call(s) found in "
+            f"{source_path} at line(s): {offending_lines}. Each must be "
+            f"wrapped in try/except (TypeError, ...)."
+        )
+
+    def test_unsaved_instance_raises_still_passes_unmodified(self):
+        """Sentinel: TestCycleAmplitudes::test_unsaved_instance_raises (direct
+        strengthen_cycle call) must be unaffected by the protocol-layer guards.
+        This does not replace that test — see TestCycleAmplitudes for the real one.
+        """
+        item = FullMemory(name="sentinel-unsaved-cycle")
+        with pytest.raises(TypeError, match="unsaved"):
+            item.strengthen_cycle("relevance")
