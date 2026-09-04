@@ -124,7 +124,7 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
  - **[Agent Memory](https://popoto.io/features/agent-memory/)** - programmable memory primitives for AI agents (decay, confidence, associations, context assembly)
  - **[Content & Embeddings](https://popoto.io/features/content-and-embedding-fields/)** - large content storage, vector embeddings, and semantic search
  - **[Harness Integration](https://popoto.io/features/harness-integration/)** - subconscious memory for Claude Code, Codex, Hermes, and OpenClaw via hooks and MCP
- - **[Export & Import](https://popoto.io/guides/export-import/)** - move records between Redis instances with per-field round-trip fidelity and conflict/write-gate/embedding-mismatch policies
+ - **[Export & Import](https://popoto.io/guides/export-import/)** - move records between Redis instances with per-field round-trip fidelity and conflict/write-gate/embedding-mismatch policies, from Python or the `popoto-transfer` command line
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:

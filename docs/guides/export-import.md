@@ -200,6 +200,108 @@ happening silently. See the field-level policy table on the destination model, o
 [Writing Custom Fields](../field-authoring.md) if you are deciding how to declare
 this for your own field.
 
-Async twins (`async_export_records` / `async_import_records`) and a CLI front-end
-are not part of this API; the driver is a synchronous Python function you call from
-your own script or an async wrapper.
+Async twins (`async_export_records` / `async_import_records`) are not part of this
+API; the driver is a synchronous Python function you call from your own script or an
+async wrapper. A CLI front-end is available — see
+[From the command line](#from-the-command-line) below.
+
+## From the command line
+
+The `popoto-transfer` console script ships with the package (no extra install step
+beyond `pip install popoto`) and wraps `export_records` / `import_records` with a
+reconciliation summary, an exit code a script can act on, and a refusal to touch
+Redis database 0 by accident.
+
+```console
+$ popoto-transfer --help
+$ popoto-transfer export --help
+$ popoto-transfer import --help
+```
+
+### `export`
+
+```console
+$ popoto-transfer export --model myapp.models:Memory --filter project_key=ai \
+    --out memories.jsonl
+ExportResult for Memory
+  filter:        Q(project_key='ai')
+  matched:       1284
+  written:       1284
+```
+
+`--model module.path:ClassName` (one colon) names the model to export. The named
+module is **imported** to resolve the class, so this runs whatever module-level code
+the operator's model module contains — the same caution as any other Python import.
+The current working directory is added to `sys.path` first, so `--model
+myapp.models:Memory` resolves from the operator's own project root.
+
+`--filter key=value` (repeatable) narrows the export with an equality filter; each
+value is parsed as JSON first (so `0.5`, `true`, `null` carry their type), falling
+back to a raw string otherwise. `Q` objects and lookup operators (`__gte`, `__in`,
+and friends) are not expressible on the command line — use the Python API
+(`export_records` / `Model.export_records`) for those. `--chunk-size` controls how
+many keys are hydrated per round trip (default 500).
+
+`--out PATH` writes JSON Lines to `PATH` (default `-` for stdout); a failed export
+never truncates a pre-existing file at `PATH`, since the export is written to a
+sibling temporary file and promoted only on success.
+
+### `import`
+
+```console
+$ popoto-transfer import --model myapp.models:Memory --in memories.jsonl \
+    --on-conflict overwrite
+ImportReport for Memory
+  records read:  1284
+  landed:        1284
+  ...
+$ echo $?
+0
+```
+
+`--in PATH` reads JSON Lines from `PATH` (default `-` for stdin). `--on-conflict`
+(`error` default, `skip`, `overwrite`), `--on-write-gate` (`reject` default,
+`bypass`), and `--on-embedding-mismatch` (`error` default, `carry`, `regenerate`)
+mirror the three Python API policy flags described above exactly. Keys are always
+preserved on import, so a re-run with `--on-conflict overwrite` converges rather than
+duplicating a partially completed import.
+
+### `--json` and where the summary goes
+
+The human-readable summary always goes to **stderr**, so `--out -` can stream JSON
+Lines on stdout without the summary corrupting it:
+
+```console
+$ popoto-transfer export --model myapp.models:Memory --out - | gzip > backup.jsonl.gz
+```
+
+`--json` writes a machine-readable summary (the result/report as JSON, plus a
+`counts` object) to **stdout** instead, and is refused together with `--out -` since
+both would claim stdout.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Ran to completion; every record accounted for as landed or skipped, no errors. |
+| 1 | The run failed: bad `--model`, the database-0 refusal, an unreadable file, a manifest mismatch, a query error, a connection error, or an `on_conflict="error"` collision — which may have written earlier records before raising. |
+| 2 | An `argparse` usage error (argparse's own convention). |
+| 3 | The run completed, but at least one record did not land: any `rejected`, `errored`, or `partial` import outcome, or any export error. A `skipped` import outcome is clean and does not trigger this. |
+
+### Refusing database 0
+
+Both subcommands refuse to run when the effective Redis database is 0, unless
+`--allow-db0` is passed:
+
+```console
+$ popoto-transfer import --model myapp.models:Memory --in memories.jsonl
+popoto-transfer: refusing to write to database 0 -- this is often a live store, not
+a test database.
+  Pass --allow-db0 to proceed anyway, or point at a different database, e.g.
+  REDIS_URL=redis://localhost:6379/1
+```
+
+The check reads the database off the live connection pool, not an environment
+variable, so it catches the unset-`REDIS_URL` fallback (which also binds database 0)
+as well as an explicit `…/0` URL. It runs before the operator's `--model` module is
+imported and before any Redis command is issued.

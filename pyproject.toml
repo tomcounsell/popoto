@@ -109,6 +109,7 @@ Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 
 [project.scripts]
 popoto-memory = "popoto.integrations.cli:main"
+popoto-transfer = "popoto.transfer.cli:main"
 
 [project.entry-points.pytest11]
 popoto = "popoto.pytest_plugin"
