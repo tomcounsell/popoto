@@ -191,23 +191,209 @@ already demonstrates six times since #602.
 
 ## Spike Results
 
-<!-- skeleton -->
+All four spikes were re-run on **2026-09-04** against `origin/main` `7f057f9` as a
+single throwaway pytest module (`tests/test_zz_spike559.py`, deleted after the
+run) in the **main checkout** `/Users/valorengels/src/popoto`, using
+`.venv/bin/python`, on `POPOTO_TEST_DB=12`.
+
+**Environment, stated per CLAUDE.md's rule:**
+
+- `.venv/bin/python -c "import popoto; print(popoto.__file__)"` →
+  `/Users/valorengels/src/popoto/src/popoto/__init__.py`, and `import src.popoto`
+  resolves to the same file (the plugin's alias collapse). The checkout is on
+  `main` at `7f057f9`, so the package under test **is** current main. This is the
+  check that invalidated the prior plan's first spike pass.
+- `POPOTO_TEST_DB=12` — DB 15 is shared by every concurrent worktree (five other
+  lanes were live during this run) and DB 0 is the live agent store. DB 12 was
+  swept clean afterwards (`keys '*SpikeDoc*'` → 0).
+- pytest 9.1.1, redis-py via `popoto-1.8.2` plugin, Python 3.12.13,
+  `asyncio: mode=Mode.STRICT`.
+
+Raw output: `7 passed in 0.23s`.
+
+> **The prior plan's spike-1 and spike-6 are deleted, not updated.** They measured
+> the async gap that #602 closed. Their conclusions ("results match, the bound
+> does not fire"; "`HydrationCounter` reports 0 on the async path") no longer
+> describe main, and the tests they justified now exist. spike-5 is retained
+> because its instrument finding still governs how the new tests measure.
+
+### spike-2: Is `count()` truncated by a limit? (re-verified)
+- **Assumption**: "`count()` reports the full match count when a limit is present,
+  in every form a caller might write."
+- **Method**: prototype
+- **Finding**: **Confirmed, in all four shapes**, 60 matching records:
+
+  | call | result |
+  |---|---|
+  | `SpikeDoc.query.count(room_id="r1", last_active_at__gte=0)` | `60` |
+  | `qb = ...filter(...).limit(5)`; `qb.count()` | `60` |
+  | `len(list(qb))` on that same builder | `5` |
+  | `SpikeDoc.query.count(..., limit=5)` | `60` |
+  | `await SpikeDoc.query.async_count(..., limit=5)` | `60` |
+
+  Structurally safe by two independent routes, both re-read on `7f057f9`:
+  `QueryBuilder.count` (`query.py:1814`) calls `self._query.count(**self._filters)`
+  and never forwards `_limit_value`; `Query.count` (`query.py:3238`) returns
+  `len(db_keys)` from `filter_for_keys_set`, which cannot bound because
+  `_pushdown_allowed` is `False` outside `_execute_filter` /
+  `_filter_keys_with_pushdown`.
+- **Confidence**: high
+- **Impact on plan**: test as specified. Assert the `QueryBuilder.limit(n).count()`
+  form **and** the `Query.count(..., limit=n)` kwargs form — they reach
+  `Query.count` by different routes and only one is what a caller is likely to
+  write. `async_count` is confirmed but is **not** added as a test (see No-Gos):
+  it does not exercise the pushdown gate, and this issue is scoped to the
+  pushdown suite.
+
+### spike-3: Does `Meta.order_by` on the sorted field set direction and keep the bound? (re-verified, now covering async)
+- **Assumption**: "`Meta.order_by = '-last_active_at'` makes an unordered query
+  descending *and* keeps the bound — on both the sync and the async path."
+- **Method**: prototype (dedicated model classes — `Meta` is class-level)
+- **Finding**: **Confirmed on both paths.** 20 records, `limit=3`, no explicit
+  `order_by`:
+
+  | path | results | hydration count |
+  |---|---|---|
+  | sync, `Meta = "-last_active_at"`, `limit=3` | `['m019','m018','m017']` | **22** |
+  | sync, same model, **no** limit | `['m019','m018','m017', ...]` | **40** (full) |
+  | sync, `Meta = "last_active_at"`, `limit=3` | `['m000','m001','m002']` | **22** |
+  | **async**, `Meta = "-last_active_at"`, `limit=3` | `['m019','m018','m017']` | **11** |
+
+  `22 = 2 x (3 + 8) = 2 x (limit + SORTED_PUSHDOWN_OVERFETCH_MARGIN)`;
+  `11 = 1 x (3 + 8)`. Both the direction and the bound come from `Meta`.
+- **Confidence**: high
+- **Impact on plan**: three model classes needed (`-last_active_at`,
+  `last_active_at`, and the other-field case in spike-4). The **ascending** case is
+  a weak discriminator — with no `Meta` at all the sorted-set order is *already*
+  ascending, so an ascending-`Meta` test proves "Meta did not break it" rather
+  than "Meta supplied it". Assert results + bounded hydration, and say so in a
+  comment. The async descending case is new coverage that #602 did not add.
+
+### spike-4: Does `Meta.order_by` on another field block the pushdown? (re-verified, now covering async)
+- **Assumption**: "`Meta.order_by = 'doc_id'` declines the bound and still returns
+  complete, correctly-ordered results — on both paths."
+- **Method**: prototype (dedicated model, `doc_id` deliberately anti-correlated
+  with score: `doc_id` descends as `last_active_at` ascends)
+- **Finding**: **Confirmed on both paths.** 20 records, `limit=3`, no explicit
+  `order_by`:
+
+  | path | results | hydration count |
+  |---|---|---|
+  | sync | `['z000','z001','z002']` | **40** (2 x 20 — full range) |
+  | **async** | `['z000','z001','z002']` | **20** (1 x 20 — full range) |
+
+  `['z000','z001','z002']` is the correct `doc_id`-ordered head, which is the
+  *tail* of the score order. The bound correctly declined on both paths.
+- **Confidence**: high
+- **Impact on plan**: test as specified, on both paths. This is the one case where
+  a dropped guard returns **wrong rows**, not merely short ones — it earns a
+  docstring saying exactly that. Note the ordering does *not* come from the
+  `kwargs["order_by"]` assignment at `query.py:3050-3055` / `3572-3578` (both are
+  skipped, because `sorted_field_order` is truthy) — it comes from
+  `prepare_results` falling back to `_meta.order_by`. The test asserts the
+  observable result, not that mechanism.
+
+### spike-5: What instrument actually observes the bound? (retained, re-confirmed)
+- **Assumption**: "#518's `redis_spy` fixture (patching `zrange` / `zrangebyscore`)
+  transfers to main."
+- **Method**: code-read + prototype
+- **Finding**: **It does not.** `sorted_field_mixin.py` dispatches four ways:
+  bounded+desc → `zrevrangebyscore(..., start=0, num=_limit)`; bounded+asc →
+  `zrangebyscore(..., start=0, num=_limit)`; and the two unbounded variants.
+  **`zrange` is never called**, so #518's `zrange.assert_not_called()` would
+  vacuously pass and its `zrange.call_args.kwargs["num"] == 5` would
+  `AttributeError`. Two further traps: `num` is `limit + 8`, never `limit`; and a
+  single sync `list(filter(...))` issues **two** `zrevrangebyscore` calls, so
+  `call_count == 1` fails.
+- **Confidence**: high
+- **Impact on plan**: **do not port `redis_spy`.** Use the module's own
+  `HydrationCounter` for sync tests and its `AsyncHydrationCounter` (added by
+  #602) for the async ones. If a range-call assertion is ever wanted, #602 also
+  left `RangeCallRecorder` in the file — but this plan does not need it, because
+  hydration count is the property that matters to a caller.
+  **Counting convention, measured:** `HydrationCounter` counts **2 per object**
+  (sync pipeline issues `hgetall` twice per key); `AsyncHydrationCounter` counts
+  **1 per object**. Never write an assertion that assumes one convention on both.
 
 ## Data Flow
 
-<!-- skeleton -->
+Both bounds live on the read path between the filter call and object hydration.
+Since #602 the sync and async paths are structurally parallel; the numbered steps
+below apply to both unless noted.
+
+1. **Entry**: `Model.query.filter(room_id=..., last_active_at__gte=..., limit=n)`
+   (sync) or `await Model.query.async_filter(...)`.
+2. **`QueryBuilder`** — accumulates `_limit_value` / `_order_by_value`.
+   **`.count()` (`query.py:1814`) branches off here and forwards only
+   `_filters`, never the limit.** This is the entire mechanism behind gap 1.
+3. **Arming the gate**:
+   - sync — `Query._execute_filter` sets `self._pushdown_allowed = _allow_pushdown`
+     (`query.py:3040`), `finally`-reset at `3044`.
+   - async — `Query._filter_keys_with_pushdown` (`query.py:2264`) does the same
+     inside one `to_thread` hop, held under `_pushdown_lock_for_running_loop()`,
+     and returns a `_PushdownState` snapshot (#602).
+   `Query.count` opens neither gate, which is the second, independent reason
+   `count()` cannot be bounded.
+4. **`Query.filter_for_keys_set`** — per sorted field, calls
+   `_sorted_pushdown_args` (`query.py:2538`). **Gap 2 lives at `query.py:2445`**:
+   `order_by = kwargs.get("order_by", None) or self.model_class._meta.order_by`,
+   then `if (order_by[1:] if desc else order_by) != field_name: return None, False`.
+   On approval, passes `_limit = limit + MARGIN` and `_desc` into
+   `field.filter_query`.
+5. **`SortedFieldMixin.filter_query`** — four-way dispatch to
+   `zrevrangebyscore` / `zrangebyscore`, with or without `start=0, num=`.
+6. **`Query._bound_keys_before_hydration`** (`query.py:2284`; called at `3071`
+   sync and `3590` async) — slices the already-intersected ordered key list when
+   the Redis-side bound could not apply. **Carries the same `Meta` guard at
+   `query.py:2329`**, so gap 2 has two independent code sites and one test shape
+   can only cover the one its query shape reaches.
+7. **Hydration** — `Query.get_many_objects` (sync) / `_async_get_many_objects`
+   (async), one `HGETALL` per surviving key. **This is what the counters observe
+   and the only place the optimization is visible from a test.**
+8. **Short-result guard** — `_short_result_action`; a bounded read that came back
+   short on a non-exhausted range logs a warning and re-reads unbounded.
+9. **`prepare_results`** — applies `order_by` (falling back to `_meta.order_by`,
+   `query.py:3203-3204`) and re-applies `limit` after any client-side filter.
+   **This is where the `Meta.order_by = "doc_id"` case gets its result order**
+   (spike-4).
+10. **Output**: ordered list of model instances.
 
 ## Architectural Impact
 
-<!-- skeleton -->
+- **New dependencies**: none.
+- **Interface changes**: none. Test-only.
+- **Coupling**: adds three model classes to
+  `tests/test_sorted_range_pushdown.py`. They **must** carry the `PushdownDoc`
+  name prefix so the module's existing `_flush()` glob
+  (`POPOTO_REDIS_DB.keys("*PushdownDoc*")`) sweeps both their hashes and their
+  sorted-set keys (`$SortF:<ClassName>:<field>:<partition>` embeds the class name).
+- **Data ownership**: unchanged.
+- **Reversibility**: trivial — delete the added tests.
 
 ## Appetite
 
-<!-- skeleton -->
+**Size:** Small (smaller than the 2026-08-13 draft: #602 absorbed one of three
+deliverables and pre-built both async helpers).
+
+**Team:** Solo dev
+
+**Interactions:**
+- PM check-ins: 0 — the one open question the prior draft carried (how to split
+  the async criterion) has been answered by events.
+- Review rounds: 1
 
 ## Prerequisites
 
-<!-- skeleton -->
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| venv resolves to the checkout under test | `.venv/bin/python -c "import popoto; print(popoto.__file__)"` and confirm the path is this checkout's `src/` | CLAUDE.md worktree gotcha #1 — this exact mistake invalidated the prior plan's first spike pass |
+| Checkout is at or above `7f057f9` | `git merge-base --is-ancestor 7f057f9 HEAD` | #602 must be present; the whole re-scope depends on it |
+| Full extras installed (no ~95 deselects) | `.venv/bin/python -c "import numpy, sentence_transformers"` | CLAUDE.md gotcha #2 |
+| Redis/Valkey reachable on the chosen DB | `redis-cli -n <N> ping` | Suite needs a live server |
+| A private test DB is exported | `test -n "$POPOTO_TEST_DB" && test "$POPOTO_TEST_DB" != 0` | DB 15 is shared by every concurrent worktree; DB 0 is the live agent store |
+
+If the build runs in a fresh worktree, install `.[dev,embeddings,benchmark,mcp]`
+(omit `dataframe` — it breaks `test_dataframe_field.py` collection).
 
 ## Solution
 
