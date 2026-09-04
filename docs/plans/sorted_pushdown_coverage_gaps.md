@@ -1314,6 +1314,157 @@ by different routes.
 
 ---
 
+## Critique Results — Round 2
+
+**Run:** 2026-09-04 · run `753c237513c44a21843ded67800f63a2` · depth FULL
+(3 lenses: Risk & Robustness, Scope & Value, History & Consistency) ·
+**Verdict: READY TO BUILD (with concerns)** — 0 blockers, 3 concerns, 4 nits.
+
+> Roster note: no Agent/Task dispatch tool exists in this session, so the three
+> lenses were applied directly by the critique driver. Every finding below is
+> grounded in a verified read or a live measurement at `HEAD` = `5374525`, not on
+> the plan's claims. The round-1 Revision Disposition's two contested entries
+> (N2, N3) were re-checked independently: **N3's correction is right** —
+> `pyproject.toml:123` sets `addopts = "-v"`, `grep -c '::'` returns `0`, and the
+> summary-line form reports `30`. **N2's correction is not sufficient** — see C2
+> below; `git fetch` does not fix the check, and makes one failure mode likelier.
+
+### Findings Summary
+
+| Severity | Critic | Finding | Location |
+|---|---|---|---|
+| CONCERN | Risk & Robustness | C1 — Task 5's guard-mutation criterion is factually false (measured): the `Meta`-on-another-field tests also flip under the 2329 mutation (`['z000'…]` → `['z009'…]`, 40 → 22 hydrations), so "no other test in the module changes state" contradicts measurement and blocks a literal validator. | Task 5 `validate-guards`; spike-6 Finding |
+| CONCERN | Risk & Robustness | C2 — `git diff --name-only origin/main` is a two-dot working-tree compare in a repo with 5+ concurrent lanes; it returns another lane's `docs/plans/partition_by_canonical_rendering.md` on a clean tree today, so "changed files" and "no production change" FAIL through no fault of the build. | Verification script; Task 6 |
+| CONCERN | Scope & Value | C3 — Absolute full-suite pass count (`3424 passed`) is pinned as a Success Criterion while other lanes (#594, #602, #600) merge tests to main; any landing turns the gate into a false failure. | Success Criteria; Race Conditions |
+| NIT | History & Consistency | N1 — `query.py:2321` is off by two: the `if state.pushdown_limit:` is at 2319, the `return db_keys` at 2320. All other line refs re-verified correct at `HEAD`. | Data Flow step 6; task 3a docstring |
+| NIT | Risk & Robustness | N2 — Data Flow step 2 states the `count()` no-limit-forwarding invariant unconditionally, but `QueryBuilder.count` (1814) short-circuits `if self._q_objects: return len(self.all())` at 1821-1822, and `.all()` does forward `_limit_value`. Not actionable for the build (tests use no Q objects); scope the sentence or name the Q form in No-Gos. | Data Flow step 2 |
+| NIT | Scope & Value | N3 — Task 3's first test and task 3a assert identically (`['m019','m018','m017']` @ 22 hydrations, measured); they differ only in query shape. Correct and intended, but the required docstring must say so or a future reader deletes 3a as a duplicate. | Tasks 3, 3a |
+| NIT | Scope & Value | N4 — The seeding helper's conditional `bucket` passthrough ("only when the model declares the field") needs field introspection where `**extra` would do; only `PushdownDocMetaDesc` declares `bucket`. | Task 2 |
+
+### Concerns
+
+**C1 — Task 5's key mutation criterion is factually false; measured.**
+*Location:* Task 5 `validate-guards`; spike-6 "Finding".
+*Finding:* Both spike-6 and task 5 assert that deleting
+`or self.model_class._meta.order_by` from `query.py:2329` reddens **only** the new
+key-list-slice tests and that "every originally-planned test stayed green" / "no
+other test in the module changes state". Running that exact mutation, the
+`Meta`-on-another-field case *also* flips: results go `['z000','z001','z002']` →
+`['z009','z010','z011']` and hydration goes `40` → `22`. Both assertions task 3's
+third test specifies (exact head, `>= 2*20`) therefore fail under this mutation
+too. A validator following task 5 literally hits a contradiction and either
+reports a false failure or "corrects" a healthy test.
+*Suggestion:* Restate task 5's third bullet as "confirm tasks 3a/4a go red with
+`['m010','m009','m008']`, that the other-field tests (task 3 third / task 4
+second) also go red — expected, they share line 2329 — and that no *pre-existing*
+test in the module changes state."
+*Implementation Note:* The 30 pre-existing tests **do** all stay green under the
+mutation (measured: `30 passed`), because `PushdownDoc` declares no `Meta`, so
+`_meta.order_by` is `None` and the guard is a no-op for them. That is the true
+invariant. Mechanically: with `or …_meta.order_by` gone, `order_by` is `None` for
+a query with no explicit `order_by`, so the whole `if order_by:` block at
+2330-2336 is skipped and the guard never declines — which is why the *declining*
+branch breaks as well as the *desc-supplying* one. The plan's conclusion (add
+3a/4a) still stands: 3a is the only shape that pins the desc-supplying half —
+guard intact, `bucket`-filtered returns `['m019','m018','m017']` @ 22 hydrations;
+mutated, `['m010','m009','m008']` @ 22, while the unfiltered Redis-bound query
+stays correct. Only the stated evidence and the criterion need correcting.
+
+**C2 — The "changed files" verification check fails on a clean tree in this
+checkout.**
+*Location:* Verification script (`check "changed files" …`, `check "no production
+change" …`); Task 6.
+*Finding:* `git diff --name-only origin/main` is a two-dot working-tree
+comparison, and this repo is worked by 5+ concurrent SDLC lanes. Run now, after
+`git fetch origin --quiet`, on a checkout with no #559 work at all, it returns
+`docs/plans/partition_by_canonical_rendering.md` — another lane's uncommitted
+edit. The check is exact-string equality, so it FAILs through no fault of the
+build. Second, independent failure mode: if the build branch is *behind*
+`origin/main`, every file main changed since the branch point appears as a
+reverse-delta — which round-1 N2's `git fetch` fix makes *more* likely, not less.
+The same root cause makes `no production change` (scoped `-- src/`) fire falsely
+if any lane lands a `src/` change (e.g. #600) on main first.
+*Suggestion:* Scope the comparison to the paths the build owns and anchor it at
+the merge base rather than the tip.
+*Implementation Note:* Replace both rows with `BASE=$(git merge-base origin/main
+HEAD)` then `check "changed files" "tests/test_sorted_range_pushdown.py" "$(git
+diff --name-only "$BASE" -- src tests | sort | tr '\n' ' ' | sed 's/ $//')"`.
+Restricting to `src tests` is the load-bearing part — it drops other lanes'
+`docs/plans/*` noise while still catching what the criterion exists to catch ("no
+file outside `tests/` is modified"). Keep the `git fetch`; the merge-base needs it
+to be current.
+
+**C3 — Absolute full-suite pass count is pinned as a Success Criterion on a repo
+with concurrent merging lanes.**
+*Location:* Success Criteria ("Full suite: `5 failed, 3424 passed, 26 skipped`");
+Race Conditions.
+*Finding:* `3424` is `3416 + 8`, where `3416` was measured on `7f057f9` on
+2026-09-04. The plan's own Freshness Check documents #594, #602 and #600 as live
+lanes, and this session lists eight other `sdlc-*` agents. Any lane merging a test
+to main before this builds turns a pinned Success Criterion into a false failure —
+the same class of defect as round-1 C4, which the revision fixed for the
+*collected* count but left absolute for the *suite* count.
+*Suggestion:* State the criterion as a delta measured on the build's own branch
+point, not an absolute.
+*Implementation Note:* In task 6, capture the baseline at the branch point first
+(`git stash` the change, or run the suite at `$(git merge-base origin/main HEAD)`),
+record `passed_before`, then assert `passed_after == passed_before + 8` and
+`failed_after == failed_before`. Keep `5 failed / 3416 passed` in the plan as the
+measured-on-`7f057f9` reference figure, explicitly labelled informational rather
+than as the gate.
+
+### Nits
+
+- **N1** — `query.py:2321` is off by two (the `if` is at 2319, the `return` at
+  2320) in Data Flow step 6, task 3a's docstring instruction, and round-1 C2's
+  text. Every other line reference re-verified correct at `HEAD`:
+  `_bound_keys_before_hydration` 2284, Meta resolution 2329,
+  `_sorted_pushdown_args` 2405 / 2445, `filter_for_keys_set` 2464 with the
+  `_sorted_field_order` reset at 2504, `_pushdown_allowed` 2277,
+  `QueryBuilder.count` 1814, `Query.count` 3238, `async_filter` 3525, slice call
+  sites 3071/3590, `prepare_results` fallback 3203-3204,
+  `SORTED_PUSHDOWN_OVERFETCH_MARGIN = 8` at `constants.py:358`, `addopts = "-v"`
+  at `pyproject.toml:123`.
+- **N2** — Data Flow step 2 states the `count()` invariant unconditionally, but
+  `QueryBuilder.count` (1814) reads `if self._q_objects: return len(self.all())`
+  at 1821-1822 *before* `return self._query.count(**self._filters)`, and `.all()`
+  forwards `_limit_value`. The claim holds only on the non-Q path. Not actionable
+  for the build (no test uses Q objects, and the Q + partitioned-SortedField shape
+  raises `KeyError: 'room_id'` at `sorted_field_mixin.py:753` independently), but
+  the sentence should be scoped or the Q form named in No-Gos.
+- **N3** — Tasks 3 (first test) and 3a assert identically: measured, both return
+  `['m019','m018','m017']` at exactly **22** hydrations, distinguished only by
+  query shape. Intended (the discriminator is the C1 mutation), but the required
+  docstring should say so, or a future reader deletes 3a as a duplicate and
+  re-opens the exact hole round-1 C2 found.
+- **N4** — Task 2's "optional `bucket` value passed through only when the model
+  declares the field" needs field introspection where `**extra` would do
+  (`_seed_meta(Model, n, reverse_ids=False, **extra)`), matching the existing
+  `_seed(room, count, tag, bucket)` idiom. Only `PushdownDocMetaDesc` declares it.
+
+### Structural Check Results
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections | PASS | All present and non-empty |
+| Task numbering | PASS | 0 → 1 → 2 → 3 → 3a → 4 → 4a → 5 → 6; no gaps |
+| Dependencies valid | PASS | Strict chain, no cycles; every task has a validation command |
+| File paths exist | PASS | All cited paths exist; all line refs verified except N1 |
+| Prerequisites met | PASS (4/5) | venv → `src/popoto/__init__.py` ✓; `merge-base --is-ancestor 7f057f9 HEAD` ✓; `numpy`/`sentence_transformers` ✓; `redis-cli -n 12 ping` → PONG, `dbsize` 0 ✓. `POPOTO_TEST_DB` UNSET — expected, task 0 exports it |
+| Cross-references | PASS | Rabbit Holes consistent with tasks 3/4 (round-1 C1 fix verified); no No-Go appears as planned work |
+
+**Independently re-verified executable claims:**
+`--collect-only -q | grep -oE '[0-9]+ tests? collected'` reports **30** (round-1 N3
+fix works despite `addopts = "-v"`); the test module has **27** test functions;
+`black --check` exits 0; `git grep PushdownDocMeta tests/` is empty; spike-2's four
+`count()` forms reproduce exactly (`60 / 60 / 5 / 60`); spike-3, spike-4 and
+spike-6 sync figures reproduce exactly (22 / 40 / 22, correct heads).
+
+**Cleanup:** `src/` restored pristine, throwaway test modules deleted, Redis DB 11
+swept (`dbsize` 0).
+
+---
+
 ## Open Questions
 
 **None. All resolved in the 2026-09-04 revision pass** — the plan is settled and
