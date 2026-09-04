@@ -704,7 +704,9 @@ The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` reso
 
 Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
 
-`DefaultMemory` also caps itself at **1000 records per `agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`, 1.9.0). Past the cap each save deletes the stalest record by `relevance` decay timestamp — a full `delete()`, so indexes are cleaned and the record is gone for good. Nothing evicted before 1.9.0, so a long-lived corpus grew one record per turn forever; if yours is already over the cap, the first save after upgrading starts deleting. Subclass and set `_max_records_per_agent` to change the number, or a falsy value to turn eviction off.
+`DefaultMemory` also caps itself at **1000 records per `agent_id`** (`Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`, 1.9.0). Past the cap each save deletes the stalest record by `relevance` decay timestamp — a full `delete()`, so indexes are cleaned and the record is gone for good. Nothing evicted before 1.9.0, so a long-lived corpus grew one record per turn forever; if yours is already over the cap, the first save after upgrading deletes the *entire* excess at once, synchronously inside that one save — not a gradual trim — so size the exposure as "everything above the cap, now" and check `popoto-memory doctor` for the record count first.
+
+Subclass and set `_max_records_per_agent` to change the number, or a falsy value to turn eviction off. The deploy-level `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` environment variable is the escape hatch for callers with no Python seam (hook adopters using `DefaultMemory` directly): `0`/`off` disables eviction, a positive integer sets the cap, read fresh on every save. It can lower, raise, or disable the *default* cap, but it can never re-arm eviction on a subclass that already set `_max_records_per_agent` falsy — that opt-out always wins over the env var.
 
 ### Bringing your own model
 
@@ -1711,7 +1713,11 @@ What to read:
   visible. A hook that stopped firing shows a stale timestamp, or `never`.
 - **`failures`** counts swallowed exceptions per operation. Every one of
   them also wrote a line to the log, and the last five lines are printed
-  underneath.
+  underneath. `evicted` (see [Corpus growth](#corpus-growth)) and
+  `heuristic_notice` are reports rather than integration errors, so they are
+  excluded from this line and from the `failures:` payload over MCP; a
+  non-zero `evicted` count instead prints its own data-loss line naming the
+  count and `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`.
 - **`url source`** says which variable produced the URL — `POPOTO_MEMORY_URL`,
   `REDIS_URL`, or `default`. It is the fastest way to find out that the
   memories you are looking for went to a database you did not intend. Any
@@ -1769,7 +1775,7 @@ asserts the four names literally.
 | `memory_search` | Find something specific mid-task that was not already injected |
 | `memory_save` | Store a deliberate fact the turn text would not preserve |
 | `memory_feedback` | Mark a memory `contradicted` or `acted`, adjusting its confidence without deleting it |
-| `memory_status` | Connection, scope, retrieval mode, record count, failures |
+| `memory_status` | Connection, scope, retrieval mode, record count, failures (an `evicted` count — records selected for `DefaultMemory` eviction — is reported separately from `failures`, see [Corpus growth](#corpus-growth)) |
 
 Errors come back as MCP error results with a readable message, never a
 traceback rendered as tool output.
@@ -1838,9 +1844,39 @@ getting recalled or acted on stays; one nobody has touched goes first.
 The cap exists because nothing on the default path evicted before: a
 long-lived install grew one record per turn, forever. **If your corpus is
 already above 1000 records for an agent, the first save after upgrading
-starts deleting.** Check with `doctor` before you upgrade. To change the
-cap, subclass `DefaultMemory` and set `_max_records_per_agent` (`0` or
-`None` disables eviction entirely).
+deletes the entire excess at once** — `zcard - cap` records, synchronously,
+inside that one `save()` call, not a gradual per-save trim. Measured at
+roughly 0.7 ms per record, so an agent 50,000 over the cap blocks that save
+for ~35 seconds, inside a hook process whose harness timeout is 10 seconds.
+Check with `doctor` before you upgrade.
+
+The escape hatch that works with no Python seam is the deploy-level
+`POPOTO_DEFAULT_MEMORY_MAX_RECORDS` environment variable — the population
+this matters most for is hook adopters using `DefaultMemory` directly, who
+cannot edit model code. It is read fresh on every save, so it can be flipped
+without a restart. `0`/`off`/`false`/`no` disables eviction; a positive
+integer sets the cap (`=1` is a cap of one record, not "enabled"); unset
+defers to the class attribute; a malformed value warns once (deduped) and is
+ignored. It can lower, raise, or disable the *default* cap, and it can
+disable a subclass's cap too — but it can **never** re-arm eviction on a
+subclass that already set `_max_records_per_agent` falsy. That opt-out is
+still the documented subclass-level escape hatch (set `_max_records_per_agent`
+to change the number, or falsy to disable eviction entirely) and always wins
+over the env var.
+
+**The `evicted` counter.** Each eviction burst `INCRBY`s
+`$popoto_memory:counter:{agent_id}:evicted` by the number of records
+*selected* for eviction, before any delete runs — so it is a durable,
+non-log signal that reaches a hook subprocess whose stderr the harness
+suppresses. It counts records the cap selected, not records actually
+deleted (the loop skips the saving record's own key and can route a missing
+hash to an index repair instead of a deletion), so the invariant is
+`counter >= records deleted`, with equality on the clean path. It surfaces
+in `MemoryService.status()`, the MCP `memory_status` tool, and
+`popoto-memory doctor`, which prints a data-loss line naming the count and
+`POPOTO_DEFAULT_MEMORY_MAX_RECORDS` when it is non-zero. It is a **report,
+not a failure** — `evicted` (and `heuristic_notice`) are excluded from the
+`failures` line in `doctor` and the `failures:` payload over MCP.
 
 [`MemoryLifecycle`](../recipes.md) remains the tiered alternative, but it
 requires a `tier` KeyField that `DefaultMemory` does not declare, so it is
@@ -2261,6 +2297,17 @@ Inspect it directly:
 redis-cli --scan --pattern 'DefaultMemory:*' | head
 ```
 
+!!! danger "Upgrading to 1.9.0+ on an existing corpus can delete records"
+    `DefaultMemory` caps itself at 1000 records per `agent_id`. If your
+    corpus is already over that when you upgrade, the first save afterward
+    deletes the *entire* excess at once, synchronously, inside that one
+    save — not a gradual trim, and no tombstone. Check the record count
+    with `popoto-memory doctor` before upgrading. Set
+    `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` (no config edit needed) to disable
+    eviction first if you want to size or stage the cleanup yourself. See
+    [Corpus growth](../features/harness-integration.md#corpus-growth) for
+    the full mechanics.
+
 ## Latency
 
 Measured on an Apple M-series laptop, Python 3.12.13, redis 8.6.2 on
@@ -2295,6 +2342,7 @@ three worth knowing:
 export POPOTO_MEMORY_AGENT_ID=my-project      # share one corpus across directories
 export POPOTO_MEMORY_MAX_ITEMS=10             # default 5
 export POPOTO_MEMORY_ENABLED=0                # kill switch, no config edit
+export POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0    # disable the per-agent eviction cap (1000 default)
 ```
 
 Hooks inherit your shell environment, so exporting these in your shell
@@ -2436,6 +2484,19 @@ export POPOTO_MEMORY_AGENT_ID=my-project
 For a boundary enforced by Redis rather than by a query filter, point each
 project at its own `POPOTO_MEMORY_URL` database (any database but 0, which
 is refused — see [Harness Integration](../features/harness-integration.md#database-0-is-refused)).
+
+## Corpus growth and eviction
+
+!!! danger "Upgrading to 1.9.0+ on an existing corpus can delete records"
+    `DefaultMemory` caps itself at 1000 records per `agent_id`. If your
+    corpus is already over that when you upgrade, the first save afterward
+    deletes the *entire* excess at once, synchronously, inside that one
+    save — not a gradual trim, and no tombstone. Check the record count
+    with `popoto-memory doctor` before upgrading. `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0`
+    (no config edit needed) disables eviction first if you want to size or
+    stage the cleanup yourself. See
+    [Corpus growth](../features/harness-integration.md#corpus-growth) for
+    the full mechanics.
 
 ## Context limit
 
@@ -8886,8 +8947,24 @@ lifecycle = MemoryLifecycle(
     (`_max_records_per_agent`). That is a blunt floor, not a substitute for
     this layer: `MemoryLifecycle` tombstones restorably and reads tier and
     evidence before forgetting, while the cap only reads the decay clock.
-    Set `_max_records_per_agent` falsy on your subclass if you want
-    lifecycle policy to be the only thing that removes records.
+    Set the deploy-level `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` (or `off`) if
+    you want lifecycle policy to be the only thing that removes records — it
+    works with no Python seam, unlike setting `_max_records_per_agent` falsy
+    on a subclass. The env var can lower, raise, or disable the *default*
+    cap, but it can never re-arm eviction on a subclass that already set
+    `_max_records_per_agent` falsy; that opt-out always wins.
+
+    !!! danger "First save after upgrading deletes the entire excess at once"
+        If a corpus is already over the cap when eviction ships, the first
+        `save()` afterward deletes the *whole* excess synchronously, inside
+        that one call — `zcard - cap` records, each a full `delete()`, no
+        tombstone, unrecoverable. It is not a gradual per-save trim. Measured
+        at roughly 0.7 ms per record, so an agent 50,000 over the cap blocks
+        that save for ~35 seconds — inside a hook process whose harness
+        timeout is 10 seconds. Check `popoto-memory doctor` for the record
+        count before upgrading, and set `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0`
+        first if you need to size or stage the cleanup instead of taking it
+        in one burst.
 
 ```python
 from popoto.recipes import DefaultMemory, MemoryLifecycle, SubconsciousMemory
@@ -9153,6 +9230,18 @@ firewall without touching model code. See
 this gate makes and the enumerated holes in it (canonical git SHAs and UUIDs
 are excluded from entropy scoring, for example) — those are shape decisions,
 not values a sweep would tune.
+
+`DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT` (1000) is also a pinned safety rail,
+not a swept constant, but unlike the other kill switches above it is a
+*value* override rather than a bare disable: the `POPOTO_DEFAULT_MEMORY_MAX_RECORDS`
+environment variable, read at call time on every `DefaultMemory.save()`, can
+lower, raise, or disable the cap it gates. `0`/`off` disables eviction; a
+positive integer sets the cap. It exists for hook adopters who use
+`DefaultMemory` directly and have no Python seam to subclass. It never
+re-arms eviction on a subclass that set `_max_records_per_agent` falsy —
+that opt-out always wins. See
+[Corpus growth](../features/harness-integration.md#corpus-growth) for the
+data-loss behavior on the first save after upgrading an over-cap deployment.
 
 ### DecayingSortedField / CyclicDecayField
 
@@ -11135,6 +11224,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
 | `POPOTO_NEVER_RECORD_DISABLE` | unset (falsy) | Kill switch for the never-record firewall (`NeverRecordMixin`). The firewall is default-on: unset, it blocks credential- and secret-shaped content on `save()` for any model that carries the mixin. A truthy value disables the check globally, restoring pre-firewall behavior with no model code change. See [NeverRecordMixin](fields.md#neverrecordmixin). |
 | `POPOTO_JOURNAL_COUPLING_DISABLE` | unset (falsy) | Kill switch for the provenance journal's validity coupling. Read at import time. Default-on: unset, a `supersede()` or `retract()` appends the annotation *and* closes the target's validity interval in one transaction. A truthy value keeps the annotation append but stops the interval close, so the journal still records what was said while membership stops changing. Degraded mode is observable without a Redis read via `AnnotationResult.coupling_enabled` and `target_closed`. See [Provenance Journal](features/provenance-journal.md#the-kill-switch-popoto_journal_coupling_disable). |
+| `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` | unset | Cap on records **per `agent_id`** kept by `DefaultMemory` (name shortened for table brevity — the scope is per-agent, not per-store). Read at call time on every `save()`, so it can be changed without a code edit. `0`/`off`/`false`/`no` disables eviction; a positive integer sets the cap; unset defers to the class attribute (default 1000, `Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`); a malformed value warns once and is ignored. It can lower, raise, or disable the *default* cap, but it can **never** re-arm eviction on a subclass whose `_max_records_per_agent` is set falsy — that opt-out always wins. See [DefaultMemory eviction](features/harness-integration.md#corpus-growth) for the data-loss behavior on the first save after upgrading. |
 
 ## Thread Safety
 

@@ -3480,11 +3480,7 @@ shared and version-independent.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/integrations/mcp_server.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-287">287</a></span>
-<span class="normal"><a href="#__codelineno-0-288">288</a></span>
-<span class="normal"><a href="#__codelineno-0-289">289</a></span>
-<span class="normal"><a href="#__codelineno-0-290">290</a></span>
-<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-291">291</a></span>
 <span class="normal"><a href="#__codelineno-0-292">292</a></span>
 <span class="normal"><a href="#__codelineno-0-293">293</a></span>
 <span class="normal"><a href="#__codelineno-0-294">294</a></span>
@@ -3540,67 +3536,71 @@ shared and version-independent.</p>
 <span class="normal"><a href="#__codelineno-0-344">344</a></span>
 <span class="normal"><a href="#__codelineno-0-345">345</a></span>
 <span class="normal"><a href="#__codelineno-0-346">346</a></span>
-<span class="normal"><a href="#__codelineno-0-347">347</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_server</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="w">    </span><span class="sd">"""Construct the MCP :class:`~mcp.server.Server` for this integration.</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Imports the MCP SDK, so it raises :class:`ImportError` without</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    ``pip install popoto[mcp]``. The SDK has changed its registration API</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">    across major versions, so both the callback constructor (2.x) and the</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">    decorator style (1.x) are supported here; the tool behavior itself is</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    shared and version-independent.</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        A configured MCP ``Server``.</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    """</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">mcp.types</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">types</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">mcp.server</span><span class="w"> </span><span class="kn">import</span> <span class="n">Server</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tools</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">types</span><span class="o">.</span><span class="n">Tool</span><span class="p">(</span><span class="o">**</span><span class="n">definition</span><span class="p">)</span> <span class="k">for</span> <span class="n">definition</span> <span class="ow">in</span> <span class="n">tool_definitions</span><span class="p">()]</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_content</span><span class="p">(</span><span class="n">result</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">types</span><span class="o">.</span><span class="n">TextContent</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">"text"</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">result</span><span class="p">[</span><span class="s2">"text"</span><span class="p">])]</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_tools</span><span class="p">(</span><span class="n">_context</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">_params</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>        <span class="k">return</span> <span class="n">types</span><span class="o">.</span><span class="n">ListToolsResult</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="n">_tools</span><span class="p">())</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_call_tool</span><span class="p">(</span><span class="n">_context</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">arguments</span> <span class="ow">or</span> <span class="p">{}))</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">return</span> <span class="n">types</span><span class="o">.</span><span class="n">CallToolResult</span><span class="p">(</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="n">content</span><span class="o">=</span><span class="n">_content</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="n">is_error</span><span class="o">=</span><span class="n">result</span><span class="p">[</span><span class="s2">"is_error"</span><span class="p">]</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="p">)</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="c1"># MCP SDK 2.x: handlers are constructor callbacks.</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="k">return</span> <span class="n">Server</span><span class="p">(</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="n">SERVER_NAME</span><span class="p">,</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>            <span class="n">instructions</span><span class="o">=</span><span class="n">SERVER_INSTRUCTIONS</span><span class="p">,</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>            <span class="n">on_list_tools</span><span class="o">=</span><span class="n">on_list_tools</span><span class="p">,</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="n">on_call_tool</span><span class="o">=</span><span class="n">on_call_tool</span><span class="p">,</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="p">)</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>        <span class="k">pass</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="c1"># MCP SDK 1.x: handlers are registered by decorator. Reached through</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="c1"># getattr because those attributes do not exist on the 2.x Server, and a</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="c1"># direct reference would not type-check against the installed SDK.</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="c1"># 1.x's Server.__init__ also accepts instructions=, so pass it here too --</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="c1"># otherwise SERVER_INSTRUCTIONS (which tells the model recall/capture</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="c1"># already run automatically) never reaches a 1.x client.</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="n">server</span> <span class="o">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">SERVER_NAME</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="n">SERVER_INSTRUCTIONS</span><span class="p">)</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_list_tools</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>        <span class="k">return</span> <span class="n">_tools</span><span class="p">()</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_call_tool</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">arguments</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">arguments</span> <span class="ow">or</span> <span class="p">{}))</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="k">if</span> <span class="n">result</span><span class="p">[</span><span class="s2">"is_error"</span><span class="p">]:</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">"text"</span><span class="p">])</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="k">return</span> <span class="n">_content</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="nb">getattr</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="s2">"list_tools"</span><span class="p">)()(</span><span class="n">_list_tools</span><span class="p">)</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="nb">getattr</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="s2">"call_tool"</span><span class="p">)()(</span><span class="n">_call_tool</span><span class="p">)</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>    <span class="k">return</span> <span class="n">server</span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_server</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="w">    </span><span class="sd">"""Construct the MCP :class:`~mcp.server.Server` for this integration.</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    Imports the MCP SDK, so it raises :class:`ImportError` without</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    ``pip install popoto[mcp]``. The SDK has changed its registration API</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    across major versions, so both the callback constructor (2.x) and the</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    decorator style (1.x) are supported here; the tool behavior itself is</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    shared and version-independent.</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">        A configured MCP ``Server``.</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    """</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">mcp.types</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">types</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">mcp.server</span><span class="w"> </span><span class="kn">import</span> <span class="n">Server</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tools</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">types</span><span class="o">.</span><span class="n">Tool</span><span class="p">(</span><span class="o">**</span><span class="n">definition</span><span class="p">)</span> <span class="k">for</span> <span class="n">definition</span> <span class="ow">in</span> <span class="n">tool_definitions</span><span class="p">()]</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_content</span><span class="p">(</span><span class="n">result</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">types</span><span class="o">.</span><span class="n">TextContent</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">"text"</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">result</span><span class="p">[</span><span class="s2">"text"</span><span class="p">])]</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_tools</span><span class="p">(</span><span class="n">_context</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">_params</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">return</span> <span class="n">types</span><span class="o">.</span><span class="n">ListToolsResult</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="n">_tools</span><span class="p">())</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_call_tool</span><span class="p">(</span><span class="n">_context</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">arguments</span> <span class="ow">or</span> <span class="p">{}))</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="k">return</span> <span class="n">types</span><span class="o">.</span><span class="n">CallToolResult</span><span class="p">(</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>            <span class="n">content</span><span class="o">=</span><span class="n">_content</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="n">is_error</span><span class="o">=</span><span class="n">result</span><span class="p">[</span><span class="s2">"is_error"</span><span class="p">]</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="p">)</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="c1"># MCP SDK 2.x: handlers are constructor callbacks.</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="k">return</span> <span class="n">Server</span><span class="p">(</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="n">SERVER_NAME</span><span class="p">,</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>            <span class="n">instructions</span><span class="o">=</span><span class="n">SERVER_INSTRUCTIONS</span><span class="p">,</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>            <span class="n">on_list_tools</span><span class="o">=</span><span class="n">on_list_tools</span><span class="p">,</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>            <span class="n">on_call_tool</span><span class="o">=</span><span class="n">on_call_tool</span><span class="p">,</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="p">)</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="c1"># MCP SDK 1.x: handlers are registered by decorator. Reached through</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="c1"># getattr because those attributes do not exist on the 2.x Server, and a</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="c1"># direct reference would not type-check against the installed SDK.</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="c1"># 1.x's Server.__init__ also accepts instructions=, so pass it here too --</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="c1"># otherwise SERVER_INSTRUCTIONS (which tells the model recall/capture</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="c1"># already run automatically) never reaches a 1.x client.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="n">server</span> <span class="o">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">SERVER_NAME</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="n">SERVER_INSTRUCTIONS</span><span class="p">)</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_list_tools</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="k">return</span> <span class="n">_tools</span><span class="p">()</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_call_tool</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">arguments</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">dispatch</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">arguments</span> <span class="ow">or</span> <span class="p">{}))</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="k">if</span> <span class="n">result</span><span class="p">[</span><span class="s2">"is_error"</span><span class="p">]:</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">"text"</span><span class="p">])</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="k">return</span> <span class="n">_content</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="nb">getattr</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="s2">"list_tools"</span><span class="p">)()(</span><span class="n">_list_tools</span><span class="p">)</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="nb">getattr</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="s2">"call_tool"</span><span class="p">)()(</span><span class="n">_call_tool</span><span class="p">)</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="k">return</span> <span class="n">server</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3624,11 +3624,7 @@ shared and version-independent.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/integrations/mcp_server.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span>
-<span class="normal"><a href="#__codelineno-0-352">352</a></span>
-<span class="normal"><a href="#__codelineno-0-353">353</a></span>
-<span class="normal"><a href="#__codelineno-0-354">354</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-354">354</a></span>
 <span class="normal"><a href="#__codelineno-0-355">355</a></span>
 <span class="normal"><a href="#__codelineno-0-356">356</a></span>
 <span class="normal"><a href="#__codelineno-0-357">357</a></span>
@@ -3642,25 +3638,29 @@ shared and version-independent.</p>
 <span class="normal"><a href="#__codelineno-0-365">365</a></span>
 <span class="normal"><a href="#__codelineno-0-366">366</a></span>
 <span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="k">def</span><span class="w"> </span><span class="nf">serve</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="w">    </span><span class="sd">"""Run the stdio MCP server until the client disconnects.</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">    Blocks. This is what ``popoto-memory mcp`` calls.</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">    """</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">anyio</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">mcp.server.stdio</span><span class="w"> </span><span class="kn">import</span> <span class="n">stdio_server</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="n">server</span> <span class="o">=</span> <span class="n">build_server</span><span class="p">()</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">stdio_server</span><span class="p">()</span> <span class="k">as</span> <span class="p">(</span><span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span><span class="p">):</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>            <span class="k">await</span> <span class="n">server</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a>                <span class="n">read_stream</span><span class="p">,</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>                <span class="n">write_stream</span><span class="p">,</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>                <span class="n">server</span><span class="o">.</span><span class="n">create_initialization_options</span><span class="p">(),</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>            <span class="p">)</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="n">anyio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">_run</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span>
+<span class="normal"><a href="#__codelineno-0-370">370</a></span>
+<span class="normal"><a href="#__codelineno-0-371">371</a></span>
+<span class="normal"><a href="#__codelineno-0-372">372</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="k">def</span><span class="w"> </span><span class="nf">serve</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="w">    </span><span class="sd">"""Run the stdio MCP server until the client disconnects.</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">    Blocks. This is what ``popoto-memory mcp`` calls.</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    """</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">anyio</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">mcp.server.stdio</span><span class="w"> </span><span class="kn">import</span> <span class="n">stdio_server</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="n">server</span> <span class="o">=</span> <span class="n">build_server</span><span class="p">()</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">stdio_server</span><span class="p">()</span> <span class="k">as</span> <span class="p">(</span><span class="n">read_stream</span><span class="p">,</span> <span class="n">write_stream</span><span class="p">):</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>            <span class="k">await</span> <span class="n">server</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>                <span class="n">read_stream</span><span class="p">,</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>                <span class="n">write_stream</span><span class="p">,</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="n">server</span><span class="o">.</span><span class="n">create_initialization_options</span><span class="p">(),</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>            <span class="p">)</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="n">anyio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">_run</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

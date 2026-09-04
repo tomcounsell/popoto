@@ -4147,8 +4147,25 @@ records per <code>agent_id</code> and hard-deletes the stalest past that
 (<code>_max_records_per_agent</code>). That is a blunt floor, not a substitute for
 this layer: <code>MemoryLifecycle</code> tombstones restorably and reads tier and
 evidence before forgetting, while the cap only reads the decay clock.
-Set <code>_max_records_per_agent</code> falsy on your subclass if you want
-lifecycle policy to be the only thing that removes records.</p>
+Set the deploy-level <code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0</code> (or <code>off</code>) if
+you want lifecycle policy to be the only thing that removes records — it
+works with no Python seam, unlike setting <code>_max_records_per_agent</code> falsy
+on a subclass. The env var can lower, raise, or disable the <em>default</em>
+cap, but it can never re-arm eviction on a subclass that already set
+<code>_max_records_per_agent</code> falsy; that opt-out always wins.</p>
+<div class="admonition danger">
+<p class="admonition-title">First save after upgrading deletes the entire excess at once</p>
+<p>If a corpus is already over the cap when eviction ships, the first
+<code>save()</code> afterward deletes the <em>whole</em> excess synchronously, inside
+that one call — <code>zcard - cap</code> records, each a full <code>delete()</code>, no
+tombstone, unrecoverable. It is not a gradual per-save trim. Measured
+at roughly 0.7 ms per record, so an agent 50,000 over the cap blocks
+that save for ~35 seconds — inside a hook process whose harness
+timeout is 10 seconds. Check <code>popoto-memory doctor</code> for the record
+count before upgrading, and set <code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0</code>
+first if you need to size or stage the cleanup instead of taking it
+in one burst.</p>
+</div>
 </div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">DefaultMemory</span><span class="p">,</span> <span class="n">MemoryLifecycle</span><span class="p">,</span> <span class="n">SubconsciousMemory</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>

@@ -3590,7 +3590,11 @@ your turns are long and infrequent.</p>
   visible. A hook that stopped firing shows a stale timestamp, or <code>never</code>.</li>
 <li><strong><code>failures</code></strong> counts swallowed exceptions per operation. Every one of
   them also wrote a line to the log, and the last five lines are printed
-  underneath.</li>
+  underneath. <code>evicted</code> (see <a href="#corpus-growth">Corpus growth</a>) and
+  <code>heuristic_notice</code> are reports rather than integration errors, so they are
+  excluded from this line and from the <code>failures:</code> payload over MCP; a
+  non-zero <code>evicted</code> count instead prints its own data-loss line naming the
+  count and <code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS</code>.</li>
 <li><strong><code>url source</code></strong> says which variable produced the URL — <code>POPOTO_MEMORY_URL</code>,
   <code>REDIS_URL</code>, or <code>default</code>. It is the fastest way to find out that the
   memories you are looking for went to a database you did not intend. Any
@@ -3695,7 +3699,7 @@ asserts the four names literally.</p>
 </tr>
 <tr>
 <td><code>memory_status</code></td>
-<td>Connection, scope, retrieval mode, record count, failures</td>
+<td>Connection, scope, retrieval mode, record count, failures (an <code>evicted</code> count — records selected for <code>DefaultMemory</code> eviction — is reported separately from <code>failures</code>, see <a href="#corpus-growth">Corpus growth</a>)</td>
 </tr>
 </tbody>
 </table>
@@ -3768,9 +3772,37 @@ getting recalled or acted on stays; one nobody has touched goes first.</p>
 <p>The cap exists because nothing on the default path evicted before: a
 long-lived install grew one record per turn, forever. <strong>If your corpus is
 already above 1000 records for an agent, the first save after upgrading
-starts deleting.</strong> Check with <code>doctor</code> before you upgrade. To change the
-cap, subclass <code>DefaultMemory</code> and set <code>_max_records_per_agent</code> (<code>0</code> or
-<code>None</code> disables eviction entirely).</p>
+deletes the entire excess at once</strong> — <code>zcard - cap</code> records, synchronously,
+inside that one <code>save()</code> call, not a gradual per-save trim. Measured at
+roughly 0.7 ms per record, so an agent 50,000 over the cap blocks that save
+for ~35 seconds, inside a hook process whose harness timeout is 10 seconds.
+Check with <code>doctor</code> before you upgrade.</p>
+<p>The escape hatch that works with no Python seam is the deploy-level
+<code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS</code> environment variable — the population
+this matters most for is hook adopters using <code>DefaultMemory</code> directly, who
+cannot edit model code. It is read fresh on every save, so it can be flipped
+without a restart. <code>0</code>/<code>off</code>/<code>false</code>/<code>no</code> disables eviction; a positive
+integer sets the cap (<code>=1</code> is a cap of one record, not "enabled"); unset
+defers to the class attribute; a malformed value warns once (deduped) and is
+ignored. It can lower, raise, or disable the <em>default</em> cap, and it can
+disable a subclass's cap too — but it can <strong>never</strong> re-arm eviction on a
+subclass that already set <code>_max_records_per_agent</code> falsy. That opt-out is
+still the documented subclass-level escape hatch (set <code>_max_records_per_agent</code>
+to change the number, or falsy to disable eviction entirely) and always wins
+over the env var.</p>
+<p><strong>The <code>evicted</code> counter.</strong> Each eviction burst <code>INCRBY</code>s
+<code>$popoto_memory:counter:{agent_id}:evicted</code> by the number of records
+<em>selected</em> for eviction, before any delete runs — so it is a durable,
+non-log signal that reaches a hook subprocess whose stderr the harness
+suppresses. It counts records the cap selected, not records actually
+deleted (the loop skips the saving record's own key and can route a missing
+hash to an index repair instead of a deletion), so the invariant is
+<code>counter &gt;= records deleted</code>, with equality on the clean path. It surfaces
+in <code>MemoryService.status()</code>, the MCP <code>memory_status</code> tool, and
+<code>popoto-memory doctor</code>, which prints a data-loss line naming the count and
+<code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS</code> when it is non-zero. It is a <strong>report,
+not a failure</strong> — <code>evicted</code> (and <code>heuristic_notice</code>) are excluded from the
+<code>failures</code> line in <code>doctor</code> and the <code>failures:</code> payload over MCP.</p>
 <p><a href="../../recipes/"><code>MemoryLifecycle</code></a> remains the tiered alternative, but it
 requires a <code>tier</code> KeyField that <code>DefaultMemory</code> does not declare, so it is
 not wired into the harness path; running it needs a model of your own.</p>

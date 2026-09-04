@@ -886,6 +886,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#corpus-growth-and-eviction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Corpus growth and eviction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#context-limit" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2940,6 +2951,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#corpus-growth-and-eviction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Corpus growth and eviction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#context-limit" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3067,6 +3089,19 @@ the same database:</p>
 <p>For a boundary enforced by Redis rather than by a query filter, point each
 project at its own <code>POPOTO_MEMORY_URL</code> database (any database but 0, which
 is refused — see <a href="../../features/harness-integration/#database-0-is-refused">Harness Integration</a>).</p>
+<h2 id="corpus-growth-and-eviction">Corpus growth and eviction<a class="headerlink" href="#corpus-growth-and-eviction" title="Permanent link">&para;</a></h2>
+<div class="admonition danger">
+<p class="admonition-title">Upgrading to 1.9.0+ on an existing corpus can delete records</p>
+<p><code>DefaultMemory</code> caps itself at 1000 records per <code>agent_id</code>. If your
+corpus is already over that when you upgrade, the first save afterward
+deletes the <em>entire</em> excess at once, synchronously, inside that one
+save — not a gradual trim, and no tombstone. Check the record count
+with <code>popoto-memory doctor</code> before upgrading. <code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0</code>
+(no config edit needed) disables eviction first if you want to size or
+stage the cleanup yourself. See
+<a href="../../features/harness-integration/#corpus-growth">Corpus growth</a> for
+the full mechanics.</p>
+</div>
 <h2 id="context-limit">Context limit<a class="headerlink" href="#context-limit" title="Permanent link">&para;</a></h2>
 <p>Codex caps injected context at 2500 tokens (<code>additionalContextLimit</code>). The
 default <code>POPOTO_MEMORY_MAX_TOKENS</code> is 800, comfortably under it. If you

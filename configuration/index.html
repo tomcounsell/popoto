@@ -4013,6 +4013,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td>unset (falsy)</td>
 <td>Kill switch for the provenance journal's validity coupling. Read at import time. Default-on: unset, a <code>supersede()</code> or <code>retract()</code> appends the annotation <em>and</em> closes the target's validity interval in one transaction. A truthy value keeps the annotation append but stops the interval close, so the journal still records what was said while membership stops changing. Degraded mode is observable without a Redis read via <code>AnnotationResult.coupling_enabled</code> and <code>target_closed</code>. See <a href="../features/provenance-journal/#the-kill-switch-popoto_journal_coupling_disable">Provenance Journal</a>.</td>
 </tr>
+<tr>
+<td><code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS</code></td>
+<td>unset</td>
+<td>Cap on records <strong>per <code>agent_id</code></strong> kept by <code>DefaultMemory</code> (name shortened for table brevity — the scope is per-agent, not per-store). Read at call time on every <code>save()</code>, so it can be changed without a code edit. <code>0</code>/<code>off</code>/<code>false</code>/<code>no</code> disables eviction; a positive integer sets the cap; unset defers to the class attribute (default 1000, <code>Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT</code>); a malformed value warns once and is ignored. It can lower, raise, or disable the <em>default</em> cap, but it can <strong>never</strong> re-arm eviction on a subclass whose <code>_max_records_per_agent</code> is set falsy — that opt-out always wins. See <a href="../features/harness-integration/#corpus-growth">DefaultMemory eviction</a> for the data-loss behavior on the first save after upgrading.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="thread-safety">Thread Safety<a class="headerlink" href="#thread-safety" title="Permanent link">&para;</a></h2>

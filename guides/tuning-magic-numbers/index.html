@@ -3606,6 +3606,17 @@ firewall without touching model code. See
 this gate makes and the enumerated holes in it (canonical git SHAs and UUIDs
 are excluded from entropy scoring, for example) — those are shape decisions,
 not values a sweep would tune.</p>
+<p><code>DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT</code> (1000) is also a pinned safety rail,
+not a swept constant, but unlike the other kill switches above it is a
+<em>value</em> override rather than a bare disable: the <code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS</code>
+environment variable, read at call time on every <code>DefaultMemory.save()</code>, can
+lower, raise, or disable the cap it gates. <code>0</code>/<code>off</code> disables eviction; a
+positive integer sets the cap. It exists for hook adopters who use
+<code>DefaultMemory</code> directly and have no Python seam to subclass. It never
+re-arms eviction on a subclass that set <code>_max_records_per_agent</code> falsy —
+that opt-out always wins. See
+<a href="../../features/harness-integration/#corpus-growth">Corpus growth</a> for the
+data-loss behavior on the first save after upgrading an over-cap deployment.</p>
 <h3 id="decayingsortedfield-cyclicdecayfield">DecayingSortedField / CyclicDecayField<a class="headerlink" href="#decayingsortedfield-cyclicdecayfield" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

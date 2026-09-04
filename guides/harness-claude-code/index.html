@@ -3181,6 +3181,18 @@ authenticate to.</p>
 <p>Inspect it directly:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s1">'DefaultMemory:*'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head
 </code></pre></div>
+<div class="admonition danger">
+<p class="admonition-title">Upgrading to 1.9.0+ on an existing corpus can delete records</p>
+<p><code>DefaultMemory</code> caps itself at 1000 records per <code>agent_id</code>. If your
+corpus is already over that when you upgrade, the first save afterward
+deletes the <em>entire</em> excess at once, synchronously, inside that one
+save — not a gradual trim, and no tombstone. Check the record count
+with <code>popoto-memory doctor</code> before upgrading. Set
+<code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0</code> (no config edit needed) to disable
+eviction first if you want to size or stage the cleanup yourself. See
+<a href="../../features/harness-integration/#corpus-growth">Corpus growth</a> for
+the full mechanics.</p>
+</div>
 <h2 id="latency">Latency<a class="headerlink" href="#latency" title="Permanent link">&para;</a></h2>
 <p>Measured on an Apple M-series laptop, Python 3.12.13, redis 8.6.2 on
 localhost, 50 records in scope, 25 subprocess invocations of the read hook:
@@ -3204,6 +3216,7 @@ three worth knowing:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_MEMORY_AGENT_ID</span><span class="o">=</span>my-project<span class="w">      </span><span class="c1"># share one corpus across directories</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_MEMORY_MAX_ITEMS</span><span class="o">=</span><span class="m">10</span><span class="w">             </span><span class="c1"># default 5</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_MEMORY_ENABLED</span><span class="o">=</span><span class="m">0</span><span class="w">                </span><span class="c1"># kill switch, no config edit</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_DEFAULT_MEMORY_MAX_RECORDS</span><span class="o">=</span><span class="m">0</span><span class="w">    </span><span class="c1"># disable the per-agent eviction cap (1000 default)</span>
 </code></pre></div>
 <p>Hooks inherit your shell environment, so exporting these in your shell
 profile is enough.</p>
