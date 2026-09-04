@@ -336,6 +336,9 @@ expensive_count = MenuItem.query.filter(price__gte=20.0).count()
 print(f"Premium items: {expensive_count}")
 ```
 
+A `limit()` chained onto the builder still bounds what `all()` returns, but `count()` always
+reports the full matching population regardless of any limit set on the builder.
+
 ### Using Values with Chainable API
 
 The `values()` method specifies which fields to return as dictionaries.
@@ -858,7 +861,10 @@ top_count = MenuItem.query.count(price__lte=15.0)
 ```
 
 When called without arguments, `count()` uses Redis `SCARD` for a fast cardinality check. With
-filter arguments, it computes the intersection of matching key sets.
+filter arguments, it computes the intersection of matching key sets. `count()` reports the full
+matching population and is never bounded by `limit`, on both the chainable and kwargs forms,
+including queries that carry `Q` objects — call `count()` and `all()`/`limit()` separately if you
+need the page size instead.
 
 ## Get Redis Keys
 
