@@ -110,6 +110,17 @@ Inspect it directly:
 redis-cli --scan --pattern 'DefaultMemory:*' | head
 ```
 
+!!! danger "Upgrading to 1.9.0+ on an existing corpus can delete records"
+    `DefaultMemory` caps itself at 1000 records per `agent_id`. If your
+    corpus is already over that when you upgrade, the first save afterward
+    deletes the *entire* excess at once, synchronously, inside that one
+    save — not a gradual trim, and no tombstone. Check the record count
+    with `popoto-memory doctor` before upgrading. Set
+    `POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0` (no config edit needed) to disable
+    eviction first if you want to size or stage the cleanup yourself. See
+    [Corpus growth](../features/harness-integration.md#corpus-growth) for
+    the full mechanics.
+
 ## Latency
 
 Measured on an Apple M-series laptop, Python 3.12.13, redis 8.6.2 on
@@ -144,6 +155,7 @@ three worth knowing:
 export POPOTO_MEMORY_AGENT_ID=my-project      # share one corpus across directories
 export POPOTO_MEMORY_MAX_ITEMS=10             # default 5
 export POPOTO_MEMORY_ENABLED=0                # kill switch, no config edit
+export POPOTO_DEFAULT_MEMORY_MAX_RECORDS=0    # disable the per-agent eviction cap (1000 default)
 ```
 
 Hooks inherit your shell environment, so exporting these in your shell
