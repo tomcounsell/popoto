@@ -367,14 +367,14 @@ No page changes. `mkdocs build --strict` must still pass, which it will, since n
 
 ## Success Criteria
 
-- [ ] `.github/dependabot.yml` exists, parses as YAML, and declares exactly two ecosystems: `uv` at `/` and `github-actions` at `/`.
-- [ ] The `uv` entry declares `versioning-strategy: "lockfile-only"`.
-- [ ] Both entries declare a group scoped to `applies-to: version-updates` with `update-types: [minor, patch]`.
-- [ ] No `directory:` key in the file names `examples`.
-- [ ] Neither `uv.lock` nor `examples/uv.lock` appears in the PR diff.
-- [ ] Neither `pyproject.toml` nor `examples/pyproject.toml` appears in the PR diff.
-- [ ] The follow-up issue for `examples/` plus the root lockfile refresh is filed, and its number replaces the placeholder in both No-Gos list items that begin `- `[SEPARATE-SLUG #TBD]``. Only those two lines change; this plan's other references to the token are instructions about the placeholder and remain.
-- [ ] `CLAUDE.md` records the dependency-update policy.
+- [x] `.github/dependabot.yml` exists, parses as YAML, and declares exactly two ecosystems: `uv` at `/` and `github-actions` at `/`.
+- [x] The `uv` entry declares `versioning-strategy: "lockfile-only"`.
+- [x] Both entries declare a group scoped to `applies-to: version-updates` with `update-types: [minor, patch]`.
+- [x] No `directory:` key in the file names `examples`.
+- [x] Neither `uv.lock` nor `examples/uv.lock` appears in the PR diff.
+- [x] Neither `pyproject.toml` nor `examples/pyproject.toml` appears in the PR diff.
+- [x] The follow-up issue for `examples/` plus the root lockfile refresh is filed, and its number replaces the placeholder in both No-Gos list items that begin `- `[SEPARATE-SLUG #TBD]``. Only those two lines change; this plan's other references to the token are instructions about the placeholder and remain.
+- [x] `CLAUDE.md` records the dependency-update policy.
 - [ ] Tests pass (`/do-test`) — unchanged by this PR, but the gate runs.
 - [ ] Documentation updated (`/do-docs`).
 
