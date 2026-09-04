@@ -7,7 +7,7 @@ created: 2026-09-03
 tracking: https://github.com/tomcounsell/popoto/issues/575, https://github.com/tomcounsell/popoto/issues/570
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-04T06:57:30Z
+revision_applied_at: 2026-09-04T08:15:00Z
 ---
 
 # #575 / #570 — Route SortedField(partition_by=...) values through canonical_key_str()
@@ -35,7 +35,8 @@ datetime partitions with mixed representations, which no report suggests exists.
 
 ## Freshness Check
 
-**Re-verified 2026-09-04 against main `7f057f9`** (`fix(#571): apply the SortedField limit
+**Re-verified 2026-09-04 against working tree `5374525`** (round 2; all 11 site anchors and every
+enclosing symbol re-checked and matching). Originally verified against main `7f057f9` (`fix(#571): apply the SortedField limit
 pushdown on the async path (#602)`). The issue's site list was measured at PR #548 HEAD
 `154a9d6`; since then #594 (agent-memory audit) and #571/PR #602 (async pushdown) reshaped
 `query.py`. Commits touching the cited files since the issue was filed (2026-08-14):
@@ -84,12 +85,21 @@ exactly the partial conversion this plan calls "worse than none". Use instead:
 
 ```bash
 # widened to all of src/popoto/fields/ + query.py so a sibling site cannot hide (round-1 CONCERN)
-grep -rn "append(str(\|\[str(self\._filters\|str(query_params\[partition\|str(getattr(model_instance, partition\|key += f\":{val}\"\|f\"{base_key}:{partition_value}\"" \
+# round-2 BLOCKER: the `append(str(` alternative also matched content_field.py:209, making the
+# task-5 gate unsatisfiable. Narrowed to the literal in-scope form `append(str(old_val))`.
+grep -rn "append(str(old_val))\|\[str(self\._filters\|str(query_params\[partition\|str(getattr(model_instance, partition\|key += f\":{val}\"\|f\"{base_key}:{partition_value}\"" \
   src/popoto/fields/ src/popoto/models/query.py
 ```
 
 Pre-edit this returns exactly **11** rows: the seven above, plus `confidence_field.py:315,350,374`
 and `event_stream.py:119`. Confirm that count (modulo line drift) before editing.
+
+**Explicitly out of scope — do NOT convert:** `src/popoto/fields/content_field.py:209`
+(`key_parts.append(str(kv))`). It is not a partition render: it builds a ContentField on-disk
+filename from `_meta.key_field_names`. Converting it would change content filenames on disk for
+no benefit. The narrowed grep above excludes it *by matching the literal in-scope form* rather
+than by an `--exclude=content_field.py` filter, so a genuine future partition site added to that
+file would still be caught.
 
 ### Premise correction: the sites are NOT all consistent today — and *why* (round-1 CONCERN)
 
@@ -232,9 +242,11 @@ and so all sites agree with the #548-canonical stored key that the orphan purge 
    `base_key = f"{base_key}:{canonical_key_str(partition_value)}"`, inside the existing
    `if partition_value is not None:` guard. Import as above.
    *Verify:* `pytest tests/test_event_stream_mixin.py -q` green.
-5. **Inventory gate.** Re-run the widened grep from the Freshness Check over
-   `src/popoto/fields/ src/popoto/models/query.py`.
-   *Verify:* returns **0** rows. (It returned 11 before task 1.)
+5. **Inventory gate.** Re-run the **narrowed** widened grep from the Freshness Check verbatim over
+   `src/popoto/fields/ src/popoto/models/query.py` (the one keyed on `append(str(old_val))`, not
+   the bare `append(str(` form — see the round-2 BLOCKER note there).
+   *Verify:* returns **0** rows. (It returned exactly 11 before task 1; `content_field.py:209` is
+   out of scope and must NOT appear in either count.)
 6. **Regression tests** — new file `tests/test_partition_canonical_rendering.py`, contents per
    `## Test Impact`.
    *Verify:* `POPOTO_TEST_DB=9 pytest tests/test_partition_canonical_rendering.py -q` green.
@@ -242,13 +254,23 @@ and so all sites agree with the #548-canonical stored key that the orphan purge 
    *Verify:* `POPOTO_TEST_DB=9 pytest -q -m "not slow"` green; `ruff check src/` exit 0;
    `black --check src/ tests/`; `mypy src/` delta 0 measured base-vs-branch **in the same env**
    (CLAUDE.md redis-py caveat — state the redis-py version with the number).
-8. **Docs + CHANGELOG.** `docs/query.md` SortedField/partition section gains a note that datetime
-   partition values are canonicalized to UTC (aware/naive/offset variants collapse to one
-   partition); CHANGELOG entry naming the key-bytes change for datetime partitions only.
-   *Verify:* `mkdocs build --strict` succeeds (or `scripts/ci-local.sh docs`).
+8. **Docs + CHANGELOG.** Round-2 CONCERN: `docs/query.md` contains **no** partition content
+   (`grep -i partition docs/query.md` → 0 hits); the real targets are:
+   - `docs/fields.md:1205` `## partition_by` — add the note that datetime partition values are
+     canonicalized to UTC (aware/naive/offset variants collapse to one partition). This section
+     already documents partitioning "by key field values", the same KeyField precondition
+     Success Criterion 2 depends on, so the note lands in context.
+   - `docs/multi-tenancy.md:78` — the existing `partition_by` caveat paragraph gains the same
+     one-liner.
+   - `CHANGELOG.md` entry naming the key-bytes change for datetime partitions only, plus the
+     three-clause orphan-recovery sentence from the Risks item.
+   *Verify:* `mkdocs build --strict` succeeds (or `scripts/ci-local.sh docs`);
+   `grep -c -i "canonicaliz" docs/fields.md docs/multi-tenancy.md` each ≥ 1.
 9. **PR body.** Contains `Closes #575` and `Closes #570`, plus the escape-hatch disclosure if any
    in-scope site was dropped.
-   *Verify:* `gh pr view --json body -q .body | grep -c "Closes #5"` returns 2.
+   *Verify:* `gh pr view --json body -q .body | grep -o "Closes #\(575\|570\)" | sort -u | wc -l`
+   returns 2 (round-2 NIT: `grep -c` counts *lines*, so a single-line "Closes #575, Closes #570"
+   would return 1 and an unrelated `Closes #5xx` would inflate it).
 
 ## Test Impact
 
@@ -321,14 +343,29 @@ key-bytes change for a **non**-datetime type — stop and report (scope guard).
 - **1.8.0/1.9.x forward-compat**: partition key bytes change only for datetime partitions,
   which the docs never advertised and no report uses. State this in the CHANGELOG anyway
   (lesson of #476).
+- **Orphan recovery differs by field type (round-2 CONCERN).** For a deployment that *does* have
+  a datetime `partition_by`, pre-change keys become unreachable, and "no migration tooling"
+  (`## No-Gos`) must not be read as "nothing to recover". The CHANGELOG note needs three clauses:
+  1. **Sorted-set orphans are recoverable** — `Model.clean_indexes()` (`base.py:3686`) scans all
+     five index types including sorted fields.
+  2. **ConfidenceField / EventStream orphans have no cleaner** — their companion hashes
+     (`$ConfidencF:{Model}:{field}:data:{partition}`) and stream keys (`stream:{name}:{partition}`)
+     are not index entries; recover by hand via `SCAN` on those patterns.
+  3. **Precondition** — only datetime `partition_by` values are affected; all other types are
+     byte-identical, so most deployments have nothing to do.
+  Note also that the on_save/on_delete old-partition cleanup (sites 2 and 3) builds the *canonical*
+  old key from `_saved_field_values` after this change, so it cannot remove a legacy-keyed member
+  — the one automatic cleanup that exists is blinded by the same change. This is documentation
+  only and does not breach the `## No-Gos` "no migration/audit tooling" line.
 - **DB 0 hazard**: ad-hoc repro scripts default to DB 0, a LIVE agent store. Use
   `POPOTO_TEST_DB=9` and pin `REDIS_URL=redis://localhost:6379/9` before `import popoto` (#577).
 
 ## Success Criteria
 
-- All **11** sites converted (7 SortedField + 3 ConfidenceField + 1 EventStream); the **widened**
-  grep over `src/popoto/fields/ src/popoto/models/query.py` returns **0** rows (it returns 11
-  pre-change), and `grep -rn "canonical_key_str(.*force" src/popoto/fields/ src/popoto/models/query.py`
+- All **11** sites converted (7 SortedField + 3 ConfidenceField + 1 EventStream); the **narrowed
+  widened** grep over `src/popoto/fields/ src/popoto/models/query.py` (keyed on
+  `append(str(old_val))` — see the round-2 BLOCKER note in the Freshness Check) returns **0** rows
+  (it returns exactly 11 pre-change, with `content_field.py:209` out of scope in both counts), and `grep -rn "canonical_key_str(.*force" src/popoto/fields/ src/popoto/models/query.py`
   returns 0.
 - A datetime-partition test with the partition field declared as a **`KeyField(type=datetime)`**
   proves `get_partitioned_sortedset_db_key` and the key `_purge_orphan_keys` derives for the same
@@ -346,7 +383,11 @@ key-bytes change for a **non**-datetime type — stop and report (scope guard).
 
 ## Documentation
 
-- CHANGELOG.md, `docs/query.md` SortedField/partition notes.
+- `docs/fields.md:1205` `## partition_by` — datetime partition values canonicalize to UTC.
+- `docs/multi-tenancy.md:78` — same one-liner in the existing `partition_by` caveat paragraph.
+- `CHANGELOG.md` — key-bytes change (datetime partitions only) + orphan-recovery clauses.
+- **Not** `docs/query.md`: it has zero partition content (round-2 CONCERN); dropped as a target
+  rather than left naming a section that does not exist.
 
 ## Critique Results
 
@@ -460,3 +501,42 @@ Re-verified on `9c4908d` while revising: the widened grep returns exactly 11 row
 the audit; no bug-related `xfail` markers exist in `tests/`. Scope guard reaffirmed: byte-identity
 of `canonical_key_str` for every non-datetime type is a **build-stop condition** if it fails.
 Appetite unchanged: **Small** (11 one-line edits + one test file + docs).
+
+### Round 2 (2026-09-04, working tree `5374525`) — verdict: READY TO BUILD (with concerns)
+
+Depth: FULL (3 lenses). Verification round against the round-1 revision. All findings below were
+reproduced by the supervisor directly against working-tree source before being applied.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | risk-robustness + history-consistency | Task 5's inventory gate was unsatisfiable: the widened grep returned **12** rows, not 11. The twelfth, `content_field.py:209` (`key_parts.append(str(kv))`), is not a partition render — it builds a ContentField on-disk filename — so after all 11 in-scope conversions the grep returned 1 and the gate could never go green. The round-1 note's claim that the count was "re-verified on `9c4908d` … exactly 11 rows" did not hold; line 209 matched there too. | **Resolved in-place during round 2.** The `append(str(` alternative is narrowed to the literal in-scope form `append(str(old_val))`, which matches `sorted_field_mixin.py:546,629` and nothing else. Verified by the supervisor: pre-edit count is now exactly **11**, post-conversion **0**. `content_field.py:209` recorded as an explicit out-of-scope decision in the Freshness Check. Counts re-stamped in the Freshness Check, task 5, and Success Criteria bullet 1. | Narrowing (not `--exclude=content_field.py`) was chosen deliberately so a genuine future partition site added to `content_field.py` would still be caught. |
+| CONCERN | scope-value + history-consistency | Task 8's docs target did not exist: `grep -i partition docs/query.md` returns **0** hits. The real `partition_by` documentation is `docs/fields.md:1205` (`## partition_by`) and `docs/multi-tenancy.md:54,78`. BUILD would have invented a section in the wrong file or no-opped the step. | **Resolved in-place.** Task 8 and `## Documentation` retargeted at `docs/fields.md:1205` and `docs/multi-tenancy.md:78`; `docs/query.md` dropped as a target; a grep validation added alongside `mkdocs build --strict`. | `docs/fields.md:1205` already documents partitioning "by key field values" — the same KeyField precondition Success Criterion 2 depends on — so the canonicalization note lands in context. |
+| CONCERN | risk-robustness (operator) | The orphan-recovery story was stated only for sorted sets. ConfidenceField companion hashes and EventStream keys are not index entries, so `Model.clean_indexes` does not reach them and their pre-change keys become unreachable with no detection path. Compounding it, the on_save/on_delete cleanup at sites 2/3 builds the *canonical* old key after this change and so cannot remove a legacy-keyed member. | **Resolved in-place.** New Risks item *"Orphan recovery differs by field type"* with the three required CHANGELOG clauses (clean_indexes for sorted sets; manual `SCAN` for ConfidenceField/EventStream; datetime-only precondition) and the blinded-cleanup note; carried into task 8. | Documentation only — does not breach the `## No-Gos` "no migration/audit tooling" line. `_saved_field_values` holds *decoded* Python objects (`encoding.py:505`, `base.py:1567`), which is both why `canonical_key_str` is effective at sites 2/3 and why those sites stop matching legacy keys. |
+| NIT | history-consistency | Freshness Check baseline stamped `7f057f9` / `9c4908d`; the tree has since moved. All 11 site anchors and every enclosing symbol were re-verified and match, so the drift is benign. | Baseline re-stamped to `5374525` below. | — |
+| NIT | risk-robustness | Task 9's `gh pr view … \| grep -c "Closes #5"` counts *lines*, so a single-line "Closes #575, Closes #570" returns 1 and an unrelated `Closes #5xx` inflates it. | **Resolved in-place.** Task 9 now uses `grep -o "Closes #\(575\|570\)" \| sort -u \| wc -l` and requires 2. | — |
+
+**Verified clean in round 2** (round-1's corrections were the risky part and they hold): all 7
+SortedField sites match at the cited lines *and* enclosing symbols (`get_partitioned_sortedset_db_key`
+:475, `on_save` :546, `on_delete` :629, `filter_query` :753, `top_by_decay` :438, `_resolve_index`
+:1379, `_materialize_decay_field` :1421); `confidence_field.py:315/350/374` match with the `None`
+asymmetry exactly as described (skip inside `if val is not None:` at 315/374, `raise QueryException`
+at 344-350); `event_stream.py:119` sits inside its `if partition_value is not None:` guard;
+`_purge_orphan_keys` builds `values: dict[str, str]` from `DB_key.from_redis_key` (`base.py:3638-3648`)
+and gates on `meta.key_field_names`, so the KeyField requirement on Success Criterion 2 is right;
+`DB_key.__str__` (`db_key.py:281`) applies `self.clean(canonical_key_str(partial))`, so the
+byte-equivalence and idempotent-wrap claims hold; `canonical_key_str` special-cases
+`datetime.datetime` only, gated on `Defaults.DATETIME_KEY_LEGACY` (`canonical_key.py:92-94`), with
+`force=True` used solely by `datetime_key_migration.py` — the no-op property for
+`date`/`time`/str/int/float/bool holds; every caller reaching `get_data_hash_key_from_values`
+passes **raw** filter values (`query.py:1562`, `decaying_sorted_field.py:459`); and
+`cyclic_decay_field.py:423,435` are pass-throughs whose only callers use the same
+`partition_values` list as sites 5-7, so they converge post-fix with no edit.
+
+### Revision applied — round 2, 2026-09-04
+
+Baseline re-stamped to `5374525`. All 5 round-2 findings (1 BLOCKER, 2 CONCERNs, 2 NITs) resolved
+in-place during the critique rather than deferred to another `/do-plan` cycle: every one was a
+mechanical plan-text correction (a grep alternative, a docs path, a Risks paragraph, a validation
+command), none required rescoping the work. The narrowed inventory grep was re-run by the
+supervisor and returns exactly **11** rows pre-change. No source files were touched. Appetite
+unchanged: **Small** (11 one-line edits + one test file + docs).
