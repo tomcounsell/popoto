@@ -248,6 +248,8 @@ __all__ = [
     "TurnContext",
     "Resolution",
     "resolve_references",
+    "ResolutionRecord",
+    "ResolutionLog",
 ]
 
 
@@ -289,4 +291,8 @@ def __getattr__(name):
         from . import resolution
 
         return getattr(resolution, name)
+    if name in ("ResolutionRecord", "ResolutionLog"):
+        from . import resolution_log
+
+        return getattr(resolution_log, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
