@@ -7,7 +7,7 @@
 #
 #   Gate      Mirrors workflow        What it runs
 #   ----      ----------------        ------------
-#   lint      lint.yml                ruff check src/
+#   lint      lint.yml                ruff check src/ + black --check src/ tests/
 #   tests     tests.yml               full pytest suite against local Redis
 #   stress    (local only)            pytest tests/test_stress.py (+durations)
 #   docs      deploy-docs.yml         mkdocs build --strict (the deploy gate)
@@ -42,6 +42,7 @@ PY="${ROOT}/.venv/bin/python"
 PYTEST="${ROOT}/.venv/bin/pytest"
 MKDOCS="${ROOT}/.venv/bin/mkdocs"
 RUFF="${ROOT}/.venv/bin/ruff"
+BLACK="${ROOT}/.venv/bin/black"
 REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 export REDIS_URL
 
@@ -211,15 +212,28 @@ run_gate() {
 
 # --- gate implementations ----------------------------------------------------
 gate_lint() {
-  # Rule selection lives in [tool.ruff.lint] in pyproject.toml so this and
-  # lint.yml cannot drift. Ruff's own version can still drift: CI pins one,
-  # so say which version produced the local verdict.
-  if [ ! -x "$RUFF" ]; then
+  # Mirrors both jobs in lint.yml: ruff (src/ only) and black (src/ + tests/).
+  # Run both even when the first fails, so one local pass reports every
+  # formatting and lint problem CI would.
+  #
+  # Rule selection lives in [tool.ruff.lint] and [tool.black] in pyproject.toml
+  # so this and lint.yml cannot drift on configuration. The tool versions can
+  # still drift — CI pins one of each — so say which versions produced the
+  # local verdict.
+  local rc=0
+  if [ -x "$RUFF" ]; then
+    printf 'using %s\n' "$("$RUFF" --version)"
+    "$RUFF" check src/ || rc=1
+  else
     warn "ruff not in .venv — run: pip install -e '.[dev]'"
-    return 0
   fi
-  printf 'using %s\n' "$("$RUFF" --version)"
-  "$RUFF" check src/
+  if [ -x "$BLACK" ]; then
+    printf 'using %s\n' "$("$BLACK" --version)"
+    "$BLACK" --check src/ tests/ || rc=1
+  else
+    warn "black not in .venv — run: pip install -e '.[dev]'"
+  fi
+  return "$rc"
 }
 gate_tests() {
   # --fast deselects `slow`, which is what keeps the read-hook latency

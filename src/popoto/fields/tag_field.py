@@ -105,7 +105,8 @@ logger = logging.getLogger("POPOTO.TagFieldMixin")
 #               Namespaced under "$TagPtr:" — see _tag_pointer_side_key (#540).
 #   KEYS[3]   = pre-#540 pointer side key ({model_hash_key}\x00tagptr\x00{field}),
 #               read-only migration fallback for records written by 1.8.1/1.8.2.
-#               DEL'd once adopted so it stops colliding with the model key glob.
+#               Read only when KEYS[2] is empty, but DEL'd unconditionally on
+#               every save so it stops colliding with the model key glob.
 #   KEYS[4..] = the new per-tag index-Set keys (already DB_key-built + colon-safe;
 #               zero of them means the record is untagged / shared pool).
 #
