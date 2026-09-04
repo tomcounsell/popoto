@@ -6,7 +6,7 @@ owner: sdlc-559
 created: 2026-08-13
 revised: 2026-09-04
 revision_applied: true
-revision_applied_at: 2026-09-04T07:09:44Z
+revision_applied_at: 2026-09-04T07:21:01Z
 tracking: https://github.com/tomcounsell/popoto/issues/559
 last_comment_id: 5536628727
 ---
@@ -351,7 +351,7 @@ Raw output: `7 passed in 0.23s`.
 - **Finding**: **Assumption confirmed, and the fix verified.** Giving
   `PushdownDocMetaDesc` a `bucket = popoto.IndexedField(type=str, null=True)` and
   filtering on it declines `_sorted_pushdown_args` (its `remaining` check) while
-  leaving the slice live, so `state.pushdown_limit` is `None` at `query.py:2321`
+  leaving the slice live, so `state.pushdown_limit` is `None` at `query.py:2319`
   and execution reaches the `Meta` resolution at 2329. Measured, 20 records,
   `limit=3`, **no** explicit `order_by`:
 
@@ -364,10 +364,30 @@ Raw output: `7 passed in 0.23s`.
 
   **Guard mutation:** deleting `or self.model_class._meta.order_by` from
   `query.py:2329` leaves `desc=False`, slices the ascending **head**, and returns
-  `['m010','m009','m008']` — wrong rows, not short ones — on **both** paths. Every
-  originally-planned test stayed green under that mutation; only the new
-  `bucket`-filtered tests go red. `src/` was restored from a scratchpad copy and
-  `git status --short` confirmed empty.
+  `['m010','m009','m008']` — wrong rows, not short ones — on **both** paths.
+  `src/` was restored from a scratchpad copy and `git status --short` confirmed
+  empty.
+
+  > **Correction, round-2 critique C1 (measured — this supersedes the sentence the
+  > first revision pass wrote here).** The original claim — "every
+  > originally-planned test stayed green under that mutation; only the new
+  > `bucket`-filtered tests go red" — is **false**. Re-measured, the
+  > `Meta`-on-another-field case *also* flips under the same mutation:
+  > `['z000','z001','z002']` → `['z009','z010','z011']`, hydration `40` → `22`.
+  > Both assertions task 3's third test specifies (exact head, `>= 2 * 20`) fail
+  > under it. **The true invariant is: the 30 PRE-EXISTING tests stay green**
+  > (measured: `30 passed`), because `PushdownDoc` declares no `Meta`, so
+  > `_meta.order_by` is `None` and the guard is a no-op for them.
+  > *Mechanism:* with `or …_meta.order_by` gone, `order_by` is `None` for a query
+  > carrying no explicit `order_by`, so the whole `if order_by:` block at
+  > `query.py:2330-2336` is skipped and the guard never declines — which is why
+  > the *declining* branch (other-field) breaks alongside the *desc-supplying*
+  > one. **The plan's conclusion is unchanged:** 3a is still the only shape that
+  > pins the desc-supplying half — guard intact, the `bucket`-filtered query
+  > returns `['m019','m018','m017']` @ 22 hydrations; mutated, it returns
+  > `['m010','m009','m008']` @ 22, while the unfiltered Redis-bound query
+  > (task 3's first test) stays correct either way. Only the evidence sentence and
+  > task 5's criterion needed correcting, not the tasks.
 - **Confidence**: high
 - **Impact on plan**: `PushdownDocMetaDesc` gains a `bucket` IndexedField, and two
   tests are added (task 3a sync, task 4a async) — bringing the total to **eight**.
@@ -386,8 +406,15 @@ below apply to both unless noted.
 1. **Entry**: `Model.query.filter(room_id=..., last_active_at__gte=..., limit=n)`
    (sync) or `await Model.query.async_filter(...)`.
 2. **`QueryBuilder`** — accumulates `_limit_value` / `_order_by_value`.
-   **`.count()` (`query.py:1814`) branches off here and forwards only
-   `_filters`, never the limit.** This is the entire mechanism behind gap 1.
+   **`.count()` (`query.py:1814`) branches off here and, *on the non-Q-object
+   path*, forwards only `_filters`, never the limit.** This is the entire
+   mechanism behind gap 1. (Scoping added by round-2 critique N2: `QueryBuilder.count`
+   short-circuits `if self._q_objects: return len(self.all())` at 1821-1822 *before*
+   `return self._query.count(**self._filters)`, and `.all()` **does** forward
+   `_limit_value`. Not actionable for this build — no planned test uses Q objects,
+   and the Q + partitioned-`SortedField` shape raises `KeyError: 'room_id'` at
+   `sorted_field_mixin.py:753` independently — but do not generalize the invariant
+   to the Q form. See No-Gos.)
 3. **Arming the gate**:
    - sync — `Query._execute_filter` sets `self._pushdown_allowed = _allow_pushdown`
      (`query.py:3040`), `finally`-reset at `3044`.
@@ -712,9 +739,16 @@ The five are exactly the `assert db == 15` set —
 `TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db`,
 `::test_canonical_redis_db_on_test_db`.
 `test_version_matches_pyproject` **passes** here (the editable install is fresh).
-Any other failure after this work is a regression. Expected after the change:
-`5 failed, 3424 passed, 26 skipped` (3416 + 8 new tests; the count moved from the
-prior draft's 3422 because critique C2 added tasks 3a and 4a).
+Any other failure after this work is a regression.
+
+**These absolute numbers are a reference measurement, not the acceptance gate**
+(round-2 critique C3). `3416` was measured on `7f057f9` on 2026-09-04; the repo
+has 5+ concurrent SDLC lanes (#594, #602, #600 among them) and any of them merging
+a test to `main` before this builds would move it. The gate is the **delta**:
+`passed_after == passed_before + 8` and `failed_after == failed_before`, both
+measured in the same environment against this branch's own branch point
+(`$(git merge-base origin/main HEAD)`) — see task 6. If nothing else has landed,
+that resolves to the familiar `5 failed, 3424 passed, 26 skipped`.
 
 ## No-Gos (Out of Scope)
 
@@ -727,6 +761,11 @@ prior draft's 3422 because critique C2 added tasks 3a and 4a).
   state.** Structural refactor; this plan's tests are behavioral and will cover it.
 - **`async_count` coverage.** Verified correct (spike-2) but it does not route
   through the pushdown gate. If wanted, file it against the async query suite.
+- **The `Q`-object form of `count()`** (round-2 critique N2). `QueryBuilder.count`
+  short-circuits to `len(self.all())` when `_q_objects` is set, and `.all()` *does*
+  forward `_limit_value` — so the "count is never truncated" invariant is scoped to
+  the non-Q path. Untestable here anyway: `Q` + a partitioned `SortedField` raises
+  `KeyError: 'room_id'` at `sorted_field_mixin.py:753`. File separately if wanted.
 - **`Meta.order_by` validation edge cases** (non-string, unknown field name).
   Validated at model-definition time, not query time.
 - **Anything outside `tests/`.** This issue is test-only.
@@ -789,10 +828,17 @@ changes required" and "the docs stage must run" are not in tension.
 - [ ] **Zero `xfail` / `skip` markers added.** Every new assertion is hard.
 - [ ] No file outside `tests/` is modified.
 - [ ] `tests/test_sorted_range_pushdown.py` collects **38** and passes in full.
-- [ ] Full suite: `5 failed, 3424 passed, 26 skipped` — the five being exactly
-      the documented `assert db == 15` set for a non-15 `POPOTO_TEST_DB`
-      (baseline on `7f057f9`: `5 failed, 3416 passed, 26 skipped`; see Race
-      Conditions for the full environment statement).
+- [ ] Full suite, stated as a **delta measured on this branch's own branch point**
+      (round-2 critique C3): `passed_after == passed_before + 8` and
+      `failed_after == failed_before`, where `passed_before` / `failed_before` are
+      measured at `$(git merge-base origin/main HEAD)` in the same environment
+      (see task 6). The failures must be exactly the documented `assert db == 15`
+      set for a non-15 `POPOTO_TEST_DB`.
+      **Informational reference only, not the gate:** `5 failed, 3416 passed,
+      26 skipped` measured on `7f057f9` (→ `3424` if nothing else has landed).
+      An absolute count cannot be a gate here — 5+ concurrent lanes merge tests to
+      `main`, and any landing would turn this criterion into a false failure. See
+      Race Conditions for the full environment statement.
 - [ ] `black --check tests/test_sorted_range_pushdown.py` exits 0.
 - [ ] The fenced Verification script exits 0 with every line `PASS`.
 - [ ] Tests pass (`/do-test`)
@@ -882,10 +928,14 @@ changes required" and "the docs stage must run" are not in tension.
   predicate is what tasks 3a/4a use to decline the Redis-side bound and reach
   `query.py:2329`.
 - Add a `model`-parametrized seeding helper alongside `_seed()` — `_seed()` is
-  hard-bound to `PushdownDoc` and must not be changed. The helper takes the model
-  class, a count, a flag for anti-correlated `doc_id` values (`z{n-1-i:03d}`
-  descending as score ascends) used by the other-field cases, and an optional
-  `bucket` value passed through only when the model declares the field.
+  hard-bound to `PushdownDoc` and must not be changed. Signature:
+  `_seed_meta(Model, n, reverse_ids=False, **extra)` — the model class, a count, a
+  flag for anti-correlated `doc_id` values (`z{n-1-i:03d}` descending as score
+  ascends) used by the other-field cases, and `**extra` splatted onto
+  `Model.create(...)`. **Use `**extra`, not field introspection** (round-2 critique
+  N4): only `PushdownDocMetaDesc` declares `bucket`, and only tasks 3a/4a pass it,
+  so the caller already knows. This matches the existing
+  `_seed(room, count, tag, bucket)` idiom.
 - Keep the `PushdownDoc` prefix on all three names so `_flush()` sweeps their
   hashes and their `$SortF:<ClassName>:...` sorted-set keys.
 
@@ -941,9 +991,18 @@ changes required" and "the docs stage must run" are not in tension.
   `counter.count < 2 * 20`.
 - Docstring: this is the **only** shape that reaches the `Meta` resolution at
   `query.py:2329` — every other planned test returns earlier at
-  `if state.pushdown_limit: return db_keys` (`query.py:2321`). Dropping
+  `if state.pushdown_limit:` / `return db_keys` (`query.py:2319-2320`; round-2
+  critique N1 corrected this from `2321`). Dropping
   `or self.model_class._meta.order_by` there slices the ascending head and returns
-  **wrong rows**, and every other test in this file stays green.
+  **wrong rows**, and every **pre-existing** test in this file stays green.
+- **The docstring must also say why this is not a duplicate of task 3's first
+  test** (round-2 critique N3). The two assert *identically* — both return
+  `['m019','m018','m017']` at exactly 22 hydrations, measured — and differ only in
+  query shape. That is intended: task 3's first test gets its direction from the
+  **Redis-side** bound (`query.py:2445`) and is unaffected by the 2329 mutation,
+  while this one gets it from the **key-list slice** (`query.py:2329`) and is the
+  only test that flips. Without that sentence a future reader deletes this test as
+  redundant and re-opens the exact hole round-1 critique C2 found.
 
 ### 4. Add the async Meta.order_by coverage
 - **Task ID**: build-meta-async
@@ -1007,10 +1066,24 @@ changes required" and "the docs stage must run" are not in tension.
 - Do the same for the mirrored return in `_bound_keys_before_hydration`
   (`query.py:2329-2336`).
 - Delete only `or self.model_class._meta.order_by` from `query.py:2329` (leaving the
-  rest of the guard intact) and confirm **both** key-list-slice tests (3a sync and
-  4a async) go red with `['m010','m009','m008']`, and that **no other test in the
-  module** changes state. This is the mutation spike-6 ran; it is the proof that
-  tasks 3a/4a pin a branch nothing else reaches.
+  rest of the guard intact) and confirm:
+  - **both** key-list-slice tests (3a sync and 4a async) go red with
+    `['m010','m009','m008']`;
+  - the **other-field** tests (task 3's third, task 4's second) **also** go red —
+    this is **expected, not a defect**: they share line 2329, and with the `or`
+    clause gone `order_by` is `None`, so the `if order_by:` block at 2330-2336 is
+    skipped and the guard stops declining as well as stops supplying direction.
+    Measured: `['z000','z001','z002']` → `['z009','z010','z011']`, `40` → `22`;
+  - **no *pre-existing* test in the module changes state** — all 30 stay green
+    (measured), because `PushdownDoc` declares no `Meta`.
+  > **This bullet was corrected by round-2 critique C1.** The earlier wording
+  > ("no other test in the module changes state") is factually false and a
+  > validator following it literally would either report a false failure or
+  > "correct" a healthy test. Do not restore it. The proof that 3a/4a pin a branch
+  > nothing else reaches is narrower and still holds: with the guard **intact**,
+  > the `bucket`-filtered query returns the descending head only because of line
+  > 2329, while task 3's first test returns the same head via the Redis-side bound
+  > and is unaffected by the mutation.
 - Make `QueryBuilder.count` forward `_limit_value` and confirm
   `test_count_is_not_truncated_by_a_limit` goes red.
 - Restore `src/` to pristine; `git status --short src/` must be empty **before
@@ -1027,14 +1100,28 @@ changes required" and "the docs stage must run" are not in tension.
   tests/test_sorted_range_pushdown.py -q` — expect all green, **38 collected,
   0 xfailed**.
 - `redis-cli -n 12 keys '*Pushdown*'` — expect empty.
-- `POPOTO_TEST_DB=12 .venv/bin/python -m pytest -q` — expect only the documented
-  non-15-DB expected failures.
-- `git fetch origin && git diff --name-only origin/main` — expect exactly one path,
-  `tests/test_sorted_range_pushdown.py`. **The `git fetch` is not optional**
-  (critique N2): the critique and revision passes commit
-  `docs/plans/sorted_pushdown_coverage_gaps.md` straight to `main`, so against a
-  stale `origin/main` ref the plan doc shows up in the diff and looks like build
-  output. Any path other than the test file is a defect.
+- **Full suite as a delta, not an absolute (round-2 critique C3).** Capture the
+  baseline at this branch's own branch point *first* — either `git stash` the
+  change or check out `$(git merge-base origin/main HEAD)` — and run
+  `POPOTO_TEST_DB=12 .venv/bin/python -m pytest -q` there, recording
+  `passed_before` / `failed_before`. Then restore the change, re-run, and assert
+  **`passed_after == passed_before + 8`** and **`failed_after == failed_before`**.
+  Do **not** gate on the absolute `3424`: this repo has 5+ concurrent SDLC lanes
+  and any of them merging a test to `main` before this builds turns an absolute
+  count into a false failure. The reference figures
+  (`5 failed, 3416 passed, 26 skipped` on `7f057f9`) are **informational** — use
+  them to sanity-check the magnitude, never as the gate.
+- `git fetch origin && BASE=$(git merge-base origin/main HEAD) && git diff
+  --name-only "$BASE" -- src tests` — expect exactly one path,
+  `tests/test_sorted_range_pushdown.py`. Any other path is a defect.
+  **Merge-base anchoring and the `-- src tests` scoping are both required
+  (round-2 critique C2); the round-1 `git fetch`-only fix is insufficient.**
+  `git diff --name-only origin/main` is a two-dot working-tree compare: measured
+  on a clean checkout with no #559 work at all, it returns another lane's
+  `docs/plans/partition_by_canonical_rendering.md`. And if this branch is *behind*
+  `origin/main`, the tip compare reports every file main changed since the branch
+  point as a reverse-delta — a failure mode `git fetch` makes **more** likely, not
+  less. Keep the `git fetch`: the merge base needs a current ref.
 - Run the fenced Verification commands below verbatim and record each exit code.
 - Report every count alongside the commit, the venv path, and the DB number.
 
@@ -1079,6 +1166,16 @@ check() {  # check <name> <expected> <actual>
   if [ "$2" = "$3" ]; then echo "PASS  $1"; else echo "FAIL  $1 (expected '$2', got '$3')"; rc=1; fi
 }
 
+# --- diff anchor (critique round-2 C2) ---
+# Anchor every diff at the MERGE BASE, never at the origin/main tip. `git diff
+# origin/main` is a two-dot working-tree compare: in this repo (5+ concurrent SDLC
+# lanes) it returns other lanes' uncommitted docs/plans/*.md edits, and if this
+# branch is behind main it also reports every file main changed since the branch
+# point as a reverse-delta. Both make the checks below FAIL through no fault of
+# the build. The `git fetch` stays — the merge base needs a current ref.
+git fetch origin --quiet
+BASE=$(git merge-base origin/main HEAD)
+
 # --- environment (CLAUDE.md worktree gotchas) ---
 git merge-base --is-ancestor 7f057f9 HEAD && echo "PASS  #602 present" || { echo "FAIL  #602 present"; rc=1; }
 check "correct package under test" "$(pwd)/src/popoto/__init__.py" "$($PY -c 'import popoto; print(popoto.__file__)')"
@@ -1089,7 +1186,7 @@ check "38 tests collected" "38" \
   "$(POPOTO_TEST_DB=$DB $PY -m pytest "$TESTFILE" --collect-only -q 2>&1 | grep -oE '[0-9]+ tests? collected' | grep -oE '[0-9]+')"
 
 # --- positive criteria on the diff ---
-DIFF=$(git diff origin/main -- "$TESTFILE")
+DIFF=$(git diff "$BASE" -- "$TESTFILE")
 [ "$(printf '%s' "$DIFF" | grep -c '^+.*SORTED_PUSHDOWN_OVERFETCH_MARGIN')" -gt 0 ] \
   && echo "PASS  margin used, not hardcoded" || { echo "FAIL  margin used, not hardcoded"; rc=1; }
 check "3 Meta model classes added" "3" "$(printf '%s' "$DIFF" | grep -c '^+class PushdownDocMeta')"
@@ -1098,18 +1195,17 @@ check "3 Meta model classes added" "3" "$(printf '%s' "$DIFF" | grep -c '^+class
 check "no new xfail/skip marker"     "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*(xfail|mark\.skip)')"
 check "no async parity duplicate"    "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*def test_async_(and_sync|bounded_query|range_read)')"
 check "no bare margin literal"       "0" "$(printf '%s' "$DIFF" | grep -cE '^\+.*(num=11|MARGIN = 8)')"
-check "no production change"         "0" "$(git diff --name-only origin/main -- src/ | wc -l | tr -d ' ')"
+check "no production change"         "0" "$(git diff --name-only "$BASE" -- src | wc -l | tr -d ' ')"
 check "no leaked Redis state"        "0" "$(redis-cli -n $DB keys '*Pushdown*' | grep -c . )"
 
 # --- format ---
 $PY -m black --check "$TESTFILE" && echo "PASS  format clean" || { echo "FAIL  format clean"; rc=1; }
 
-# --- changed files: exactly the test file (critique N2) ---
-# `git fetch` first, or this reports docs/plans/sorted_pushdown_coverage_gaps.md as
-# well: the critique and revision passes commit that file straight to main, so a
-# stale origin/main ref makes the plan doc look like part of the build's diff.
-git fetch origin --quiet
-check "changed files" "tests/test_sorted_range_pushdown.py" "$(git diff --name-only origin/main | sort | tr '\n' ' ' | sed 's/ $//')"
+# --- changed files: exactly the test file (round-1 N2, corrected by round-2 C2) ---
+# Scoping to `-- src tests` is the load-bearing part: it drops other lanes'
+# docs/plans/*.md noise while still catching what this criterion exists to catch
+# ("no file outside tests/ is modified"). Do NOT widen it back to an unscoped diff.
+check "changed files" "tests/test_sorted_range_pushdown.py" "$(git diff --name-only "$BASE" -- src tests | sort | tr '\n' ' ' | sed 's/ $//')"
 
 exit $rc
 ```
@@ -1462,6 +1558,23 @@ spike-6 sync figures reproduce exactly (22 / 40 / 22, correct heads).
 
 **Cleanup:** `src/` restored pristine, throwaway test modules deleted, Redis DB 11
 swept (`dbsize` 0).
+
+### Revision Disposition — Round 2 (2026-09-04, run 753c237513c44a21843ded67800f63a2)
+
+Verdict was **READY TO BUILD (with concerns)** — no blocker gated this pass. All 3
+concerns and all 4 nits are embedded in the plan body so the builder cannot miss
+them. **No scope change:** the task list is unchanged at 0 → 1 → 2 → 3 → 3a → 4 →
+4a → 5 → 6, still eight new tests.
+
+| # | Finding | Disposition |
+|---|---|---|
+| **C1** | Task 5 mutation criterion factually false | **Fixed.** The spike-6 "Finding" now carries an explicit correction block retracting "every originally-planned test stayed green" and stating the **true** invariant — the **30 pre-existing** tests stay green, because `PushdownDoc` declares no `Meta` — plus the mechanism (with the `or` clause gone, `order_by` is `None`, the whole `if order_by:` block at 2330-2336 is skipped, so the *declining* branch breaks alongside the desc-supplying one) and the measured other-field flip (`['z000'…]` → `['z009'…]`, 40 → 22). Task 5's third bullet is rewritten as three sub-bullets that expect the other-field tests to go red, with a do-not-restore note on the old wording. Tasks 3a/4a are unchanged — the plan's conclusion survives; only its evidence needed correcting. |
+| **C2** | `git diff origin/main` two-dot compare returns other lanes' files | **Fixed.** The Verification script now computes `BASE=$(git merge-base origin/main HEAD)` once, up front (with the `git fetch` retained so the merge base is current), and all three diff sites use it: the `DIFF` capture, `no production change` (`-- src`), and `changed files` (`-- src tests`). Task 6's bullet is rewritten to match and records both failure modes the round-1 `git fetch`-only fix missed — the measured `partition_by_canonical_rendering.md` leak, and the reverse-delta that `git fetch` makes *likelier*. The `-- src tests` scoping is flagged as load-bearing. |
+| **C3** | Absolute `3424 passed` pinned as a gate | **Fixed.** The Success Criterion is restated as `passed_after == passed_before + 8` / `failed_after == failed_before`, measured against this branch's own branch point. Task 6 gains a bullet specifying how to capture that baseline. Race Conditions' `3416` block is relabelled **informational reference, not the gate**, with the concurrent-lane reasoning stated in all three places. |
+| **N1** | `query.py:2321` off by two | **Fixed.** Corrected to `2319` (spike-6) and `2319-2320` (task 3a). The round-1 critique record at line ~1276 is left as-is — it is a historical transcript, not an instruction. |
+| **N2** | `count()` invariant unscoped w.r.t. Q objects | **Fixed.** Data Flow step 2 now scopes the claim to the non-Q path and names the 1821-1822 short-circuit; a matching No-Go entry is added. Not actionable for the build — no planned test uses Q objects. |
+| **N3** | Tasks 3 and 3a assert identically | **Fixed.** Task 3a gains a required-docstring bullet stating that the two are deliberately identical in assertion and differ only in which code site supplies the direction (2445 vs. 2329), so a future reader does not delete 3a as a duplicate. |
+| **N4** | Seeding helper needs introspection where `**extra` would do | **Fixed.** Task 2 now pins the signature `_seed_meta(Model, n, reverse_ids=False, **extra)` and explicitly rules out field introspection. |
 
 ---
 
