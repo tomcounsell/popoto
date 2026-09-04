@@ -55,7 +55,11 @@ def test_doctor_reports_evictions_as_data_loss_not_failures(monkeypatch, capsys)
     integration error.
     """
     agent = "test-integrations-cli-evicted"
+    # Clear BOTH url vars so the doctor judges the live (pytest-swapped)
+    # connection: CI exports a db-less REDIS_URL=redis://localhost:6379,
+    # which the #584 refusal rejects with "URL names no database" (exit 1).
     monkeypatch.delenv("POPOTO_MEMORY_URL", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.setenv("POPOTO_MEMORY_AGENT_ID", agent)
     counter_key = f"{COUNTER_KEY_PREFIX}:{agent}:evicted"
     POPOTO_REDIS_DB.set(counter_key, 12)
