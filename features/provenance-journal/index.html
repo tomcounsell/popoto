@@ -3601,14 +3601,26 @@ docstrings on each method for the exact raise conditions.</p>
 <p><code>supersede()</code> and <code>retract()</code> queue two things into a single Redis
 <code>MULTI</code>/<code>EXEC</code>: the annotation's <code>save()</code>, and <code>ValidityField.execute_supersede(
 ..., mode="invalidate", old_member=&lt;target key&gt;, new_member=&lt;annotation key&gt;)</code>.
-The write path calls <code>execute_supersede</code> directly and never routes through
-<code>SupersessionProtocol</code> — <code>SupersessionProtocol.invalidate</code> resolves its member
-keys with <code>POPOTO_REDIS_DB.exists(...)</code>, and inside a pipeline the successor's
-<code>HSET</code> is only <em>queued</em>, not executed, so <code>EXISTS</code> returns 0 and the call
-silently takes its "unsaved successor → no-op" branch: no invalidate script
-runs, the target stays open, and nothing signals the failure. <code>execute_supersede</code>
-has no such existence check, so it is the correct seam for a write that has
-not committed yet.</p>
+The write path calls <code>execute_supersede</code> directly rather than routing through
+<code>SupersessionProtocol</code>. Not because the protocol cannot survive a pipeline —
+membership is decided inside <code>SUPERSEDE_LUA</code> at the instant of the write, so
+<a href="../validity-and-supersession/#same-transaction-successor">the same-pipeline shape works</a>
+and <code>SupersessionProtocol.save_and_supersede</code> is the supported combined entry
+point elsewhere. The reason is that this path needs an <em>explicit</em> incumbent (the
+annotation target is named by the caller and validated by the pre-flight, not
+resolved through an identity pointer) and it sets valid-time at construction
+rather than asserting it through the script. Converging the two is the retrieval
+milestone's design work — the pre-flight carries firewall, cross-agent
+ownership, and kind/target checks the protocol cannot express.</p>
+<p><strong>What an explicit incumbent costs.</strong> Naming the incumbent makes it a caller
+<em>assertion</em>, so a target hard-deleted between the pre-flight and <code>EXEC</code> returns
+<code>POPOTO_VALIDITY_MEMBER_ABSENT</code> rather than taking an idempotent no-op branch.
+Redis does not roll back the rest of the <code>MULTI</code> and the entry's <code>HSET</code> sits
+above the <code>EVAL</code> in the queue, so the outcome is: <strong>the journal entry commits,
+and <code>_write</code> raises <code>ValidityMemberAbsentError</code>.</strong> That is the intended
+contract — the annotation is real provenance and an append-only journal must
+keep it — and the exception is typed rather than a raw
+<code>redis.exceptions.ResponseError</code>, so callers never string-match Lua tokens.</p>
 <p><strong>The property that holds:</strong> no interleaving reader observes the annotation
 without the close. Between the transaction opening and <code>EXEC</code>, no other
 client can see the annotation entry (it isn't written yet) or a closed target

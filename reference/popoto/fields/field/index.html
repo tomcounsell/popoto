@@ -3034,6 +3034,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#popoto.fields.field.Field.pre_save_validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pre_save_validate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#popoto.fields.field.Field.on_save" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4371,7 +4382,42 @@ defaults. Instance attributes set in <strong>init</strong> override these for cu
 <span class="normal"><a href="#__codelineno-0-794">794</a></span>
 <span class="normal"><a href="#__codelineno-0-795">795</a></span>
 <span class="normal"><a href="#__codelineno-0-796">796</a></span>
-<span class="normal"><a href="#__codelineno-0-797">797</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="k">class</span><span class="w"> </span><span class="nc">Field</span><span class="p">(</span><span class="n">metaclass</span><span class="o">=</span><span class="n">FieldBase</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-797">797</a></span>
+<span class="normal"><a href="#__codelineno-0-798">798</a></span>
+<span class="normal"><a href="#__codelineno-0-799">799</a></span>
+<span class="normal"><a href="#__codelineno-0-800">800</a></span>
+<span class="normal"><a href="#__codelineno-0-801">801</a></span>
+<span class="normal"><a href="#__codelineno-0-802">802</a></span>
+<span class="normal"><a href="#__codelineno-0-803">803</a></span>
+<span class="normal"><a href="#__codelineno-0-804">804</a></span>
+<span class="normal"><a href="#__codelineno-0-805">805</a></span>
+<span class="normal"><a href="#__codelineno-0-806">806</a></span>
+<span class="normal"><a href="#__codelineno-0-807">807</a></span>
+<span class="normal"><a href="#__codelineno-0-808">808</a></span>
+<span class="normal"><a href="#__codelineno-0-809">809</a></span>
+<span class="normal"><a href="#__codelineno-0-810">810</a></span>
+<span class="normal"><a href="#__codelineno-0-811">811</a></span>
+<span class="normal"><a href="#__codelineno-0-812">812</a></span>
+<span class="normal"><a href="#__codelineno-0-813">813</a></span>
+<span class="normal"><a href="#__codelineno-0-814">814</a></span>
+<span class="normal"><a href="#__codelineno-0-815">815</a></span>
+<span class="normal"><a href="#__codelineno-0-816">816</a></span>
+<span class="normal"><a href="#__codelineno-0-817">817</a></span>
+<span class="normal"><a href="#__codelineno-0-818">818</a></span>
+<span class="normal"><a href="#__codelineno-0-819">819</a></span>
+<span class="normal"><a href="#__codelineno-0-820">820</a></span>
+<span class="normal"><a href="#__codelineno-0-821">821</a></span>
+<span class="normal"><a href="#__codelineno-0-822">822</a></span>
+<span class="normal"><a href="#__codelineno-0-823">823</a></span>
+<span class="normal"><a href="#__codelineno-0-824">824</a></span>
+<span class="normal"><a href="#__codelineno-0-825">825</a></span>
+<span class="normal"><a href="#__codelineno-0-826">826</a></span>
+<span class="normal"><a href="#__codelineno-0-827">827</a></span>
+<span class="normal"><a href="#__codelineno-0-828">828</a></span>
+<span class="normal"><a href="#__codelineno-0-829">829</a></span>
+<span class="normal"><a href="#__codelineno-0-830">830</a></span>
+<span class="normal"><a href="#__codelineno-0-831">831</a></span>
+<span class="normal"><a href="#__codelineno-0-832">832</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="k">class</span><span class="w"> </span><span class="nc">Field</span><span class="p">(</span><span class="n">metaclass</span><span class="o">=</span><span class="n">FieldBase</span><span class="p">):</span>
 <a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">    Base class for all Popoto model fields.</span>
 <a id="__codelineno-0-158" name="__codelineno-0-158"></a>
@@ -4836,184 +4882,219 @@ defaults. Instance attributes set in <strong>init</strong> override these for cu
 <a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="k">return</span> <span class="n">DB_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">field_class_key</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_class_key</span><span class="p">,</span> <span class="o">*</span><span class="n">field_names</span><span class="p">)</span>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">pre_save_validate</span><span class="p">(</span>
 <a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="bp">cls</span><span class="p">,</span>
 <a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
 <a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>    <span class="p">):</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a><span class="w">        </span><span class="sd">"""</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a><span class="sd">        Hook called when a model instance is saved, for each field.</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">        This is the primary extension point for specialized fields that maintain</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="sd">        secondary data structures. The Model.save() method iterates through all</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">        fields and calls their on_save() hooks, allowing each field type to update</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="sd">        its indexes.</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="sd">        Pipeline Support:</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        -----------------</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        The optional pipeline parameter enables atomic batch operations. When</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">        provided, implementations should add their Redis commands to the pipeline</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">        rather than executing immediately. This is critical for consistency -</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">        the main model data and all secondary indexes are saved in a single</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        Redis transaction.</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">        Implementation Pattern:</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">        -----------------------</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">        Mixins override this to add their index updates:</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">        - KeyFieldMixin: Adds model key to a set keyed by field value</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">        - SortedFieldMixin: Adds model key to a sorted set with field value as score</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">        - GeoField: Adds model key to a geo index</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        Each mixin should call super().on_save() to allow chaining, though the</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">        base implementation is a no-op.</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="n">field_value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a><span class="w">        </span><span class="sd">"""Raise to abort a save before ANY write is issued or queued.</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a><span class="sd">        Runs from ONE site in ``Model.save()`` -- after the ``pre_save`` gate and</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a><span class="sd">        before the partial/full save split -- so it covers all four save arms,</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">        including the two external-pipeline arms that return before either eager</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="sd">        indexed-field loop is reached. That is what distinguishes it from</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">        :meth:`on_save`, which on the internal-pipeline arms has already let</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="sd">        every ``IndexedFieldMixin`` field commit its hash value and index entry,</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="sd">        and on the external-pipeline arms runs only as a queued command.</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        On a partial save the dispatch is scoped to ``update_fields``, so a save</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        of an unrelated column cannot trip a validation this field owns.</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">        Default: no-op. Implement it only for a check that must precede every</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">        write on the model, not merely every write this field owns.</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">            model_instance: The Model instance being saved.</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">            field_name: Name of this field on the model.</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">            field_value: Current value of the field (may be None).</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">            **kwargs: Additional context, forwarded from ``Model.save()``.</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">            ``None``. Signal a refusal by raising.</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        """</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-653" name="__codelineno-0-653"></a>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">            model_instance: The Model instance being saved</span>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a><span class="sd">            field_name: Name of this field on the model</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">            field_value: Current value of the field (may be None)</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">            pipeline: Optional Redis pipeline for batched operations</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">            **kwargs: Additional context (e.g., ignore_errors)</span>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a><span class="sd">            The pipeline if provided, otherwise None. Mixins that add commands</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="sd">            to the pipeline must return it for chaining.</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">        """</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a>        <span class="c1"># todo: create choice Sets of instance keys for fields using choices option</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>        <span class="c1"># if model_instance._meta.fields[field_name].choices:</span>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="c1">#     # this will not work! how to edit, delete, prevent overwrite and duplicates?</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a>        <span class="c1">#     field_value_b = cls.encode(field_value)</span>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a>        <span class="c1">#     if pipeline:</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a>        <span class="c1">#         return pipeline.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a>        <span class="c1">#     else:</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>        <span class="c1">#         from ..redis_db import POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a>        <span class="c1">#         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>        <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a>    <span class="p">):</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="w">        </span><span class="sd">"""</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">        Hook called when a model instance is deleted, for each field.</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>    <span class="p">):</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="w">        </span><span class="sd">"""</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">        Hook called when a model instance is saved, for each field.</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="sd">        This is the primary extension point for specialized fields that maintain</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="sd">        secondary data structures. The Model.save() method iterates through all</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="sd">        fields and calls their on_save() hooks, allowing each field type to update</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">        its indexes.</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">        Pipeline Support:</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">        -----------------</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">        The optional pipeline parameter enables atomic batch operations. When</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">        provided, implementations should add their Redis commands to the pipeline</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">        rather than executing immediately. This is critical for consistency -</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">        the main model data and all secondary indexes are saved in a single</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">        Redis transaction.</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">        Implementation Pattern:</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        -----------------------</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">        Mixins override this to add their index updates:</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        - KeyFieldMixin: Adds model key to a set keyed by field value</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        - SortedFieldMixin: Adds model key to a sorted set with field value as score</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="sd">        - GeoField: Adds model key to a geo index</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">        Each mixin should call super().on_save() to allow chaining, though the</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">        base implementation is a no-op.</span>
 <a id="__codelineno-0-688" name="__codelineno-0-688"></a>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">        Mirrors on_save() but for cleanup operations. Specialized fields use this</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        to remove entries from their secondary data structures when a model is</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">        deleted, maintaining index consistency.</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">        Important Timing Note:</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        ----------------------</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">        This hook is also called during Model.save() when a model's key changes</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">        (i.e., when a KeyField value is modified). In this case, on_delete() is</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">        called for the old key values before on_save() is called for the new ones.</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">        This ensures the old index entries are cleaned up.</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        Implementation Pattern:</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">        -----------------------</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        Mixins override this to remove their index entries:</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">        - KeyFieldMixin: Removes model key from the set for the old value</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">        - SortedFieldMixin: Removes model key from the sorted set</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        - GeoField: Removes model key from the geo index</span>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">            model_instance: The Model instance being deleted</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a><span class="sd">            field_name: Name of this field on the model</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="sd">            field_value: Current value of the field (may be None)</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="sd">            pipeline: Optional Redis pipeline for batched operations</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="sd">            **kwargs: Additional context</span>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">            The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a><span class="sd">        """</span>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="w">        </span><span class="sd">"""</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="sd">        Declare which query filter parameters this field supports.</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">        The Query system uses this method to validate filter() arguments and route</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">        them to the appropriate field's filter_query() method. Each field type</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">        advertises what query operations it supports.</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">        Design Pattern:</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">        ---------------</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">        This method returns the set of valid parameter names for Query.filter().</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">        The naming convention follows Django's double-underscore pattern:</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">        - "field_name" - exact match</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">        - "field_name__gt" - greater than</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">        - "field_name__contains" - substring match</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">        - etc.</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">        Mixins extend this by calling super().get_filter_query_params() and adding</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">        their supported parameters via set union.</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">        Examples by Field Type:</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">        -----------------------</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">        - Base Field: Returns empty set (no filtering on plain fields)</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">        - KeyFieldMixin: {field_name, field_name__isnull, field_name__contains,</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">                         field_name__startswith, field_name__endswith, field_name__in}</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">        - SortedFieldMixin: {field_name, field_name__gt, field_name__gte,</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">                            field_name__lt, field_name__lte}</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">            field_name: The name of this field on the model. Parameter names are</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">                derived from this (e.g., "price" -&gt; "price__gte").</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">            Set of valid query parameter strings for this field.</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">        """</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>        <span class="k">return</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="w">        </span><span class="sd">"""</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">        Execute a filter query and return matching model keys.</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">        This is the query execution counterpart to get_filter_query_params().</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        After the Query class validates that filter parameters are supported,</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">        it delegates to this method to actually perform the Redis lookup.</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">        Why Return Keys (Not Instances)?</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">        ---------------------------------</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">        Returning Redis keys rather than model instances enables efficient</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">        query composition. Multiple filter conditions produce sets of keys that</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">        can be intersected (AND) or unioned (OR) before any model data is fetched.</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a><span class="sd">        This is a deliberate trade-off: more complex query logic in exchange for</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a><span class="sd">        minimal Redis round-trips.</span>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a><span class="sd">        Implementation by Field Type:</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="sd">        -----------------------------</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="sd">        - KeyFieldMixin: Uses Redis SMEMBERS on value-indexed sets, or KEYS</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">          pattern matching for wildcard queries</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">        - SortedFieldMixin: Uses Redis ZRANGEBYSCORE for range queries</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a><span class="sd">        - GeoField: Uses Redis GEORADIUS for geographic queries</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a><span class="sd">            model: The Model class to query against</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a><span class="sd">            field_name: Name of the field being filtered</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a><span class="sd">            **query_params: Filter parameters (e.g., price__gte=10.0)</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>
-<a id="__codelineno-0-785" name="__codelineno-0-785"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">            Set of Redis keys (as bytes) for matching model instances.</span>
-<a id="__codelineno-0-787" name="__codelineno-0-787"></a>
-<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-789" name="__codelineno-0-789"></a><span class="sd">            QueryException: Base Field does not support filtering. This ensures</span>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a><span class="sd">                users explicitly choose queryable field types (KeyField, SortedField)</span>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="sd">                rather than accidentally expecting queries on plain fields.</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="sd">        """</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a>        <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a>            <span class="s2">"Query filter not allowed on base Field. Consider using a KeyField"</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a>        <span class="p">)</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">            model_instance: The Model instance being saved</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">            field_name: Name of this field on the model</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">            field_value: Current value of the field (may be None)</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">            pipeline: Optional Redis pipeline for batched operations</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">            **kwargs: Additional context (e.g., ignore_errors)</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">            The pipeline if provided, otherwise None. Mixins that add commands</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">            to the pipeline must return it for chaining.</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">        """</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a>        <span class="c1"># todo: create choice Sets of instance keys for fields using choices option</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="c1"># if model_instance._meta.fields[field_name].choices:</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>        <span class="c1">#     # this will not work! how to edit, delete, prevent overwrite and duplicates?</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>        <span class="c1">#     field_value_b = cls.encode(field_value)</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="c1">#     if pipeline:</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a>        <span class="c1">#         return pipeline.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="c1">#     else:</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="c1">#         from ..redis_db import POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="c1">#         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>    <span class="p">):</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="w">        </span><span class="sd">"""</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="sd">        Hook called when a model instance is deleted, for each field.</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">        Mirrors on_save() but for cleanup operations. Specialized fields use this</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">        to remove entries from their secondary data structures when a model is</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">        deleted, maintaining index consistency.</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">        Important Timing Note:</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">        ----------------------</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">        This hook is also called during Model.save() when a model's key changes</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">        (i.e., when a KeyField value is modified). In this case, on_delete() is</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">        called for the old key values before on_save() is called for the new ones.</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">        This ensures the old index entries are cleaned up.</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">        Implementation Pattern:</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">        -----------------------</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">        Mixins override this to remove their index entries:</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">        - KeyFieldMixin: Removes model key from the set for the old value</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">        - SortedFieldMixin: Removes model key from the sorted set</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">        - GeoField: Removes model key from the geo index</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">            model_instance: The Model instance being deleted</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">            field_name: Name of this field on the model</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">            field_value: Current value of the field (may be None)</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="sd">            pipeline: Optional Redis pipeline for batched operations</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">            **kwargs: Additional context</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">            The pipeline if provided, otherwise None.</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">        """</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="w">        </span><span class="sd">"""</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">        Declare which query filter parameters this field supports.</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">        The Query system uses this method to validate filter() arguments and route</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">        them to the appropriate field's filter_query() method. Each field type</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">        advertises what query operations it supports.</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        Design Pattern:</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">        ---------------</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">        This method returns the set of valid parameter names for Query.filter().</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">        The naming convention follows Django's double-underscore pattern:</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">        - "field_name" - exact match</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">        - "field_name__gt" - greater than</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">        - "field_name__contains" - substring match</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">        - etc.</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a><span class="sd">        Mixins extend this by calling super().get_filter_query_params() and adding</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a><span class="sd">        their supported parameters via set union.</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="sd">        Examples by Field Type:</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="sd">        -----------------------</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">        - Base Field: Returns empty set (no filtering on plain fields)</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">        - KeyFieldMixin: {field_name, field_name__isnull, field_name__contains,</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a><span class="sd">                         field_name__startswith, field_name__endswith, field_name__in}</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a><span class="sd">        - SortedFieldMixin: {field_name, field_name__gt, field_name__gte,</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a><span class="sd">                            field_name__lt, field_name__lte}</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a><span class="sd">            field_name: The name of this field on the model. Parameter names are</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a><span class="sd">                derived from this (e.g., "price" -&gt; "price__gte").</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a><span class="sd">            Set of valid query parameter strings for this field.</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">        """</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>        <span class="k">return</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a><span class="w">        </span><span class="sd">"""</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">        Execute a filter query and return matching model keys.</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a><span class="sd">        This is the query execution counterpart to get_filter_query_params().</span>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a><span class="sd">        After the Query class validates that filter parameters are supported,</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a><span class="sd">        it delegates to this method to actually perform the Redis lookup.</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a><span class="sd">        Why Return Keys (Not Instances)?</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a><span class="sd">        ---------------------------------</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a><span class="sd">        Returning Redis keys rather than model instances enables efficient</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a><span class="sd">        query composition. Multiple filter conditions produce sets of keys that</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a><span class="sd">        can be intersected (AND) or unioned (OR) before any model data is fetched.</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a><span class="sd">        This is a deliberate trade-off: more complex query logic in exchange for</span>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a><span class="sd">        minimal Redis round-trips.</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a><span class="sd">        Implementation by Field Type:</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a><span class="sd">        -----------------------------</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a><span class="sd">        - KeyFieldMixin: Uses Redis SMEMBERS on value-indexed sets, or KEYS</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a><span class="sd">          pattern matching for wildcard queries</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a><span class="sd">        - SortedFieldMixin: Uses Redis ZRANGEBYSCORE for range queries</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a><span class="sd">        - GeoField: Uses Redis GEORADIUS for geographic queries</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a><span class="sd">            model: The Model class to query against</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a><span class="sd">            field_name: Name of the field being filtered</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a><span class="sd">            **query_params: Filter parameters (e.g., price__gte=10.0)</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a><span class="sd">            Set of Redis keys (as bytes) for matching model instances.</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a><span class="sd">            QueryException: Base Field does not support filtering. This ensures</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a><span class="sd">                users explicitly choose queryable field types (KeyField, SortedField)</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="sd">                rather than accidentally expecting queries on plain fields.</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a><span class="sd">        """</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>        <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>            <span class="s2">"Query filter not allowed on base Field. Consider using a KeyField"</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -6266,6 +6347,212 @@ need to extend this key further to distinguish between structures.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="popoto.fields.field.Field.pre_save_validate" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">pre_save_validate</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#popoto.fields.field.Field.pre_save_validate" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Raise to abort a save before ANY write is issued or queued.</p>
+<p>Runs from ONE site in <code>Model.save()</code> -- after the <code>pre_save</code> gate and
+before the partial/full save split -- so it covers all four save arms,
+including the two external-pipeline arms that return before either eager
+indexed-field loop is reached. That is what distinguishes it from
+:meth:<code>on_save</code>, which on the internal-pipeline arms has already let
+every <code>IndexedFieldMixin</code> field commit its hash value and index entry,
+and on the external-pipeline arms runs only as a queued command.</p>
+<p>On a partial save the dispatch is scoped to <code>update_fields</code>, so a save
+of an unrelated column cannot trip a validation this field owns.</p>
+<p>Default: no-op. Implement it only for a check that must precede every
+write on the model, not merely every write this field owns.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>model_instance</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../../models/base/#popoto.models.base.Model">Model</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The Model instance being saved.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>field_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Name of this field on the model.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>field_value</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Current value of the field (may be None).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional context, forwarded from <code>Model.save()</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>None</code>. Signal a refusal by raising.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/fields/field.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-619">619</a></span>
+<span class="normal"><a href="#__codelineno-0-620">620</a></span>
+<span class="normal"><a href="#__codelineno-0-621">621</a></span>
+<span class="normal"><a href="#__codelineno-0-622">622</a></span>
+<span class="normal"><a href="#__codelineno-0-623">623</a></span>
+<span class="normal"><a href="#__codelineno-0-624">624</a></span>
+<span class="normal"><a href="#__codelineno-0-625">625</a></span>
+<span class="normal"><a href="#__codelineno-0-626">626</a></span>
+<span class="normal"><a href="#__codelineno-0-627">627</a></span>
+<span class="normal"><a href="#__codelineno-0-628">628</a></span>
+<span class="normal"><a href="#__codelineno-0-629">629</a></span>
+<span class="normal"><a href="#__codelineno-0-630">630</a></span>
+<span class="normal"><a href="#__codelineno-0-631">631</a></span>
+<span class="normal"><a href="#__codelineno-0-632">632</a></span>
+<span class="normal"><a href="#__codelineno-0-633">633</a></span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span>
+<span class="normal"><a href="#__codelineno-0-642">642</a></span>
+<span class="normal"><a href="#__codelineno-0-643">643</a></span>
+<span class="normal"><a href="#__codelineno-0-644">644</a></span>
+<span class="normal"><a href="#__codelineno-0-645">645</a></span>
+<span class="normal"><a href="#__codelineno-0-646">646</a></span>
+<span class="normal"><a href="#__codelineno-0-647">647</a></span>
+<span class="normal"><a href="#__codelineno-0-648">648</a></span>
+<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="k">def</span><span class="w"> </span><span class="nf">pre_save_validate</span><span class="p">(</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>    <span class="n">field_value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a><span class="w">    </span><span class="sd">"""Raise to abort a save before ANY write is issued or queued.</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a><span class="sd">    Runs from ONE site in ``Model.save()`` -- after the ``pre_save`` gate and</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a><span class="sd">    before the partial/full save split -- so it covers all four save arms,</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">    including the two external-pipeline arms that return before either eager</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="sd">    indexed-field loop is reached. That is what distinguishes it from</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">    :meth:`on_save`, which on the internal-pipeline arms has already let</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="sd">    every ``IndexedFieldMixin`` field commit its hash value and index entry,</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="sd">    and on the external-pipeline arms runs only as a queued command.</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">    On a partial save the dispatch is scoped to ``update_fields``, so a save</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">    of an unrelated column cannot trip a validation this field owns.</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">    Default: no-op. Implement it only for a check that must precede every</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">    write on the model, not merely every write this field owns.</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">        model_instance: The Model instance being saved.</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">        field_name: Name of this field on the model.</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">        field_value: Current value of the field (may be None).</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">        **kwargs: Additional context, forwarded from ``Model.save()``.</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">        ``None``. Signal a refusal by raising.</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">    """</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="k">return</span> <span class="kc">None</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="popoto.fields.field.Field.on_save" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">on_save</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
 
@@ -6424,42 +6711,7 @@ base implementation is a no-op.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-619">619</a></span>
-<span class="normal"><a href="#__codelineno-0-620">620</a></span>
-<span class="normal"><a href="#__codelineno-0-621">621</a></span>
-<span class="normal"><a href="#__codelineno-0-622">622</a></span>
-<span class="normal"><a href="#__codelineno-0-623">623</a></span>
-<span class="normal"><a href="#__codelineno-0-624">624</a></span>
-<span class="normal"><a href="#__codelineno-0-625">625</a></span>
-<span class="normal"><a href="#__codelineno-0-626">626</a></span>
-<span class="normal"><a href="#__codelineno-0-627">627</a></span>
-<span class="normal"><a href="#__codelineno-0-628">628</a></span>
-<span class="normal"><a href="#__codelineno-0-629">629</a></span>
-<span class="normal"><a href="#__codelineno-0-630">630</a></span>
-<span class="normal"><a href="#__codelineno-0-631">631</a></span>
-<span class="normal"><a href="#__codelineno-0-632">632</a></span>
-<span class="normal"><a href="#__codelineno-0-633">633</a></span>
-<span class="normal"><a href="#__codelineno-0-634">634</a></span>
-<span class="normal"><a href="#__codelineno-0-635">635</a></span>
-<span class="normal"><a href="#__codelineno-0-636">636</a></span>
-<span class="normal"><a href="#__codelineno-0-637">637</a></span>
-<span class="normal"><a href="#__codelineno-0-638">638</a></span>
-<span class="normal"><a href="#__codelineno-0-639">639</a></span>
-<span class="normal"><a href="#__codelineno-0-640">640</a></span>
-<span class="normal"><a href="#__codelineno-0-641">641</a></span>
-<span class="normal"><a href="#__codelineno-0-642">642</a></span>
-<span class="normal"><a href="#__codelineno-0-643">643</a></span>
-<span class="normal"><a href="#__codelineno-0-644">644</a></span>
-<span class="normal"><a href="#__codelineno-0-645">645</a></span>
-<span class="normal"><a href="#__codelineno-0-646">646</a></span>
-<span class="normal"><a href="#__codelineno-0-647">647</a></span>
-<span class="normal"><a href="#__codelineno-0-648">648</a></span>
-<span class="normal"><a href="#__codelineno-0-649">649</a></span>
-<span class="normal"><a href="#__codelineno-0-650">650</a></span>
-<span class="normal"><a href="#__codelineno-0-651">651</a></span>
-<span class="normal"><a href="#__codelineno-0-652">652</a></span>
-<span class="normal"><a href="#__codelineno-0-653">653</a></span>
-<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-654">654</a></span>
 <span class="normal"><a href="#__codelineno-0-655">655</a></span>
 <span class="normal"><a href="#__codelineno-0-656">656</a></span>
 <span class="normal"><a href="#__codelineno-0-657">657</a></span>
@@ -6480,63 +6732,98 @@ base implementation is a no-op.</p>
 <span class="normal"><a href="#__codelineno-0-672">672</a></span>
 <span class="normal"><a href="#__codelineno-0-673">673</a></span>
 <span class="normal"><a href="#__codelineno-0-674">674</a></span>
-<span class="normal"><a href="#__codelineno-0-675">675</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>    <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a><span class="p">):</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a><span class="w">    </span><span class="sd">"""</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a><span class="sd">    Hook called when a model instance is saved, for each field.</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">    This is the primary extension point for specialized fields that maintain</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a><span class="sd">    secondary data structures. The Model.save() method iterates through all</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a><span class="sd">    fields and calls their on_save() hooks, allowing each field type to update</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="sd">    its indexes.</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="sd">    Pipeline Support:</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">    -----------------</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">    The optional pipeline parameter enables atomic batch operations. When</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">    provided, implementations should add their Redis commands to the pipeline</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">    rather than executing immediately. This is critical for consistency -</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">    the main model data and all secondary indexes are saved in a single</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">    Redis transaction.</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">    Implementation Pattern:</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">    -----------------------</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">    Mixins override this to add their index updates:</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">    - KeyFieldMixin: Adds model key to a set keyed by field value</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">    - SortedFieldMixin: Adds model key to a sorted set with field value as score</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">    - GeoField: Adds model key to a geo index</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">    Each mixin should call super().on_save() to allow chaining, though the</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">    base implementation is a no-op.</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">        model_instance: The Model instance being saved</span>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a><span class="sd">        field_name: Name of this field on the model</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">        field_value: Current value of the field (may be None)</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">        pipeline: Optional Redis pipeline for batched operations</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">        **kwargs: Additional context (e.g., ignore_errors)</span>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a><span class="sd">        The pipeline if provided, otherwise None. Mixins that add commands</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="sd">        to the pipeline must return it for chaining.</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">    """</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a>    <span class="c1"># todo: create choice Sets of instance keys for fields using choices option</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>    <span class="c1"># if model_instance._meta.fields[field_name].choices:</span>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a>    <span class="c1">#     # this will not work! how to edit, delete, prevent overwrite and duplicates?</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a>    <span class="c1">#     field_value_b = cls.encode(field_value)</span>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="c1">#     if pipeline:</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a>    <span class="c1">#         return pipeline.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a>    <span class="c1">#     else:</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>    <span class="c1">#         from ..redis_db import POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a>    <span class="c1">#         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span>
+<span class="normal"><a href="#__codelineno-0-677">677</a></span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span>
+<span class="normal"><a href="#__codelineno-0-693">693</a></span>
+<span class="normal"><a href="#__codelineno-0-694">694</a></span>
+<span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>    <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a><span class="p">):</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">    Hook called when a model instance is saved, for each field.</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="sd">    This is the primary extension point for specialized fields that maintain</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="sd">    secondary data structures. The Model.save() method iterates through all</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a><span class="sd">    fields and calls their on_save() hooks, allowing each field type to update</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">    its indexes.</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">    Pipeline Support:</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a><span class="sd">    -----------------</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="sd">    The optional pipeline parameter enables atomic batch operations. When</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="sd">    provided, implementations should add their Redis commands to the pipeline</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="sd">    rather than executing immediately. This is critical for consistency -</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">    the main model data and all secondary indexes are saved in a single</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">    Redis transaction.</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">    Implementation Pattern:</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">    -----------------------</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">    Mixins override this to add their index updates:</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">    - KeyFieldMixin: Adds model key to a set keyed by field value</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">    - SortedFieldMixin: Adds model key to a sorted set with field value as score</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="sd">    - GeoField: Adds model key to a geo index</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">    Each mixin should call super().on_save() to allow chaining, though the</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">    base implementation is a no-op.</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        model_instance: The Model instance being saved</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">        field_name: Name of this field on the model</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">        field_value: Current value of the field (may be None)</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">        pipeline: Optional Redis pipeline for batched operations</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        **kwargs: Additional context (e.g., ignore_errors)</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">        The pipeline if provided, otherwise None. Mixins that add commands</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">        to the pipeline must return it for chaining.</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">    """</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a>    <span class="c1"># todo: create choice Sets of instance keys for fields using choices option</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a>    <span class="c1"># if model_instance._meta.fields[field_name].choices:</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>    <span class="c1">#     # this will not work! how to edit, delete, prevent overwrite and duplicates?</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>    <span class="c1">#     field_value_b = cls.encode(field_value)</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="c1">#     if pipeline:</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a>    <span class="c1">#         return pipeline.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>    <span class="c1">#     else:</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>    <span class="c1">#         from ..redis_db import POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="c1">#         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -6690,87 +6977,87 @@ This ensures the old index entries are cleaned up.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-677">677</a></span>
-<span class="normal"><a href="#__codelineno-0-678">678</a></span>
-<span class="normal"><a href="#__codelineno-0-679">679</a></span>
-<span class="normal"><a href="#__codelineno-0-680">680</a></span>
-<span class="normal"><a href="#__codelineno-0-681">681</a></span>
-<span class="normal"><a href="#__codelineno-0-682">682</a></span>
-<span class="normal"><a href="#__codelineno-0-683">683</a></span>
-<span class="normal"><a href="#__codelineno-0-684">684</a></span>
-<span class="normal"><a href="#__codelineno-0-685">685</a></span>
-<span class="normal"><a href="#__codelineno-0-686">686</a></span>
-<span class="normal"><a href="#__codelineno-0-687">687</a></span>
-<span class="normal"><a href="#__codelineno-0-688">688</a></span>
-<span class="normal"><a href="#__codelineno-0-689">689</a></span>
-<span class="normal"><a href="#__codelineno-0-690">690</a></span>
-<span class="normal"><a href="#__codelineno-0-691">691</a></span>
-<span class="normal"><a href="#__codelineno-0-692">692</a></span>
-<span class="normal"><a href="#__codelineno-0-693">693</a></span>
-<span class="normal"><a href="#__codelineno-0-694">694</a></span>
-<span class="normal"><a href="#__codelineno-0-695">695</a></span>
-<span class="normal"><a href="#__codelineno-0-696">696</a></span>
-<span class="normal"><a href="#__codelineno-0-697">697</a></span>
-<span class="normal"><a href="#__codelineno-0-698">698</a></span>
-<span class="normal"><a href="#__codelineno-0-699">699</a></span>
-<span class="normal"><a href="#__codelineno-0-700">700</a></span>
-<span class="normal"><a href="#__codelineno-0-701">701</a></span>
-<span class="normal"><a href="#__codelineno-0-702">702</a></span>
-<span class="normal"><a href="#__codelineno-0-703">703</a></span>
-<span class="normal"><a href="#__codelineno-0-704">704</a></span>
-<span class="normal"><a href="#__codelineno-0-705">705</a></span>
-<span class="normal"><a href="#__codelineno-0-706">706</a></span>
-<span class="normal"><a href="#__codelineno-0-707">707</a></span>
-<span class="normal"><a href="#__codelineno-0-708">708</a></span>
-<span class="normal"><a href="#__codelineno-0-709">709</a></span>
-<span class="normal"><a href="#__codelineno-0-710">710</a></span>
-<span class="normal"><a href="#__codelineno-0-711">711</a></span>
-<span class="normal"><a href="#__codelineno-0-712">712</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-712">712</a></span>
 <span class="normal"><a href="#__codelineno-0-713">713</a></span>
 <span class="normal"><a href="#__codelineno-0-714">714</a></span>
 <span class="normal"><a href="#__codelineno-0-715">715</a></span>
 <span class="normal"><a href="#__codelineno-0-716">716</a></span>
-<span class="normal"><a href="#__codelineno-0-717">717</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>    <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="p">):</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="w">    </span><span class="sd">"""</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">    Hook called when a model instance is deleted, for each field.</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">    Mirrors on_save() but for cleanup operations. Specialized fields use this</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">    to remove entries from their secondary data structures when a model is</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">    deleted, maintaining index consistency.</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">    Important Timing Note:</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">    ----------------------</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">    This hook is also called during Model.save() when a model's key changes</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">    (i.e., when a KeyField value is modified). In this case, on_delete() is</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">    called for the old key values before on_save() is called for the new ones.</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">    This ensures the old index entries are cleaned up.</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">    Implementation Pattern:</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">    -----------------------</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">    Mixins override this to remove their index entries:</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">    - KeyFieldMixin: Removes model key from the set for the old value</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">    - SortedFieldMixin: Removes model key from the sorted set</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">    - GeoField: Removes model key from the geo index</span>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">        model_instance: The Model instance being deleted</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a><span class="sd">        field_name: Name of this field on the model</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="sd">        field_value: Current value of the field (may be None)</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="sd">        pipeline: Optional Redis pipeline for batched operations</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="sd">        **kwargs: Additional context</span>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">        The pipeline if provided, otherwise None.</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a><span class="sd">    """</span>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span>
+<span class="normal"><a href="#__codelineno-0-720">720</a></span>
+<span class="normal"><a href="#__codelineno-0-721">721</a></span>
+<span class="normal"><a href="#__codelineno-0-722">722</a></span>
+<span class="normal"><a href="#__codelineno-0-723">723</a></span>
+<span class="normal"><a href="#__codelineno-0-724">724</a></span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span>
+<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+<span class="normal"><a href="#__codelineno-0-727">727</a></span>
+<span class="normal"><a href="#__codelineno-0-728">728</a></span>
+<span class="normal"><a href="#__codelineno-0-729">729</a></span>
+<span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span>
+<span class="normal"><a href="#__codelineno-0-732">732</a></span>
+<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span>
+<span class="normal"><a href="#__codelineno-0-735">735</a></span>
+<span class="normal"><a href="#__codelineno-0-736">736</a></span>
+<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+<span class="normal"><a href="#__codelineno-0-738">738</a></span>
+<span class="normal"><a href="#__codelineno-0-739">739</a></span>
+<span class="normal"><a href="#__codelineno-0-740">740</a></span>
+<span class="normal"><a href="#__codelineno-0-741">741</a></span>
+<span class="normal"><a href="#__codelineno-0-742">742</a></span>
+<span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_delete</span><span class="p">(</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>    <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="p">):</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="sd">    Hook called when a model instance is deleted, for each field.</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">    Mirrors on_save() but for cleanup operations. Specialized fields use this</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">    to remove entries from their secondary data structures when a model is</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">    deleted, maintaining index consistency.</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">    Important Timing Note:</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">    ----------------------</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">    This hook is also called during Model.save() when a model's key changes</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">    (i.e., when a KeyField value is modified). In this case, on_delete() is</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">    called for the old key values before on_save() is called for the new ones.</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">    This ensures the old index entries are cleaned up.</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">    Implementation Pattern:</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">    -----------------------</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">    Mixins override this to remove their index entries:</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">    - KeyFieldMixin: Removes model key from the set for the old value</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">    - SortedFieldMixin: Removes model key from the sorted set</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">    - GeoField: Removes model key from the geo index</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">        model_instance: The Model instance being deleted</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">        field_name: Name of this field on the model</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">        field_value: Current value of the field (may be None)</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="sd">        pipeline: Optional Redis pipeline for batched operations</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        **kwargs: Additional context</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">        The pipeline if provided, otherwise None.</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">    """</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -6868,77 +7155,77 @@ derived from this (e.g., "price" -&gt; "price__gte").</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-719">719</a></span>
-<span class="normal"><a href="#__codelineno-0-720">720</a></span>
-<span class="normal"><a href="#__codelineno-0-721">721</a></span>
-<span class="normal"><a href="#__codelineno-0-722">722</a></span>
-<span class="normal"><a href="#__codelineno-0-723">723</a></span>
-<span class="normal"><a href="#__codelineno-0-724">724</a></span>
-<span class="normal"><a href="#__codelineno-0-725">725</a></span>
-<span class="normal"><a href="#__codelineno-0-726">726</a></span>
-<span class="normal"><a href="#__codelineno-0-727">727</a></span>
-<span class="normal"><a href="#__codelineno-0-728">728</a></span>
-<span class="normal"><a href="#__codelineno-0-729">729</a></span>
-<span class="normal"><a href="#__codelineno-0-730">730</a></span>
-<span class="normal"><a href="#__codelineno-0-731">731</a></span>
-<span class="normal"><a href="#__codelineno-0-732">732</a></span>
-<span class="normal"><a href="#__codelineno-0-733">733</a></span>
-<span class="normal"><a href="#__codelineno-0-734">734</a></span>
-<span class="normal"><a href="#__codelineno-0-735">735</a></span>
-<span class="normal"><a href="#__codelineno-0-736">736</a></span>
-<span class="normal"><a href="#__codelineno-0-737">737</a></span>
-<span class="normal"><a href="#__codelineno-0-738">738</a></span>
-<span class="normal"><a href="#__codelineno-0-739">739</a></span>
-<span class="normal"><a href="#__codelineno-0-740">740</a></span>
-<span class="normal"><a href="#__codelineno-0-741">741</a></span>
-<span class="normal"><a href="#__codelineno-0-742">742</a></span>
-<span class="normal"><a href="#__codelineno-0-743">743</a></span>
-<span class="normal"><a href="#__codelineno-0-744">744</a></span>
-<span class="normal"><a href="#__codelineno-0-745">745</a></span>
-<span class="normal"><a href="#__codelineno-0-746">746</a></span>
-<span class="normal"><a href="#__codelineno-0-747">747</a></span>
-<span class="normal"><a href="#__codelineno-0-748">748</a></span>
-<span class="normal"><a href="#__codelineno-0-749">749</a></span>
-<span class="normal"><a href="#__codelineno-0-750">750</a></span>
-<span class="normal"><a href="#__codelineno-0-751">751</a></span>
-<span class="normal"><a href="#__codelineno-0-752">752</a></span>
-<span class="normal"><a href="#__codelineno-0-753">753</a></span>
-<span class="normal"><a href="#__codelineno-0-754">754</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="w">    </span><span class="sd">"""</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="sd">    Declare which query filter parameters this field supports.</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">    The Query system uses this method to validate filter() arguments and route</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">    them to the appropriate field's filter_query() method. Each field type</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">    advertises what query operations it supports.</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">    Design Pattern:</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">    ---------------</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">    This method returns the set of valid parameter names for Query.filter().</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">    The naming convention follows Django's double-underscore pattern:</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">    - "field_name" - exact match</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">    - "field_name__gt" - greater than</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">    - "field_name__contains" - substring match</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">    - etc.</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">    Mixins extend this by calling super().get_filter_query_params() and adding</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">    their supported parameters via set union.</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">    Examples by Field Type:</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">    -----------------------</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">    - Base Field: Returns empty set (no filtering on plain fields)</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">    - KeyFieldMixin: {field_name, field_name__isnull, field_name__contains,</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">                     field_name__startswith, field_name__endswith, field_name__in}</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">    - SortedFieldMixin: {field_name, field_name__gt, field_name__gte,</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">                        field_name__lt, field_name__lte}</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">        field_name: The name of this field on the model. Parameter names are</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">            derived from this (e.g., "price" -&gt; "price__gte").</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">        Set of valid query parameter strings for this field.</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    """</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>    <span class="k">return</span> <span class="nb">set</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span>
+<span class="normal"><a href="#__codelineno-0-757">757</a></span>
+<span class="normal"><a href="#__codelineno-0-758">758</a></span>
+<span class="normal"><a href="#__codelineno-0-759">759</a></span>
+<span class="normal"><a href="#__codelineno-0-760">760</a></span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span>
+<span class="normal"><a href="#__codelineno-0-773">773</a></span>
+<span class="normal"><a href="#__codelineno-0-774">774</a></span>
+<span class="normal"><a href="#__codelineno-0-775">775</a></span>
+<span class="normal"><a href="#__codelineno-0-776">776</a></span>
+<span class="normal"><a href="#__codelineno-0-777">777</a></span>
+<span class="normal"><a href="#__codelineno-0-778">778</a></span>
+<span class="normal"><a href="#__codelineno-0-779">779</a></span>
+<span class="normal"><a href="#__codelineno-0-780">780</a></span>
+<span class="normal"><a href="#__codelineno-0-781">781</a></span>
+<span class="normal"><a href="#__codelineno-0-782">782</a></span>
+<span class="normal"><a href="#__codelineno-0-783">783</a></span>
+<span class="normal"><a href="#__codelineno-0-784">784</a></span>
+<span class="normal"><a href="#__codelineno-0-785">785</a></span>
+<span class="normal"><a href="#__codelineno-0-786">786</a></span>
+<span class="normal"><a href="#__codelineno-0-787">787</a></span>
+<span class="normal"><a href="#__codelineno-0-788">788</a></span>
+<span class="normal"><a href="#__codelineno-0-789">789</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    Declare which query filter parameters this field supports.</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">    The Query system uses this method to validate filter() arguments and route</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">    them to the appropriate field's filter_query() method. Each field type</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">    advertises what query operations it supports.</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">    Design Pattern:</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    ---------------</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">    This method returns the set of valid parameter names for Query.filter().</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">    The naming convention follows Django's double-underscore pattern:</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">    - "field_name" - exact match</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">    - "field_name__gt" - greater than</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">    - "field_name__contains" - substring match</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">    - etc.</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a><span class="sd">    Mixins extend this by calling super().get_filter_query_params() and adding</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a><span class="sd">    their supported parameters via set union.</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="sd">    Examples by Field Type:</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="sd">    -----------------------</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">    - Base Field: Returns empty set (no filtering on plain fields)</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">    - KeyFieldMixin: {field_name, field_name__isnull, field_name__contains,</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a><span class="sd">                     field_name__startswith, field_name__endswith, field_name__in}</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a><span class="sd">    - SortedFieldMixin: {field_name, field_name__gt, field_name__gte,</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a><span class="sd">                        field_name__lt, field_name__lte}</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a><span class="sd">        field_name: The name of this field on the model. Parameter names are</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a><span class="sd">            derived from this (e.g., "price" -&gt; "price__gte").</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a><span class="sd">        Set of valid query parameter strings for this field.</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">    """</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>    <span class="k">return</span> <span class="nb">set</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -7091,89 +7378,89 @@ rather than accidentally expecting queries on plain fields.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/field.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-756">756</a></span>
-<span class="normal"><a href="#__codelineno-0-757">757</a></span>
-<span class="normal"><a href="#__codelineno-0-758">758</a></span>
-<span class="normal"><a href="#__codelineno-0-759">759</a></span>
-<span class="normal"><a href="#__codelineno-0-760">760</a></span>
-<span class="normal"><a href="#__codelineno-0-761">761</a></span>
-<span class="normal"><a href="#__codelineno-0-762">762</a></span>
-<span class="normal"><a href="#__codelineno-0-763">763</a></span>
-<span class="normal"><a href="#__codelineno-0-764">764</a></span>
-<span class="normal"><a href="#__codelineno-0-765">765</a></span>
-<span class="normal"><a href="#__codelineno-0-766">766</a></span>
-<span class="normal"><a href="#__codelineno-0-767">767</a></span>
-<span class="normal"><a href="#__codelineno-0-768">768</a></span>
-<span class="normal"><a href="#__codelineno-0-769">769</a></span>
-<span class="normal"><a href="#__codelineno-0-770">770</a></span>
-<span class="normal"><a href="#__codelineno-0-771">771</a></span>
-<span class="normal"><a href="#__codelineno-0-772">772</a></span>
-<span class="normal"><a href="#__codelineno-0-773">773</a></span>
-<span class="normal"><a href="#__codelineno-0-774">774</a></span>
-<span class="normal"><a href="#__codelineno-0-775">775</a></span>
-<span class="normal"><a href="#__codelineno-0-776">776</a></span>
-<span class="normal"><a href="#__codelineno-0-777">777</a></span>
-<span class="normal"><a href="#__codelineno-0-778">778</a></span>
-<span class="normal"><a href="#__codelineno-0-779">779</a></span>
-<span class="normal"><a href="#__codelineno-0-780">780</a></span>
-<span class="normal"><a href="#__codelineno-0-781">781</a></span>
-<span class="normal"><a href="#__codelineno-0-782">782</a></span>
-<span class="normal"><a href="#__codelineno-0-783">783</a></span>
-<span class="normal"><a href="#__codelineno-0-784">784</a></span>
-<span class="normal"><a href="#__codelineno-0-785">785</a></span>
-<span class="normal"><a href="#__codelineno-0-786">786</a></span>
-<span class="normal"><a href="#__codelineno-0-787">787</a></span>
-<span class="normal"><a href="#__codelineno-0-788">788</a></span>
-<span class="normal"><a href="#__codelineno-0-789">789</a></span>
-<span class="normal"><a href="#__codelineno-0-790">790</a></span>
-<span class="normal"><a href="#__codelineno-0-791">791</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-791">791</a></span>
 <span class="normal"><a href="#__codelineno-0-792">792</a></span>
 <span class="normal"><a href="#__codelineno-0-793">793</a></span>
 <span class="normal"><a href="#__codelineno-0-794">794</a></span>
 <span class="normal"><a href="#__codelineno-0-795">795</a></span>
 <span class="normal"><a href="#__codelineno-0-796">796</a></span>
-<span class="normal"><a href="#__codelineno-0-797">797</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="w">    </span><span class="sd">"""</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">    Execute a filter query and return matching model keys.</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">    This is the query execution counterpart to get_filter_query_params().</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">    After the Query class validates that filter parameters are supported,</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    it delegates to this method to actually perform the Redis lookup.</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">    Why Return Keys (Not Instances)?</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">    ---------------------------------</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">    Returning Redis keys rather than model instances enables efficient</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">    query composition. Multiple filter conditions produce sets of keys that</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">    can be intersected (AND) or unioned (OR) before any model data is fetched.</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a><span class="sd">    This is a deliberate trade-off: more complex query logic in exchange for</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a><span class="sd">    minimal Redis round-trips.</span>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a><span class="sd">    Implementation by Field Type:</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="sd">    -----------------------------</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="sd">    - KeyFieldMixin: Uses Redis SMEMBERS on value-indexed sets, or KEYS</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">      pattern matching for wildcard queries</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">    - SortedFieldMixin: Uses Redis ZRANGEBYSCORE for range queries</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a><span class="sd">    - GeoField: Uses Redis GEORADIUS for geographic queries</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a><span class="sd">        model: The Model class to query against</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a><span class="sd">        field_name: Name of the field being filtered</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a><span class="sd">        **query_params: Filter parameters (e.g., price__gte=10.0)</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>
-<a id="__codelineno-0-785" name="__codelineno-0-785"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">        Set of Redis keys (as bytes) for matching model instances.</span>
-<a id="__codelineno-0-787" name="__codelineno-0-787"></a>
-<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-789" name="__codelineno-0-789"></a><span class="sd">        QueryException: Base Field does not support filtering. This ensures</span>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a><span class="sd">            users explicitly choose queryable field types (KeyField, SortedField)</span>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="sd">            rather than accidentally expecting queries on plain fields.</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="sd">    """</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a>    <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a>        <span class="s2">"Query filter not allowed on base Field. Consider using a KeyField"</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-797">797</a></span>
+<span class="normal"><a href="#__codelineno-0-798">798</a></span>
+<span class="normal"><a href="#__codelineno-0-799">799</a></span>
+<span class="normal"><a href="#__codelineno-0-800">800</a></span>
+<span class="normal"><a href="#__codelineno-0-801">801</a></span>
+<span class="normal"><a href="#__codelineno-0-802">802</a></span>
+<span class="normal"><a href="#__codelineno-0-803">803</a></span>
+<span class="normal"><a href="#__codelineno-0-804">804</a></span>
+<span class="normal"><a href="#__codelineno-0-805">805</a></span>
+<span class="normal"><a href="#__codelineno-0-806">806</a></span>
+<span class="normal"><a href="#__codelineno-0-807">807</a></span>
+<span class="normal"><a href="#__codelineno-0-808">808</a></span>
+<span class="normal"><a href="#__codelineno-0-809">809</a></span>
+<span class="normal"><a href="#__codelineno-0-810">810</a></span>
+<span class="normal"><a href="#__codelineno-0-811">811</a></span>
+<span class="normal"><a href="#__codelineno-0-812">812</a></span>
+<span class="normal"><a href="#__codelineno-0-813">813</a></span>
+<span class="normal"><a href="#__codelineno-0-814">814</a></span>
+<span class="normal"><a href="#__codelineno-0-815">815</a></span>
+<span class="normal"><a href="#__codelineno-0-816">816</a></span>
+<span class="normal"><a href="#__codelineno-0-817">817</a></span>
+<span class="normal"><a href="#__codelineno-0-818">818</a></span>
+<span class="normal"><a href="#__codelineno-0-819">819</a></span>
+<span class="normal"><a href="#__codelineno-0-820">820</a></span>
+<span class="normal"><a href="#__codelineno-0-821">821</a></span>
+<span class="normal"><a href="#__codelineno-0-822">822</a></span>
+<span class="normal"><a href="#__codelineno-0-823">823</a></span>
+<span class="normal"><a href="#__codelineno-0-824">824</a></span>
+<span class="normal"><a href="#__codelineno-0-825">825</a></span>
+<span class="normal"><a href="#__codelineno-0-826">826</a></span>
+<span class="normal"><a href="#__codelineno-0-827">827</a></span>
+<span class="normal"><a href="#__codelineno-0-828">828</a></span>
+<span class="normal"><a href="#__codelineno-0-829">829</a></span>
+<span class="normal"><a href="#__codelineno-0-830">830</a></span>
+<span class="normal"><a href="#__codelineno-0-831">831</a></span>
+<span class="normal"><a href="#__codelineno-0-832">832</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="k">def</span><span class="w"> </span><span class="nf">filter_query</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">query_params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">    Execute a filter query and return matching model keys.</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a><span class="sd">    This is the query execution counterpart to get_filter_query_params().</span>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a><span class="sd">    After the Query class validates that filter parameters are supported,</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a><span class="sd">    it delegates to this method to actually perform the Redis lookup.</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a><span class="sd">    Why Return Keys (Not Instances)?</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a><span class="sd">    ---------------------------------</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a><span class="sd">    Returning Redis keys rather than model instances enables efficient</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a><span class="sd">    query composition. Multiple filter conditions produce sets of keys that</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a><span class="sd">    can be intersected (AND) or unioned (OR) before any model data is fetched.</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a><span class="sd">    This is a deliberate trade-off: more complex query logic in exchange for</span>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a><span class="sd">    minimal Redis round-trips.</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a><span class="sd">    Implementation by Field Type:</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a><span class="sd">    -----------------------------</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a><span class="sd">    - KeyFieldMixin: Uses Redis SMEMBERS on value-indexed sets, or KEYS</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a><span class="sd">      pattern matching for wildcard queries</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a><span class="sd">    - SortedFieldMixin: Uses Redis ZRANGEBYSCORE for range queries</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a><span class="sd">    - GeoField: Uses Redis GEORADIUS for geographic queries</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a><span class="sd">        model: The Model class to query against</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a><span class="sd">        field_name: Name of the field being filtered</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a><span class="sd">        **query_params: Filter parameters (e.g., price__gte=10.0)</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a><span class="sd">        Set of Redis keys (as bytes) for matching model instances.</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a><span class="sd">        QueryException: Base Field does not support filtering. This ensures</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a><span class="sd">            users explicitly choose queryable field types (KeyField, SortedField)</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="sd">            rather than accidentally expecting queries on plain fields.</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a><span class="sd">    """</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">QueryException</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>    <span class="k">raise</span> <span class="n">QueryException</span><span class="p">(</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="s2">"Query filter not allowed on base Field. Consider using a KeyField"</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

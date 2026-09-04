@@ -2725,6 +2725,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-pre_save_validate-hook-refusing-a-save-before-anything-is-written" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pre_save_validate hook: refusing a save before anything is written
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#lua-scripts-use-run_lua-not-clienteval" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2915,6 +2926,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-pre_save_validate-hook-refusing-a-save-before-anything-is-written" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pre_save_validate hook: refusing a save before anything is written
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#lua-scripts-use-run_lua-not-clienteval" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3017,12 +3039,47 @@ value — an index entry, a sorted-set score, a geo-set member — <code>on_save
 sufficient. A plain re-save (construct a new instance with the same values and call
 <code>save()</code>) fully reconstructs that structure. This is the common case, and it is
 exactly what <code>roundtrip_policy = "rebuild"</code> (the default) declares.</p>
+<h2 id="the-pre_save_validate-hook-refusing-a-save-before-anything-is-written">The <code>pre_save_validate</code> hook: refusing a save before anything is written<a class="headerlink" href="#the-pre_save_validate-hook-refusing-a-save-before-anything-is-written" title="Permanent link">&para;</a></h2>
+<p><code>on_save</code> is the wrong place to <em>reject</em> a save. By the time it runs on the
+internal-pipeline paths, every <code>IndexedFieldMixin</code> field on the model has already
+committed its hash value and its index entry against live Redis; raising there
+leaves those writes behind. <code>pre_save_validate</code> exists for the check that has to
+precede all of them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MonotonicField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">pre_save_validate</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="c1"># Raise to abort. Returning None (the default) allows the save.</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="o">...</span>
+</code></pre></div>
+<p>It is dispatched once per field from a <strong>single</strong> site in <code>Model.save()</code>, after the
+<code>pre_save</code> gate and above the partial/full split — which is above both eager
+indexed-field phases and above the two external-pipeline arms. So a <code>raise</code> from
+this hook means <em>nothing at all</em> was written or queued: not the model hash, not a
+sibling field's index entry, not your own companion structure. On a partial save
+the dispatch is scoped to <code>update_fields</code>, so a save of an unrelated column cannot
+trip a validation your field owns.</p>
+<p>Two rules follow from where it sits:</p>
+<ul>
+<li><strong>Raise, don't return.</strong> The return value is ignored; a refusal is an exception.
+  Prefer a typed error subclassing <code>ValueError</code>, so existing
+  <code>except (TypeError, ValueError)</code> handlers around <code>save()</code> keep working.</li>
+<li><strong>Implement it only for a check that must precede every write on the model</strong>, not
+  merely every write your field owns. A check that only needs to precede your own
+  structure belongs in <code>on_save</code>. Declining a save (the never-record firewall, the
+  write filter) is also <em>not</em> this hook's job — those paths decline by returning,
+  and they run first.</li>
+</ul>
+<p><code>ValidityField</code> is the worked example: it uses <code>pre_save_validate</code> to refuse a
+re-save that declares a <code>valid_from</code> the index disagrees with. See
+<a href="../features/validity-and-supersession/#valid-time-has-one-writer">Valid-time has one writer</a>.</p>
 <h2 id="lua-scripts-use-run_lua-not-clienteval">Lua scripts: use <code>run_lua</code>, not <code>client.eval</code><a class="headerlink" href="#lua-scripts-use-run_lua-not-clienteval" title="Permanent link">&para;</a></h2>
 <p>A field that needs atomicity should run its script through
 <code>popoto.redis_db.run_lua</code>, which takes the same arguments <code>client.eval</code> does:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">run_lua</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">run_lua</span><span class="p">(</span><span class="n">pipeline</span> <span class="ow">or</span> <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">MY_LUA</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">key_a</span><span class="p">,</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">arg_1</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">run_lua</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">run_lua</span><span class="p">(</span><span class="n">pipeline</span> <span class="ow">or</span> <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">MY_LUA</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">key_a</span><span class="p">,</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">arg_1</span><span class="p">)</span>
 </code></pre></div>
 <p><code>run_lua</code> caches a redis-py <code>Script</code> per script text and sends <code>EVALSHA</code>,
 falling back to loading the source only when the server does not know the
@@ -3043,10 +3100,10 @@ namespace silently. <code>ModelField</code> and <code>MoField</code> both strip 
 the second one now raises <code>TypeError</code> naming the class that already owns the
 namespace, instead of letting both write into the same index keys. If you
 hit that, give the newcomer an explicit namespace:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.models.db_key</span><span class="w"> </span><span class="kn">import</span> <span class="n">DB_key</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MoField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">field_class_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span><span class="s2">"$MoF2"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.models.db_key</span><span class="w"> </span><span class="kn">import</span> <span class="n">DB_key</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MoField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">field_class_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span><span class="s2">"$MoF2"</span><span class="p">)</span>
 </code></pre></div>
 <p>An explicit <code>field_class_key</code> is honored as-is and is the right tool
 whenever the derived spelling is undesirable for a new class.</p>
@@ -3076,25 +3133,25 @@ enforced by that test, but the obligation is the same: if your field holds state
   preserved. A field declaring <code>"partial"</code> must also set <code>roundtrip_note</code> explaining
   what is lost and why — typically citing a tracking issue for future work.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">LearnedScoreField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">        </span><span class="sd">"""Return this field's auxiliary state, or None if there is nothing to carry."""</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"score"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">raw</span><span class="p">)}</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">        </span><span class="sd">"""Restore state after the record has been constructed and saved."""</span>
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>            <span class="k">return</span>
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">"score"</span><span class="p">]</span>
-<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>        <span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">LearnedScoreField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">        </span><span class="sd">"""Return this field's auxiliary state, or None if there is nothing to carry."""</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"score"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">raw</span><span class="p">)}</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">        </span><span class="sd">"""Restore state after the record has been constructed and saved."""</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>            <span class="k">return</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">"score"</span><span class="p">]</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>        <span class="p">)</span>
 </code></pre></div>
 <p><code>export_state</code> is called once per field per exported record, after the field's plain
 value has already been captured by <code>to_dict()</code>. Read whatever secondary Redis
@@ -3117,15 +3174,15 @@ than a field-scoped one. <code>popoto.transfer</code> walks <code>type(instance)
 <code>export_state</code>/<code>import_state</code> on any class that defines them <strong>as its own
 attribute</strong> (<code>"export_state" in cls.__dict__</code>), with the same two-value shape minus
 <code>field_name</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AuditedMixin</span><span class="p">:</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"audit_log"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_audit_log</span><span class="p">()}</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">if</span> <span class="n">state</span><span class="p">:</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_write_audit_log</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">"audit_log"</span><span class="p">])</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AuditedMixin</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"audit_log"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_audit_log</span><span class="p">()}</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        <span class="k">if</span> <span class="n">state</span><span class="p">:</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_write_audit_log</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">"audit_log"</span><span class="p">])</span>
 </code></pre></div>
 <p>State from a model-level mixin is keyed by the mixin's class name in the export
 file, distinct from the field-keyed state above. <code>Model</code> itself defines neither

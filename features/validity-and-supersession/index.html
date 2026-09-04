@@ -1354,6 +1354,56 @@
   
 </li>
         
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#same-transaction-successor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Same-transaction successor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#typed-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typed errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#valid-time-has-one-writer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Valid-time has one writer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Valid-time has one writer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reconciling-a-record-that-already-diverges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reconciling a record that already diverges
+      
+    </span>
+  </a>
+  
+</li>
+        
           <li class="md-nav__item">
   <a href="#bidirectional-chain-traversal" class="md-nav__link">
     <span class="md-ellipsis">
@@ -3123,6 +3173,56 @@
   
 </li>
         
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#same-transaction-successor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Same-transaction successor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#typed-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typed errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#valid-time-has-one-writer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Valid-time has one writer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Valid-time has one writer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reconciling-a-record-that-already-diverges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reconciling a record that already diverges
+      
+    </span>
+  </a>
+  
+</li>
+        
           <li class="md-nav__item">
   <a href="#bidirectional-chain-traversal" class="md-nav__link">
     <span class="md-ellipsis">
@@ -3486,15 +3586,137 @@ enforced inside the one script:</p>
 <li><strong>Idempotent under retry.</strong> A <code>ZSCORE != +inf</code> guard refuses to re-close an
   already-closed record, so two writers racing the same identity serialize
   into a two-link chain rather than forking.</li>
-<li><strong>Graceful degradation on unsaved instances.</strong> Key resolution is wrapped in
-  <code>except (TypeError, ValueError)</code>; an unsaved instance degrades to a no-op
-  <em>before</em> any write is issued, so no partial index state (no <code>valid_from</code>
-  entry, no chain link, no pointer) is ever left behind.</li>
+<li>
+<p><strong>Membership is decided inside the script, at the instant of the write.</strong>
+  <code>SUPERSEDE_LUA</code> runs an <code>EXISTS</code> against each member the caller named, in the
+  same atomic script invocation that writes. A member that does not exist raises
+  <code>ValidityMemberAbsentError</code> and nothing at all is written — the script's
+  validation phase returns before its first write command, so no partial index
+  state (no <code>valid_from</code> entry, no chain link, no pointer) is possible.</p>
+<p>Deciding it client-side, during key resolution, would answer the right
+question at a moment when the answer cannot stay true: the write it guards
+happens later, inside the script, at EXEC time. See <strong>Same-transaction
+successor</strong> below for the shape that difference makes possible.</p>
+</li>
 </ul>
+<h2 id="same-transaction-successor">Same-transaction successor<a class="headerlink" href="#same-transaction-successor" title="Permanent link">&para;</a></h2>
+<p>Append the new claim and close the old claim's validity interval in a single
+<code>MULTI</code>/<code>EXEC</code>, so no reader ever sees both open or neither present:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">new</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">invalidate</span><span class="p">(</span><span class="n">old</span><span class="p">,</span> <span class="n">superseded_by</span><span class="o">=</span><span class="n">new</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+</code></pre></div>
+<p>This is the recommended spelling, and it works because the membership guard is
+inside the script. <code>new.save(pipeline=pipe)</code> only <em>queues</em> the successor's
+<code>HSET</code>; a probe running at call time would see no such key and have to treat the
+successor as unsaved. The guard runs instead when the script's body executes
+inside <code>MULTI</code>, by which point the <code>HSET</code> has applied.</p>
+<p>For the same shape with the save included, and with a <em>typed</em> error instead of a
+raw <code>ResponseError</code>, use the combined entry point:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">save_and_supersede</span><span class="p">(</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">new</span><span class="p">,</span> <span class="n">identity_key</span><span class="o">=</span><span class="p">(</span><span class="s2">"user_42"</span><span class="p">,</span> <span class="s2">"plan"</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">result</span><span class="o">.</span><span class="n">closed_key</span>  <span class="c1"># the superseded record's Redis key, or None</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># The identity-free form, naming the incumbent explicitly:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">save_and_invalidate</span><span class="p">(</span><span class="n">new</span><span class="p">,</span> <span class="n">closes</span><span class="o">=</span><span class="n">old</span><span class="p">)</span>
+</code></pre></div>
+<p>Both own their pipeline by default, so the save and the close are atomic by
+construction. Pass <code>pipeline=</code> to compose onto a caller pipeline instead; the
+returned <code>SupersedeResult</code> then reports <code>closed_key=None</code> — meaning <em>unknown
+until you execute</em>, not "nothing was closed" — plus a <code>close_index</code> you read out
+of your own <code>execute()</code> results.</p>
+<h2 id="typed-errors">Typed errors<a class="headerlink" href="#typed-errors" title="Permanent link">&para;</a></h2>
+<p>Every <code>SUPERSEDE_LUA</code> failure has exactly one Python counterpart. All three
+subclass <code>ValidityError</code>, which subclasses <code>ValueError</code> — so existing
+<code>except (TypeError, ValueError)</code> handlers and <code>pytest.raises(ValueError)</code>
+assertions keep their meaning.</p>
+<table>
+<thead>
+<tr>
+<th>Lua reply token</th>
+<th>Exception</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POPOTO_VALIDITY_MEMBER_ABSENT &lt;role&gt; &lt;key&gt;</code></td>
+<td><code>ValidityMemberAbsentError</code></td>
+<td>The successor, or an explicitly-named incumbent, did not exist at write time</td>
+</tr>
+<tr>
+<td><code>POPOTO_VALIDITY_CLOSE_BEFORE_START</code></td>
+<td><code>ValidityCloseBeforeStartError</code></td>
+<td>The close instant precedes the record's own stored <code>valid_from</code></td>
+</tr>
+<tr>
+<td><code>POPOTO_VALIDITY_VALID_FROM_CONFLICT &lt;stored&gt; &lt;requested&gt;</code></td>
+<td><code>ValidityValidFromConflictError</code></td>
+<td>An asserted <code>valid_from</code> disagrees with the stored start</td>
+</tr>
+</tbody>
+</table>
+<p>An incumbent resolved from the open-claim pointer is a <em>hint</em>, not an assertion:
+a pointer left naming a hard-deleted record reads as "no incumbent", the same way
+<code>chain()</code> reads a dangling link. Only an incumbent the caller named explicitly
+raises. That is what keeps a partial <code>import_state</code> transfer supersedable.</p>
+<p><strong>Pipeline-mode caveat.</strong> The <code>ResponseError</code> -&gt; typed-exception remap lives on
+<code>execute_supersede</code>'s non-pipeline branch. On a caller-supplied pipeline,
+redis-py raises during <code>pipe.execute()</code> result parsing — long after
+<code>execute_supersede</code> returned — so you get a raw
+<code>redis.exceptions.ResponseError</code>. <code>save_and_supersede</code> / <code>save_and_invalidate</code>
+own their <code>execute()</code> and are the supported way to get a typed error in pipeline
+shape.</p>
+<h2 id="valid-time-has-one-writer">Valid-time has one writer<a class="headerlink" href="#valid-time-has-one-writer" title="Permanent link">&para;</a></h2>
+<p>The field value at construction is the single authoritative writer of
+valid-time:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">Fact</span><span class="p">(</span><span class="n">fact_id</span><span class="o">=</span><span class="s2">"plan-2"</span><span class="p">,</span> <span class="n">validity</span><span class="o">=</span><span class="n">event_time</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div>
+<p><code>at=</code> on <code>supersede()</code> / <code>invalidate()</code> is a <strong>close-time</strong> assertion about the
+incumbent, never a start-time assertion about the successor. Asserting it for
+the successor would raise on every ordinary supersede, since the successor's
+stored start is its own save clock.</p>
+<p>Two readings of "valid from" exist and they differ legitimately:</p>
+<ul>
+<li><code>instance.validity</code> is the <strong>declared</strong> value. <code>None</code> means "not declared,
+  defaulted to the save clock".</li>
+<li><code>ValidityField.get_valid_from(Model, "validity", member_key=...)</code> is the
+  <strong>effective</strong> value — the index score, which is what every <code>as_of</code> query
+  answers against.</li>
+</ul>
+<p>A re-save that <em>declares</em> a start disagreeing with the stored one now raises
+<code>ValidityValidFromConflictError</code> rather than losing silently to the script's
+<code>ZADD NX</code>. The check runs from a <code>Field.pre_save_validate</code> hook dispatched from a
+single site in <code>Model.save()</code>, above the partial/full split and above both eager
+indexed-field phases, so a rejected save writes nothing at all: not the model
+hash, not a sibling <code>IndexedField</code>'s index entry, not an interval. On the
+external-pipeline path it queues nothing onto the caller's pipeline for that
+call.</p>
+<h3 id="reconciling-a-record-that-already-diverges">Reconciling a record that already diverges<a class="headerlink" href="#reconciling-a-record-that-already-diverges" title="Permanent link">&para;</a></h3>
+<p>There is <strong>no data migration</strong> — no stored key, score, or hash field changes
+shape, and no backfill runs. But a record that already carries a hash/index
+divergence will refuse a <em>full</em> <code>save()</code> until an operator reconciles it. A
+partial save of an unrelated column is unaffected, because the dispatch is scoped
+to <code>update_fields</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Adopt the index -- the value every as_of query already answers against:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">effective</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_valid_from</span><span class="p">(</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">,</span> <span class="n">member_key</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">obj</span><span class="o">.</span><span class="n">validity</span> <span class="o">=</span> <span class="n">effective</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1"># Or make the declared value authoritative -- plain ZADD, no NX, so it</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># overwrites the score ZADD NX refused to update:</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="n">vf_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_interval_keys</span><span class="p">(</span><span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">)</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">vf_key</span><span class="p">,</span> <span class="p">{</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">validity</span><span class="p">)})</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div>
 <h3 id="bidirectional-chain-traversal">Bidirectional chain traversal<a class="headerlink" href="#bidirectional-chain-traversal" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">superseded_by</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>  <span class="c1"># one hop forward, or None at the head</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersedes</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>     <span class="c1"># one hop backward, or None at the tail</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>          <span class="c1"># full chain, oldest first, from any anchor</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">superseded_by</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>  <span class="c1"># one hop forward, or None at the head</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersedes</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>     <span class="c1"># one hop backward, or None at the tail</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>          <span class="c1"># full chain, oldest first, from any anchor</span>
 </code></pre></div>
 <p><code>chain()</code> walks backward to the oldest ancestor and forward to the newest
 descendant, so it is recoverable from any member, not just an endpoint.
@@ -3502,6 +3724,13 @@ Traversal terminates on a cycle (a <code>seen</code> set) and on a dangling link
 chain HASH entry naming a record whose <code>valid_from</code> entry no longer exists,
 which happens when <code>on_delete</code> has scrubbed that record's own chain <em>fields</em>
 but a neighbor's link still names it as a <em>value</em>.</p>
+<p><code>chain()</code> returns <code>[]</code> for an unsaved instance. That guard lives in <code>chain()</code>
+itself, using the same <code>ZSCORE</code>-on-<code>valid_from</code> rule the walk already applies to
+a dangling link — an anchor and a link are judged by one criterion. It is
+deliberately <em>not</em> inherited from key resolution: key resolution issues no Redis
+command at all, so that the mutation paths pay one fewer round trip and the
+membership decision stays where it belongs, inside the script. Reads never raise;
+<code>superseded_by()</code> / <code>supersedes()</code> on an unsaved instance still return <code>None</code>.</p>
 <h2 id="three-gating-layers">Three gating layers<a class="headerlink" href="#three-gating-layers" title="Permanent link">&para;</a></h2>
 <p><code>ContextAssembler</code> never calls <code>top_by_decay</code> — every retrieval call is
 <code>composite_score</code> or <code>fuse</code>, and the BM25 and graph-propagation arms bypass
@@ -3545,7 +3774,7 @@ is the only one that enforces membership on the composite path; Layer 3 is the
 only one that reaches <code>fuse</code>/BM25/graph. The one path no layer covers is a
 direct <code>top_by_decay</code> on a <code>CyclicDecayField</code> — see "Known limitations".</p>
 <h2 id="point-in-time-reconstruction">Point-in-time reconstruction<a class="headerlink" href="#point-in-time-reconstruction" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"plan"</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"plan"</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
 </code></pre></div>
 <p><code>assemble()</code> gains a keyword-only <code>as_of: float | None = None</code>. The default
 <code>None</code> means "now" — only currently-valid records. Passing an epoch
@@ -3558,8 +3787,8 @@ keyword-only <code>as_of</code> directly, for callers that bypass the assembler.
 and all three gating layers a pure passthrough; retrieval stays byte-identical
 to pre-#580 behavior.</p>
 <h2 id="kill-switch">Kill switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
 </code></pre></div>
 <p><code>Defaults.VALIDITY_GATING_ENABLED</code> is a deploy-level boolean, default <code>True</code>,
 read <strong>at call time</strong> in every gating layer — never captured at import — so
@@ -3617,8 +3846,8 @@ loudly if the gate is ever added — update this entry then.
 <li><a href="../provenance-journal/">Provenance Journal</a> — this feature's first real
   consumer: <code>JournalEntry</code> composes <code>ValidityField</code> for its membership axis,
   calls <code>execute_supersede</code> directly on the annotate-and-close write path
-  (never <code>SupersessionProtocol</code>, which no-ops against a same-pipeline
-  successor), and uses <code>chain()</code> for provenance display only, never for
+  (it needs an explicit incumbent and a construction-time valid-from, not the
+  identity pointer), and uses <code>chain()</code> for provenance display only, never for
   membership</li>
 <li><a href="../observation-protocol/">ObservationProtocol</a> — the outcome vocabulary
   that reports contradiction; <code>_apply_contradicted</code> writes provenance through
