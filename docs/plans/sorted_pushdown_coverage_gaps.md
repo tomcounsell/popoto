@@ -397,43 +397,238 @@ If the build runs in a fresh worktree, install `.[dev,embeddings,benchmark,mcp]`
 
 ## Solution
 
-<!-- skeleton -->
+### Key Elements
+
+- **Three `Meta`-carrying model classes** in
+  `tests/test_sorted_range_pushdown.py`: `PushdownDocMetaDesc`
+  (`order_by = "-last_active_at"`), `PushdownDocMetaAsc`
+  (`order_by = "last_active_at"`), `PushdownDocMetaOther`
+  (`order_by = "doc_id"`). `Meta` is class-level, so each case needs its own
+  model. Same field shape as `PushdownDoc`'s pushdown-relevant subset:
+  `room_id` KeyField, `doc_id` KeyField, `last_active_at` SortedField partitioned
+  on `room_id`.
+- **A small seeding helper for the `Meta` models** — `_seed()` is hard-bound to
+  `PushdownDoc`; the `Meta` tests need a `model`-parametrized twin (and, for the
+  other-field case, `doc_id` values anti-correlated with score).
+- **Six new test functions**: one `count()`, three sync `Meta` (desc / asc /
+  other-field), two async `Meta` (desc / other-field).
+- **No new helpers.** `HydrationCounter` and `AsyncHydrationCounter` both already
+  exist in the module; `Defaults` is already imported at line 25. Nothing is
+  added to the file's infrastructure.
+- **No `xfail`, no `skip`, no marker.** Every assertion is hard and passes on
+  `7f057f9`. This is a deliberate reversal of the 2026-08-13 draft.
+
+### Flow
+
+`_seed_meta(Model, n)` into one partition → issue the query under the matching
+hydration counter → assert the returned `doc_id` list **exactly** → assert the
+hydration count is on the correct side of the
+`limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN` boundary, scaled by the
+counter's per-object convention.
+
+### Technical Approach
+
+- **Import the margin, never hardcode it.** `Defaults` is already imported;
+  express every bound as `limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`.
+  The constant is an experimental tuning knob (CLAUDE.md); a literal `11` or `8`
+  turns a future retune into a false regression.
+- **Respect the counter conventions (spike-5).** `HydrationCounter` counts 2 per
+  object, `AsyncHydrationCounter` counts 1. Assert
+  `counter.count <= 2 * (limit + MARGIN)` on sync and
+  `counter.count <= limit + MARGIN` on async, each paired with a
+  `counter.count < POPULATION_SCALED` "it really was bounded" claim and an
+  assertion message naming the guard that broke. Match #602's existing async
+  assertion idiom (`5 <= counter.count <= 5 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN`)
+  rather than inventing a new one.
+- **`count()` test:** four assertions in one function, all against the same
+  60-record seed —
+  (a) `PushdownDoc.query.count(room_id="r1", last_active_at__gte=0) == POPULATION`;
+  (b) build one `QueryBuilder` with `.limit(5)` and assert `.count() == POPULATION`;
+  (c) `len(list(qb)) == 5` **on that same builder object** — this is what proves
+  the limit was live and `count()` deliberately ignored it, and without it (b) is
+  vacuous;
+  (d) the kwargs form `PushdownDoc.query.count(..., limit=5) == POPULATION`.
+- **`Meta` desc/asc tests:** seed 20, query with `limit=3` and **no** `order_by`,
+  assert the exact three-element head, assert bounded hydration.
+- **`Meta` other-field tests:** seed 20 with `doc_id` order the *reverse* of score
+  order, query with `limit=3` and no `order_by`, assert the `doc_id`-ordered head
+  (which is the score-order **tail**), and assert the hydration count shows a
+  **full unbounded read** — the bound must have declined.
+- **Async `Meta` tests** carry `@pytest.mark.asyncio` (pytest-asyncio is in
+  `Mode.STRICT`) and use `AsyncHydrationCounter`. They go in the async section at
+  the bottom of the file, after #602's tests, not interleaved with the sync ones.
+- **Do not touch existing tests.** Everything is additive.
 
 ## Failure Path Test Strategy
 
-<!-- skeleton -->
+### Exception Handling Coverage
+No exception handlers in scope. The added tests exercise no `try/except` in
+production code; the pushdown guards are plain early returns. (The one `try/finally`
+on this path — `_filter_keys_with_pushdown`'s `_pushdown_allowed` reset — is
+already covered by #602's concurrency test.)
+
+### Empty/Invalid Input Handling
+Already covered by the existing `test_non_positive_int_limit_does_not_bound`
+parametrization (`0`, `-1`, `None`, `True`) and `test_no_limit_reads_full_range`.
+The one new input shape — `Meta.order_by` set to a non-string — is guarded at
+`query.py:2447` and `2331` (`if not isinstance(order_by, str): return`), but is
+**out of scope**: `Meta.order_by` is validated at model-definition time, not
+query time, so constructing that case requires bypassing model validation.
+
+### Error State Rendering
+The short-result warning path (`_short_result_action`) is the "error state" here
+and is already covered by four existing tests
+(`test_orphan_density_past_the_margin_warns_and_still_returns_full`,
+`test_margin_absorbs_light_orphan_density_without_a_re_read`,
+`test_margin_absorbs_orphans_on_the_key_list_slice_too`,
+`test_exhausted_range_short_on_orphans_still_warns`) plus #602's
+`test_async_orphan_density_re_reads_and_returns_full`. No new coverage needed —
+but the new tests must not *trip* it, so their seeded data must contain no
+orphans and they need no `caplog` assertions.
 
 ## Test Impact
 
-<!-- skeleton -->
+No existing tests affected — this work is purely additive to
+`tests/test_sorted_range_pushdown.py`. The 30 currently-collected tests keep
+passing unchanged; the new model classes are new names and the widened `_flush()`
+coverage is a superset of the current glob.
+
+- [ ] `tests/test_sorted_range_pushdown.py` — UPDATE (additive only): add three
+  `Meta` model classes, one seeding helper, and six test functions. **Do not
+  modify any existing function body, helper, or import.**
+
+Expected collected count after the change: **36** (30 + 6).
 
 ## Rabbit Holes
 
-<!-- skeleton -->
+- **Re-litigating the async scope.** #602 shipped both the fix and six async
+  tests on 2026-09-04. Re-adding a parity test, a bound test, or (worst) the
+  `xfail(strict=True)` the 2026-08-13 draft specified is duplicate work at best
+  and an immediate `XPASS`-under-strict suite failure at worst. Read the async
+  section of the test file before writing anything async.
+- **Cherry-picking #518's tests verbatim.** They target `_resolve_range_pushdown`
+  / `_range_pushdown_limit`, which do not exist on main, and spy on `zrange`,
+  which is never called (spike-5). A "port" that compiles would be a test that
+  asserts nothing. Rewrite against main's symbols.
+- **Porting #518's `redis_spy` fixture.** Same reason. There is an entire
+  afternoon available in trying to make `zrange.call_args.kwargs["num"] == 5`
+  work against code that calls `zrevrangebyscore(..., num=11)` twice.
+- **Tightening the counters to an exact object count.** Sync counts 2 `HGETALL`s
+  per object and async counts 1; chasing an exact number is a fragile detour into
+  redis-py pipeline internals. Assert boundaries, not equalities.
+- **Making the ascending-`Meta` test "prove" more than it can.** With no `Meta`,
+  sorted-set order is already ascending. No query shape distinguishes "Meta
+  supplied ascending" from "the default was already ascending" through public
+  behavior. Assert what is observable and comment the limit.
+- **Testing `async_count`.** It reports `60` (spike-2) but it does not route
+  through the pushdown gate, so a test for it belongs to the async-query suite,
+  not this one. See No-Gos.
+- **Asserting on `self._pushdown_limit` / `_sorted_field_order` internals.**
+  #600 is about to move exactly that bookkeeping off shared instance state on
+  the sync path. Assert results and hydration counts only, and these tests
+  survive it.
 
 ## Risks
 
-<!-- skeleton -->
+### Risk 1: The plan is built from the stale 2026-08-13 draft
+**Impact:** the builder writes the deleted `xfail(strict=True)` async test, which
+`XPASS`es under `strict=True` and turns the suite red — the exact failure the
+/do-docs cascade warned about in issue comment `5536628727`.
+**Mitigation:** the async task is **deleted from this plan**, not rewritten; the
+Freshness Check names the six #602 tests that subsume it; and the Verification
+table carries an explicit anti-criterion asserting the diff adds **zero** `xfail`
+markers.
+
+### Risk 2: New model classes leak state into other tests on a shared DB
+**Impact:** phantom failures in unrelated modules — the failure mode CLAUDE.md
+gotcha #4 describes (73–158 phantom failures observed historically).
+**Mitigation:** prefix every new model `PushdownDoc*` so the autouse `clean_docs`
+fixture's existing `keys("*PushdownDoc*")` glob sweeps both the model hashes and
+the `$SortF:<ClassName>:...` sorted-set keys. Verify by running the new tests,
+then the full module, then `redis-cli -n <DB> keys '*Pushdown*'` and expecting
+empty.
+
+### Risk 3: A metric measured in the wrong venv or the wrong DB is reported as truth
+**Impact:** this already happened once during the 2026-08-13 planning pass — 12
+spurious failures inherited from `bench/530-post-correction-refresh` because the
+spike ran against a venv whose editable install resolved elsewhere.
+**Mitigation:** the Prerequisites table's first two checks are programmatic; run
+them before any pytest invocation and state the venv path, the commit, and the
+DB alongside every count reported (CLAUDE.md's rule).
+
+### Risk 4: Model-name collision at import time
+**Impact:** popoto registers models globally at class-definition time; a duplicate
+class name across modules raises or silently shadows.
+**Mitigation:** `git grep -n "PushdownDocMeta" tests/` returns nothing today.
+Re-confirm before adding.
+
+### Risk 5: The async `Meta` tests hit the event-loop-bound async client
+**Impact:** "Future attached to a different loop" — the failure the module's
+`clean_docs` fixture already resets `_POPOTO_ASYNC_REDIS_DB` and
+`_async_redis_lock` for.
+**Mitigation:** none needed beyond placing the new async tests in the same module
+so the autouse fixture covers them, which is why they must not move to a new file.
 
 ## Race Conditions
 
-<!-- skeleton -->
+No race conditions in scope for the *new* tests. The sync path is synchronous and
+single-threaded. The async path's shared-`Query` hazard was the subject of #602
+and is already covered by its `test_concurrent_async_filters_do_not_clobber_each_other`;
+the two new async `Meta` tests are single-coroutine and add no concurrency. The
+sync-side twin of that hazard is tracked separately as **#600** and is not
+addressed here.
+
+One **test-level** hazard, unchanged from the prior draft: the module's autouse
+`clean_docs` fixture flushes before and after each test, and several SDLC
+pipelines share this repo. Running on DB 15 has historically produced 73–158
+phantom failures. Export a private `POPOTO_TEST_DB` for every pytest invocation
+in this plan. The six tests that fail by construction on a non-15 DB — five
+`assert db == 15` tests in `tests/test_pytest_plugin.py` plus
+`tests/test_version.py::test_version_matches_pyproject` on a stale editable
+install — are **expected noise, not regressions** (see `docs/sdlc/do-sdlc.md`).
 
 ## No-Gos (Out of Scope)
 
-<!-- skeleton -->
+- **Any async pushdown *implementation* work.** Shipped in #571 / PR #602.
+- **Any async pushdown *parity* test.** Shipped in PR #602 (six tests). Adding
+  more is duplicate coverage.
+- **The `xfail(strict=True)` async bound test** from the 2026-08-13 draft. It
+  would `XPASS` and fail the suite. Deliberately deleted, not deferred.
+- **[SEPARATE-ISSUE #600] Moving sync pushdown bookkeeping off shared instance
+  state.** Structural refactor; this plan's tests are behavioral and will cover it.
+- **`async_count` coverage.** Verified correct (spike-2) but it does not route
+  through the pushdown gate. If wanted, file it against the async query suite.
+- **`Meta.order_by` validation edge cases** (non-string, unknown field name).
+  Validated at model-definition time, not query time.
+- **Anything outside `tests/`.** This issue is test-only.
 
 ## Update System
 
-<!-- skeleton -->
+No update system changes required — test-only, with no runtime, deploy, or
+dependency surface.
 
 ## Agent Integration
 
-<!-- skeleton -->
+No agent integration required — this adds pytest functions to an existing test
+module. No MCP surface, no tool wrapper, no entry point.
 
 ## Documentation
 
-<!-- skeleton -->
+No feature documentation changes required — this plan adds no feature and changes
+no public API. The behaviors being covered are already documented as part of the
+#517 pushdown work and #602's `docs/async.md` note.
+
+### Inline Documentation
+- [ ] Each new test carries a docstring naming the guard it defends and what a
+      dropped guard would return — **short results** (the `Meta`-on-the-sorted-field
+      cases) vs. **wrong results** (the `Meta`-on-another-field cases) — matching
+      the existing file's style.
+- [ ] The ascending-`Meta` test comments that it is a weak discriminator
+      (spike-3): with no `Meta`, sorted-set order is already ascending.
+- [ ] The `count()` test comments that assertion (c) — `len(list(qb)) == 5` on the
+      same builder — is what makes assertion (b) non-vacuous.
+- [ ] The async `Meta` tests comment that they cover the gate #602 armed on the
+      async path but did not exercise with `Meta`.
 
 ## Success Criteria
 
