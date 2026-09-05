@@ -145,6 +145,19 @@ past = Memory.query.filter(agent_id="agent-1").top_by_decay(5, as_of=two_weeks_a
 [ValidityField and SupersessionProtocol](validity-and-supersession.md#point-in-time-reconstruction)
 for how membership is evaluated at a past instant.
 
+### Reading the Index
+
+`count()` and `members()` read a sorted field's index directly, without going through a query. Recipes use them to answer "how many" and "which members" for one partition. Both are classmethods on the field object; the model instance supplies whichever partition values `partition_by` names, the same way `save()` and `delete()` already read them, so an instance with an unset partition field raises `QueryException`.
+
+```python
+field = Memory._meta.fields["relevance"]
+field.count(memory, "relevance")                        # -> int, one ZCARD
+field.members(memory, "relevance", 0, 9)                # -> 10 stalest keys, one ZRANGE
+field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, one ZREVRANGE
+```
+
+`members()` returns Redis keys as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
+
 ## Confidence-Modulated Decay
 
 `base_score_field` scales the curve's **magnitude**, which never changes relative order: a demoted
