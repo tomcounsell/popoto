@@ -1096,20 +1096,35 @@ class Model(metaclass=ModelBase):
         """
         if update_fields is not None:
             # Partial save: only validate and format listed fields
-            for field_name in update_fields:
-                if field_name not in self._meta.fields:
-                    raise ModelException(
-                        f"Unknown field '{field_name}' in update_fields"
+            #
+            # #573: this loop re-assigns each listed field with its own
+            # formatted value, same as the full-save round-trip loop below --
+            # __setattr__ clears a field's quarantine on assignment, so
+            # without the suppression an update_fields save targeting the
+            # *corrupted* field itself would silently drop its own
+            # quarantine record here, before _raise_if_quarantine_blocks ever
+            # runs, and go on to overwrite the preserved raw bytes with the
+            # packed declared default -- the exact silent-overwrite this
+            # guard exists to prevent, just reached through the partial-save
+            # path instead of the full one.
+            self.__dict__["_quarantine_clear_suppressed"] = True
+            try:
+                for field_name in update_fields:
+                    if field_name not in self._meta.fields:
+                        raise ModelException(
+                            f"Unknown field '{field_name}' in update_fields"
+                        )
+                    field = self._meta.fields[field_name]
+                    setattr(
+                        self,
+                        field_name,
+                        field.format_value_pre_save(
+                            getattr(self, field_name),
+                            skip_auto_now=skip_auto_now,
+                        ),
                     )
-                field = self._meta.fields[field_name]
-                setattr(
-                    self,
-                    field_name,
-                    field.format_value_pre_save(
-                        getattr(self, field_name),
-                        skip_auto_now=skip_auto_now,
-                    ),
-                )
+            finally:
+                self.__dict__.pop("_quarantine_clear_suppressed", None)
             return pipeline if pipeline else True
 
         # Full save path (existing behavior, unchanged)

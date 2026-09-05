@@ -24,6 +24,7 @@ import pytest
 
 import popoto
 from popoto.exceptions import CorruptFieldError
+from popoto.models.db_key import DB_key
 from popoto.models.encoding import TYPE_ENCODER_DECODERS, decode_lazy_field
 from popoto.models.query import Query
 from popoto.redis_db import POPOTO_REDIS_DB
@@ -49,6 +50,17 @@ def _make(slug="w1", bio="hello", status="active", count=3, amount=None, tags=No
     w = Widget(slug=slug, bio=bio, status=status, count=count, amount=amount, tags=tags)
     w.save()
     return w
+
+
+class IndexedWidget(popoto.Model):
+    """KeyField plus an IndexedField and a UniqueField, used to pin that a
+    corrupt indexed/unique (non-key) field blocks save() before
+    IndexedFieldMixin's eager index-swap EVAL runs -- confirmed correct by
+    manual review but previously untested (#573 Tech Debt)."""
+
+    slug = popoto.KeyField()
+    email = popoto.UniqueField(type=str)
+    status = popoto.IndexedField(type=str, null=True, default="unknown")
 
 
 def _plant(redis_key, field_name, raw_bytes):
@@ -346,6 +358,134 @@ def test_delete_succeeds_on_poisoned_row_no_orphaned_index_member():
     assert Widget.query.get(slug="w-del") is None
     remaining = Widget.query.filter(slug="w-del").all()
     assert remaining == []
+
+
+# ---------------------------------------------------------------------------
+# Legacy \x00 pointer skip is ordered BEFORE the guarded decode, in all
+# three call sites (#573 Tech Debt: verified manually in review, untested)
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_idxset_pointer_skipped_before_decode_in_all_three_paths(caplog):
+    """A pre-#476 legacy pointer field name (``field\x00idxset``) must never
+    reach the guarded decode seam: the ``\x00`` skip in ``encoding.py`` is
+    ordered before ``_decode_field_value`` at all three call sites
+    (``fields_only``, eager, and ``_create_lazy_model``) specifically so a
+    legacy pointer is never misclassified as a corrupt declared field. A
+    genuine corrupt field planted on the *same* row must still be quarantined
+    normally -- the two mechanisms are independent.
+
+    If the skip were ordered after the decode instead, ``status\x00idxset``
+    would decode its field *name* successfully (``\x00`` is valid UTF-8), fail
+    to find a matching KeyField, then fail to msgpack-decode its garbage
+    value and get quarantined with a 'quarantined field' warning -- which is
+    exactly what this test asserts does NOT happen.
+    """
+    w = _make()
+    pointer_value = b"not-valid-msgpack\xc1"
+    POPOTO_REDIS_DB.hset(w.db_key.redis_key, b"status\x00idxset", pointer_value)
+    _plant(w.db_key.redis_key, "bio", b"\xc1")
+
+    # -- eager (.get()) --
+    with caplog.at_level("WARNING", logger="POPOTO.encoding"):
+        loaded = Widget.query.get(slug="w1")
+    assert loaded is not None
+    assert loaded.bio is None  # genuine corruption still quarantined
+    assert loaded._corrupt_fields.get("bio") == b"\xc1"
+    assert "status\x00idxset" not in loaded._corrupt_fields
+    assert not any("idxset" in r.message for r in caplog.records)
+
+    # -- fields_only (.values()) --
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="POPOTO.encoding"):
+        rows = Widget.query.filter(slug="w1").values("bio", "status").all()
+    row = rows[0]
+    assert "bio" not in row
+    assert row["status"] == "active"
+    assert not any(b"idxset" in k for k in row if isinstance(k, bytes))
+    assert not any("idxset" in r.message for r in caplog.records)
+
+    # -- lazy (.filter() + first access) --
+    caplog.clear()
+    lazy_loaded = Widget.query.filter(slug="w1")[0]
+    assert lazy_loaded._corrupt_fields == {}  # nothing decoded yet
+    with caplog.at_level("WARNING", logger="POPOTO.encoding"):
+        assert lazy_loaded.bio is None
+    assert lazy_loaded._corrupt_fields.get("bio") == b"\xc1"
+    assert "status\x00idxset" not in lazy_loaded._corrupt_fields
+    assert not any("idxset" in r.message for r in caplog.records)
+
+    # Raw bytes of the legacy pointer are preserved untouched, on all paths.
+    assert (
+        POPOTO_REDIS_DB.hget(w.db_key.redis_key, b"status\x00idxset")
+        == pointer_value
+    )
+
+
+# ---------------------------------------------------------------------------
+# Corrupt IndexedField / UniqueField: save() refuses before the eager
+# index-swap EVAL (#573 Tech Debt: verified manually in review, untested)
+# ---------------------------------------------------------------------------
+
+
+def test_corrupt_indexed_and_unique_field_blocks_save_before_index_write():
+    """save()'s quarantine guard must run before IndexedFieldMixin's eager
+    on_save() EVAL, so a poisoned IndexedField/UniqueField's declared default
+    can never land in the live secondary-index Set. Confirmed correct by
+    manual review of save()'s call order; this pins it with an assertion on
+    Set membership, not just on the raised exception.
+    """
+    w = IndexedWidget(slug="iw1", email="a@example.com", status="active")
+    w.save()
+    redis_key = w.db_key.redis_key
+
+    status_field = IndexedWidget._meta.fields["status"]
+    email_field = IndexedWidget._meta.fields["email"]
+    active_set_key = DB_key(
+        status_field.get_special_use_field_db_key(w, "status"), "active"
+    ).redis_key
+    unknown_set_key = DB_key(
+        status_field.get_special_use_field_db_key(w, "status"), "unknown"
+    ).redis_key
+    email_set_key = DB_key(
+        email_field.get_special_use_field_db_key(w, "email"), "a@example.com"
+    ).redis_key
+
+    # Sanity: on_save() populated both index Sets on the healthy save.
+    assert POPOTO_REDIS_DB.sismember(active_set_key, redis_key)
+    assert POPOTO_REDIS_DB.sismember(email_set_key, redis_key)
+
+    _plant(redis_key, "status", b"\xc1")
+    _plant(redis_key, "email", b"\xc1")
+
+    loaded = IndexedWidget.query.get(slug="iw1")
+    assert loaded.status == "unknown"  # declared default, quarantined
+    assert loaded.email is None
+    assert set(loaded._corrupt_fields) == {"status", "email"}
+
+    # Scoped saves (rather than a full save()) isolate each field: a full
+    # save() would raise ModelException from is_valid() on email's
+    # null=False constraint before ever reaching the quarantine guard, which
+    # would prove nothing about the guard itself. update_fields=[...] skips
+    # is_valid() (see pre_save's partial-save branch) and reaches
+    # _raise_if_quarantine_blocks directly, same as
+    # test_partial_save_on_unrelated_field_succeeds above.
+
+    # IndexedField: refuses with CorruptFieldError before on_save()'s eager
+    # index-swap EVAL -- no member is added under the declared default.
+    with pytest.raises(CorruptFieldError, match="status"):
+        loaded.save(update_fields=["status"])
+    assert not POPOTO_REDIS_DB.sismember(unknown_set_key, redis_key)
+    assert POPOTO_REDIS_DB.sismember(active_set_key, redis_key)
+
+    # UniqueField: same guarantee.
+    with pytest.raises(CorruptFieldError, match="email"):
+        loaded.save(update_fields=["email"])
+    assert POPOTO_REDIS_DB.sismember(email_set_key, redis_key)
+
+    # Raw bytes on the hash are untouched by either refused save.
+    assert POPOTO_REDIS_DB.hget(redis_key, "status") == b"\xc1"
+    assert POPOTO_REDIS_DB.hget(redis_key, "email") == b"\xc1"
 
 
 # ---------------------------------------------------------------------------

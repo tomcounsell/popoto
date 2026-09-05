@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Decode is corruption-tolerant for non-key hash fields** ([#573](https://github.com/tomcounsell/popoto/issues/573), item 4 of [#476](https://github.com/tomcounsell/popoto/issues/476)) — previously, one undecodable value anywhere in a model's Redis hash raised out of the decode comprehension and blinded the whole row, healthy fields included; the exception named neither the model, the key, nor the field. All three decode call sites (`fields_only` projections, eager hydration, and the lazy `_create_lazy_model`/first-access path) now route through one guarded seam. A corrupt **non-key** field is quarantined instead of fatal: its raw bytes stay untouched in Redis, the attribute reads as the field's declared default, a `WARNING` is logged on `POPOTO.encoding` naming model/key/field/exception, and the raw bytes land in the new `instance._corrupt_fields`. A corrupt **KeyField** still raises `CorruptFieldError`, because a defaulted key is a wrong identity and is exactly how #537/#538's silent row duplication happened. **Behavior change for read-modify-write loops on a poisoned row:** `save()` now refuses with `CorruptFieldError` when it would overwrite a still-quarantined field it is actually writing (scoped to `update_fields` when given, including when the poisoned field is itself the only one listed), rather than silently packing the declared default over the preserved bytes; assigning a value repairs the field, and `save()` then succeeds. `delete()` is unaffected — it removes the row outright, so quarantine never blocks it. `POPOTO_DECODE_QUARANTINE_DISABLE=1` is the deploy-level escape hatch, restoring the pre-#573 reader that raises on every corrupt field. New public exception: `CorruptFieldError`, exported from `popoto.__init__`. See [Corruption-Tolerant Decode](https://popoto.io/features/corruption-tolerant-decode/).
+
 ## [1.9.0] - 2026-09-05
 
 ### Changed

@@ -86,6 +86,7 @@ nav:
                 - Model Meta Options: 'meta.md'
                 - TTL (Time-to-Live): 'ttl.md'
                 - Indexed Fields: 'indexed_fields.md'
+                - Corruption-Tolerant Decode: 'features/corruption-tolerant-decode.md'
                 - Relationship Field: 'relationship.md'
                 - Multi-Tenancy: 'multi-tenancy.md'
                 - PubSub: 'pubsub.md'
