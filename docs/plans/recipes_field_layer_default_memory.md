@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Small
 owner: Tom Counsell
@@ -100,9 +100,9 @@ All three spikes were code-read spikes run inline during planning (Small appetit
 ### spike-2: Is there already an untracked direct-key load?
 - **Assumption**: "`Model.query.get(redis_key)` can skip `on_read()` through an existing flag."
 - **Method**: code-read
-- **Finding**: No. `Query.get()` (query.py:2017) does one `hgetall`, decodes, then calls `_fire_on_read` unconditionally. `no_track()` lives on `QueryBuilder`, which has no `get`. The recipe's hand-rolled `hgetall` + `decode_popoto_model_hashmap` exists precisely to avoid staging an access for a record about to be deleted (the staged key would be removed again by `_delete_access_tracker_keys`, so the cost is one wasted `RPUSH`+`EXPIRE` per victim, but "byte-identical" means no extra commands). The async mirror (`AsyncQuery.get`, query.py:~3500) has the same unconditional `_fire_on_read`.
+- **Finding**: No. `Query.get()` (query.py:2017 on main) does one `hgetall`, decodes, then calls `_fire_on_read` unconditionally. `no_track()` lives on `QueryBuilder`, which has no `get`. The recipe's hand-rolled `hgetall` + `decode_popoto_model_hashmap` exists precisely to avoid staging an access for a record about to be deleted (the staged key would be removed again by `_delete_access_tracker_keys`, so the cost is one wasted `RPUSH`+`EXPIRE` per victim, but "byte-identical" means no extra commands). The async mirror is `Query.async_get` (query.py:3477 on main); it does the same single `hgetall` and the same unconditional `_fire_on_read` via `to_thread`.
 - **Confidence**: high
-- **Impact on plan**: add `_no_track: bool = False` to `Query.get()` and its async mirror. The underscore name follows the `_execute_filter(_no_track=...)` precedent and cannot collide with a public field name. `Query.get(redis_key=victim, _no_track=True)` then performs exactly one `hgetall`, which keeps the flaky-`hgetall` test's call count intact.
+- **Impact on plan**: add `_no_track: bool = False` to `Query.get()` and to `Query.async_get()`. The underscore name follows the `_execute_filter(_no_track=...)` precedent and cannot collide with a public field name. `Query.get(redis_key=victim, _no_track=True)` then performs exactly one `hgetall`, which keeps the flaky-`hgetall` test's call count intact.
 
 ### spike-3: Where does the eviction counter increment belong?
 - **Assumption**: "`Model.atomic_increment` covers the `incrby` site."
@@ -130,7 +130,7 @@ Redis command sequence per over-cap save: `ZCARD`, `INCRBY`, `ZRANGE`, then per 
 
 ## Architectural Impact
 - **New dependencies**: none external. One new internal module (`popoto/counters.py`).
-- **Interface changes**: all additive. `SortedFieldMixin.count(model_instance, field_name)` and `SortedFieldMixin.members(model_instance, field_name, start=0, stop=-1, reverse=False)` as classmethods (fields do not know their own name; every existing hook takes `(model, field_name)`, so these follow suit). `Query.get(..., _no_track=False)` and the async mirror gain one keyword. `popoto.counters.increment(key, delta=1) -> int` and `read(key) -> int`.
+- **Interface changes**: all additive. `SortedFieldMixin.count(model_instance, field_name)` and `SortedFieldMixin.members(model_instance, field_name, start=0, stop=-1, reverse=False)` as classmethods (fields do not know their own name; every existing hook takes `(model, field_name)`, so these follow suit). `Query.get(..., _no_track=False)` and `Query.async_get(..., _no_track=False)` gain one keyword. `popoto.counters.increment(key, delta=1) -> int` and `read(key) -> int`.
 - **Coupling**: decreases. The recipe stops depending on `redis_db`, `models.encoding`, and the sorted-set key format. It depends on the field's public read API and the query layer instead.
 - **Data ownership**: unchanged. The sorted index stays owned by the field; the counter key stays a recipe/integrations contract.
 - **Reversibility**: trivial. The new methods are additive; reverting the recipe file restores the direct calls.
@@ -143,7 +143,7 @@ Redis command sequence per over-cap save: `ZCARD`, `INCRBY`, `ZRANGE`, then per 
 **Team:** Solo dev, code reviewer
 
 **Interactions:**
-- PM check-ins: 0 (the issue and this plan settle scope; the one naming decision is recorded in Open Questions with a default)
+- PM check-ins: 0 (the issue and this plan settle scope; the naming decision is recorded under Decisions)
 - Review rounds: 1
 
 Roughly four small additive methods, one module, one recipe rewrite of ~15 lines, and four new test files or test classes. The existing eviction suite is the oracle and does not change.
@@ -154,14 +154,15 @@ Roughly four small additive methods, one module, one recipe rewrite of ~15 lines
 |-------------|---------------|---------|
 | Redis on localhost:6379 | `redis-cli -n 15 ping` | test suite (auto-isolated on DB 15 by the pytest plugin) |
 | Build branch forks from origin/main | `git merge-base --is-ancestor 85c9faa8 HEAD` | the stale hotfix branch predates the eviction loop (see Freshness Check notes) |
-| Full dev extras installed | `python -c "import numpy, mcp"` | a bare `.[dev]` venv deselects ~95 tests (CLAUDE.md worktree rule 2) |
+| Full dev extras installed | `python -c "import numpy, mcp"` | a bare `.[dev]` venv deselects ~95 tests (CLAUDE.md worktree rule 2). Failed in the shared checkout's venv at plan time (no numpy), so the build worktree installs `.[dev,embeddings,benchmark,mcp]` first |
+| Isolated worktree | `git worktree list` shows the build branch in its own path | the shared checkout was switched to another branch by a concurrent session during planning; build and verify in a worktree, never in `/Users/tomcounsell/src/popoto` directly |
 
 
 ## Solution
 ### Key Elements
 
 - **Sorted-index reads on the field**: `SortedFieldMixin.count()` and `SortedFieldMixin.members()` answer "how many" and "which members, in score order" for one partition of a sorted field's index. They own the key building and the bytes-to-str decoding. Classmethods taking `(model_instance, field_name, ...)`, matching every existing hook on the mixin.
-- **Untracked direct load on the query layer**: `Query.get(..., _no_track=True)` loads by key with exactly one `HGETALL` and no `on_read()` staging. Mirrored on the async `get` so the two paths stay in lockstep.
+- **Untracked direct load on the query layer**: `Query.get(..., _no_track=True)` loads by key with exactly one `HGETALL` and no `on_read()` staging. Mirrored on `Query.async_get` so the two paths stay in lockstep.
 - **Durable counter helper**: `popoto.counters.increment(key, delta=1)` and `read(key)`. A semantic "bump this named counter" op with the same `INCRBY` under it, so the key layout that `MemoryService._read_counters()` scans is untouched.
 - **Recipe rewrite**: the eviction block in `DefaultMemory.save()` calls those three and nothing else. Its imports of `POPOTO_REDIS_DB` and `decode_popoto_model_hashmap` go away.
 - **Acceptance test**: a source-level test asserting `default_memory.py` contains no `POPOTO_REDIS_DB` or `run_lua` reference, written so PRs 2-4 add their file to a parametrized list.
@@ -175,7 +176,7 @@ Roughly four small additive methods, one module, one recipe rewrite of ~15 lines
 - **`SortedFieldMixin.count(cls, model_instance, field_name) -> int`**: `key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key`; `return int(POPOTO_REDIS_DB.zcard(key))`. Call the client through the module global at call time; never capture the bound method at import (spike-1).
 - **`SortedFieldMixin.members(cls, model_instance, field_name, start=0, stop=-1, reverse=False) -> list[str]`**: same key; `zrevrange` when `reverse` else `zrange`; decode each member with the same bytes-or-str rule the recipe uses today (`raw.decode() if isinstance(raw, bytes) else str(raw)`). `reverse=True` is there for `memory_lifecycle.list_tombstones` in PR 4 and costs one branch; it gets a test now so PR 4 does not add an untested path.
 - **Partition key resolution** reuses `get_partitioned_sortedset_db_key`, which raises `QueryException` when a partition field is unset. Let that propagate; the recipe's enclosing `try` already turns it into the "eviction skipped" warning, which is today's behavior for the same condition.
-- **`Query.get(self, db_key=None, redis_key=None, _no_track=False, **kwargs)`**: on the direct-key branch, skip `_fire_on_read` when `_no_track`. On the filter fallback branch, pass `_no_track` through to the `QueryBuilder` (`.no_track()` when set) so the flag means the same thing on both branches. Async `get` gets the identical keyword and skip. Document the keyword in both docstrings; it is public in the sense that recipes call it, underscore-prefixed by the `_execute_filter` precedent so it can never shadow a field.
+- **`Query.get(self, db_key=None, redis_key=None, _no_track=False, **kwargs)`**: on the direct-key branch, skip `_fire_on_read` when `_no_track`. On the filter fallback branch, pass `_no_track` through to the `QueryBuilder` (`.no_track()` when set) so the flag means the same thing on both branches. `Query.async_get` gets the identical keyword and skip. Document the keyword in both docstrings; it is public in the sense that recipes call it, underscore-prefixed by the `_execute_filter` precedent so it can never shadow a field.
 - **`popoto/counters.py`**: two functions, module docstring explaining that this is the durable-counter primitive recipes use and that the key string is the caller's contract. Return `int(...)` of the client result. No key-prefix logic here.
 - **Recipe**: replace the four sites as in Data Flow. Keep every log message, the `_EVICTION_WARNED` marker placement, the own-key skip, and the orphan-purge branch byte-for-byte. Remove the now-unused imports (`POPOTO_REDIS_DB`, `decode_popoto_model_hashmap`; `cast` if it becomes unused) because `ruff check src/` gates F401.
 - **Exports**: `count`/`members` are methods, nothing to export. `counters` is a new top-level module; do not add it to `popoto/__init__.py` (recipes import it by path; keeping the public namespace unchanged is one of the issue's non-goals).
@@ -231,7 +232,7 @@ New tests:
 
 ### Risk 4: Naming lands wrong for the later PRs
 **Impact:** PR 3/4 need a different shape (for example `context_assembler` holds a zset key string, not always an instance) and rename, churning a public method.
-**Mitigation:** all four sibling `zcard` sites were read during planning; three hold an instance and the fourth (`context_assembler:733`) derives its key from records it also holds. `count(model_instance, field_name)` serves all of them. Recorded as Open Question 1 with this as the default.
+**Mitigation:** all four sibling `zcard` sites were read during planning; three hold an instance and the fourth (`context_assembler:733`) derives its key from records it also holds. `count(model_instance, field_name)` serves all of them. Confirmed by the owner; see Decisions.
 
 
 ## Race Conditions
@@ -256,7 +257,7 @@ No agent integration required. The MCP `memory_status` tool and `popoto-memory d
 ## Documentation
 ### Feature Documentation
 - [ ] `docs/features/decaying-sorted-field.md` — add a short "Reading the index" subsection: `count(instance, "field")` and `members(instance, "field", start, stop, reverse=...)` with the partition rule. Use the `documentarian` agent type.
-- [ ] `CHANGELOG.md` `[Unreleased]` — one line under Added for the three primitives and one under Changed noting `default_memory` now routes eviction through them (behavior unchanged).
+- [ ] `CHANGELOG.md` `[Unreleased]` — currently has only `### Changed` and `### Fixed`; add an `### Added` subsection with one line for the three primitives, and one line under Changed noting `default_memory` now routes eviction through them (behavior unchanged).
 
 ### External Documentation Site
 - [ ] API pages regenerate from docstrings via mkdocstrings; verify `mkdocs build` passes (`scripts/ci-local.sh docs`).
@@ -273,7 +274,7 @@ No agent integration required. The MCP `memory_status` tool and `popoto-memory d
 - [ ] New tests pass: `tests/test_sorted_field_reads.py`, `tests/test_query_get_no_track.py`, `tests/test_counters.py`, `tests/test_recipes_field_layer.py`.
 - [ ] Anti-criterion: `git diff main --stat -- src/popoto/integrations/ src/popoto/__init__.py` is empty (No-Gos: service counters untouched, no new public export).
 - [ ] Anti-criterion: `grep -n "_zcard\s*=\|= POPOTO_REDIS_DB\.\(zcard\|zrange\|zrevrange\|incrby\|hgetall\)" src/popoto/fields/sorted_field_mixin.py src/popoto/counters.py src/popoto/models/query.py` returns nothing (no import-time capture of client methods).
-- [ ] `scripts/ci-local.sh --fast` green: `ruff check src/`, `black --check src/ tests/`, tests on DB 15. State the redis-py version alongside any mypy count if one is reported.
+- [ ] `scripts/ci-local.sh lint tests docs` green (`--fast` is the test gate alone and would skip ruff/black): `ruff check src/`, `black --check src/ tests/`, tests on DB 15, `mkdocs build`. State the redis-py version alongside any mypy count if one is reported.
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 
@@ -332,7 +333,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 - **Assigned To**: primitives-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `_no_track: bool = False` to `Query.get` (query.py:2017) and the async `get`. Skip `_fire_on_read` on the direct-key branch when set; forward as `.no_track()` on the filter-fallback branch.
+- Add `_no_track: bool = False` to `Query.get` (query.py:2017 on main) and `Query.async_get` (query.py:3477). Skip `_fire_on_read` on the direct-key branch when set; forward as `.no_track()` on the filter-fallback branch.
 - Update both docstrings. Add the test file per Test Impact, asserting on the `$AT:{Class}:staged:{key}` list.
 
 ### 3. Recipe rewrite
@@ -354,7 +355,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 - **Assigned To**: parity-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Confirm the environment first (CLAUDE.md worktree rules 1, 2, 4), then run `scripts/ci-local.sh --fast`.
+- Confirm the environment first (CLAUDE.md worktree rules 1, 2, 4), then run `scripts/ci-local.sh lint tests docs`.
 - Run every Success Criteria grep and the `git diff --stat` anti-criteria; report each as pass/fail with the command output.
 - Confirm `tests/test_default_memory_eviction.py` has no diff against main.
 
@@ -372,10 +373,28 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 - **Assigned To**: recipe-builder
 - **Agent Type**: builder
 - **Parallel**: false
+- **Validates**: `gh pr checks <N> --watch` green on the head SHA (lint.yml, tests).
 - Open the PR against `main` referencing #630 without a closing keyword (PRs 2-4 remain). Title: `chore(#630): route default_memory eviction through field/model reads`. Body lists the three primitives and the byte-identical claim with the oracle suite name.
 
 
-## Open Questions
-1. **Method names.** The plan uses the issue's `count` / `members` on `SortedFieldMixin`. The alternative is `index_count` / `index_members` to make "this is the sorted index, not the query" explicit at call sites like `field.count(self, "relevance")`. Default if unanswered: `count` / `members`, as the issue proposed and #631's semantic-naming rule accepts.
-2. **Async parity for `_no_track`.** The plan mirrors the keyword on the async `get` so the two paths stay identical, at the cost of touching a path this recipe does not use. Default if unanswered: mirror it (the #571 fix landed for exactly this kind of sync/async drift).
+## Critique Results
 
+### Round 1 (2026-09-05) — verdict: READY TO BUILD (with concerns), 0 blockers, 4 concerns, 2 nits
+
+Run inline by the planning session after the `/do-plan-critique` roster (critic-risk, critic-scope, critic-history) stalled for 11 hours without returning. The structural checks the critique fork completed before stalling are folded in.
+
+| # | Kind | Finding | Resolution |
+|---|---|---|---|
+| 1 | concern | `ci-local.sh --fast` is the test gate only; the success criterion claimed ruff/black coverage it would not run. | Criterion and Task 4 now name `lint tests docs`. |
+| 2 | concern | Prerequisite `import numpy, mcp` fails in the shared checkout's venv, and that checkout was switched to `fix/querybuilder-double-hydration` by another session mid-plan. `query.py` on that branch has different line numbers than main. | Prerequisites gain an isolated-worktree row; the builder installs the full extras there. All `query.py` references re-derived from `origin/main`. |
+| 3 | concern | The plan named the async mirror `AsyncQuery.get`; no such class exists. The direct-key async path is `Query.async_get`. | Corrected everywhere (spike-2, Solution, Task 2, Decisions). |
+| 4 | concern | `CHANGELOG.md` `[Unreleased]` has no `### Added` subsection, so "one line under Added" had no target. | Documentation task says to create it. |
+| 5 | nit | Task 6 (PR) had no validation command. | `gh pr checks` added. |
+| 6 | nit | `gen_api_pages.py` rglobs every module under `src/popoto`, so `counters.py` gets an API page with no nav edit. Confirmed, no change needed; noted so the documentarian does not add one by hand. | Recorded. |
+
+Re-verified during the pass: all sections present; task graph 1-6 contiguous with valid dependencies; 18 of 23 referenced paths exist on main and the 5 missing are all "create" targets; every success criterion maps to a task; the `Query.get` fallback branch routes through `self.filter(**kwargs)`, so forwarding `_no_track` as `.no_track()` on that builder is a two-line change; `_zset_key()` in the oracle tests builds the exact string `count()` will pass.
+
+## Decisions (recorded 2026-09-04, not open)
+
+1. **Method names: `count` / `members`.** Confirmed by the owner via `/ask-me`. The field object at the call site already says it is an index read; the issue's names stand for this PR, PRs 2-4, and the #631 protocol surface.
+2. **Async parity for `_no_track`: mirror it.** Decided at plan time as low-stakes and reversible. The #571 fix landed for exactly this kind of sync/async drift, so the keyword goes on both `get` and `async_get` in the same PR.
