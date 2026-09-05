@@ -180,6 +180,49 @@ def test_len_after_mutation_is_not_served_from_the_park(rows):
     assert len(builder.limit(2)) == 2
 
 
+def test_len_after_a_for_loop_requeries(count_hash_reads, rows):
+    """A `for` loop leaves no park behind for a later bare `len()` to answer from.
+
+    `for` calls only `__iter__`, so without this guard the parked hydration
+    would sit on the builder until the next `len()`, however much later and
+    however stale. The length must come from a fresh execution.
+    """
+    builder = HydrationCountModel.query.filter(weight__gte=1.0)
+
+    seen = [r.name for r in builder]
+    assert len(seen) == 4
+    assert count_hash_reads.total == 4
+
+    HydrationCountModel.create(name="row_late", weight=9.0)
+
+    assert len(builder) == 5, "len() after a for loop must re-execute"
+    assert count_hash_reads.total == 9, "the re-execution must hydrate the new row set"
+
+
+def test_len_after_an_empty_iteration_requeries(rows):
+    """An iteration that yielded nothing still counts as consumed."""
+    builder = HydrationCountModel.query.filter(weight__gte=100.0)
+
+    assert [r.name for r in builder] == []
+    HydrationCountModel.create(name="row_heavy", weight=200.0)
+
+    assert len(builder) == 1
+
+
+def test_len_after_a_partial_iteration_requeries(count_hash_reads, rows):
+    """Taking even one item from the iterator retires the park."""
+    builder = HydrationCountModel.query.filter(weight__gte=1.0)
+
+    iterator = iter(builder)
+    next(iterator)
+    assert count_hash_reads.total == 4
+
+    assert len(builder) == 4
+    assert (
+        count_hash_reads.total == 8
+    ), "len() after a partial iteration must re-execute"
+
+
 def test_len_matches_list_length_under_limit(rows):
     """The length hint never changes what a materialization contains."""
     builder = HydrationCountModel.query.filter(weight__gte=1.0).limit(3)

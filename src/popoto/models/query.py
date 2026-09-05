@@ -164,6 +164,34 @@ def _fire_on_read(model_class, instances):
     pipe.execute()
 
 
+class _HydrationIterator:
+    """Iterator over one hydration that knows whether it has yielded yet.
+
+    `QueryBuilder.__iter__` parks one of these for `__len__` (#632). The
+    materialization builtins ask for the length between getting the iterator
+    and taking its first item, so "not yet advanced" is the precise condition
+    under which the parked hydration is the answer to a length question. Once
+    anything has been yielded, the builder is back to executing on `len()`.
+    """
+
+    __slots__ = ("results", "_iterator", "advanced")
+
+    def __init__(self, results: list):
+        self.results = results
+        self._iterator = iter(results)
+        self.advanced = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.advanced = True
+        return next(self._iterator)
+
+    def __length_hint__(self) -> int:
+        return self._iterator.__length_hint__()
+
+
 class QueryBuilder:
     """Chainable query builder that accumulates query state.
 
@@ -211,7 +239,7 @@ class QueryBuilder:
         # One-shot hydration handed from __iter__ to __len__ (#632). See
         # __iter__ for why this exists and _invalidate_iter_result for the
         # cases that drop it.
-        self._iter_result: Optional[list] = None
+        self._iter_result: Optional[_HydrationIterator] = None
 
     def filter(self, *args, **kwargs) -> "QueryBuilder":
         """Add filter criteria and return a new QueryBuilder.
@@ -1922,12 +1950,16 @@ class QueryBuilder:
 
         The hand-off is deliberately one-directional and single-use. `__iter__`
         always executes, so re-iterating a builder still re-queries and still
-        sees fresh data; only the length hint that immediately follows one
-        iteration is served from it, and consuming it clears it.
+        sees fresh data. `__len__` serves the parked result only while the
+        iterator returned here has yielded nothing: that is the exact shape of
+        the materialization protocol (get the iterator, ask for the length,
+        then consume). A `for` loop or generator that consumed the iterator
+        leaves a bare `len()` afterwards to re-execute, so a builder never
+        answers a length from rows it already handed out.
         """
-        results = self.all()
-        self._iter_result = results
-        return iter(results)
+        iterator = _HydrationIterator(self.all())
+        self._iter_result = iterator
+        return iterator
 
     def __len__(self):
         """Return the number of results (executes query).
@@ -1936,12 +1968,15 @@ class QueryBuilder:
         `__iter__` when there is one -- this is the length-hint half of
         `list(builder)`, and answering it from the hydration that call just
         performed is what makes the pair cost one pass instead of two. With no
-        parked result (a bare `len(builder)`) the query executes normally.
+        parked result (a bare `len(builder)`), or a parked iterator that has
+        already been advanced (a `len()` some time after a `for` loop), the
+        query executes normally.
         """
         parked = self._iter_result
         if parked is not None:
             self._iter_result = None
-            return len(parked)
+            if not parked.advanced:
+                return len(parked.results)
         return len(self.all())
 
     def __getitem__(self, index):
