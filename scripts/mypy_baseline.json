@@ -11,16 +11,15 @@
     "redis": "8.1.0"
   },
   "packages": {
-    "(root)": 32,
+    "(root)": 30,
     "embeddings": 2,
     "extraction": 2,
     "fields": 423,
-    "models": 423,
+    "models": 398,
     "pubsub": 11,
     "recipes": 147,
     "stores": 1,
     "streams": 10,
-    "transfer": 49,
     "utils": 20
   },
   "reference": {
@@ -28,5 +27,5 @@
     "offset_7_1_1_minus_8_1_0": 52,
     "redis==7.1.1": 1172
   },
-  "total": 1120
+  "total": 1044
 }
