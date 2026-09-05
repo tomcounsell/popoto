@@ -3469,7 +3469,7 @@ when the export was unfiltered.</p>
                 <code>filter_kwargs</code>
             </td>
             <td>
-                  <code><span title="dict">dict</span></code>
+                  <code>&#39;dict[str, Any]&#39;</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3502,7 +3502,7 @@ resolution time (export is not a point-in-time snapshot).</p>
                 <code>fields</code>
             </td>
             <td>
-                  <code><span title="dict">dict</span></code>
+                  <code>&#39;dict[str, Any]&#39;</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3518,7 +3518,7 @@ resolution time (export is not a point-in-time snapshot).</p>
                 <code>mixins</code>
             </td>
             <td>
-                  <code><span title="dict">dict</span></code>
+                  <code>&#39;dict[str, Any]&#39;</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3534,7 +3534,7 @@ resolution time (export is not a point-in-time snapshot).</p>
                 <code>embedding_provenance</code>
             </td>
             <td>
-                  <code><span title="dict">dict</span></code>
+                  <code>&#39;dict[str, Any]&#39;</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3560,7 +3560,7 @@ resolution time (export is not a point-in-time snapshot).</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="dict">dict</span></code>
+                  <code>&#39;dict[str, Any]&#39;</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3618,12 +3618,12 @@ resolution time (export is not a point-in-time snapshot).</p>
 <span class="normal"><a href="#__codelineno-0-212">212</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_manifest</span><span class="p">(</span>
 <a id="__codelineno-0-172" name="__codelineno-0-172"></a>    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="n">filter_repr</span><span class="p">:</span> <span class="s2">"str | None"</span><span class="p">,</span>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="n">filter_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="n">filter_kwargs</span><span class="p">:</span> <span class="s2">"dict[str, Any]"</span><span class="p">,</span>
 <a id="__codelineno-0-175" name="__codelineno-0-175"></a>    <span class="n">matched_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a>    <span class="n">fields</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="n">mixins</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a>    <span class="n">embedding_provenance</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a>    <span class="n">fields</span><span class="p">:</span> <span class="s2">"dict[str, Any]"</span><span class="p">,</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="n">mixins</span><span class="p">:</span> <span class="s2">"dict[str, Any]"</span><span class="p">,</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>    <span class="n">embedding_provenance</span><span class="p">:</span> <span class="s2">"dict[str, Any]"</span><span class="p">,</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"dict[str, Any]"</span><span class="p">:</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="w">    </span><span class="sd">"""Assemble the manifest object written as the export's first line.</span>
 <a id="__codelineno-0-181" name="__codelineno-0-181"></a>
 <a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    ``filter`` and ``matched_count`` are deliberately separate members: a</span>
@@ -3681,7 +3681,7 @@ resolution time (export is not a point-in-time snapshot).</p>
               <summary>Source code in <code>src/popoto/transfer/format.py</code></summary>
               <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-215">215</a></span>
 <span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="k">def</span><span class="w"> </span><span class="nf">dump_line</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="k">def</span><span class="w"> </span><span class="nf">dump_line</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="s2">"dict[str, Any]"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="w">    </span><span class="sd">"""Serialize one manifest or record object as a newline-terminated line."""</span>
 <a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
 </code></pre></div></td></tr></table></div>
@@ -3785,7 +3785,7 @@ number and continues, so a truncated file still imports the rest.</p>
 <span class="normal"><a href="#__codelineno-0-240">240</a></span>
 <span class="normal"><a href="#__codelineno-0-241">241</a></span>
 <span class="normal"><a href="#__codelineno-0-242">242</a></span>
-<span class="normal"><a href="#__codelineno-0-243">243</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="k">def</span><span class="w"> </span><span class="nf">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="k">def</span><span class="w"> </span><span class="nf">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"dict[str, Any]"</span><span class="p">:</span>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="w">    </span><span class="sd">"""Parse one JSON Lines line into a dict.</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a>
 <a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    Raises:</span>

@@ -1545,18 +1545,24 @@ MCP tool call — the automatic hook path never emits it. Nothing is written
 to stdout, and on Claude Code this hook is configured `"async": true` so it
 never sits on the turn's critical path.
 
-**Known gap: the read→write handoff is a session-wide FIFO, not a turn ID.**
-`MemoryService` queues selected record keys per `session_id` as a plain
-list and pops one entry per write event; it does not key the entry on a
-turn identifier, even though Claude Code and Codex fixtures both carry one
-(`prompt_id` / `turn_id`). A read whose paired write event never fires — an
-aborted turn, a crashed session — leaves its entry in the list and shifts
-every later push/pop pairing by one, and a `SubagentStop`-configured
-session pops one queued entry per subagent against a single earlier read.
-The failure mode is misattributed outcome reporting (confidence/decay
-adjustments land on the wrong turn's records), not a crash, and it is
-bounded by `MAX_PENDING_TURNS` (32) per session. Tracked as follow-up work
-in #574; not fixed in this PR.
+**The read→write handoff is keyed on the harness's turn identifier.**
+`MemoryService` queues the selected record keys per `session_id` and tags
+each entry with the turn id the payload carried — Claude Code's `prompt_id`,
+Codex's `turn_id`. The write event claims its own entry by that tag rather
+than popping whatever sits at the head, so an aborted turn, a crashed
+session, or a `SubagentStop`-configured session reporting more often than it
+read no longer shifts every later pairing by one. A second report for a turn
+already resolved resolves nothing, and a turn id that matches no staged entry
+resolves nothing rather than falling back to the head of the queue.
+
+Hermes and OpenClaw send no turn identifier. Those sessions keep the
+positional FIFO pairing, which is correct for them because their hooks are
+synchronous. A queue written entirely before this behavior shipped is also
+claimed positionally, so an in-flight upgrade loses no pending turn. Both
+paths are bounded by `MAX_PENDING_TURNS` (32) per session and a one-hour TTL.
+Set `POPOTO_MEMORY_TURN_KEYED=0` to restore the pre-1.9 session-wide FIFO for
+every harness. Shipped in
+[#574](https://github.com/tomcounsell/popoto/issues/574).
 
 Neither path parses a transcript file. Every harness supplies the assistant's
 final text on the event itself, so a change to the JSONL format cannot break
@@ -1636,6 +1642,7 @@ project's agent id".
 | `POPOTO_MEMORY_MAX_ITEMS` | `5` | Diverges from the benchmark; see below |
 | `POPOTO_MEMORY_MAX_TOKENS` | `800` | Under Codex's 2500-token `additionalContextLimit` |
 | `POPOTO_MEMORY_INGEST` | `raw` | `raw` or `heuristic` |
+| `POPOTO_MEMORY_TURN_KEYED` | `1` | `0` restores the pre-1.9 session-wide FIFO handoff, pairing reads to writes by queue position instead of by turn id |
 | `POPOTO_MEMORY_ENABLED` | `1` | Kill switch that needs no config edit |
 | `POPOTO_MEMORY_LOG` | `~/.popoto/memory.log` | Where swallowed errors land |
 
