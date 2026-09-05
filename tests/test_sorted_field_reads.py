@@ -185,21 +185,28 @@ class TestPartitionResolution:
             getattr(field, method)(probe, "relevance")
 
     def test_reads_use_the_same_key_as_the_builder(self, monkeypatch):
-        """The key handed to ZCARD is the builder's ``.redis_key`` string."""
-        from src.popoto.redis_db import POPOTO_REDIS_DB
+        """The key handed to ZCARD is the builder's ``.redis_key`` string.
 
+        The spy goes on the client object the mixin module holds, resolved
+        through ``sorted_field_mixin.POPOTO_REDIS_DB`` at call time: that is
+        the object ``count`` looks ``zcard`` up on, and it stays the same
+        object even after a test elsewhere rebinds ``redis_db.POPOTO_REDIS_DB``.
+        """
+        from src.popoto.fields import sorted_field_mixin
+
+        client = sorted_field_mixin.POPOTO_REDIS_DB
         saved = _seed_partition("alpha", ["a1"])
         field = ReadsPartitionedDecay._meta.fields["relevance"]
         expected = field.get_partitioned_sortedset_db_key(
             saved[0], "relevance"
         ).redis_key
         seen = []
-        real = POPOTO_REDIS_DB.zcard
+        real = client.zcard
 
         def spy(key, *args, **kwargs):
             seen.append(key)
             return real(key, *args, **kwargs)
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "zcard", spy)
+        monkeypatch.setattr(client, "zcard", spy)
         assert field.count(saved[0], "relevance") == 1
         assert seen == [expected]
