@@ -537,12 +537,15 @@ class SortedFieldMixin:
             QueryException: Propagated from the partition key builder.
         """
         key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
-        if reverse:
-            raw_members = POPOTO_REDIS_DB.zrevrange(key, start, stop)
-        else:
-            raw_members = POPOTO_REDIS_DB.zrange(key, start, stop)
+        # Resolve the client attribute at call time so test spies and fault
+        # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
         return [
-            raw.decode() if isinstance(raw, bytes) else str(raw) for raw in raw_members
+            raw.decode() if isinstance(raw, bytes) else str(raw)
+            for raw in (
+                POPOTO_REDIS_DB.zrevrange(key, start, stop)
+                if reverse
+                else POPOTO_REDIS_DB.zrange(key, start, stop)
+            )
         ]
 
     @classmethod

@@ -84,18 +84,17 @@ need their own keyspace (or extra fields) subclass it::
 """
 
 import logging
-from typing import Any, cast
+from typing import Any
 
+from .. import counters
 from ..fields.access_tracker import AccessTrackerMixin
 from ..fields.constants import Defaults, _read_default_memory_max_records
-from ..redis_db import POPOTO_REDIS_DB
 from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
 from ..fields.confidence_field import ConfidenceField
 from ..fields.decaying_sorted_field import DecayingSortedField
 from ..fields.shortcuts import AutoKeyField, FloatField, KeyField, StringField
 from ..models.base import Model
-from ..models.encoding import decode_popoto_model_hashmap
 from ..privacy.never_record import NeverRecordMixin
 
 logger = logging.getLogger("POPOTO.DefaultMemory")
@@ -191,10 +190,7 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
             return result
         try:
             field = self._meta.fields["relevance"]
-            zset_key = field.get_partitioned_sortedset_db_key(
-                self, "relevance"
-            ).redis_key
-            excess = POPOTO_REDIS_DB.zcard(zset_key) - cap
+            excess = field.count(self, "relevance") - cap
             if excess <= 0:
                 return result
             # Announce BEFORE deleting: the records are unrecoverable (no
@@ -229,21 +225,18 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
             # whose stderr the harness suppresses. Counts records *selected*
             # for eviction (see EVICTION_COUNTER_PREFIX). Inside the
             # enclosing try, so a counter failure never fails a save.
-            POPOTO_REDIS_DB.incrby(
+            counters.increment(
                 f"{EVICTION_COUNTER_PREFIX}:{self.agent_id}:evicted", excess
             )
             own_key = self.db_key.redis_key
-            for raw in POPOTO_REDIS_DB.zrange(zset_key, 0, excess - 1):
-                victim = raw.decode() if isinstance(raw, bytes) else str(raw)
+            for victim in field.members(self, "relevance", 0, excess - 1):
                 if victim == own_key:
                     continue
-                hashmap = POPOTO_REDIS_DB.hgetall(victim)
-                if hashmap:
-                    # Decode directly: query.get() would fire on_read and
-                    # stage an access for a record about to be deleted.
-                    decode_popoto_model_hashmap(
-                        cast(Any, type(self)), hashmap, source_redis_key=victim
-                    ).delete()
+                # Untracked load: a tracked get would fire on_read and stage
+                # an access for a record about to be deleted.
+                doomed = type(self).query.get(redis_key=victim, _no_track=True)
+                if doomed is not None:
+                    doomed.delete()
                 else:
                     self._purge_orphan_keys([victim])
         except Exception as exc:  # eviction must never fail a save
