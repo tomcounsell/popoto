@@ -2858,11 +2858,11 @@
 <h2 id="runner-lint-and-gates">Runner, lint, and gates<a class="headerlink" href="#runner-lint-and-gates" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; requires Redis/Valkey on localhost:6379</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mypy<span class="w"> </span>src/<span class="w">                 </span><span class="c1"># type check</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>scripts/mypy_ratchet.py<span class="w">   </span><span class="c1"># type check as a ratchet vs scripts/mypy_baseline.json — gated by lint.yml</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>ruff<span class="w"> </span>check<span class="w"> </span>src/<span class="w">           </span><span class="c1"># lint — gated by lint.yml</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format (line length 88; isort 79)</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># tests + stress + docs; --all adds build, lock, guard</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># lint + types + tests + stress + docs; --all adds build, lock, guard</span>
 </code></pre></div>
 <p>Primary source dir is <code>src/</code>; tests live in <code>tests/</code>. <code>scripts/ci-local.sh</code>
 mirrors the GitHub workflows locally (<code>lint</code> ← lint.yml, <code>tests</code> ← tests.yml,
@@ -2916,10 +2916,15 @@ checks all four; the fifth is manual). Each cost a review round on PR #495:</p>
    Listed so it isn't re-diagnosed as environmental.</li>
 <li><strong>Shared DB 15 contention</strong> (above) — to separate contention from a real
    regression, check base out into the <em>same</em> worktree and compare.</li>
-<li><strong>mypy deltas are redis-py-version-dependent</strong> (not automated) — redis-py
-   types every command <code>Awaitable[T] | T</code> for both sync and async clients, so
-   7.x flags sites 8.x narrows. Measure base-vs-branch in both a 7.x and an 8.x
-   environment before reporting a delta.</li>
+<li><strong>mypy deltas are redis-py-version-dependent</strong> (now partly automated) —
+   redis-py types every command <code>Awaitable[T] | T</code> for both sync and async
+   clients, so 7.x flags sites 8.x narrows, measured at 52 errors on the #506
+   baseline. <code>scripts/mypy_ratchet.py</code> refuses to compare when the running
+   mypy/redis-py/Python do not match <code>scripts/mypy_baseline.json</code>, so state the
+   environment and let the script decide whether a delta is even comparable.
+   <code>src/</code> is not clean and is not expected to be: the gate fails only when the
+   total rises ABOVE baseline, plus a hard zero for <code>integrations/</code> and
+   <code>privacy/</code>.</li>
 </ol>
 <p><strong>Report the environment (Python version, redis-py version, extras installed,
 <code>POPOTO_TEST_DB</code>) alongside every count.</strong> A bare number is not usable

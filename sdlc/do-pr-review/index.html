@@ -2954,10 +2954,10 @@ one reviewer, one verdict.</p>
 <h2 id="verification-commands-that-exist-in-this-repo">Verification commands that exist in this repo<a class="headerlink" href="#verification-commands-that-exist-in-this-repo" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; needs Redis/Valkey on localhost:6379</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>mypy<span class="w"> </span>src/<span class="w">                 </span><span class="c1"># type check</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>scripts/mypy_ratchet.py<span class="w">   </span><span class="c1"># type check as a ratchet vs scripts/mypy_baseline.json — gated by lint.yml</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate (mirrors deploy-docs.yml)</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># tests + stress + docs; --all adds build/lock/guard</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># lint + types + tests + stress + docs; --all adds build/lock/guard</span>
 </code></pre></div>
 <p><code>scripts/ci-local.sh --all</code> runs the gates mirroring every workflow
 (<code>tests stress docs build lock guard</code>). <code>--fast</code> is tests only. Lint is
@@ -3009,10 +3009,14 @@ four automatically; each one produced a wrong, confident number on PR #495.</p>
 <li><strong>Every worktree shares Redis DB 15.</strong> Concurrent suites from other
    checkouts have produced 73–158 phantom failures. To separate contention from
    a real regression, check base out into the same worktree and compare.</li>
-<li><strong>mypy error deltas are redis-py-version-dependent</strong> (not automated).
+<li><strong>mypy error deltas are redis-py-version-dependent</strong> (now partly automated).
    redis-py types every command <code>Awaitable[T] | T</code> for both sync and async
-   clients, so 7.x flags sites 8.x narrows. Measure base-vs-branch in both a
-   7.x and an 8.x environment before trusting a delta.</li>
+   clients, so 7.x flags sites 8.x narrows — measured at 52 errors on the #506
+   baseline (1120 under <code>redis==8.1.0</code>, 1172 under <code>redis==7.1.1</code>). Missing
+   optional extras move it too: <code>ignore_missing_imports = True</code> resolves an
+   absent package to <code>Any</code>. <code>scripts/mypy_ratchet.py</code> refuses to compare when
+   the running versions do not match <code>scripts/mypy_baseline.json</code>, so a
+   mismatched delta is now printed rather than silently wrong.</li>
 </ol>
 <p><strong>Rule: state the environment (Python version, redis-py version, extras
 installed, <code>POPOTO_TEST_DB</code>) alongside any count you put in the review.</strong> A
@@ -3032,8 +3036,12 @@ finding-verification rule it does not support a blocker.</p>
 <li><strong>Relationship laziness.</strong> <code>Relationship</code> values are stored as redis_key
   strings and loaded on access. A change that makes them eager reintroduces
   infinite recursion on circular references.</li>
-<li><strong>Format/type gates.</strong> <code>black src/ tests/</code> clean and <code>mypy src/</code> with no new
-  errors (measured per gotcha 5) are gates, not nits.</li>
+<li><strong>Format/type gates.</strong> <code>black src/ tests/</code> clean and
+  <code>scripts/mypy_ratchet.py</code> exiting 0 are gates, not nits. The type gate is a
+  ratchet: a PR may leave <code>src/</code> with four figures of errors, but it may not
+  ADD one, and <code>integrations/</code>/<code>privacy/</code> must stay at zero. A PR that lowers
+  the count should bank it by committing <code>--update</code>'s new
+  <code>scripts/mypy_baseline.json</code>; CI warns rather than fails when it does not.</li>
 <li><strong>UI screenshots.</strong> Popoto is a library with a mkdocs site and no app to
   drive — the visual proof gate is a no-op in practice. If a diff genuinely
   touches rendered docs HTML/CSS, the global gate still applies.</li>

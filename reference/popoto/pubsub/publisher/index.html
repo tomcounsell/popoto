@@ -3371,9 +3371,9 @@ publisher.publish({"symbol": "AAPL", "price": 150.25})
 <a id="__codelineno-0-153" name="__codelineno-0-153"></a>
 <a id="__codelineno-0-154" name="__codelineno-0-154"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>        <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>        <span class="n">channel_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a>        <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>        <span class="n">channel_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-159" name="__codelineno-0-159"></a>    <span class="p">):</span>
 <a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="w">        </span><span class="sd">"""Publish *data* as msgpack to the given (or default) channel.</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a>
@@ -3542,7 +3542,7 @@ maintaining consistency between persisted state and published events.</p>
                 <code>data</code>
             </td>
             <td>
-                  <code><span title="dict">dict</span></code>
+                  <code><span title="dict">dict</span> | None</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3558,7 +3558,7 @@ maintaining consistency between persisted state and published events.</p>
                 <code>channel_name</code>
             </td>
             <td>
-                  <code><span title="str">str</span></code>
+                  <code><span title="str">str</span> | None</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3574,7 +3574,7 @@ maintaining consistency between persisted state and published events.</p>
                 <code>pipeline</code>
             </td>
             <td>
-                  <code><span title="redis.client.Pipeline">Pipeline</span></code>
+                  <code><span title="redis.client.Pipeline">Pipeline</span> | None</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -3727,9 +3727,9 @@ pipeline.execute()  # Both operations succeed or fail together
 <span class="normal"><a href="#__codelineno-0-219">219</a></span>
 <span class="normal"><a href="#__codelineno-0-220">220</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="k">def</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="n">channel_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="n">channel_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="p">):</span>
 <a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="w">    </span><span class="sd">"""Publish *data* as msgpack to the given (or default) channel.</span>
 <a id="__codelineno-0-161" name="__codelineno-0-161"></a>
