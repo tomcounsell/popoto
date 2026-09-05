@@ -4271,7 +4271,12 @@ direct Redis key lookup, making it the fastest way to load a model.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">redis_key</span><span class="o">=</span><span class="s2">"Restaurant:Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="p">)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># =&gt; 4.5</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># For AccessTrackerMixin models, pass _no_track=True to load without staging a read</span>
 </code></pre></div>
+<p>For <code>AccessTrackerMixin</code> models, <code>get(..., _no_track=True)</code> (and <code>async_get</code>) loads by
+key without staging a read; see <a href="../fields/#suppressing-tracking-for-bulk-operations">Suppressing tracking for bulk
+operations</a>.</p>
 <p>If no matching instance exists, <code>get()</code> returns <code>None</code>. If more than one instance matches
 (possible when filtering on non-key fields), it raises a <code>QueryException</code>.</p>
 <div class="admonition note">

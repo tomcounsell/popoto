@@ -3088,6 +3088,19 @@ past = Memory.query.filter(agent_id="agent-1").top_by_decay(5, as_of=two_weeks_a
 [ValidityField and SupersessionProtocol](validity-and-supersession.md#point-in-time-reconstruction)
 for how membership is evaluated at a past instant.
 
+### Reading the Index
+
+`count()` and `members()` read a sorted field's index directly, without going through a query. Recipes use them to answer "how many" and "which members" for one partition. Both are classmethods on the field object; the model instance supplies whichever partition values `partition_by` names, and the read resolves to exactly the key `save()` and `delete()` use for that instance, so an unset partition field reads the same `None` partition that `save()` wrote.
+
+```python
+field = Memory._meta.fields["relevance"]
+field.count(memory, "relevance")                        # -> int, one ZCARD
+field.members(memory, "relevance", 0, 9)                # -> 10 stalest keys, one ZRANGE
+field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, one ZREVRANGE
+```
+
+`members()` returns Redis keys as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
+
 ## Confidence-Modulated Decay
 
 `base_score_field` scales the curve's **magnitude**, which never changes relative order: a demoted
@@ -13485,6 +13498,16 @@ Memory.query.filter(agent_id="agent-1").no_track().all()
 `MemoryLifecycle.tick()` uses `.no_track()` automatically — a periodic tick
 produces **zero** new staged entries and does not inflate access-frequency signals.
 
+`Query.get(redis_key=..., _no_track=True)` (and `async_get`) applies the same
+suppression to the direct-key path: it loads one record with a single `HGETALL`
+and skips `on_read()` entirely, instead of routing through `.no_track()`.
+`DefaultMemory` uses this when it loads a record only to evict it:
+
+```python
+# Untracked load: a tracked get would stage an access for a record about to be deleted
+doomed = type(self).query.get(redis_key=victim, _no_track=True)
+```
+
 `count()` never fires `on_read()` on either code path — a tally is not a read, so
 counting a population stages nothing regardless of whether `.no_track()` is chained.
 
@@ -13918,7 +13941,13 @@ You can also retrieve an object by its raw Redis key.
 restaurant = Restaurant.query.get(redis_key="Restaurant:Burger Palace")
 print(restaurant.rating)
 # => 4.5
+
+# For AccessTrackerMixin models, pass _no_track=True to load without staging a read
 ```
+
+For `AccessTrackerMixin` models, `get(..., _no_track=True)` (and `async_get`) loads by
+key without staging a read; see [Suppressing tracking for bulk
+operations](fields.md#suppressing-tracking-for-bulk-operations).
 
 If no matching instance exists, `get()` returns `None`. If more than one instance matches
 (possible when filtering on non-key fields), it raises a `QueryException`.

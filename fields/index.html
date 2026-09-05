@@ -6726,6 +6726,13 @@ internal operations like reindexing, migration, or lifecycle ticks:</p>
 </code></pre></div>
 <p><code>MemoryLifecycle.tick()</code> uses <code>.no_track()</code> automatically — a periodic tick
 produces <strong>zero</strong> new staged entries and does not inflate access-frequency signals.</p>
+<p><code>Query.get(redis_key=..., _no_track=True)</code> (and <code>async_get</code>) applies the same
+suppression to the direct-key path: it loads one record with a single <code>HGETALL</code>
+and skips <code>on_read()</code> entirely, instead of routing through <code>.no_track()</code>.
+<code>DefaultMemory</code> uses this when it loads a record only to evict it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-84-1" name="__codelineno-84-1" href="#__codelineno-84-1"></a><span class="c1"># Untracked load: a tracked get would stage an access for a record about to be deleted</span>
+<a id="__codelineno-84-2" name="__codelineno-84-2" href="#__codelineno-84-2"></a><span class="n">doomed</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">redis_key</span><span class="o">=</span><span class="n">victim</span><span class="p">,</span> <span class="n">_no_track</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
 <p><code>count()</code> never fires <code>on_read()</code> on either code path — a tally is not a read, so
 counting a population stages nothing regardless of whether <code>.no_track()</code> is chained.</p>
 <p>Note: <code>Model.query.all()</code> (without <code>.filter()</code>) is non-tracking by design and
@@ -6764,22 +6771,22 @@ should not count as a user-originated read.</p>
 <h2 id="eventstreammixin">EventStreamMixin<a class="headerlink" href="#eventstreammixin" title="Permanent link">&para;</a></h2>
 <p>Automatically appends to a Redis Stream on every <code>save()</code>, <code>update()</code>, or <code>delete()</code>. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.</p>
 <h3 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-84-1" name="__codelineno-84-1" href="#__codelineno-84-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
-<a id="__codelineno-84-2" name="__codelineno-84-2" href="#__codelineno-84-2"></a>
-<a id="__codelineno-84-3" name="__codelineno-84-3" href="#__codelineno-84-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-84-4" name="__codelineno-84-4" href="#__codelineno-84-4"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">"memory_mutations"</span>       <span class="c1"># Stream key: stream:memory_mutations</span>
-<a id="__codelineno-84-5" name="__codelineno-84-5" href="#__codelineno-84-5"></a>    <span class="n">_stream_max_length</span> <span class="o">=</span> <span class="mi">10000</span>              <span class="c1"># Approximate MAXLEN trimming</span>
-<a id="__codelineno-84-6" name="__codelineno-84-6" href="#__codelineno-84-6"></a>    <span class="n">_stream_metadata_fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"source"</span><span class="p">,)</span>   <span class="c1"># Extra fields in each entry</span>
-<a id="__codelineno-84-7" name="__codelineno-84-7" href="#__codelineno-84-7"></a>
-<a id="__codelineno-84-8" name="__codelineno-84-8" href="#__codelineno-84-8"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-84-9" name="__codelineno-84-9" href="#__codelineno-84-9"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-84-10" name="__codelineno-84-10" href="#__codelineno-84-10"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-84-11" name="__codelineno-84-11" href="#__codelineno-84-11"></a>
-<a id="__codelineno-84-12" name="__codelineno-84-12" href="#__codelineno-84-12"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"fact1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"hello"</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">"user"</span><span class="p">)</span>
-<a id="__codelineno-84-13" name="__codelineno-84-13" href="#__codelineno-84-13"></a><span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>    <span class="c1"># XADD with op="create"</span>
-<a id="__codelineno-84-14" name="__codelineno-84-14" href="#__codelineno-84-14"></a><span class="n">memory</span><span class="o">.</span><span class="n">content</span> <span class="o">=</span> <span class="s2">"updated"</span>
-<a id="__codelineno-84-15" name="__codelineno-84-15" href="#__codelineno-84-15"></a><span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>    <span class="c1"># XADD with op="update"</span>
-<a id="__codelineno-84-16" name="__codelineno-84-16" href="#__codelineno-84-16"></a><span class="n">memory</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>  <span class="c1"># XADD with op="delete"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-85-1" name="__codelineno-85-1" href="#__codelineno-85-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
+<a id="__codelineno-85-2" name="__codelineno-85-2" href="#__codelineno-85-2"></a>
+<a id="__codelineno-85-3" name="__codelineno-85-3" href="#__codelineno-85-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-85-4" name="__codelineno-85-4" href="#__codelineno-85-4"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">"memory_mutations"</span>       <span class="c1"># Stream key: stream:memory_mutations</span>
+<a id="__codelineno-85-5" name="__codelineno-85-5" href="#__codelineno-85-5"></a>    <span class="n">_stream_max_length</span> <span class="o">=</span> <span class="mi">10000</span>              <span class="c1"># Approximate MAXLEN trimming</span>
+<a id="__codelineno-85-6" name="__codelineno-85-6" href="#__codelineno-85-6"></a>    <span class="n">_stream_metadata_fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"source"</span><span class="p">,)</span>   <span class="c1"># Extra fields in each entry</span>
+<a id="__codelineno-85-7" name="__codelineno-85-7" href="#__codelineno-85-7"></a>
+<a id="__codelineno-85-8" name="__codelineno-85-8" href="#__codelineno-85-8"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
+<a id="__codelineno-85-9" name="__codelineno-85-9" href="#__codelineno-85-9"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-85-10" name="__codelineno-85-10" href="#__codelineno-85-10"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="__codelineno-85-11" name="__codelineno-85-11" href="#__codelineno-85-11"></a>
+<a id="__codelineno-85-12" name="__codelineno-85-12" href="#__codelineno-85-12"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"fact1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"hello"</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">"user"</span><span class="p">)</span>
+<a id="__codelineno-85-13" name="__codelineno-85-13" href="#__codelineno-85-13"></a><span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>    <span class="c1"># XADD with op="create"</span>
+<a id="__codelineno-85-14" name="__codelineno-85-14" href="#__codelineno-85-14"></a><span class="n">memory</span><span class="o">.</span><span class="n">content</span> <span class="o">=</span> <span class="s2">"updated"</span>
+<a id="__codelineno-85-15" name="__codelineno-85-15" href="#__codelineno-85-15"></a><span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>    <span class="c1"># XADD with op="update"</span>
+<a id="__codelineno-85-16" name="__codelineno-85-16" href="#__codelineno-85-16"></a><span class="n">memory</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>  <span class="c1"># XADD with op="delete"</span>
 </code></pre></div>
 <h3 id="configuration_1">Configuration<a class="headerlink" href="#configuration_1" title="Permanent link">&para;</a></h3>
 <table>
@@ -6853,18 +6860,18 @@ should not count as a user-originated read.</p>
 <p>Plus any fields listed in <code>_stream_metadata_fields</code>.</p>
 <h3 id="partitioned-streams">Partitioned Streams<a class="headerlink" href="#partitioned-streams" title="Permanent link">&para;</a></h3>
 <p>Route events to different streams based on a field value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-85-1" name="__codelineno-85-1" href="#__codelineno-85-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TenantMemory</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-85-2" name="__codelineno-85-2" href="#__codelineno-85-2"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">"mutations"</span>
-<a id="__codelineno-85-3" name="__codelineno-85-3" href="#__codelineno-85-3"></a>    <span class="n">_stream_partition_field</span> <span class="o">=</span> <span class="s2">"tenant"</span>
-<a id="__codelineno-85-4" name="__codelineno-85-4" href="#__codelineno-85-4"></a>
-<a id="__codelineno-85-5" name="__codelineno-85-5" href="#__codelineno-85-5"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-85-6" name="__codelineno-85-6" href="#__codelineno-85-6"></a>    <span class="n">tenant</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-85-7" name="__codelineno-85-7" href="#__codelineno-85-7"></a>
-<a id="__codelineno-85-8" name="__codelineno-85-8" href="#__codelineno-85-8"></a><span class="c1"># Writes to stream:mutations:acme</span>
-<a id="__codelineno-85-9" name="__codelineno-85-9" href="#__codelineno-85-9"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"x"</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">"acme"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-85-10" name="__codelineno-85-10" href="#__codelineno-85-10"></a>
-<a id="__codelineno-85-11" name="__codelineno-85-11" href="#__codelineno-85-11"></a><span class="c1"># Writes to stream:mutations:beta</span>
-<a id="__codelineno-85-12" name="__codelineno-85-12" href="#__codelineno-85-12"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"y"</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">"beta"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TenantMemory</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-86-2" name="__codelineno-86-2" href="#__codelineno-86-2"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">"mutations"</span>
+<a id="__codelineno-86-3" name="__codelineno-86-3" href="#__codelineno-86-3"></a>    <span class="n">_stream_partition_field</span> <span class="o">=</span> <span class="s2">"tenant"</span>
+<a id="__codelineno-86-4" name="__codelineno-86-4" href="#__codelineno-86-4"></a>
+<a id="__codelineno-86-5" name="__codelineno-86-5" href="#__codelineno-86-5"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
+<a id="__codelineno-86-6" name="__codelineno-86-6" href="#__codelineno-86-6"></a>    <span class="n">tenant</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-86-7" name="__codelineno-86-7" href="#__codelineno-86-7"></a>
+<a id="__codelineno-86-8" name="__codelineno-86-8" href="#__codelineno-86-8"></a><span class="c1"># Writes to stream:mutations:acme</span>
+<a id="__codelineno-86-9" name="__codelineno-86-9" href="#__codelineno-86-9"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"x"</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">"acme"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-86-10" name="__codelineno-86-10" href="#__codelineno-86-10"></a>
+<a id="__codelineno-86-11" name="__codelineno-86-11" href="#__codelineno-86-11"></a><span class="c1"># Writes to stream:mutations:beta</span>
+<a id="__codelineno-86-12" name="__codelineno-86-12" href="#__codelineno-86-12"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"y"</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">"beta"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Datetime partition values are canonicalized to UTC</p>
@@ -6878,11 +6885,11 @@ pre-canonical rendering.</p>
 </div>
 <h3 id="custom-events-non-save-operations">Custom Events (Non-Save Operations)<a class="headerlink" href="#custom-events-non-save-operations" title="Permanent link">&para;</a></h3>
 <p>Operations that bypass <code>Model.save()</code> (like <code>ConfidenceField.update_confidence()</code> and <code>CoOccurrenceField.strengthen()</code>) can log events via the public <code>_xadd_event()</code> method:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a><span class="c1"># Called automatically by ConfidenceField.update_confidence()</span>
-<a id="__codelineno-86-2" name="__codelineno-86-2" href="#__codelineno-86-2"></a><span class="n">instance</span><span class="o">.</span><span class="n">_xadd_event</span><span class="p">(</span>
-<a id="__codelineno-86-3" name="__codelineno-86-3" href="#__codelineno-86-3"></a>    <span class="n">op</span><span class="o">=</span><span class="s2">"confidence_update"</span><span class="p">,</span>
-<a id="__codelineno-86-4" name="__codelineno-86-4" href="#__codelineno-86-4"></a>    <span class="n">extra_fields</span><span class="o">=</span><span class="p">{</span><span class="s2">"field"</span><span class="p">:</span> <span class="s2">"trust"</span><span class="p">,</span> <span class="s2">"signal"</span><span class="p">:</span> <span class="s2">"0.8"</span><span class="p">},</span>
-<a id="__codelineno-86-5" name="__codelineno-86-5" href="#__codelineno-86-5"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-87-1" name="__codelineno-87-1" href="#__codelineno-87-1"></a><span class="c1"># Called automatically by ConfidenceField.update_confidence()</span>
+<a id="__codelineno-87-2" name="__codelineno-87-2" href="#__codelineno-87-2"></a><span class="n">instance</span><span class="o">.</span><span class="n">_xadd_event</span><span class="p">(</span>
+<a id="__codelineno-87-3" name="__codelineno-87-3" href="#__codelineno-87-3"></a>    <span class="n">op</span><span class="o">=</span><span class="s2">"confidence_update"</span><span class="p">,</span>
+<a id="__codelineno-87-4" name="__codelineno-87-4" href="#__codelineno-87-4"></a>    <span class="n">extra_fields</span><span class="o">=</span><span class="p">{</span><span class="s2">"field"</span><span class="p">:</span> <span class="s2">"trust"</span><span class="p">,</span> <span class="s2">"signal"</span><span class="p">:</span> <span class="s2">"0.8"</span><span class="p">},</span>
+<a id="__codelineno-87-5" name="__codelineno-87-5" href="#__codelineno-87-5"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h3>
 <ul>
@@ -6907,23 +6914,23 @@ record's Redis key and is <em>required</em> at query time), tags are <strong>met
 identity</strong>: a record can carry several tags at once, or none, and scoping is
 opt-in per query.</p>
 <h3 id="basic-usage_1">Basic usage<a class="headerlink" href="#basic-usage_1" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-87-1" name="__codelineno-87-1" href="#__codelineno-87-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">TagField</span>
-<a id="__codelineno-87-2" name="__codelineno-87-2" href="#__codelineno-87-2"></a>
-<a id="__codelineno-87-3" name="__codelineno-87-3" href="#__codelineno-87-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-87-4" name="__codelineno-87-4" href="#__codelineno-87-4"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
-<a id="__codelineno-87-5" name="__codelineno-87-5" href="#__codelineno-87-5"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-87-6" name="__codelineno-87-6" href="#__codelineno-87-6"></a>    <span class="n">tags</span> <span class="o">=</span> <span class="n">TagField</span><span class="p">()</span>          <span class="c1"># optional; zero tags == shared pool</span>
-<a id="__codelineno-87-7" name="__codelineno-87-7" href="#__codelineno-87-7"></a>
-<a id="__codelineno-87-8" name="__codelineno-87-8" href="#__codelineno-87-8"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">"deploy runbook"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">])</span>
-<a id="__codelineno-87-9" name="__codelineno-87-9" href="#__codelineno-87-9"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">"general note"</span><span class="p">)</span>          <span class="c1"># untagged — shared pool</span>
-<a id="__codelineno-87-10" name="__codelineno-87-10" href="#__codelineno-87-10"></a>
-<a id="__codelineno-87-11" name="__codelineno-87-11" href="#__codelineno-87-11"></a><span class="c1"># Membership / any-of (OR) / all-of (AND)</span>
-<a id="__codelineno-87-12" name="__codelineno-87-12" href="#__codelineno-87-12"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__contains</span><span class="o">=</span><span class="s2">"agent:valor"</span><span class="p">)</span>
-<a id="__codelineno-87-13" name="__codelineno-87-13" href="#__codelineno-87-13"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__any</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:a"</span><span class="p">,</span> <span class="s2">"agent:b"</span><span class="p">])</span>       <span class="c1"># SUNION</span>
-<a id="__codelineno-87-14" name="__codelineno-87-14" href="#__codelineno-87-14"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__all</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">])</span>  <span class="c1"># SINTER</span>
-<a id="__codelineno-87-15" name="__codelineno-87-15" href="#__codelineno-87-15"></a>
-<a id="__codelineno-87-16" name="__codelineno-87-16" href="#__codelineno-87-16"></a><span class="c1"># Tag filters compose with any other filter through the same pipeline.</span>
-<a id="__codelineno-87-17" name="__codelineno-87-17" href="#__codelineno-87-17"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">"popoto"</span><span class="p">,</span> <span class="n">tags__contains</span><span class="o">=</span><span class="s2">"agent:valor"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">TagField</span>
+<a id="__codelineno-88-2" name="__codelineno-88-2" href="#__codelineno-88-2"></a>
+<a id="__codelineno-88-3" name="__codelineno-88-3" href="#__codelineno-88-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-88-4" name="__codelineno-88-4" href="#__codelineno-88-4"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-88-5" name="__codelineno-88-5" href="#__codelineno-88-5"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-88-6" name="__codelineno-88-6" href="#__codelineno-88-6"></a>    <span class="n">tags</span> <span class="o">=</span> <span class="n">TagField</span><span class="p">()</span>          <span class="c1"># optional; zero tags == shared pool</span>
+<a id="__codelineno-88-7" name="__codelineno-88-7" href="#__codelineno-88-7"></a>
+<a id="__codelineno-88-8" name="__codelineno-88-8" href="#__codelineno-88-8"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">"deploy runbook"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">])</span>
+<a id="__codelineno-88-9" name="__codelineno-88-9" href="#__codelineno-88-9"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">"general note"</span><span class="p">)</span>          <span class="c1"># untagged — shared pool</span>
+<a id="__codelineno-88-10" name="__codelineno-88-10" href="#__codelineno-88-10"></a>
+<a id="__codelineno-88-11" name="__codelineno-88-11" href="#__codelineno-88-11"></a><span class="c1"># Membership / any-of (OR) / all-of (AND)</span>
+<a id="__codelineno-88-12" name="__codelineno-88-12" href="#__codelineno-88-12"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__contains</span><span class="o">=</span><span class="s2">"agent:valor"</span><span class="p">)</span>
+<a id="__codelineno-88-13" name="__codelineno-88-13" href="#__codelineno-88-13"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__any</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:a"</span><span class="p">,</span> <span class="s2">"agent:b"</span><span class="p">])</span>       <span class="c1"># SUNION</span>
+<a id="__codelineno-88-14" name="__codelineno-88-14" href="#__codelineno-88-14"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__all</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">])</span>  <span class="c1"># SINTER</span>
+<a id="__codelineno-88-15" name="__codelineno-88-15" href="#__codelineno-88-15"></a>
+<a id="__codelineno-88-16" name="__codelineno-88-16" href="#__codelineno-88-16"></a><span class="c1"># Tag filters compose with any other filter through the same pipeline.</span>
+<a id="__codelineno-88-17" name="__codelineno-88-17" href="#__codelineno-88-17"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">"popoto"</span><span class="p">,</span> <span class="n">tags__contains</span><span class="o">=</span><span class="s2">"agent:valor"</span><span class="p">)</span>
 </code></pre></div>
 <p>Accepts a <code>list</code>, <code>set</code>, or <code>tuple</code> of scalar tags; values are normalized to a
 sorted, de-duplicated list. A bare exact-match <code>filter(tags=[...])</code> raises a
@@ -6940,7 +6947,7 @@ control. A query with the right tag filter can read any tagged record; there is 
 enforcement or isolation. Do not use tags to gate access to sensitive data.</p>
 <h3 id="how-it-is-indexed-valkey-safe">How it is indexed (Valkey-safe)<a class="headerlink" href="#how-it-is-indexed-valkey-safe" title="Permanent link">&para;</a></h3>
 <p>Per tag value, a plain Redis Set of instance keys:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a>$TagF:ModelName:field_name:tag_value -&gt; Set of redis_keys
+<div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a>$TagF:ModelName:field_name:tag_value -&gt; Set of redis_keys
 </code></pre></div>
 <p>Index maintenance rides a single atomic Lua script (<code>TAG_SWAP_LUA</code>) that <strong>diffs</strong>
 the record's previous tag membership against the new one and issues only the
@@ -6958,26 +6965,26 @@ commands are core Redis Set operations (<code>SADD</code>/<code>SREM</code>/<cod
 <p><code>ContextAssembler.assemble()</code> auto-detects a <code>TagField</code> on the model and accepts
 optional tag constraints applied across <strong>all</strong> retrieval modes (composite,
 hybrid, lexical, push):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
-<a id="__codelineno-89-2" name="__codelineno-89-2" href="#__codelineno-89-2"></a>
-<a id="__codelineno-89-3" name="__codelineno-89-3" href="#__codelineno-89-3"></a><span class="c1"># Scope retrieval to one agent's memories</span>
-<a id="__codelineno-89-4" name="__codelineno-89-4" href="#__codelineno-89-4"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">])</span>
-<a id="__codelineno-89-5" name="__codelineno-89-5" href="#__codelineno-89-5"></a>
-<a id="__codelineno-89-6" name="__codelineno-89-6" href="#__codelineno-89-6"></a><span class="c1"># Multiple tags: any-of (OR) by default — surfaces memories in either scope</span>
-<a id="__codelineno-89-7" name="__codelineno-89-7" href="#__codelineno-89-7"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
-<a id="__codelineno-89-8" name="__codelineno-89-8" href="#__codelineno-89-8"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span>
-<a id="__codelineno-89-9" name="__codelineno-89-9" href="#__codelineno-89-9"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">],</span>
-<a id="__codelineno-89-10" name="__codelineno-89-10" href="#__codelineno-89-10"></a><span class="p">)</span>
-<a id="__codelineno-89-11" name="__codelineno-89-11" href="#__codelineno-89-11"></a>
-<a id="__codelineno-89-12" name="__codelineno-89-12" href="#__codelineno-89-12"></a><span class="c1"># all-of semantics (intersection)</span>
-<a id="__codelineno-89-13" name="__codelineno-89-13" href="#__codelineno-89-13"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
-<a id="__codelineno-89-14" name="__codelineno-89-14" href="#__codelineno-89-14"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span>
-<a id="__codelineno-89-15" name="__codelineno-89-15" href="#__codelineno-89-15"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">],</span>
-<a id="__codelineno-89-16" name="__codelineno-89-16" href="#__codelineno-89-16"></a>    <span class="n">tag_match</span><span class="o">=</span><span class="s2">"all"</span><span class="p">,</span>
-<a id="__codelineno-89-17" name="__codelineno-89-17" href="#__codelineno-89-17"></a><span class="p">)</span>
-<a id="__codelineno-89-18" name="__codelineno-89-18" href="#__codelineno-89-18"></a>
-<a id="__codelineno-89-19" name="__codelineno-89-19" href="#__codelineno-89-19"></a><span class="c1"># Omitting tags is byte-identical to a model with no TagField.</span>
-<a id="__codelineno-89-20" name="__codelineno-89-20" href="#__codelineno-89-20"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">})</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
+<a id="__codelineno-90-2" name="__codelineno-90-2" href="#__codelineno-90-2"></a>
+<a id="__codelineno-90-3" name="__codelineno-90-3" href="#__codelineno-90-3"></a><span class="c1"># Scope retrieval to one agent's memories</span>
+<a id="__codelineno-90-4" name="__codelineno-90-4" href="#__codelineno-90-4"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">])</span>
+<a id="__codelineno-90-5" name="__codelineno-90-5" href="#__codelineno-90-5"></a>
+<a id="__codelineno-90-6" name="__codelineno-90-6" href="#__codelineno-90-6"></a><span class="c1"># Multiple tags: any-of (OR) by default — surfaces memories in either scope</span>
+<a id="__codelineno-90-7" name="__codelineno-90-7" href="#__codelineno-90-7"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-90-8" name="__codelineno-90-8" href="#__codelineno-90-8"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span>
+<a id="__codelineno-90-9" name="__codelineno-90-9" href="#__codelineno-90-9"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">],</span>
+<a id="__codelineno-90-10" name="__codelineno-90-10" href="#__codelineno-90-10"></a><span class="p">)</span>
+<a id="__codelineno-90-11" name="__codelineno-90-11" href="#__codelineno-90-11"></a>
+<a id="__codelineno-90-12" name="__codelineno-90-12" href="#__codelineno-90-12"></a><span class="c1"># all-of semantics (intersection)</span>
+<a id="__codelineno-90-13" name="__codelineno-90-13" href="#__codelineno-90-13"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-90-14" name="__codelineno-90-14" href="#__codelineno-90-14"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">},</span>
+<a id="__codelineno-90-15" name="__codelineno-90-15" href="#__codelineno-90-15"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"agent:valor"</span><span class="p">,</span> <span class="s2">"project:popoto"</span><span class="p">],</span>
+<a id="__codelineno-90-16" name="__codelineno-90-16" href="#__codelineno-90-16"></a>    <span class="n">tag_match</span><span class="o">=</span><span class="s2">"all"</span><span class="p">,</span>
+<a id="__codelineno-90-17" name="__codelineno-90-17" href="#__codelineno-90-17"></a><span class="p">)</span>
+<a id="__codelineno-90-18" name="__codelineno-90-18" href="#__codelineno-90-18"></a>
+<a id="__codelineno-90-19" name="__codelineno-90-19" href="#__codelineno-90-19"></a><span class="c1"># Omitting tags is byte-identical to a model with no TagField.</span>
+<a id="__codelineno-90-20" name="__codelineno-90-20" href="#__codelineno-90-20"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">})</span>
 </code></pre></div>
 <p><code>tag_match</code> defaults to <code>"any"</code> (OR / <code>SUNION</code>) — in a shared central pool you'd rather over-surface scoped memories and let ranking sort them than silently miss a memory tagged on only one dimension; pass <code>"all"</code> for AND (<code>SINTER</code>) when you need the precise intersection. (The <code>Query.filter</code> arms — <code>tags__any</code> / <code>tags__all</code> / <code>tags__contains</code> — are always explicit.)</p>
 <h3 id="deploy-level-kill-switch">Deploy-level kill switch<a class="headerlink" href="#deploy-level-kill-switch" title="Permanent link">&para;</a></h3>
@@ -6999,70 +7006,70 @@ only the subconscious assembler path.</p>
 <p>This section summarizes the core methods available on every Popoto model.</p>
 <h3 id="creating-and-saving">Creating and Saving<a class="headerlink" href="#creating-and-saving" title="Permanent link">&para;</a></h3>
 <p>Create and save in one step with <code>create()</code>, or instantiate and call <code>save()</code> later:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a><span class="c1"># One-step creation</span>
-<a id="__codelineno-90-2" name="__codelineno-90-2" href="#__codelineno-90-2"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-90-3" name="__codelineno-90-3" href="#__codelineno-90-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">,</span>
-<a id="__codelineno-90-4" name="__codelineno-90-4" href="#__codelineno-90-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Thai"</span><span class="p">,</span>
-<a id="__codelineno-90-5" name="__codelineno-90-5" href="#__codelineno-90-5"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
-<a id="__codelineno-90-6" name="__codelineno-90-6" href="#__codelineno-90-6"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
-<a id="__codelineno-90-7" name="__codelineno-90-7" href="#__codelineno-90-7"></a><span class="p">)</span>
-<a id="__codelineno-90-8" name="__codelineno-90-8" href="#__codelineno-90-8"></a>
-<a id="__codelineno-90-9" name="__codelineno-90-9" href="#__codelineno-90-9"></a><span class="c1"># Two-step creation</span>
-<a id="__codelineno-90-10" name="__codelineno-90-10" href="#__codelineno-90-10"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Bella Napoli"</span><span class="p">)</span>
-<a id="__codelineno-90-11" name="__codelineno-90-11" href="#__codelineno-90-11"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">=</span> <span class="s2">"Italian"</span>
-<a id="__codelineno-90-12" name="__codelineno-90-12" href="#__codelineno-90-12"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.2</span>
-<a id="__codelineno-90-13" name="__codelineno-90-13" href="#__codelineno-90-13"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-91-1" name="__codelineno-91-1" href="#__codelineno-91-1"></a><span class="c1"># One-step creation</span>
+<a id="__codelineno-91-2" name="__codelineno-91-2" href="#__codelineno-91-2"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-91-3" name="__codelineno-91-3" href="#__codelineno-91-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">,</span>
+<a id="__codelineno-91-4" name="__codelineno-91-4" href="#__codelineno-91-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Thai"</span><span class="p">,</span>
+<a id="__codelineno-91-5" name="__codelineno-91-5" href="#__codelineno-91-5"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
+<a id="__codelineno-91-6" name="__codelineno-91-6" href="#__codelineno-91-6"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
+<a id="__codelineno-91-7" name="__codelineno-91-7" href="#__codelineno-91-7"></a><span class="p">)</span>
+<a id="__codelineno-91-8" name="__codelineno-91-8" href="#__codelineno-91-8"></a>
+<a id="__codelineno-91-9" name="__codelineno-91-9" href="#__codelineno-91-9"></a><span class="c1"># Two-step creation</span>
+<a id="__codelineno-91-10" name="__codelineno-91-10" href="#__codelineno-91-10"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Bella Napoli"</span><span class="p">)</span>
+<a id="__codelineno-91-11" name="__codelineno-91-11" href="#__codelineno-91-11"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">=</span> <span class="s2">"Italian"</span>
+<a id="__codelineno-91-12" name="__codelineno-91-12" href="#__codelineno-91-12"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.2</span>
+<a id="__codelineno-91-13" name="__codelineno-91-13" href="#__codelineno-91-13"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="loading">Loading<a class="headerlink" href="#loading" title="Permanent link">&para;</a></h3>
 <p>Load an instance by its KeyField values. For <code>AutoKeyField</code> models, load by the
 generated key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-91-1" name="__codelineno-91-1" href="#__codelineno-91-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">)</span>
-<a id="__codelineno-91-2" name="__codelineno-91-2" href="#__codelineno-91-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
-<a id="__codelineno-91-3" name="__codelineno-91-3" href="#__codelineno-91-3"></a><span class="c1"># =&gt; "Thai"</span>
-<a id="__codelineno-91-4" name="__codelineno-91-4" href="#__codelineno-91-4"></a>
-<a id="__codelineno-91-5" name="__codelineno-91-5" href="#__codelineno-91-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">order_id</span><span class="o">=</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
-<a id="__codelineno-91-6" name="__codelineno-91-6" href="#__codelineno-91-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
-<a id="__codelineno-91-7" name="__codelineno-91-7" href="#__codelineno-91-7"></a><span class="c1"># =&gt; "pending"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">)</span>
+<a id="__codelineno-92-2" name="__codelineno-92-2" href="#__codelineno-92-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
+<a id="__codelineno-92-3" name="__codelineno-92-3" href="#__codelineno-92-3"></a><span class="c1"># =&gt; "Thai"</span>
+<a id="__codelineno-92-4" name="__codelineno-92-4" href="#__codelineno-92-4"></a>
+<a id="__codelineno-92-5" name="__codelineno-92-5" href="#__codelineno-92-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">order_id</span><span class="o">=</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
+<a id="__codelineno-92-6" name="__codelineno-92-6" href="#__codelineno-92-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+<a id="__codelineno-92-7" name="__codelineno-92-7" href="#__codelineno-92-7"></a><span class="c1"># =&gt; "pending"</span>
 </code></pre></div>
 <h3 id="updating">Updating<a class="headerlink" href="#updating" title="Permanent link">&para;</a></h3>
 <p>Modify fields and call <code>save()</code> to persist changes. For models with
 <code>DatetimeField(auto_now=True)</code>, the timestamp is refreshed automatically:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">)</span>
-<a id="__codelineno-92-2" name="__codelineno-92-2" href="#__codelineno-92-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.7</span>
-<a id="__codelineno-92-3" name="__codelineno-92-3" href="#__codelineno-92-3"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-92-4" name="__codelineno-92-4" href="#__codelineno-92-4"></a>
-<a id="__codelineno-92-5" name="__codelineno-92-5" href="#__codelineno-92-5"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">"delivered"</span>
-<a id="__codelineno-92-6" name="__codelineno-92-6" href="#__codelineno-92-6"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-92-7" name="__codelineno-92-7" href="#__codelineno-92-7"></a><span class="c1"># order.updated_at is automatically refreshed</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-93-1" name="__codelineno-93-1" href="#__codelineno-93-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">)</span>
+<a id="__codelineno-93-2" name="__codelineno-93-2" href="#__codelineno-93-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.7</span>
+<a id="__codelineno-93-3" name="__codelineno-93-3" href="#__codelineno-93-3"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-93-4" name="__codelineno-93-4" href="#__codelineno-93-4"></a>
+<a id="__codelineno-93-5" name="__codelineno-93-5" href="#__codelineno-93-5"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">"delivered"</span>
+<a id="__codelineno-93-6" name="__codelineno-93-6" href="#__codelineno-93-6"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-93-7" name="__codelineno-93-7" href="#__codelineno-93-7"></a><span class="c1"># order.updated_at is automatically refreshed</span>
 </code></pre></div>
 <h3 id="deleting">Deleting<a class="headerlink" href="#deleting" title="Permanent link">&para;</a></h3>
 <p>Call <code>delete()</code> to remove an instance and clean up all associated indexes (sorted
 set entries, geo set entries, unique field indexes, and relationship indexes):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-93-1" name="__codelineno-93-1" href="#__codelineno-93-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">)</span>
-<a id="__codelineno-93-2" name="__codelineno-93-2" href="#__codelineno-93-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-94-1" name="__codelineno-94-1" href="#__codelineno-94-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">)</span>
+<a id="__codelineno-94-2" name="__codelineno-94-2" href="#__codelineno-94-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h3>
 <p>Use <code>is_valid()</code> to check whether a model instance passes all field validations
 before saving:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-94-1" name="__codelineno-94-1" href="#__codelineno-94-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Thai"</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
-<a id="__codelineno-94-2" name="__codelineno-94-2" href="#__codelineno-94-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
-<a id="__codelineno-94-3" name="__codelineno-94-3" href="#__codelineno-94-3"></a><span class="c1"># =&gt; False  (name is a required KeyField)</span>
-<a id="__codelineno-94-4" name="__codelineno-94-4" href="#__codelineno-94-4"></a>
-<a id="__codelineno-94-5" name="__codelineno-94-5" href="#__codelineno-94-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">"Siam Garden"</span>
-<a id="__codelineno-94-6" name="__codelineno-94-6" href="#__codelineno-94-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
-<a id="__codelineno-94-7" name="__codelineno-94-7" href="#__codelineno-94-7"></a><span class="c1"># =&gt; True</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-95-1" name="__codelineno-95-1" href="#__codelineno-95-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Thai"</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-95-2" name="__codelineno-95-2" href="#__codelineno-95-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
+<a id="__codelineno-95-3" name="__codelineno-95-3" href="#__codelineno-95-3"></a><span class="c1"># =&gt; False  (name is a required KeyField)</span>
+<a id="__codelineno-95-4" name="__codelineno-95-4" href="#__codelineno-95-4"></a>
+<a id="__codelineno-95-5" name="__codelineno-95-5" href="#__codelineno-95-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">"Siam Garden"</span>
+<a id="__codelineno-95-6" name="__codelineno-95-6" href="#__codelineno-95-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
+<a id="__codelineno-95-7" name="__codelineno-95-7" href="#__codelineno-95-7"></a><span class="c1"># =&gt; True</span>
 </code></pre></div>
 <h3 id="the-db_key-property">The db_key Property<a class="headerlink" href="#the-db_key-property" title="Permanent link">&para;</a></h3>
 <p>Every saved instance has a <code>db_key</code> property that exposes its Redis key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-95-1" name="__codelineno-95-1" href="#__codelineno-95-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Thai"</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
-<a id="__codelineno-95-2" name="__codelineno-95-2" href="#__codelineno-95-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-95-3" name="__codelineno-95-3" href="#__codelineno-95-3"></a><span class="c1"># =&gt; "Restaurant:Siam Garden"</span>
-<a id="__codelineno-95-4" name="__codelineno-95-4" href="#__codelineno-95-4"></a>
-<a id="__codelineno-95-5" name="__codelineno-95-5" href="#__codelineno-95-5"></a><span class="n">reservation</span> <span class="o">=</span> <span class="n">Reservation</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-95-6" name="__codelineno-95-6" href="#__codelineno-95-6"></a>    <span class="n">restaurant</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">,</span> <span class="n">customer</span><span class="o">=</span><span class="s2">"foodie42"</span><span class="p">,</span> <span class="n">party_size</span><span class="o">=</span><span class="mi">4</span>
-<a id="__codelineno-95-7" name="__codelineno-95-7" href="#__codelineno-95-7"></a><span class="p">)</span>
-<a id="__codelineno-95-8" name="__codelineno-95-8" href="#__codelineno-95-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reservation</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-95-9" name="__codelineno-95-9" href="#__codelineno-95-9"></a><span class="c1"># =&gt; "Reservation:Siam Garden:foodie42"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-96-1" name="__codelineno-96-1" href="#__codelineno-96-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Thai"</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-96-2" name="__codelineno-96-2" href="#__codelineno-96-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-96-3" name="__codelineno-96-3" href="#__codelineno-96-3"></a><span class="c1"># =&gt; "Restaurant:Siam Garden"</span>
+<a id="__codelineno-96-4" name="__codelineno-96-4" href="#__codelineno-96-4"></a>
+<a id="__codelineno-96-5" name="__codelineno-96-5" href="#__codelineno-96-5"></a><span class="n">reservation</span> <span class="o">=</span> <span class="n">Reservation</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-96-6" name="__codelineno-96-6" href="#__codelineno-96-6"></a>    <span class="n">restaurant</span><span class="o">=</span><span class="s2">"Siam Garden"</span><span class="p">,</span> <span class="n">customer</span><span class="o">=</span><span class="s2">"foodie42"</span><span class="p">,</span> <span class="n">party_size</span><span class="o">=</span><span class="mi">4</span>
+<a id="__codelineno-96-7" name="__codelineno-96-7" href="#__codelineno-96-7"></a><span class="p">)</span>
+<a id="__codelineno-96-8" name="__codelineno-96-8" href="#__codelineno-96-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reservation</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-96-9" name="__codelineno-96-9" href="#__codelineno-96-9"></a><span class="c1"># =&gt; "Reservation:Siam Garden:foodie42"</span>
 </code></pre></div>
 <p>The <code>db_key</code> is useful for debugging, logging, or performing custom Redis operations
 outside of Popoto's query API.</p>
