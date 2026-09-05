@@ -417,8 +417,7 @@ def test_legacy_idxset_pointer_skipped_before_decode_in_all_three_paths(caplog):
 
     # Raw bytes of the legacy pointer are preserved untouched, on all paths.
     assert (
-        POPOTO_REDIS_DB.hget(w.db_key.redis_key, b"status\x00idxset")
-        == pointer_value
+        POPOTO_REDIS_DB.hget(w.db_key.redis_key, b"status\x00idxset") == pointer_value
     )
 
 
