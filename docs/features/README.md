@@ -13,6 +13,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |
 | [ContentField + EmbeddingField](content-and-embedding-fields.md) | Large content routing and vector embedding storage | Stable |
 | [ContextAssembler](context-assembler.md) | Retrieval-to-injection bridge orchestrating pull and push paths | Stable |
+| [Corruption-Tolerant Decode](corruption-tolerant-decode.md) | Quarantines an undecodable non-key hash field instead of blinding the whole record; a corrupt KeyField still raises | Stable |
 | [CyclicDecayField](cyclic-decay-field.md) | Cyclical resonance, pressure, proactive surfacing, and confidence-modulated decay | Stable |
 | [DecayingSortedField](decaying-sorted-field.md) | Time-decayed sorted index for relevance ranking, with confidence-modulated per-record decay rates | Stable |
 | [ExistenceFilter](existence-filter.md) | Probabilistic membership pre-check (Bloom-style) | Stable |

@@ -42,17 +42,20 @@ Example:
 """
 
 import datetime
+import logging
 import re
 from collections import namedtuple
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 import msgpack
-from ..exceptions import ModelException
-from ..fields.constants import Defaults
+from ..exceptions import CorruptFieldError, ModelException
+from ..fields.constants import Defaults, _read_decode_quarantine_switch
 from ..redis_db import ENCODING
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from .base import Model
+
+logger = logging.getLogger("POPOTO.encoding")
 
 try:
     import pandas as pd
@@ -387,6 +390,113 @@ def _as_key_str(redis_key) -> str:
     return redis_key.decode(ENCODING) if isinstance(redis_key, bytes) else redis_key
 
 
+def _warn_undecodable_field_name(
+    model_class: Any, key_b: bytes, redis_key: Any
+) -> None:
+    """Log a hash *field name* that is not valid UTF-8 (#573).
+
+    ``key_b.decode(ENCODING)`` raises ``UnicodeDecodeError`` on such a name,
+    which blinds the whole row exactly as an undecodable *value* does. A name
+    that is not valid UTF-8 cannot correspond to any declared field (field
+    names are Python identifiers), so in particular it can never be a
+    KeyField: it is skipped and warned, never raised, and recorded under
+    ``repr(key_b)`` in ``_corrupt_fields``.
+    """
+    logger.warning(
+        "skipped undecodable field name %r on %s (%s) -- raw bytes preserved "
+        "in Redis; the name cannot match any declared field",
+        key_b,
+        model_class.__name__,
+        redis_key,
+    )
+
+
+def _decode_field_value(
+    model_class: Any, key_str: str, value_b: bytes, redis_key: Any
+) -> tuple[bool, Any]:
+    """Decode one hash field value, tolerating corruption on non-key fields.
+
+    This is the single guarded seam every decode path funnels through, so the
+    eager, lazy and ``fields_only`` readers can never disagree about what a
+    corrupt field means (#573, the open item 4 of #476).
+
+    Args:
+        model_class: The Model subclass this hash belongs to (the class, not
+            an instance). Typed ``Any`` because the surrounding module
+            annotates its own ``model_class`` parameters as ``"Model"``, and a
+            stricter ``type["Model"]`` here would flag every caller instead.
+            Consulted only for ``_meta.key_field_names``.
+        key_str: The decoded field name.
+        value_b: The raw msgpack bytes from Redis.
+        redis_key: The Redis key the hash was read from, used only in the
+            error/warning message so an operator can go straight to
+            ``redis-cli HGETALL <key>``.
+
+    Returns:
+        ``(True, decoded_value)`` when the value decodes, or
+        ``(False, value_b)`` when it is quarantined — the caller then omits
+        the field (so its declared default applies) and records the raw bytes
+        in ``_corrupt_fields``.
+
+    Raises:
+        CorruptFieldError: if *key_str* names a KeyField, chained from the
+            underlying decode exception.
+        Exception: the original decode exception, re-raised unchanged, when
+            ``POPOTO_DECODE_QUARANTINE_DISABLE`` is set.
+
+    Why a bare ``except Exception``:
+        msgpack's ``ExtraData``, ``FormatError`` and ``StackError`` subclass
+        ``Exception`` directly, **not** ``ValueError`` — an ``except
+        ValueError`` would miss the #476 case verbatim (a raw
+        ``$IndexF:...`` index pointer written into the model hash decodes as
+        msgpack fixint 36 plus trailing data, i.e. ``ExtraData``). On top of
+        that, ``decode_custom_types`` runs arbitrary registered decoders and
+        can raise whatever they raise. Enumerating the classes reads better
+        and is wrong. The handler never swallows: every path through it either
+        raises or logs a ``WARNING`` and returns a recorded quarantine.
+
+    Why KeyFields raise instead of quarantining (#537/#538):
+        A quarantined KeyField would read as its declared default, which is a
+        *wrong identity*. ``save()``'s ``KeyMutationError`` guard and its
+        obsolete-key branch are both blinded by the same recomputation, so the
+        row would be written to a second hash with no exception and no log
+        line. Losing the availability of one row is cheaper than silently
+        duplicating it.
+
+    Healthy path cost:
+        one ``try`` (zero cost when nothing raises). Nothing — no membership
+        test, no dict write, no ``os.environ`` read — happens outside the
+        ``except`` branch.
+    """
+    try:
+        return True, decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
+    except Exception as exc:
+        if key_str in model_class._meta.key_field_names:
+            raise CorruptFieldError(
+                f"KeyField {key_str!r} on {model_class.__name__} "
+                f"({redis_key}) could not be decoded: "
+                f"{type(exc).__name__}: {exc}. A KeyField is never "
+                f"quarantined, because a defaulted key is a wrong identity "
+                f"(#537/#538). Inspect the raw bytes with "
+                f"`redis-cli HGETALL {redis_key}`."
+            ) from exc
+        if not _read_decode_quarantine_switch():
+            # POPOTO_DECODE_QUARANTINE_DISABLE is set: restore the pre-#573
+            # reader, which fails the whole record loudly.
+            raise
+        logger.warning(
+            "quarantined field %r on %s (%s): %s: %s -- raw bytes preserved "
+            "in Redis, attribute reads as its declared default, save() will "
+            "refuse until the field is reassigned",
+            key_str,
+            model_class.__name__,
+            redis_key,
+            type(exc).__name__,
+            exc,
+        )
+        return False, value_b
+
+
 def decode_popoto_model_hashmap(
     model_class: "Model",
     redis_hash: dict,
@@ -459,18 +569,35 @@ def decode_popoto_model_hashmap(
     """
     if len(redis_hash):
         if fields_only:
-            model_attrs = {
-                key_b: decode_custom_types(
-                    msgpack.unpackb(value_b, strict_map_key=False)
-                )
-                for key_b, value_b in redis_hash.items()
+            model_attrs = {}
+            for key_b, value_b in redis_hash.items():
                 # Skip internal pointer fields. #476: current code no longer
                 # writes these into the hash; kept for pre-#476 legacy
-                # records until they self-heal on next write.
-                if not (
-                    b"\x00" in key_b if isinstance(key_b, bytes) else "\x00" in key_b
+                # records until they self-heal on next write. This skip stays
+                # ordered BEFORE the guarded decode so a legacy
+                # ``\x00idxset`` pointer is never mistaken for a corrupt
+                # declared field, or the reverse (#573).
+                if b"\x00" in key_b if isinstance(key_b, bytes) else "\x00" in key_b:
+                    continue
+                # The returned dict keeps bytes keys (the fields_only
+                # contract). key_str exists only so the guard can recognise a
+                # KeyField and name the field in its message.
+                try:
+                    key_str = (
+                        key_b.decode(ENCODING) if isinstance(key_b, bytes) else key_b
+                    )
+                except UnicodeDecodeError:
+                    _warn_undecodable_field_name(model_class, key_b, source_redis_key)
+                    continue
+                decoded_ok, value = _decode_field_value(
+                    model_class, key_str, value_b, source_redis_key
                 )
-            }
+                if decoded_ok:
+                    model_attrs[key_b] = value
+                # else: quarantined -- omitted from the projection. values()
+                # returns a plain dict with bytes keys and no instance to hang
+                # _corrupt_fields on, so warn-and-omit is the whole signal
+                # (#573). Consumers of a projection already handle absent keys.
             return model_attrs
 
         if lazy:
@@ -479,13 +606,31 @@ def decode_popoto_model_hashmap(
                 model_class, redis_hash, source_redis_key=source_redis_key
             )
 
-        model_attrs = {
-            key_b.decode(ENCODING): decode_custom_types(
-                msgpack.unpackb(value_b, strict_map_key=False)
+        model_attrs = {}
+        corrupt_fields: dict[str, Any] = {}
+        for key_b, value_b in redis_hash.items():
+            # skip internal pointer fields (e.g. \x00idxset). Ordered BEFORE
+            # the guarded decode so a legacy pointer is never mistaken for a
+            # corrupt declared field, or the reverse (#573).
+            if b"\x00" in key_b:
+                continue
+            try:
+                key_str = key_b.decode(ENCODING)
+            except UnicodeDecodeError:
+                _warn_undecodable_field_name(model_class, key_b, source_redis_key)
+                corrupt_fields[repr(key_b)] = value_b
+                continue
+            decoded_ok, value = _decode_field_value(
+                model_class, key_str, value_b, source_redis_key
             )
-            for key_b, value_b in redis_hash.items()
-            if b"\x00" not in key_b  # skip internal pointer fields (e.g. \x00idxset)
-        }
+            if decoded_ok:
+                model_attrs[key_str] = value
+            else:
+                # Quarantined: omit it from model_attrs so __init__'s defaults
+                # loop supplies the declared default (the #380 behaviour for
+                # absent fields), and record the raw bytes on the instance
+                # once it exists.
+                corrupt_fields[key_str] = value
 
         # Create the model instance
         model_instance = model_class(**model_attrs)
@@ -507,6 +652,13 @@ def decode_popoto_model_hashmap(
             for field_name in model_instance._meta.fields.keys()
         }
         model_instance._is_persisted = True
+
+        # Attach the quarantine record LAST: _load_capped_list_fields and the
+        # __init__ defaults loop both setattr(), and Model.__setattr__ clears a
+        # field's quarantine on assignment (that clear is the documented
+        # repair). Recording after those writes keeps the record intact.
+        if corrupt_fields:
+            model_instance._corrupt_fields.update(corrupt_fields)
 
         return model_instance
 
@@ -579,14 +731,27 @@ def _create_lazy_model(
     # Create instance without calling __init__
     instance = object.__new__(model_class)
 
+    # Quarantine record (#573). Initialized before anything else, exactly as
+    # Model.__init__ does, so it is unconditionally present and __setattr__'s
+    # clear never has to guess.
+    instance._corrupt_fields = {}
+
     # Store raw msgpack bytes for lazy decoding.
     # Skip internal pointer fields (names containing \x00, e.g. field\x00idxset)
-    # so they never surface as model attributes.
-    instance._lazy_fields = {
-        key_b.decode(ENCODING): value_b
-        for key_b, value_b in redis_hash.items()
-        if b"\x00" not in key_b
-    }
+    # so they never surface as model attributes. The skip stays ordered BEFORE
+    # the guarded field-name decode (#573).
+    lazy_fields: dict[str, bytes] = {}
+    for key_b, value_b in redis_hash.items():
+        if b"\x00" in key_b:
+            continue
+        try:
+            key_str = key_b.decode(ENCODING)
+        except UnicodeDecodeError:
+            _warn_undecodable_field_name(model_class, key_b, source_redis_key)
+            instance._corrupt_fields[repr(key_b)] = value_b
+            continue
+        lazy_fields[key_str] = value_b
+    instance._lazy_fields = lazy_fields
     instance._decoded_fields = {}
 
     # Initialize essential Model attributes that would be set in __init__
@@ -604,7 +769,15 @@ def _create_lazy_model(
     # stay in _lazy_fields for on-demand decoding.
     for key_field_name in model_class._meta.key_field_names:
         if key_field_name in instance._lazy_fields:
-            decoded_value = decode_lazy_field(instance._lazy_fields[key_field_name])
+            # Routed through the guarded seam (#573). A KeyField is never
+            # quarantined -- _decode_field_value raises CorruptFieldError for
+            # it -- so decoded_ok is always True on the path that continues.
+            _decoded_ok, decoded_value = _decode_field_value(
+                model_class,
+                key_field_name,
+                instance._lazy_fields[key_field_name],
+                source_redis_key,
+            )
             instance._decoded_fields[key_field_name] = decoded_value
             instance._saved_field_values[key_field_name] = decoded_value
 

@@ -7,6 +7,7 @@ except PackageNotFoundError:  # pragma: no cover — fallback for source-tree im
 
 from .exceptions import (
     AppendOnlyViolation,
+    CorruptFieldError,
     JournalBlockedError,
     ModelException,
     QueryException,
@@ -242,6 +243,7 @@ __all__ = [
     "Subscriber",
     "ModelException",
     "KeyMutationError",
+    "CorruptFieldError",
     "QueryException",
     "PublisherException",
     "SubscriberException",

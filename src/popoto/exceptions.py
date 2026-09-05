@@ -55,6 +55,48 @@ class KeyMutationError(ModelException):
     pass
 
 
+class CorruptFieldError(ModelException):
+    """Raised when a model hash field cannot be decoded (#573, #476).
+
+    Popoto's decode path is corruption-tolerant for *non-key* fields: an
+    undecodable value is **quarantined** rather than fatal — its raw bytes stay
+    untouched in Redis, the attribute reads as the field's declared default,
+    a ``WARNING`` is logged on the ``POPOTO.encoding`` logger, and the raw
+    bytes are recorded in ``instance._corrupt_fields``. Losing one field costs
+    one field, not the whole record.
+
+    This exception is raised in the two places where tolerance would be worse
+    than failure:
+
+    1. **A corrupt KeyField.** A defaulted or skipped key is a *wrong identity*.
+       ``save()``'s two safety nets (``KeyMutationError`` and the obsolete-key
+       branch) are both blinded by the same recomputation, so the row would be
+       duplicated to a second hash with no exception and no log line — the
+       silent-duplication mechanism documented in #537/#538. The message names
+       the model, the Redis key and the field so an operator can inspect the
+       row with ``redis-cli HGETALL``.
+
+    2. **A ``save()`` that would overwrite quarantined bytes.** While a field
+       being written is still quarantined, ``save()`` refuses rather than
+       packing the declared default over the preserved bytes. The refusal is
+       scoped to the fields actually written, so
+       ``save(update_fields=["unrelated"])`` on a poisoned row still succeeds.
+
+    Repair path — assigning a value clears the quarantine::
+
+        obj = MyModel.query.get(name="Alice")
+        obj._corrupt_fields          # {'bio': b'$IndexF:MyModel:status:active'}
+        obj.save()                   # raises CorruptFieldError
+        obj.bio = "recovered text"   # clears the quarantine
+        obj.save()                   # succeeds; the row is clean
+
+    Set ``POPOTO_DECODE_QUARANTINE_DISABLE=1`` to restore the pre-#573 reader,
+    which raises the underlying decode exception for every corrupt field.
+    """
+
+    pass
+
+
 class AppendOnlyViolation(ModelException):
     """Raised by ``AppendOnlyMixin`` when a write would destroy a record (#560).
 

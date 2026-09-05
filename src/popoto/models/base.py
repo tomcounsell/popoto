@@ -39,14 +39,14 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterable, Optional, Tuple, Union
 
 import redis
 
 if TYPE_CHECKING:
     from redis.client import Pipeline
 
-from .encoding import encode_popoto_model_obj, decode_lazy_field
+from .encoding import encode_popoto_model_obj, _decode_field_value
 from .canonical_key import canonical_key_str
 from .db_key import DB_key
 from .query import Query
@@ -59,6 +59,7 @@ from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from ..exceptions import (
+    CorruptFieldError,
     ModelException,
     KeyMutationError,
     NeverRecordException,
@@ -590,6 +591,15 @@ class Model(metaclass=ModelBase):
             save() to persist, or use Model.create() for atomic
             create-and-save.
         """
+        # Quarantine record for fields whose stored bytes could not be
+        # decoded (#573). Empty on every healthy instance, so callers can test
+        # it without hasattr(). This MUST be the literal first statement of
+        # __init__: the defaults loop and the kwargs loop below both call
+        # setattr() for every declared field, and __setattr__ clears a field's
+        # quarantine on assignment -- initializing it any later would make
+        # that clear raise AttributeError on an ordinary Model(name="x").
+        self._corrupt_fields: dict[str, bytes] = {}
+
         # allow init kwargs to set any base parameters
         self.__dict__.update(kwargs)
 
@@ -893,8 +903,35 @@ class Model(metaclass=ModelBase):
         if name in lazy_fields:
             decoded_fields = object.__getattribute__(self, "_decoded_fields")
             if name not in decoded_fields:
-                # Decode and cache the field value
-                decoded_fields[name] = decode_lazy_field(lazy_fields[name])
+                # Decode and cache the field value through the guarded seam
+                # (#573). decode_lazy_field() itself stays 1-arg and unchanged
+                # for callers that have no model instance to quarantine onto
+                # (recipes/memory_lifecycle.py); the wrapping happens here,
+                # where self can supply type(self), name and _redis_key.
+                decoded_ok, decoded_value = _decode_field_value(
+                    type(self),
+                    name,
+                    lazy_fields[name],
+                    object.__getattribute__(self, "_redis_key"),
+                )
+                if not decoded_ok:
+                    # Quarantined: record the raw bytes and cache the declared
+                    # default. Caching is what makes the warning fire once per
+                    # decode rather than once per attribute read.
+                    try:
+                        object.__getattribute__(self, "_corrupt_fields")[
+                            name
+                        ] = decoded_value
+                    except AttributeError:  # pragma: no cover - defensive
+                        pass
+                    field = type(self)._meta.fields.get(name)
+                    if field is None:
+                        decoded_value = None
+                    elif callable(field.default):
+                        decoded_value = field.default()
+                    else:
+                        decoded_value = field.default
+                decoded_fields[name] = decoded_value
             return decoded_fields[name]
 
         # For non-field attributes or already decoded fields, use normal access
@@ -914,11 +951,39 @@ class Model(metaclass=ModelBase):
         try:
             lazy_fields = object.__getattribute__(self, "_lazy_fields")
             if name in lazy_fields:
+                # Assigning a value repairs a quarantined field (#573). The
+                # clear MUST be here, inside the lazy branch and before its
+                # return: quarantine is created on lazy instances by
+                # __getattribute__'s decode above, and this branch returns
+                # early for every name in _lazy_fields -- a clear placed after
+                # it would never run and `obj.field = value; obj.save()` would
+                # raise CorruptFieldError forever on a lazily-loaded row.
+                if not object.__getattribute__(self, "__dict__").get(
+                    "_quarantine_clear_suppressed"
+                ):
+                    try:
+                        object.__getattribute__(self, "_corrupt_fields").pop(name, None)
+                    except AttributeError:
+                        pass
                 decoded_fields = object.__getattribute__(self, "_decoded_fields")
                 decoded_fields[name] = value
                 return
         except AttributeError:
             pass
+
+        # Same quarantine clear on the normal (eager instance) path. Guarded
+        # because __init__ and Model construction paths assign attributes, and
+        # _corrupt_fields may not exist yet on an instance built by other
+        # means. "_quarantine_clear_suppressed" is set by pre_save()'s
+        # format-round-trip loop, which re-assigns every field with its own
+        # value and must not be mistaken for a repair (#573).
+        if not object.__getattribute__(self, "__dict__").get(
+            "_quarantine_clear_suppressed"
+        ):
+            try:
+                object.__getattribute__(self, "_corrupt_fields").pop(name, None)
+            except AttributeError:
+                pass
 
         # Normal attribute setting
         object.__setattr__(self, name, value)
@@ -1031,20 +1096,35 @@ class Model(metaclass=ModelBase):
         """
         if update_fields is not None:
             # Partial save: only validate and format listed fields
-            for field_name in update_fields:
-                if field_name not in self._meta.fields:
-                    raise ModelException(
-                        f"Unknown field '{field_name}' in update_fields"
+            #
+            # #573: this loop re-assigns each listed field with its own
+            # formatted value, same as the full-save round-trip loop below --
+            # __setattr__ clears a field's quarantine on assignment, so
+            # without the suppression an update_fields save targeting the
+            # *corrupted* field itself would silently drop its own
+            # quarantine record here, before _raise_if_quarantine_blocks ever
+            # runs, and go on to overwrite the preserved raw bytes with the
+            # packed declared default -- the exact silent-overwrite this
+            # guard exists to prevent, just reached through the partial-save
+            # path instead of the full one.
+            self.__dict__["_quarantine_clear_suppressed"] = True
+            try:
+                for field_name in update_fields:
+                    if field_name not in self._meta.fields:
+                        raise ModelException(
+                            f"Unknown field '{field_name}' in update_fields"
+                        )
+                    field = self._meta.fields[field_name]
+                    setattr(
+                        self,
+                        field_name,
+                        field.format_value_pre_save(
+                            getattr(self, field_name),
+                            skip_auto_now=skip_auto_now,
+                        ),
                     )
-                field = self._meta.fields[field_name]
-                setattr(
-                    self,
-                    field_name,
-                    field.format_value_pre_save(
-                        getattr(self, field_name),
-                        skip_auto_now=skip_auto_now,
-                    ),
-                )
+            finally:
+                self.__dict__.pop("_quarantine_clear_suppressed", None)
             return pipeline if pipeline else True
 
         # Full save path (existing behavior, unchanged)
@@ -1122,16 +1202,77 @@ class Model(metaclass=ModelBase):
                     raise ModelException(error_message)
 
         # run any necessary formatting on field data before saving
-        for field_name, field in self._meta.fields.items():
-            setattr(
-                self,
-                field_name,
-                field.format_value_pre_save(
-                    getattr(self, field_name),
-                    skip_auto_now=skip_auto_now,
-                ),
-            )
+        #
+        # #573: this loop re-assigns every field with its own formatted value.
+        # __setattr__ clears a field's quarantine on assignment -- that clear
+        # is the documented *user* repair (obj.field = value), not an internal
+        # round-trip -- so without the suppression below this loop would erase
+        # every quarantine record on its way into save() and the
+        # CorruptFieldError guard would never fire. Worse on a lazy instance:
+        # the getattr() inside the loop is the first access, so it *creates*
+        # the quarantine and the setattr in the same iteration would drop it.
+        # Anything the caller genuinely repaired before save() was already
+        # popped from _corrupt_fields and is unaffected either way.
+        self.__dict__["_quarantine_clear_suppressed"] = True
+        try:
+            for field_name, field in self._meta.fields.items():
+                setattr(
+                    self,
+                    field_name,
+                    field.format_value_pre_save(
+                        getattr(self, field_name),
+                        skip_auto_now=skip_auto_now,
+                    ),
+                )
+        finally:
+            self.__dict__.pop("_quarantine_clear_suppressed", None)
         return pipeline if pipeline else True
+
+    def _raise_if_quarantine_blocks(self, validate_names: Iterable[str]) -> None:
+        """Refuse a write that would overwrite quarantined field bytes (#573).
+
+        Called from ``save()`` **after** ``encode_popoto_model_obj()`` and
+        **before** any Redis command is issued. The placement is load-bearing:
+        on a lazily-loaded instance the quarantine does not exist when
+        ``save()`` starts, because ``encode_popoto_model_obj``'s own
+        ``getattr(obj, field_name)`` loop is the first *access* that creates
+        it. A pre-encode check reads an empty dict, passes, and the following
+        ``HSET`` writes the packed declared default over the preserved corrupt
+        bytes -- silent data loss on the default (``lazy=True``) query path.
+
+        The refusal is scoped to the fields actually being written:
+        ``save(update_fields=["last_seen"])`` on a row whose *unrelated* field
+        is poisoned still succeeds, because ``save()`` filters the mapping down
+        to ``update_fields`` and that write never touches the poisoned field.
+        A full save (``update_fields=None``) writes every field and keeps the
+        strict behaviour.
+
+        Non-declared entries -- stray hash fields, undecodable field names --
+        never block: they are not in the mapping, so ``HSET`` leaves them
+        physically untouched.
+
+        Args:
+            validate_names: The field names this save will write
+                (``update_fields``, or every declared field for a full save).
+
+        Raises:
+            CorruptFieldError: if any of them is still quarantined.
+        """
+        corrupt = getattr(self, "_corrupt_fields", None)
+        if not corrupt:
+            return
+        blocking = sorted(set(corrupt) & set(validate_names))
+        if not blocking:
+            return
+        raise CorruptFieldError(
+            f"Refusing to save {type(self).__name__} "
+            f"({self._redis_key or self.db_key.redis_key}): "
+            f"{blocking} could not be decoded from storage and would be "
+            f"overwritten with their declared defaults. The raw bytes are "
+            f"preserved in Redis. Repair with `obj.{blocking[0]} = <value>` "
+            f"then save(), or write only unaffected fields with "
+            f"save(update_fields=[...])."
+        )
 
     def save(
         self,
@@ -1334,6 +1475,11 @@ class Model(metaclass=ModelBase):
             # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
             # hash writes atomically, so the plain HSET must not race with them.
             full_mapping = encode_popoto_model_obj(self)
+            # #573: post-encode, pre-write. The encode above is what creates
+            # the quarantine on a lazy instance, and _validate_names is
+            # update_fields here, so only a poisoned field that this partial
+            # save would actually write blocks it.
+            self._raise_if_quarantine_blocks(_validate_names)
             update_field_names_bytes = {
                 field_name.encode(ENCODING) for field_name in update_fields
             }
@@ -1512,6 +1658,10 @@ class Model(metaclass=ModelBase):
         """
 
         hset_mapping = encode_popoto_model_obj(self)  # 1
+        # #573: post-encode, pre-write. encode_popoto_model_obj's getattr loop
+        # is the first access on a lazy instance, so the quarantine only
+        # exists now; no Redis command has been issued yet.
+        self._raise_if_quarantine_blocks(_validate_names)
         self._db_content = hset_mapping  # 1
         # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
         # hash writes atomically, so the plain HSET must not race with them.
@@ -1901,6 +2051,15 @@ class Model(metaclass=ModelBase):
             else:
                 print("User did not exist")
         """
+        # #573: delete() is deliberately NOT guarded by _corrupt_fields.
+        # save() refuses on a quarantined field because it would overwrite the
+        # preserved bytes with a default; delete() removes the row outright, so
+        # there is nothing to overwrite and refusing would strand every
+        # poisoned row permanently. The index cleanup below stays correct too:
+        # IndexedFieldMixin.on_delete() reads the live "$IdxPtr:"/"$TagPtr:"
+        # side key (#540 / PR #547) rather than _saved_field_values, so a
+        # quarantined field's defaulted value cannot misdirect its SREM. A
+        # non-indexed quarantined field has no index to misdirect.
         delete_redis_key = self._redis_key or self.db_key.redis_key
 
         if pipeline:

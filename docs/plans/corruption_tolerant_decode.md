@@ -6,6 +6,9 @@ owner: valorengels
 created: 2026-09-04
 tracking: https://github.com/tomcounsell/popoto/issues/573
 last_comment_id: none (issue has 0 comments)
+revision_applied: true
+revision_applied_at: 2026-09-04T09:31:21Z
+critique_rounds: 1 (one-round cap authorized by supervisor; routes straight to BUILD)
 ---
 
 # Corruption-tolerant decode for model hashes
@@ -16,8 +19,25 @@ One undecodable byte string in one hash field currently blinds the entire record
 load. `decode_popoto_model_hashmap` runs `msgpack.unpackb` inside a dict
 comprehension with no exception handling, so any field that fails to unpack
 raises out of the comprehension and the whole row — every healthy field on it —
-becomes unreachable through `.get()`, `.filter()`, `.all()`, `.values()`,
-`get_many_objects()` and the async hydration path.
+becomes unreachable.
+
+**Scoped per entry point (round-1 CONCERN — the original claim was too broad).**
+The blast radius today is not uniform, and the difference is what makes the
+`save()` guard subtle:
+
+- **Eager `.get()` and `.values()`** blind immediately: both run the
+  `decode_popoto_model_hashmap` comprehensions, so one bad field raises for the
+  whole row.
+- **`.filter()`, `.all()`, `get_many_objects()` and `_async_get_many_objects()`**
+  default to `lazy=True` (`query.py:3303`, `:3770`), and `_create_lazy_model`
+  (`encoding.py:545`) keeps non-key fields as raw bytes. A lazy read that never
+  touches the poisoned field succeeds today; it raises only on first *access* to
+  that field (`base.py:896`).
+- **`save()`** raises on any path, because `encode_popoto_model_obj`'s
+  `getattr` loop (`encoding.py:356`) touches every field.
+
+So this is a hardening of two eager paths and of first-access on the lazy ones,
+not a rescue of six uniformly-broken ones.
 
 This is exactly the failure mode #476 documented in the field. A 1.8.0 writer
 put a raw, non-msgpack index pointer (`$IndexF:MyModel:status:active`) into the
@@ -233,7 +253,15 @@ until the writer is found. This plan gives the reader that contract.
   - New `popoto.exceptions.CorruptFieldError(ModelException)`.
   - New deploy-level env switch `POPOTO_DECODE_QUARANTINE_DISABLE`.
   - No signature change to `decode_popoto_model_hashmap`,
-    `_create_lazy_model`, or `decode_lazy_field`'s public shape.
+    `_create_lazy_model`, or `decode_lazy_field`. **Round-1 BLOCKER resolved by
+    taking option (a):** `decode_lazy_field(value_bytes)` stays 1-arg and keeps
+    today's raise-on-any-exception behavior, so
+    `recipes/memory_lifecycle.py:1128` — which has no model instance to hand —
+    keeps working unmodified. Quarantine is applied by its *caller* at
+    `base.py:896`, which has `self` and can supply `type(self)`, `name` and
+    `self._redis_key` to `_decode_field_value` directly. The earlier instruction
+    to "route `decode_lazy_field` through the helper" is withdrawn: it
+    contradicted this promise.
 - **Coupling**: slightly increased — `encoding.py` gains a read of
   `model_class._meta.key_field_names` to decide raise-vs-quarantine. It already
   reads `_meta.fields` and `_meta.key_field_names` in `_create_lazy_model`, so
@@ -333,7 +361,8 @@ records — so it does not create the silent-failure class the Failure Path
 section guards against.
 
 **2. Field-name decode.** `key_b.decode(ENCODING)` moves inside the same guard
-at both comprehension sites (`encoding.py:479`, `encoding.py:588`). A field name
+at both comprehension sites (`encoding.py:483`, `encoding.py:586` — round-1 NIT
+corrected these from `:479`/`:588`; line 479 is the `_create_lazy_model` return). A field name
 that is not valid UTF-8 cannot correspond to any declared field, so it is
 skipped and warned, recorded under `repr(key_b)` in `_corrupt_fields`. It can
 never be a KeyField (KeyField names are Python identifiers), so it never raises.
@@ -345,7 +374,7 @@ never be a KeyField (KeyField names are Python identifiers), so it never raises.
 | `fields_only` comprehension | `encoding.py:464` | Key omitted from the returned dict |
 | eager instance comprehension | `encoding.py:484` | Key omitted from `model_attrs`; `__init__` supplies the declared default |
 | `_create_lazy_model` eager KeyField decode | `encoding.py:607` | KeyField → always raises |
-| `decode_lazy_field` on first access | `encoding.py:656`, called from `base.py:896` | Returns the declared default, records quarantine on the instance |
+| first lazy access | `base.py:896` (the **caller** of `decode_lazy_field`) | Returns the declared default, records quarantine on the instance. `decode_lazy_field` itself is unchanged and still raises; the caller wraps it. |
 
 The `fields_only` branch returns a plain dict with **bytes keys** and no
 instance, so it has nowhere to hang `_corrupt_fields`. Decision: it warns and
@@ -355,19 +384,82 @@ rabbit hole.
 
 **4. `_corrupt_fields` lifecycle.**
 
-- Initialized to `{}` in `Model.__init__` and in `_create_lazy_model`, so it is
-  unconditionally present.
+- Initialized to `{}` as the **literal first statement of `Model.__init__`**, and
+  in `_create_lazy_model`, so it is unconditionally present. **Round-1 BLOCKER:**
+  the earlier instruction ("beside `_db_content`/`_saved_field_values`") put it at
+  `base.py:691-693`, *after* the defaults loop (`base.py:605-611`) and kwargs loop
+  (`base.py:613-615`) have already called `setattr()` for every declared field —
+  so an unguarded `.pop()` in `__setattr__` would raise `AttributeError` on an
+  ordinary `Person(name="Alice")`, not just on a decode. Init first, and defend
+  the clear anyway (next bullet).
 - Populated by the eager comprehension after the instance exists, and by
-  `decode_lazy_field`'s caller in `__getattribute__` on first access.
-- Cleared per field by `Model.__setattr__` when a declared field is assigned:
-  `self._corrupt_fields.pop(name, None)`. This is the repair.
+  `__getattribute__`'s lazy branch at `base.py:896` on first access.
+- Cleared per field by `Model.__setattr__` when a declared field is assigned.
+  This is the repair, and it must be written in two places, because the lazy
+  branch returns early:
+
+  ```
+  try:
+      lazy_fields = object.__getattribute__(self, "_lazy_fields")
+      if name in lazy_fields:
+          # BLOCKER 4: the clear goes INSIDE this branch, before its return.
+          # Quarantine is created on lazy instances (base.py:896), so a clear
+          # placed after the branch never runs and the documented repair
+          # (obj.field = value; obj.save()) would raise forever.
+          try:
+              object.__getattribute__(self, "_corrupt_fields").pop(name, None)
+          except AttributeError:
+              pass
+          decoded_fields = object.__getattribute__(self, "_decoded_fields")
+          decoded_fields[name] = value
+          return
+  except AttributeError:
+      pass
+  # ... normal path: same guarded pop before object.__setattr__
+  ```
+
+  The `try/except AttributeError` mirrors the existing `_lazy_fields` probe at
+  `base.py:911-921` and is what makes the ordering in the first bullet safe
+  rather than merely lucky.
 - Not persisted. It is a property of one hydration of one row.
 
-**5. `save()` guard.** In `Model.save()`, before `encode_popoto_model_obj`,
-raise `CorruptFieldError` if any key of `_corrupt_fields` is a declared field
-name. Non-declared entries (undecodable field names, stray hash fields) do not
-block a save — they are not in `hset_mapping`, so `HSET` leaves them physically
-untouched and nothing is lost.
+**5. `save()` guard — placement and scope both matter.** Two round-1 BLOCKERs
+landed here; the original "before `encode_popoto_model_obj`, refuse if any
+declared field is quarantined" was wrong on both axes.
+
+*Placement (BLOCKER 1).* The check must run **after**
+`hset_mapping = encode_popoto_model_obj(self)` (`base.py:1513`) and **before**
+the write (`base.py:1526+`). On a lazy instance the quarantine does not exist
+yet when `save()` starts: `get_many_objects`/`_async_get_many_objects` default
+`lazy=True` (`query.py:3303`, `:3770`), and `encode_popoto_model_obj`'s own
+`value = getattr(obj, field_name)` loop (`encoding.py:356`) **is** the first
+access that creates it. A pre-encode guard therefore reads `{}`, passes, and the
+encode then quarantines silently and packs the declared *default* — which `HSET`
+writes over the preserved bytes. That is silent data loss on the default query
+path, the exact outcome Open Question 1 rejects. Post-encode, pre-write, the
+dict is populated and no Redis command has been issued yet.
+
+*Scope (BLOCKER 2).* Refuse only on the intersection with the fields actually
+being written:
+
+```
+blocking = set(self._corrupt_fields) & set(_validate_names)
+if blocking:
+    raise CorruptFieldError(...)
+```
+
+`_validate_names` is already computed at `base.py:1309`
+(`update_fields if update_fields is not None else self._meta.fields.keys()`), and
+`save()` already filters `hset_mapping` down to `update_fields`
+(`base.py:1332-1337`). So `obj.save(update_fields=["last_seen"])` never writes an
+unrelated poisoned field and must not be refused — otherwise a background job
+that touches one column strands every poisoned row. A full save
+(`update_fields=None`) keeps the strict behavior, because it does write every
+field.
+
+Non-declared entries (undecodable field names, stray hash fields) do not block a
+save on either path — they are not in `hset_mapping`, so `HSET` leaves them
+physically untouched and nothing is lost.
 
 **6. `delete()` stays permitted.** Deleting a poisoned row must remain possible;
 refusing would strand it. Indexed/unique `on_delete` reads the live `$IdxPtr:`
@@ -376,11 +468,32 @@ value does not misdirect the `SREM` for those fields. For a *non-indexed*
 quarantined field there is no index to misdirect. Tested explicitly.
 
 **7. Kill switch.** `_read_decode_quarantine_switch()` in
-`src/popoto/fields/constants.py`, following the exact shape of
-`_read_never_record_switch` (#561) and `_read_journal_coupling_switch` (#560):
-phrased as a `_DISABLE` so the default-on doctrine holds when unset, read at
-call time so a deployment can flip it without a restart, `_TRUTHY` membership,
-and reuse of the existing `_WARNED_BAD_ENV` warn-once set for malformed values.
+`src/popoto/fields/constants.py`. Phrased as `POPOTO_DECODE_QUARANTINE_DISABLE`
+with `value not in _TRUTHY`, which is genuinely default-on (quarantine ON when
+unset) — the round-1 critique confirmed that half.
+
+**Round-1 CONCERN: the cited template was wrong on the other half.**
+`_read_never_record_switch` (#561) and `_read_journal_coupling_switch` (#560) are
+each evaluated **once, at import**, when the `Defaults` class body runs
+(`constants.py:413`, `:430`). Following them would bind this switch at import
+too, and the plan's own `monkeypatch.setenv` test would silently no-op. Neither
+has any malformed-value handling, and neither touches `_WARNED_BAD_ENV` — so
+"line-for-line on `_read_never_record_switch`" and "reuse `_WARNED_BAD_ENV`"
+contradicted each other.
+
+Resolution, explicit on all three points:
+- **Call-time, not a `Defaults` attribute.** Call
+  `_read_decode_quarantine_switch()` fresh inside `_decode_field_value`'s
+  `except` branch. That branch is already off the healthy path, so the
+  `os.environ` read costs nothing on a healthy row, and a deployment can flip the
+  switch without a restart. The repo's real call-time precedent is
+  `_read_default_memory_max_records` (`constants.py:64-97`), not the two switches
+  originally cited.
+- **No malformed-value warn-once.** A `_DISABLE` switch is a two-state membership
+  test; anything not in `_TRUTHY` means "not disabled", which is the safe
+  default. `_WARNED_BAD_ENV` stays untouched by this change.
+- **Do not add a `Defaults.DECODE_QUARANTINE_*` class attribute**, so there is no
+  import-time-bound copy for a caller to disagree with.
 
 **8. Byte-identical healthy path.** The helper adds a `try` (zero cost when
 nothing raises) and one dict-membership test per field only on the failure
@@ -508,9 +621,16 @@ and not a substitute for fixing the writer.
 **Impact:** an application that loads rows, mutates one field and saves in a
 loop starts raising on poisoned rows where it previously raised at load. Same
 loop, different exception, different line.
-**Mitigation:** it raised before too — earlier, and with a worse message. There
-is no regression in availability, only a move of the failure to a point where
-the message identifies the field. `CorruptFieldError` subclasses `ModelException`,
+**Mitigation:** partly that it raised before too — but **not universally, and
+the round-1 critique corrected this claim.** For eager `.get()`/`.values()` and
+for any `save()`, the loop already raised, earlier and with a worse message, so
+there is no availability regression and only a move of the failure to a point
+where the message identifies the field. For a **lazy** read that never touched
+the poisoned field, nothing raised before, and the `save()` guard is genuinely
+new behavior. Two things keep that from stranding writes: the guard is scoped to
+the fields actually being written (see Technical Approach step 5), so
+`save(update_fields=[...])` on unrelated fields still succeeds; and assigning the
+field clears its quarantine, so the repair is one line. `CorruptFieldError` subclasses `ModelException`,
 so existing broad handlers still catch it. Called out in the CHANGELOG under
 `### Changed`.
 
@@ -722,12 +842,12 @@ rather than a silent default, and add a test for that call shape.
 - **Domain**: Redis/Popoto data
 - **Parallel**: true
 - Add `CorruptFieldError(ModelException)` to `src/popoto/exceptions.py` and export it from `popoto`'s public surface where the other model exceptions are exported.
-- Add `_read_decode_quarantine_switch()` to `src/popoto/fields/constants.py`, modeled line-for-line on `_read_never_record_switch` (#561): `POPOTO_DECODE_QUARANTINE_DISABLE`, `_TRUTHY` membership, read at call time, reuse `_WARNED_BAD_ENV`.
+- Add `_read_decode_quarantine_switch()` to `src/popoto/fields/constants.py`: `POPOTO_DECODE_QUARANTINE_DISABLE`, `value not in _TRUTHY`. **Call it fresh inside `_decode_field_value`'s except branch — do NOT add a `Defaults` class attribute** (round-1 CONCERN: the originally cited `_read_never_record_switch`/`_read_journal_coupling_switch` bind at import, `constants.py:413`/`:430`, which would make the `monkeypatch.setenv` test a no-op). Call-time precedent is `_read_default_memory_max_records` (`constants.py:64-97`). No malformed-value handling and do not touch `_WARNED_BAD_ENV`.
 - Add `logger = logging.getLogger("POPOTO.encoding")` to `src/popoto/models/encoding.py`.
 - Add `_decode_field_value(model_class, key_str, value_b, redis_key)` per Technical Approach step 1. Broad `except Exception`, three exits: raise `CorruptFieldError` for KeyFields, re-raise when the switch disables quarantine, warn-and-return otherwise.
-- Convert the `fields_only` comprehension (`encoding.py:464`) and the eager comprehension (`encoding.py:484`) to explicit loops using the helper; move `key_b.decode(ENCODING)` inside the guard at both sites.
-- Route `decode_lazy_field` (`encoding.py:656`) and `_create_lazy_model`'s eager KeyField decode (`encoding.py:607`) through the same helper.
-- Preserve the existing `\x00` skip at every site verbatim — it is legacy pre-#476 pointer handling and is unrelated to quarantine.
+- Convert the `fields_only` comprehension (`encoding.py:464`) and the eager comprehension (`encoding.py:484`) to explicit loops using the helper; move `key_b.decode(ENCODING)` inside the guard at both sites (`encoding.py:483`, `:586`).
+- **Leave `decode_lazy_field(value_bytes)` unchanged** (round-1 BLOCKER: it is 1-arg at `encoding.py:644` and `recipes/memory_lifecycle.py:1128` calls it with no model instance, so routing it through the 4-arg helper would break that caller and contradict Architectural Impact's no-signature-change promise). Instead wrap its **caller** at `base.py:896`, which has `self` and can pass `type(self)`, `name`, `self._redis_key` to `_decode_field_value` directly. Route `_create_lazy_model`'s eager KeyField decode (`encoding.py:607`) through the helper as planned.
+- Preserve the existing `\x00` skip at every site verbatim — it is legacy pre-#476 pointer handling and is unrelated to quarantine. **The skip must stay ordered BEFORE the `_decode_field_value` call** when the comprehensions become explicit loops; critique probe 3 confirmed this ordering is what keeps a `\x00idxset` pointer from ever being mistaken for a corrupt declared field, or the reverse.
 - Keep the healthy path allocation-identical: no membership test, no dict write, nothing added outside the `except` branch.
 
 ### 2. Write-back guard and quarantine lifecycle
@@ -739,12 +859,13 @@ rather than a silent default, and add a test for that call shape.
 - **Agent Type**: builder
 - **Domain**: Redis/Popoto data
 - **Parallel**: false
-- Initialize `self._corrupt_fields = {}` in `Model.__init__` and in `_create_lazy_model`, beside the existing `_db_content` / `_saved_field_values` initialization, so the attribute is unconditionally present.
+- Initialize `self._corrupt_fields = {}` as the **literal first statement of `Model.__init__`**, and in `_create_lazy_model`. **NOT beside `_db_content`/`_saved_field_values`** (round-1 BLOCKER: those sit at `base.py:691-693`, after the defaults loop at `:605-611` and kwargs loop at `:613-615` have already `setattr()` every field, so a later init makes an unguarded `.pop()` in `__setattr__` raise `AttributeError` on an ordinary `Person(name="Alice")`).
 - Populate it from the eager decode after the instance is constructed, and from `Model.__getattribute__`'s lazy-decode branch (`base.py:896`).
-- In `Model.__setattr__`, clear `self._corrupt_fields.pop(name, None)` when `name` is a declared field. Do not disturb the existing lazy-cache branch.
-- In `Model.save()`, before `encode_popoto_model_obj`, raise `CorruptFieldError` if any `_corrupt_fields` key is a declared field name. Message names model, Redis key, field list and the repair.
+- In `Model.__setattr__`, clear the quarantine when `name` is a declared field, guarded by `try: object.__getattribute__(self, "_corrupt_fields").pop(name, None) / except AttributeError: pass`. **The clear MUST go inside the lazy-cache branch (`base.py:911-921`), as the first statement before its `return`** (round-1 BLOCKER: that branch returns early for any name in `_lazy_fields`, which is exactly where quarantine is created at `base.py:896` — a clear placed after it never runs and `obj.field = value; obj.save()` would raise forever on a lazy row). Write it in both the lazy branch and the normal path.
+- In `Model.save()`, raise `CorruptFieldError` **after** `hset_mapping = encode_popoto_model_obj(self)` (`base.py:1513`) and **before** the write (`base.py:1526+`) — NOT before the encode (round-1 BLOCKER: on a lazy instance the encode's own `getattr` loop at `encoding.py:356` is what creates the quarantine, so a pre-encode guard sees `{}`, passes, and `HSET` then overwrites the preserved bytes with a packed default — silent data loss on the default query path).
+- **Scope the refusal to the fields being written**: `blocking = set(self._corrupt_fields) & set(_validate_names)` using `_validate_names` already computed at `base.py:1309` (round-1 BLOCKER: an unscoped guard refuses `save(update_fields=["last_seen"])` on a row whose *unrelated* field is poisoned, stranding every background job that updates one column; `save()` already filters `hset_mapping` to `update_fields` at `base.py:1332-1337`, so that write never touches the poisoned field). Message names model, Redis key, blocking field list and the repair.
 - Leave `Model.delete()` permitted on a quarantined instance; add the reasoning as a comment citing #540/PR #547's `$IdxPtr:` pointer read.
-- Verify `src/popoto/recipes/memory_lifecycle.py:1128`'s bare `decode_lazy_field` call gets the re-raise, since there is no instance to record quarantine on.
+- Verify `src/popoto/recipes/memory_lifecycle.py:1128`'s bare `decode_lazy_field` call still raises unchanged, since there is no instance to record quarantine on — it must keep working **without modification**.
 
 ### 3. Corruption test suite
 
@@ -761,6 +882,13 @@ rather than a silent default, and add a test for that call shape.
 - Assert the preserved-bytes criterion with `HGET` after hydration.
 - Assert the warning with `caplog` on the `POPOTO.encoding` logger, including the once-per-decode property for repeated lazy access.
 - Assert `save()` refuses, the row is unchanged after the refusal, repair-then-save works, and `delete()` succeeds and leaves no orphaned index member.
+- **Round-1 BLOCKER regressions — these four are the point of the revision and must not be dropped:**
+  - **Lazy save must not silently overwrite.** Load a poisoned row with `lazy=True` (never touching the poisoned field), call `save()`, assert it raises `CorruptFieldError` **and** that `HGET` still returns the original corrupt bytes. A pre-encode guard passes this call and destroys the bytes, so this test is what pins the post-encode placement.
+  - **Repair on a lazy instance.** `obj = Model.query.filter(...)[0]` with `lazy=True`, then `obj.bio = "x"; obj.save()` must succeed. Pins the clear being inside the lazy-cache branch, not after it.
+  - **Partial save on an unrelated field succeeds.** Poison field A, then `obj.save(update_fields=["B"])` must succeed and leave A's bytes untouched. Pins the `_validate_names` intersection.
+  - **Full save still refuses.** Same row, `obj.save()` with no `update_fields` raises. Pins that the scoping did not weaken the guard.
+- Assert an ordinary `Model(name="x")` construction still works (pins the `_corrupt_fields` init ordering — an unguarded `.pop()` with late init raises `AttributeError` here, not at decode time).
+- Assert `recipes/memory_lifecycle.py`'s `decode_lazy_field` path still raises on corrupt bytes, unmodified.
 - Assert the KeyField raise on every entry point, and that no second hash was created (`SCAN` the model key space).
 - Assert `msgpack.packb(None)` does **not** quarantine.
 - Assert the env switch restores raising, with `monkeypatch.setenv`.
@@ -828,8 +956,18 @@ against `0dbce75` and pass as written on unmodified `main`.
 
 <!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 
+**Round 1 (2026-09-04, FULL depth — Risk & Robustness, Scope & Value, History & Consistency). Verdict: NEEDS REVISION — 5 blockers, 2 concerns, 1 nit.**
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | Scope & Value | **save() guard runs before the quarantine it checks for exists.** Technical Approach step 5 puts the `_corrupt_fields` check *before* `encode_popoto_model_obj`, but on a lazy instance (`get_many_objects`/`_async_get_many_objects` default `lazy=True`, `query.py:3303`/`3770`) the quarantine is only created on first *access* — and `encode_popoto_model_obj`'s own `value = getattr(obj, field_name)` loop (`encoding.py:356`) is that first access. The guard sees `{}`, passes, encode then quarantines silently and packs the **default**, and `HSET` overwrites the preserved corrupt bytes. Silent data loss on the default query path — the exact outcome Open Question 1 rejects. | Task 2 (`build-writeback`) | Move the check to **after** `hset_mapping = encode_popoto_model_obj(self)` (`base.py:1513`) and **before** the `pipeline.hset(...)`/write (`base.py:1526+`). Re-read `self._corrupt_fields` at that point; if it is non-empty for a declared field, raise *before* any Redis write is issued. |
+| BLOCKER | Risk & Robustness | **Guard is not scoped to the fields being written, stranding partial saves.** "raise if any key of `_corrupt_fields` is a declared field name" refuses `obj.save(update_fields=["last_seen"])` on a row whose *unrelated* field is poisoned. `save()` already computes the correct scope at `base.py:1309` (`update_fields if update_fields is not None else self._meta.fields.keys()`) and filters `hset_mapping` to `update_fields` at `base.py:1332-1337`, so a partial save never writes the poisoned field and has no reason to be refused. This is the "background job updating one unrelated field on every row" case. | Task 2 (`build-writeback`) | `blocking = set(self._corrupt_fields) & set(_validate_names)` using the `_validate_names` already computed at `base.py:1309`; `if blocking: raise CorruptFieldError(...)`. Full saves (`update_fields=None`) keep the strict behavior; partial saves that never reference the poisoned field succeed. |
+| BLOCKER | Risk & Robustness | **`_corrupt_fields` init ordering crashes every `Model(...)` construction.** Task 2 says initialize it "beside the existing `_db_content`/`_saved_field_values` initialization" — those are at the *end* of `__init__` (`base.py:691-693`), while the defaults loop (`base.py:605-611`) and kwargs loop (`base.py:613-615`) call `setattr()` for every declared field first. An unguarded `self._corrupt_fields.pop(name, None)` in `__setattr__` then raises `AttributeError` on `Person(name="Alice")`, not just on decode. | Task 2 (`build-writeback`) | Initialize `self._corrupt_fields = {}` as the **literal first line** of `__init__` (before `self.__dict__.update(kwargs)`), *and* wrap the `__setattr__` clear in `try: object.__getattribute__(self, "_corrupt_fields").pop(name, None)` / `except AttributeError: pass`, mirroring the existing `_lazy_fields` probe at `base.py:911-921`. |
+| BLOCKER | History & Consistency | **The documented repair is unreachable on lazy instances.** Task 2 says clear the quarantine in `__setattr__` but "do not disturb the existing lazy-cache branch". That branch (`base.py:911-921`) `return`s early for any name in `_lazy_fields` — which is exactly the instance type where quarantine is created (`base.py:896`). A `.pop()` placed after it never runs, so `person.bio = "x"; person.save()` on a `lazy=True` row raises `CorruptFieldError` forever, violating the "assigning the field clears the quarantine" Success Criterion. | Task 2 (`build-writeback`) | Put `self._corrupt_fields.pop(name, None)` as the **first statement inside** `if name in lazy_fields:`, before its `return` — the branch must be disturbed. Add a regression test that repairs a quarantined field on a `lazy=True`-loaded instance specifically, not only an eager one. |
+| BLOCKER | History & Consistency | **`decode_lazy_field` cannot be "routed through" the helper without a signature change.** Architectural Impact promises "no signature change to `decode_lazy_field`'s public shape"; Task 1 says route it through `_decode_field_value(model_class, key_str, value_b, redis_key)`. The real signature is 1-arg (`encoding.py:644`), and `recipes/memory_lifecycle.py:1128` calls `decode_lazy_field(raw_tier)` with no model instance at all. The two statements cannot both hold. | Task 1 (`build-decode`) | Pick one explicitly: (a) leave `decode_lazy_field(value_bytes)` unchanged and rewrite its **caller** at `base.py:896` to call `_decode_field_value` directly (it has `self`, so it can supply `type(self)`, `name`, `self._redis_key`); or (b) add optional kwargs `model_class=None, key_str=None, redis_key=None` that default to today's raise-on-any-exception behavior. Either way `memory_lifecycle.py:1128` must keep working unmodified. |
+| CONCERN | Risk & Robustness | **Kill switch cites the wrong template — it would be import-time bound and its own test would no-op.** `_read_never_record_switch` / `_read_journal_coupling_switch` are read once at `Defaults` class-body evaluation (`constants.py:413`, `:430`), contradicting the plan's "read at call time so a deployment can flip it without a restart". The repo's actual call-time pattern is `_read_default_memory_max_records` (`constants.py:64-97`), whose docstring names import-time binding as the `VALIDITY_GATING_ENABLED` defect. Separately, `_read_never_record_switch` has **no** malformed-value handling and never touches `_WARNED_BAD_ENV`, so "modeled line-for-line on it" and "reuse `_WARNED_BAD_ENV` for malformed values" contradict each other. | Task 1 (`build-decode`) | Call `_read_decode_quarantine_switch()` **fresh inside `_decode_field_value`'s except branch** (already off the hot path) rather than caching it as a `Defaults` class attribute, so `monkeypatch.setenv("POPOTO_DECODE_QUARANTINE_DISABLE", "1")` takes effect without a module reload. Note that `_DISABLE`-phrased + `value not in _TRUTHY` genuinely yields default-on; if malformed-value warn-once is wanted, say so explicitly since the cited template has none. |
+| CONCERN | Scope & Value | **Problem statement overstates today's blast radius.** `.filter()`/`.all()`/`get_many_objects()`/the async path all default `lazy=True` and `_create_lazy_model` (`encoding.py:545`) keeps non-key fields as raw bytes, decoding only on attribute access (`base.py:896`). A corrupt non-key field does **not** blind those paths today — only eager `.get()` and `.values()`'s `fields_only` comprehension. Risk 2's "it raised before too" is therefore false for the lazy path, which is where the save()-guard blocker above bites. | Prose fix (Problem, Risk 2) | No code change. Scope the claim per entry point: eager `.get()`/`.values()` and any `save()` raise today; a pure lazy read that never touches the poisoned field does not. |
+| NIT | History & Consistency | Technical Approach step 2 cites the field-name decode sites as `encoding.py:479` and `:588`; the real sites are `:483` and `:586` (line 479 is `return _create_lazy_model(...)`). The headline sites `:464`, `:484`, `:607`, `:656` are accurate. | Prose fix | — |
 
 ---
 
