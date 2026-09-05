@@ -147,7 +147,7 @@ for how membership is evaluated at a past instant.
 
 ### Reading the Index
 
-`count()` and `members()` read a sorted field's index directly, without going through a query. Recipes use them to answer "how many" and "which members" for one partition. Both are classmethods on the field object; the model instance supplies whichever partition values `partition_by` names, the same way `save()` and `delete()` already read them, so an instance with an unset partition field raises `QueryException`.
+`count()` and `members()` read a sorted field's index directly, without going through a query. Recipes use them to answer "how many" and "which members" for one partition. Both are classmethods on the field object; the model instance supplies whichever partition values `partition_by` names, and the read resolves to exactly the key `save()` and `delete()` use for that instance, so an unset partition field reads the same `None` partition that `save()` wrote.
 
 ```python
 field = Memory._meta.fields["relevance"]
