@@ -2938,6 +2938,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/corruption-tolerant-decode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Corruption-Tolerant Decode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../relationship/" class="md-nav__link">
         
   
@@ -4033,6 +4061,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td><code>POPOTO_DEFAULT_MEMORY_MAX_RECORDS</code></td>
 <td>unset</td>
 <td>Cap on records <strong>per <code>agent_id</code></strong> kept by <code>DefaultMemory</code> (name shortened for table brevity — the scope is per-agent, not per-store). Read at call time on every <code>save()</code>, so it can be changed without a code edit. <code>0</code>/<code>off</code>/<code>false</code>/<code>no</code> disables eviction; a positive integer sets the cap; unset defers to the class attribute (default 1000, <code>Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT</code>); a malformed value warns once and is ignored. It can lower, raise, or disable the <em>default</em> cap, but it can <strong>never</strong> re-arm eviction on a subclass whose <code>_max_records_per_agent</code> is set falsy — that opt-out always wins. See <a href="../features/harness-integration/#corpus-growth">DefaultMemory eviction</a> for the data-loss behavior on the first save after upgrading.</td>
+</tr>
+<tr>
+<td><code>POPOTO_DECODE_QUARANTINE_DISABLE</code></td>
+<td>unset (falsy)</td>
+<td>Kill switch for corruption-tolerant decode (#573). Read at call time, inside the decode path's <code>except</code> branch — a deploy-time flip (or <code>monkeypatch.setenv</code> in a test) takes effect immediately, with no import-time binding to work around. Default-on: unset, an undecodable non-key field is quarantined (raw bytes preserved, declared default returned, <code>_corrupt_fields</code> recorded, <code>WARNING</code> logged) rather than raising. A truthy value restores the pre-#573 reader, which raises the underlying decode exception (e.g. <code>msgpack.exceptions.ExtraData</code>) for every corrupt field, failing the whole row exactly as before this feature shipped. Never disables the KeyField-always-raises behavior, since that guard is about identity correctness, not tolerance. See <a href="../features/corruption-tolerant-decode/#the-kill-switch">Corruption-Tolerant Decode</a>.</td>
 </tr>
 </tbody>
 </table>

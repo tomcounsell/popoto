@@ -12,13 +12,13 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/guides/query-blind-retrieval/">
+        <link rel="canonical" href="https://popoto.io/features/corruption-tolerant-decode/">
       
       
-        <link rel="prev" href="../subconscious-memory-recipe/">
+        <link rel="prev" href="../../indexed_fields/">
       
       
-        <link rel="next" href="../../features/llm-memory-extraction/">
+        <link rel="next" href="../../relationship/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Query-Blind Retrieval - Popoto Documentation</title>
+        <title>Corruption-Tolerant Decode - Popoto Documentation</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#query-blind-retrieval-when-composite-mode-is-right" class="md-skip">
+        <a href="#corruption-tolerant-decode" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Query-Blind Retrieval
+              Corruption-Tolerant Decode
             
           </span>
         </div>
@@ -246,13 +246,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../agent-memory-quickstart/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../guides/agent-memory-quickstart/" class="md-tabs__link">
           
   
   
@@ -272,7 +270,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../features/harness-integration/" class="md-tabs__link">
+        <a href="../harness-integration/" class="md-tabs__link">
           
   
   
@@ -292,7 +290,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../features/agent-memory/" class="md-tabs__link">
+        <a href="../agent-memory/" class="md-tabs__link">
           
   
   
@@ -338,6 +336,8 @@
   
   
   
+    
+  
   
     
     
@@ -345,10 +345,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../../configuration/" class="md-tabs__link">
           
   
@@ -478,31 +480,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
@@ -520,7 +517,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -538,7 +535,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agent-memory-quickstart/" class="md-nav__link">
+      <a href="../../guides/agent-memory-quickstart/" class="md-nav__link">
         
   
   
@@ -566,7 +563,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../subconscious-memory-recipe/" class="md-nav__link">
+      <a href="../../guides/subconscious-memory-recipe/" class="md-nav__link">
         
   
   
@@ -591,37 +588,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Query-Blind Retrieval
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../guides/query-blind-retrieval/" class="md-nav__link">
         
   
   
@@ -637,92 +607,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#how-a-mode-gets-selected" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How a mode gets selected
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-query-blind-ranking-is-the-right-answer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When query-blind ranking is the right answer
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-query-blind-ranking-is-the-wrong-answer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When query-blind ranking is the wrong answer
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#getting-query-sensitive-retrieval" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Getting query-sensitive retrieval
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#running-both" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Running both
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -735,7 +619,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/llm-memory-extraction/" class="md-nav__link">
+      <a href="../llm-memory-extraction/" class="md-nav__link">
         
   
   
@@ -822,7 +706,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/harness-integration/" class="md-nav__link">
+      <a href="../harness-integration/" class="md-nav__link">
         
   
   
@@ -850,7 +734,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/prompt-cache-efficiency/" class="md-nav__link">
+      <a href="../prompt-cache-efficiency/" class="md-nav__link">
         
   
   
@@ -878,7 +762,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../harness-claude-code/" class="md-nav__link">
+      <a href="../../guides/harness-claude-code/" class="md-nav__link">
         
   
   
@@ -906,7 +790,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../harness-codex/" class="md-nav__link">
+      <a href="../../guides/harness-codex/" class="md-nav__link">
         
   
   
@@ -934,7 +818,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../harness-hermes/" class="md-nav__link">
+      <a href="../../guides/harness-hermes/" class="md-nav__link">
         
   
   
@@ -962,7 +846,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../harness-openclaw/" class="md-nav__link">
+      <a href="../../guides/harness-openclaw/" class="md-nav__link">
         
   
   
@@ -1049,7 +933,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/agent-memory/" class="md-nav__link">
+      <a href="../agent-memory/" class="md-nav__link">
         
   
   
@@ -1129,7 +1013,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/decaying-sorted-field/" class="md-nav__link">
+      <a href="../decaying-sorted-field/" class="md-nav__link">
         
   
   
@@ -1157,7 +1041,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/cyclic-decay-field/" class="md-nav__link">
+      <a href="../cyclic-decay-field/" class="md-nav__link">
         
   
   
@@ -1185,7 +1069,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/confidence-field/" class="md-nav__link">
+      <a href="../confidence-field/" class="md-nav__link">
         
   
   
@@ -1213,7 +1097,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/co-occurrence-field/" class="md-nav__link">
+      <a href="../co-occurrence-field/" class="md-nav__link">
         
   
   
@@ -1241,7 +1125,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/existence-filter/" class="md-nav__link">
+      <a href="../existence-filter/" class="md-nav__link">
         
   
   
@@ -1269,7 +1153,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/observation-protocol/" class="md-nav__link">
+      <a href="../observation-protocol/" class="md-nav__link">
         
   
   
@@ -1297,7 +1181,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/validity-and-supersession/" class="md-nav__link">
+      <a href="../validity-and-supersession/" class="md-nav__link">
         
   
   
@@ -1325,7 +1209,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/provenance-journal/" class="md-nav__link">
+      <a href="../provenance-journal/" class="md-nav__link">
         
   
   
@@ -1353,7 +1237,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/auditable-extraction/" class="md-nav__link">
+      <a href="../auditable-extraction/" class="md-nav__link">
         
   
   
@@ -1381,7 +1265,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/prediction-ledger/" class="md-nav__link">
+      <a href="../prediction-ledger/" class="md-nav__link">
         
   
   
@@ -1409,7 +1293,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/composite-score-query/" class="md-nav__link">
+      <a href="../composite-score-query/" class="md-nav__link">
         
   
   
@@ -1437,7 +1321,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/policy-cache/" class="md-nav__link">
+      <a href="../policy-cache/" class="md-nav__link">
         
   
   
@@ -1465,7 +1349,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/context-assembler/" class="md-nav__link">
+      <a href="../context-assembler/" class="md-nav__link">
         
   
   
@@ -1493,7 +1377,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/hybrid-retrieval/" class="md-nav__link">
+      <a href="../hybrid-retrieval/" class="md-nav__link">
         
   
   
@@ -1521,7 +1405,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/metacognitive-layer/" class="md-nav__link">
+      <a href="../metacognitive-layer/" class="md-nav__link">
         
   
   
@@ -1549,7 +1433,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/never-record-firewall/" class="md-nav__link">
+      <a href="../never-record-firewall/" class="md-nav__link">
         
   
   
@@ -1637,7 +1521,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../policy-cache-recipe/" class="md-nav__link">
+      <a href="../../guides/policy-cache-recipe/" class="md-nav__link">
         
   
   
@@ -1665,7 +1549,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../trajectory-memory-recipe/" class="md-nav__link">
+      <a href="../../guides/trajectory-memory-recipe/" class="md-nav__link">
         
   
   
@@ -1693,7 +1577,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../rag-chatbot-recipe/" class="md-nav__link">
+      <a href="../../guides/rag-chatbot-recipe/" class="md-nav__link">
         
   
   
@@ -1721,7 +1605,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/memory-telemetry/" class="md-nav__link">
+      <a href="../memory-telemetry/" class="md-nav__link">
         
   
   
@@ -1837,7 +1721,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../tuning-magic-numbers/" class="md-nav__link">
+      <a href="../../guides/tuning-magic-numbers/" class="md-nav__link">
         
   
   
@@ -1865,7 +1749,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/parametric-sweep/" class="md-nav__link">
+      <a href="../parametric-sweep/" class="md-nav__link">
         
   
   
@@ -2248,26 +2132,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -2285,7 +2174,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2309,17 +2198,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
         
           
-          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="">
             
   
   
@@ -2472,26 +2364,31 @@
                 
   
   
+    
   
   
+  
     
     
     
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
         
           
-          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="">
             
   
   
@@ -2509,7 +2406,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_6_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2608,10 +2505,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../features/corruption-tolerant-decode/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Corruption-Tolerant Decode
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2627,6 +2551,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quarantine-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quarantine contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-keyfields-are-the-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why KeyFields are the exception
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#save-refuses-to-overwrite-quarantined-bytes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        save() refuses to overwrite quarantined bytes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspecting-a-quarantine-as-an-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting a quarantine as an operator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The kill switch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2723,7 +2744,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../features/content-and-embedding-fields/" class="md-nav__link">
+      <a href="../content-and-embedding-fields/" class="md-nav__link">
         
   
   
@@ -2751,7 +2772,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../export-import/" class="md-nav__link">
+      <a href="../../guides/export-import/" class="md-nav__link">
         
   
   
@@ -2924,10 +2945,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#how-a-mode-gets-selected" class="md-nav__link">
+  <a href="#the-problem" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How a mode gets selected
+        The problem
       
     </span>
   </a>
@@ -2935,10 +2956,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-query-blind-ranking-is-the-right-answer" class="md-nav__link">
+  <a href="#quarantine-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When query-blind ranking is the right answer
+        Quarantine contract
       
     </span>
   </a>
@@ -2946,10 +2967,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-query-blind-ranking-is-the-wrong-answer" class="md-nav__link">
+  <a href="#why-keyfields-are-the-exception" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When query-blind ranking is the wrong answer
+        Why KeyFields are the exception
       
     </span>
   </a>
@@ -2957,10 +2978,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#getting-query-sensitive-retrieval" class="md-nav__link">
+  <a href="#save-refuses-to-overwrite-quarantined-bytes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Getting query-sensitive retrieval
+        save() refuses to overwrite quarantined bytes
       
     </span>
   </a>
@@ -2968,10 +2989,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-both" class="md-nav__link">
+  <a href="#inspecting-a-quarantine-as-an-operator" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running both
+        Inspecting a quarantine as an operator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The kill switch
       
     </span>
   </a>
@@ -3009,116 +3041,122 @@
   
 
 
-<h1 id="query-blind-retrieval-when-composite-mode-is-right">Query-Blind Retrieval: When Composite Mode Is Right<a class="headerlink" href="#query-blind-retrieval-when-composite-mode-is-right" title="Permanent link">&para;</a></h1>
-<p><code>ContextAssembler</code> has two shapes of pull path. One reads the query text and
-ranks by it. The other ignores the query text and ranks by the record's own
-state: how recent it is, how important it is, how confident the system is in
-it, what it is associated with.</p>
-<p>The second shape is <strong>composite mode</strong>, and it is query-blind on purpose. This
-page is about when that is the ranking you want and when it will quietly cost
-you the right answer.</p>
-<h2 id="how-a-mode-gets-selected">How a mode gets selected<a class="headerlink" href="#how-a-mode-gets-selected" title="Permanent link">&para;</a></h2>
-<p><code>retrieval_mode="auto"</code> (the default) reads the fields declared on your model:</p>
-<table>
-<thead>
-<tr>
-<th>Fields on the model</th>
-<th>Effective mode</th>
-<th>Query text</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>BM25Field</code></td>
-<td><code>lexical</code></td>
-<td>ranks the results</td>
-</tr>
-<tr>
-<td><code>BM25Field</code> + <code>EmbeddingField</code></td>
-<td><code>hybrid</code></td>
-<td>ranks the results</td>
-</tr>
-<tr>
-<td>neither</td>
-<td><code>composite</code></td>
-<td>accepted, then ignored</td>
-</tr>
-</tbody>
-</table>
-<p>The shipped <a href="../subconscious-memory-recipe/#what-the-defaults-give-you"><code>DefaultMemory</code></a>
-declares a <code>BM25Field</code>, so the zero-configuration path is query-sensitive.
-Authoring your own model without one lands on <code>composite</code>, and the assembler
-logs a <code>WARNING</code> naming the model and the missing field. Passing
-<code>retrieval_mode="composite"</code> explicitly affirms the choice and silences the
-warning.</p>
-<h2 id="when-query-blind-ranking-is-the-right-answer">When query-blind ranking is the right answer<a class="headerlink" href="#when-query-blind-ranking-is-the-right-answer" title="Permanent link">&para;</a></h2>
-<p>Composite mode is the mode that answers "what should this agent be thinking
-about right now" rather than "what matches these words".</p>
+<h1 id="corruption-tolerant-decode">Corruption-Tolerant Decode<a class="headerlink" href="#corruption-tolerant-decode" title="Permanent link">&para;</a></h1>
+<p>One undecodable byte string in one hash field no longer blinds the entire
+record. A non-key field that fails to decode is <strong>quarantined</strong>: its raw
+bytes stay untouched in Redis, the attribute reads as the field's declared
+default, a warning is logged, and the instance remembers what happened so
+<code>save()</code> can refuse to overwrite the evidence. Losing one field now costs one
+field, not the whole row.</p>
+<h2 id="the-problem">The problem<a class="headerlink" href="#the-problem" title="Permanent link">&para;</a></h2>
+<p>Every decode path used to call <code>msgpack.unpackb</code> directly inside a dict
+comprehension, with no exception handling. One bad field raised out of the
+comprehension and every healthy field on that row became unreachable with it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Person</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Alice"</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># msgpack.exceptions.ExtraData: unpack(b) received extra data.</span>
+</code></pre></div>
+<p>The exception named neither the model, the Redis key, nor the field, and
+every query touching the row failed the same way — including a bulk query
+where the poisoned row is one of a thousand.</p>
+<p>This is exactly the failure mode <a href="https://github.com/tomcounsell/popoto/issues/476">#476</a>
+documented in production: a pre-1.9.0 writer put a raw, non-msgpack index
+pointer into a model hash, and a reader's <code>unpackb</code> call on it raised for
+every read of every indexed row. The index sets and the hashes were both
+fine — only hydration failed — but from the caller's side the data looked
+gone. The writer that caused that specific corruption is long gone (fixed in
+<a href="https://github.com/tomcounsell/popoto/issues/540">#540</a>/PR #547), but the
+general class survives it: a partially-flushed write, a downstream project
+writing into a popoto hash by hand, a future encoder change, a msgpack
+version whose reader rejects what an older writer produced, or a
+<code>decode_custom_types</code> tag whose payload no longer parses.</p>
+<h2 id="quarantine-contract">Quarantine contract<a class="headerlink" href="#quarantine-contract" title="Permanent link">&para;</a></h2>
+<p>A corrupt <strong>non-key</strong> field, on read:</p>
 <ul>
-<li><strong>Proactive injection.</strong> A turn where the user never restates the memory it
-  needs. If the agent is told in turn 3 that the user is allergic to shellfish
-  and asked in turn 40 to book dinner, no keyword in turn 40 retrieves that
-  fact. Ranking by importance, recency, and confidence does.</li>
-<li><strong>Cold-open turns.</strong> The start of a session, a scheduled tick, a background
-  consolidation pass. There is no query, so there is nothing for a lexical
-  ranker to work with.</li>
-<li><strong>Preference and standing-instruction memory.</strong> Records whose value comes
-  from being persistently true rather than from matching this turn's topic.</li>
-<li><strong>Corpora with a narrow, curated keyspace.</strong> When every record in the
-  partition is relevant and the only question is which few fit the budget,
-  score ordering is the whole job.</li>
+<li>its raw bytes are left exactly as they are in Redis — nothing is deleted
+  or rewritten</li>
+<li>the attribute reads as the field's declared default</li>
+<li>a <code>WARNING</code> is logged on the <code>POPOTO.encoding</code> logger, naming the model,
+  the Redis key, the field, and the underlying decode exception</li>
+<li>the raw bytes are recorded on the instance's <code>_corrupt_fields</code> dict, keyed
+  by field name</li>
 </ul>
-<p>The <a href="../../benchmarks/#subconscious-injection-quality-siq-harness">SIQ harness</a>
-exists to measure exactly this regime, because no public retrieval benchmark
-scores it.</p>
-<h2 id="when-query-blind-ranking-is-the-wrong-answer">When query-blind ranking is the wrong answer<a class="headerlink" href="#when-query-blind-ranking-is-the-wrong-answer" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Any turn with a real question in it.</strong> A user asking "what's our deployment
-  strategy" gets whatever ranked highest by decay and confidence, which may be
-  a lunch order. This is the <a href="../../benchmarks/#deterministic-csr-harness">#409 failure
-  mode</a>: the ranked list is
-  identical for a real query and for gibberish.</li>
-<li><strong>Large or heterogeneous corpora.</strong> The more topics share one partition, the
-  less a query-blind ranking narrows anything.</li>
-<li><strong>Anything you plan to benchmark against a retrieval dataset.</strong> LongMemEval-S
-  and LoCoMo are query-driven by construction; composite mode scores near the
-  floor on them, and that number says nothing about the mode.</li>
-</ul>
-<p>Adding <code>EmbeddingField</code> alone does <strong>not</strong> fix this. A model with embeddings
-and no <code>BM25Field</code> still resolves to <code>composite</code>. Query-sensitive retrieval
-requires the <code>BM25Field</code>.</p>
-<h2 id="getting-query-sensitive-retrieval">Getting query-sensitive retrieval<a class="headerlink" href="#getting-query-sensitive-retrieval" title="Permanent link">&para;</a></h2>
-<p>Declare a <code>BM25Field</code> on the content you want searchable:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">BM25Field</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">...</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">loaded</span> <span class="o">=</span> <span class="n">Person</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Alice"</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">loaded</span><span class="o">.</span><span class="n">bio</span>                    <span class="c1"># None -- the declared default, not the raw bytes</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">loaded</span><span class="o">.</span><span class="n">_corrupt_fields</span>        <span class="c1"># {"bio": b"$IndexF:Person:status:active"}</span>
 </code></pre></div>
-<p>Or import the model that already declares one:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">DefaultMemory</span>
+<p>All three decode call sites — the <code>fields_only</code> projection (<code>.values()</code>),
+eager hydration (<code>.get()</code>, <code>.all()</code> without <code>lazy=True</code>), and the lazy path
+(<code>.filter()</code>, <code>Query.get_many_objects()</code>, the async equivalent, all of which
+default to <code>lazy=True</code>) — route through the same guarded seam,
+<code>_decode_field_value</code>, so none of the readers can disagree about what a
+corrupt field means. On the lazy path the field decodes (and is quarantined,
+if corrupt) on first <em>access</em>, not at load time; a lazy instance that never
+touches the poisoned field never quarantines it.</p>
+<p>A non-UTF-8 hash <em>field name</em> (as opposed to a corrupt field <em>value</em>) is
+skipped and warned rather than quarantined — a name that isn't a valid Python
+identifier can never match a declared field, so it can never be misread as
+one, and it never blocks a save.</p>
+<h2 id="why-keyfields-are-the-exception">Why KeyFields are the exception<a class="headerlink" href="#why-keyfields-are-the-exception" title="Permanent link">&para;</a></h2>
+<p>A corrupt <strong>KeyField</strong> raises <code>CorruptFieldError</code> immediately rather than
+quarantining. A defaulted key is a <em>wrong identity</em>, not a missing value: the
+row's <code>save()</code> guards against key mutation and against stale keys by
+recomputing the key from the same decoded values that a quarantine would
+default, so both safety nets would agree the key never changed and let the
+row get written to a second hash with no exception and no log line — the
+silent-duplication mechanism documented in
+<a href="https://github.com/tomcounsell/popoto/issues/537">#537</a>/<a href="https://github.com/tomcounsell/popoto/issues/538">#538</a>.
+Losing the availability of one row is cheaper than silently duplicating it.</p>
+<h2 id="save-refuses-to-overwrite-quarantined-bytes"><code>save()</code> refuses to overwrite quarantined bytes<a class="headerlink" href="#save-refuses-to-overwrite-quarantined-bytes" title="Permanent link">&para;</a></h2>
+<p>Assigning a value clears a field's quarantine — that is the intended repair
+path. But calling <code>save()</code> on an instance that still carries a quarantined
+field raises <code>CorruptFieldError</code> instead of packing the field's declared
+default over the preserved raw bytes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">obj</span> <span class="o">=</span> <span class="n">Person</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Alice"</span><span class="p">)</span>   <span class="c1"># bio quarantined on load</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># CorruptFieldError: Refusing to save Person (Person:...): ['bio'] could not</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># be decoded from storage and would be overwritten with their declared</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># defaults. The raw bytes are preserved in Redis. Repair with</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="c1"># `obj.bio = &lt;value&gt;` then save(), or write only unaffected fields with</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># save(update_fields=[...]).</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">obj</span><span class="o">.</span><span class="n">bio</span> <span class="o">=</span> <span class="s2">"recovered text"</span>             <span class="c1"># clears the quarantine</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>                             <span class="c1"># succeeds; the row is clean</span>
 </code></pre></div>
-<p><code>BM25Field</code> indexes on the <code>on_save()</code> hook, so records written before the
-field existed are absent from the index. Re-save each once to backfill:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">():</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<p>The refusal is scoped to the fields the save will actually write:
+<code>save(update_fields=["last_seen"])</code> on a row whose <em>unrelated</em> field is
+quarantined still succeeds, because that write never touches the poisoned
+field. A full save (<code>update_fields=None</code>, or every declared field) keeps the
+strict behavior.</p>
+<p><code>delete()</code> is deliberately <strong>not</strong> guarded — it removes the row outright, so
+there is nothing to overwrite, and refusing would strand a poisoned row
+permanently with no way to remove it.</p>
+<h2 id="inspecting-a-quarantine-as-an-operator">Inspecting a quarantine as an operator<a class="headerlink" href="#inspecting-a-quarantine-as-an-operator" title="Permanent link">&para;</a></h2>
+<p><code>instance._corrupt_fields</code> gives you the field names and raw bytes without
+leaving Python. To go straight to Redis:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>redis-cli<span class="w"> </span>HGETALL<span class="w"> </span>Person:a1b2c3d4...
 </code></pre></div>
-<p>The operation is idempotent.</p>
-<h2 id="running-both">Running both<a class="headerlink" href="#running-both" title="Permanent link">&para;</a></h2>
-<p>The two shapes are not exclusive. <code>assemble()</code> runs the query-driven pull path
-and the proactive push path in the same call, deduplicates, and applies one
-budget across both. A model carrying <code>BM25Field</code> <strong>and</strong> <code>CyclicDecayField</code>
-gets query-relevant results and proactively surfaced ones in a single ranked
-list, with <code>AssemblyResult.proactive</code> naming which came from where.</p>
+<p>The field's raw value is exactly what was written — nothing has been
+touched. If it's a legacy <code>$IndexF:</code>/<code>$KeyF:</code> pointer, or bytes from a since-
+removed writer, that's your answer. If it's genuinely unrecoverable, the
+repair path above is: decide what the field's value should be, assign it,
+and save.</p>
+<h2 id="the-kill-switch">The kill switch<a class="headerlink" href="#the-kill-switch" title="Permanent link">&para;</a></h2>
+<p><code>POPOTO_DECODE_QUARANTINE_DISABLE=1</code> restores the pre-#573 reader, which
+raises the underlying decode exception (e.g. <code>msgpack.exceptions.ExtraData</code>)
+for every corrupt field instead of quarantining it. It's read at call time,
+inside the decode path's <code>except</code> branch, so flipping it takes effect
+immediately without restarting the process — including via
+<code>monkeypatch.setenv</code> in a test. See
+<a href="../../configuration/#environment-variables">Configuration</a> for the full
+environment variable reference.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../features/context-assembler/#pull-path-modes-retrieval_mode">ContextAssembler retrieval modes</a>
-  (the full mode table, fallback behavior, and construction-time validation)</li>
-<li><a href="../../benchmarks/#deterministic-csr-harness">CSR regression gate</a>: the
-  deterministic detector that distinguishes query-blindness from ordinary
-  keyword dependence</li>
-<li><a href="../subconscious-memory-recipe/">SubconsciousMemory recipe</a>: the per-turn
-  loop that consumes whichever mode your model resolves to</li>
+<li><a href="../../reference/"><code>CorruptFieldError</code></a> — the exception raised for a
+  corrupt KeyField and for a blocked <code>save()</code>.</li>
+<li><a href="../../indexed_fields/">Indexed Fields</a> — <code>IndexedField</code>/<code>UniqueField</code> are
+  covered by the same guard: a corrupt indexed field blocks <code>save()</code> before
+  the atomic index swap runs, so a poisoned field's default value can never
+  land in a secondary index.</li>
 </ul>
 
 
