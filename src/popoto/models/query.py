@@ -2058,7 +2058,11 @@ class Query:
         self._geo_distance_unit = None  # unit for distance values
 
     def get(
-        self, db_key: DB_key = None, redis_key: str = None, **kwargs
+        self,
+        db_key: DB_key = None,
+        redis_key: str = None,
+        _no_track: bool = False,
+        **kwargs,
     ) -> Optional["Model"]:
         """Retrieve a single model instance.
 
@@ -2081,6 +2085,13 @@ class Query:
         Args:
             db_key: A DB_key instance pointing to the object
             redis_key: The raw Redis key string (e.g., "User:alice:123")
+            _no_track: If True, suppress on_read() for AccessTrackerMixin models
+                       on every path: the direct-key load skips `_fire_on_read`
+                       and the filter fallback runs as `.no_track()`. For
+                       internal loads that must not count as a read, such as
+                       fetching a record only to delete it. Underscore-prefixed
+                       (like `_execute_filter(_no_track=...)`) so it can never
+                       shadow a field name.
             **kwargs: Field values to identify the object. If all KeyFields are
                       provided, enables direct lookup.
 
@@ -2094,6 +2105,9 @@ class Query:
         Example:
             # Direct lookup when all keys are known (single Redis command)
             user = User.query.get(username="alice", tenant_id="acme")
+
+            # Load without staging a read (AccessTrackerMixin models)
+            doomed = Memory.query.get(redis_key=key, _no_track=True)
 
             # Positional redis_key string (e.g. from a previous query or external source)
             user = User.query.get("User:alice:acme")
@@ -2124,7 +2138,8 @@ class Query:
             instance = decode_popoto_model_hashmap(
                 self.model_class, hashmap, source_redis_key=redis_key
             )
-            _fire_on_read(self.model_class, [instance])
+            if not _no_track:
+                _fire_on_read(self.model_class, [instance])
 
         else:
             # Materialize once: a QueryBuilder re-executes on every len()
@@ -2135,7 +2150,10 @@ class Query:
             # _pending_client_filters is non-empty, so this limit is applied
             # only after those filters have run.
             kwargs.setdefault("limit", 2)
-            instances = list(self.filter(**kwargs))
+            builder = self.filter(**kwargs)
+            if _no_track:
+                builder = builder.no_track()
+            instances = list(builder)
             if len(instances) > 1:
                 raise QueryException(
                     f"{self.model_class.__name__} found more than one unique instance. Use `query.filter()`"
@@ -3518,7 +3536,11 @@ class Query:
     # Async methods using native redis.asyncio
 
     async def async_get(
-        self, db_key: DB_key = None, redis_key: str = None, **kwargs
+        self,
+        db_key: DB_key = None,
+        redis_key: str = None,
+        _no_track: bool = False,
+        **kwargs,
     ) -> "Model":
         """Async version of get() using native async Redis.
 
@@ -3528,6 +3550,10 @@ class Query:
         Args:
             db_key: Optional DB_key object
             redis_key: Optional Redis key string
+            _no_track: If True, suppress on_read() for AccessTrackerMixin models,
+                       mirroring `get(_no_track=True)`: the direct-key load
+                       skips `_fire_on_read` and the filter fallback runs
+                       `async_filter(_no_track=True)`.
             **kwargs: Field values to construct query
 
         Returns:
@@ -3556,9 +3582,10 @@ class Query:
             instance = decode_popoto_model_hashmap(
                 self.model_class, hashmap, source_redis_key=redis_key
             )
-            await to_thread(_fire_on_read, self.model_class, [instance])
+            if not _no_track:
+                await to_thread(_fire_on_read, self.model_class, [instance])
         else:
-            instances = await self.async_filter(**kwargs)
+            instances = await self.async_filter(_no_track=_no_track, **kwargs)
             if len(instances) > 1:
                 raise QueryException(
                     f"{self.model_class.__name__} found more than one unique instance. Use `query.filter()`"
@@ -3614,7 +3641,9 @@ class Query:
             return [r for r in results if r is not None]
         return results
 
-    async def async_filter(self, *, _allow_pushdown: bool = True, **kwargs) -> list:
+    async def async_filter(
+        self, *, _allow_pushdown: bool = True, _no_track: bool = False, **kwargs
+    ) -> list:
         """Async version of filter() using native async Redis.
 
         Filters model instances based on field values using non-blocking I/O.
@@ -3631,6 +3660,9 @@ class Query:
                 query qualifies for a bounded read. Set on the one retry that
                 stale index members can force. Keyword-only so it stays out of
                 **kwargs, which go straight to filter_for_keys_set.
+            _no_track: If True, suppress on_read() for AccessTrackerMixin models
+                after hydration, the async counterpart of
+                `QueryBuilder.no_track()`. Keyword-only for the same reason.
             **kwargs: Filter parameters (field values, limit, order_by, values)
 
         Returns:
@@ -3693,10 +3725,13 @@ class Query:
             order_by_attr_name=kwargs.get("order_by", None),
             limit=None if client_filters_pending else kwargs.get("limit", None),
             values=kwargs.get("values", None),
+            no_track=_no_track,
         )
 
         if self._short_result_action(len(objects), _allow_pushdown, state):
-            return await self.async_filter(_allow_pushdown=False, **kwargs)
+            return await self.async_filter(
+                _allow_pushdown=False, _no_track=_no_track, **kwargs
+            )
 
         # Apply client-side filters for plain (unindexed) fields
         client_filters = state.pending_client_filters
@@ -3853,6 +3888,7 @@ class Query:
         limit: int = None,
         values: tuple = None,
         lazy: bool = True,
+        no_track: bool = False,
     ) -> list:
         """Async version of get_many_objects using native async Redis.
 
@@ -3865,6 +3901,8 @@ class Query:
             order_by_attr_name: Field to sort by (prefix with "-" for descending)
             limit: Maximum objects to load
             values: Tuple of field names for projection
+            no_track: If True, skip on_read() staging for AccessTrackerMixin
+                models after hydration
 
         Returns:
             List of Model instances, or list of dicts if values is specified.
@@ -3939,6 +3977,6 @@ class Query:
             for source_key, redis_hash in zip(db_keys, hashes_list)
             if redis_hash
         ]
-        if not values:
+        if not values and not no_track:
             await to_thread(_fire_on_read, model, objects)
         return objects

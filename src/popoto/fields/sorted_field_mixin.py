@@ -483,6 +483,72 @@ class SortedFieldMixin:
         return sortedset_db_key
 
     @classmethod
+    def count(cls, model_instance: "Model", field_name: str) -> int:
+        """Number of members in this field's Sorted Set for one partition.
+
+        The partition is read from ``model_instance`` the same way
+        :meth:`get_partitioned_sortedset_db_key` reads it during save and
+        delete, so the instance only needs its partition fields populated.
+        One ``ZCARD`` round trip; a missing index counts as ``0``.
+
+        Args:
+            model_instance: A Model instance carrying the partition values.
+            field_name: The name of the sorted field.
+
+        Returns:
+            The cardinality of that partition's index.
+
+        Raises:
+            QueryException: Propagated from the partition key builder.
+        """
+        key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
+        return int(POPOTO_REDIS_DB.zcard(key))
+
+    @classmethod
+    def members(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        start: int = 0,
+        stop: int = -1,
+        reverse: bool = False,
+    ) -> list[str]:
+        """Members of this field's Sorted Set for one partition, in score order.
+
+        Members are the redis keys of the indexed records, decoded to ``str``.
+        ``start``/``stop`` follow Redis ``ZRANGE`` semantics: inclusive rank
+        bounds, negative values count from the end, and ``stop < start``
+        yields ``[]``. ``reverse=True`` walks from the highest score down
+        (``ZREVRANGE``), so ``members(inst, "f", 0, n - 1)`` is the ``n``
+        lowest-scored members and the same call with ``reverse=True`` the
+        ``n`` highest.
+
+        Args:
+            model_instance: A Model instance carrying the partition values.
+            field_name: The name of the sorted field.
+            start: First rank to include (default ``0``).
+            stop: Last rank to include (default ``-1``, the final member).
+            reverse: Walk from the highest score when ``True``.
+
+        Returns:
+            Redis keys of the matching members as ``str``.
+
+        Raises:
+            QueryException: Propagated from the partition key builder.
+        """
+        key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
+        # Resolve the client attribute at call time so test spies and fault
+        # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
+        return [
+            raw.decode() if isinstance(raw, bytes) else str(raw)
+            for raw in (
+                POPOTO_REDIS_DB.zrevrange(key, start, stop)
+                if reverse
+                else POPOTO_REDIS_DB.zrange(key, start, stop)
+            )
+        ]
+
+    @classmethod
     def on_save(
         cls,
         model_instance: "Model",

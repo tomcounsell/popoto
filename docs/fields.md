@@ -1930,6 +1930,16 @@ Memory.query.filter(agent_id="agent-1").no_track().all()
 `MemoryLifecycle.tick()` uses `.no_track()` automatically — a periodic tick
 produces **zero** new staged entries and does not inflate access-frequency signals.
 
+`Query.get(redis_key=..., _no_track=True)` (and `async_get`) applies the same
+suppression to the direct-key path: it loads one record with a single `HGETALL`
+and skips `on_read()` entirely, instead of routing through `.no_track()`.
+`DefaultMemory` uses this when it loads a record only to evict it:
+
+```python
+# Untracked load: a tracked get would stage an access for a record about to be deleted
+doomed = type(self).query.get(redis_key=victim, _no_track=True)
+```
+
 `count()` never fires `on_read()` on either code path — a tally is not a read, so
 counting a population stages nothing regardless of whether `.no_track()` is chained.
 
