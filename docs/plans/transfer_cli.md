@@ -1,11 +1,13 @@
 ---
-status: Ready
+status: docs_complete
 type: feature
 appetite: Medium
 owner: Valor Engels
 created: 2026-09-04
 tracking: https://github.com/tomcounsell/popoto/issues/555
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-04
 ---
 
 # `popoto-transfer` — a CLI front-end for `popoto.transfer`
@@ -220,6 +222,22 @@ existing code path, and the wrapped API is stable and already tested.
 | Non-zero test database | `python -c "import os,sys; db=os.environ.get('POPOTO_TEST_DB','15'); sys.exit(0 if db not in ('0','') else 1)"` | DB 0 is a live agent store on the maintainer's machine; the CLI's own refusal would also fail the tests |
 | Editable install resolves to this checkout | `python -c "import popoto,pathlib,sys; sys.exit(0 if pathlib.Path(popoto.__file__).resolve().is_relative_to(pathlib.Path.cwd()) else 1)"` | A worktree venv pointed at another tree silently tests the wrong package (`CLAUDE.md`) |
 
+**On that third row.** `VIRTUAL_ENV` in this environment points at the primary
+checkout's venv, so a bare `uv pip install` or `pip install -e .` run from a worktree
+installs into the *primary* venv and repoints its editable `popoto` at the worktree —
+it does not populate the worktree's own venv. Always pass the interpreter explicitly:
+
+```console
+$ uv pip install --python .venv/bin/python -e '.[dev,embeddings,benchmark,mcp]'
+```
+
+Verified for this lane: `.venv/bin/python -c "import popoto; print(popoto.__file__)"`
+resolves to `.worktrees/sdlc-555/src/popoto/__init__.py`, and the primary venv still
+points at `/Users/valorengels/src/popoto/src`. A critic reading `popoto.__file__` from
+the *ambient* interpreter will see the primary checkout and wrongly conclude this
+prerequisite fails; the check is only meaningful against the worktree venv's
+interpreter.
+
 ## Solution
 
 ### Key Elements
@@ -326,6 +344,24 @@ corrupted. Rule:
 This keeps `popoto-transfer export --model … --out - | gzip > backup.jsonl.gz`
 working while the operator still sees the summary on their terminal.
 
+**A failed export must not destroy the previous one.** Opening `--out PATH` with
+`"w"` truncates it immediately, but `export_records` does not resolve the filter
+until after the stream is handed to it, so a typo'd `--filter` raises
+`QueryException` against an already-zeroed file. That is the same data-loss class the
+DB-0 guard exists to prevent, moved to a different surface. The export path therefore
+writes to a sibling temporary file and promotes it only on success:
+
+1. Open `PATH + ".part"` for writing (same directory, so the promotion is a rename
+   within one filesystem).
+2. Run `export_records` into it.
+3. On success, `os.replace(PATH + ".part", PATH)` — atomic on POSIX.
+4. On **any** exception, close and `os.unlink` the partial file, leave `PATH`
+   untouched, and let the error path print and exit 1.
+
+`--out -` needs none of this; stdout has no previous contents to protect. A
+Verification row asserts that a failed export leaves a pre-existing destination file
+byte-identical and leaves no `.part` file behind.
+
 **JSON output.** `dataclasses.asdict(result)` on `ExportResult` / `ImportReport`,
 then `json.dumps(..., indent=2, default=str)` — the same call shape
 `popoto-memory doctor --json` uses. `ImportReport.outcomes` is a list of
@@ -356,6 +392,39 @@ and lookup operators are not expressible on the command line — see Rabbit Hole
 did not run" from "the command ran and 40 of 1284 records were refused by the write
 gate", and those need different operator responses. `--strict` is not added; 3 is
 always returned, and a caller that does not care can ignore it.
+
+**Exit 1 does not promise that nothing was written.** This is the one place where the
+plain reading of the table above is wrong, and it must be reflected in the CLI's own
+wording. `on_conflict="error"` does not produce an outcome category; it raises
+`ModelException` from *inside* the per-record loop
+(`src/popoto/transfer/import_.py:190-198`), after every earlier record in the file has
+already been saved. The library's own message says so: "records before this one are
+already written." So a collision aborts mid-import and lands on exit **1**, not 3.
+
+Two consequences the builder must honor:
+
+- The generic exception handler must not print a message implying the run was a no-op.
+  When a `ModelException` escapes `import_records`, the CLI prints the library's
+  message verbatim, which already carries the partial-write warning and the
+  `on_conflict='overwrite'` recovery path.
+- **A conflict collision cannot be used to test exit 3.** Only outcome categories
+  produce exit 3, and the reachable ones are: `REJECTED` from a construction failure
+  (`import_.py:203-208`) or a write-gate refusal (`import_.py:236-245`), `ERRORED`
+  from a save failure (`import_.py:213-217`), and `PARTIAL` from a carried-state
+  failure. `SKIPPED` is a clean outcome and must **not** trigger exit 3 — it is what
+  `on_conflict="skip"` returns for a record deliberately left alone.
+
+Mapping the two, so the table above is unambiguous:
+
+| Library path | Category or exception | CLI exit |
+|---|---|---|
+| record saved, state restored | `LANDED` | 0 |
+| `on_conflict="skip"`, key exists | `SKIPPED` | 0 |
+| `on_conflict="error"`, key exists | `ModelException` mid-loop | 1 (earlier records already written) |
+| construction raises | `REJECTED` | 3 |
+| `save()` raises | `ERRORED` | 3 |
+| `save()` returns `False`/`None` (write gate) | `REJECTED` | 3 |
+| saved, carried state failed | `PARTIAL` | 3 |
 
 **#557 forward compatibility.** No `--preserve-keys` flag is added, not even as a
 `store_true` that only accepts the current behavior. A flag whose only legal value is
@@ -607,6 +676,11 @@ The `popoto-memory` console script and its subcommands are untouched.
       it imports the operator's module, the exit-code table, `--json`, and the DB-0
       refusal with `--allow-db0`. Also state that keys are always preserved and that
       `Q`-object filters need the Python API.
+- [ ] `docs/guides/export-import.md:203` currently reads "Async twins
+      (`async_export_records` / `async_import_records`) **and a CLI front-end** are not
+      part of this API." Adding the CLI section without touching this sentence leaves
+      the guide contradicting itself two screens apart. Narrow it to the async twins
+      only, and point the reader at the new section.
 - [ ] No new page and no `mkdocs.yml` nav change — `guides/export-import.md` is
       already in the nav (`mkdocs.yml:93`), and splitting the CLI into its own page
       would separate it from the concepts it depends on.
@@ -645,6 +719,10 @@ The `popoto-memory` console script and its subcommands are untouched.
       Redis command and before the model module is imported; the message names the
       database, the flag, and an alternative.
 - [ ] Every failure path prints a message and no traceback.
+- [ ] A failed export leaves a pre-existing `--out` file byte-identical and no `.part`
+      file behind.
+- [ ] An `--on-conflict error` collision exits 1 (not 3) and its message carries the
+      library's partial-write warning; an `--on-conflict skip` collision exits 0.
 - [ ] `mypy src/popoto/transfer/cli.py` reports zero errors.
 - [ ] `export.py`, `import_.py`, `format.py`, `results.py` are byte-identical to
       `main`.
@@ -718,6 +796,9 @@ guard and the subprocess-test database derivation (see `DOMAIN_FRAMING.md`).
   `json.dumps(..., indent=2, default=str)`, adding an explicit `counts` object for
   the five import categories. Refuse `--json` together with `--out -` (exit 1).
 - Human summary to stderr, always. JSONL data to `--out` / stdout.
+- For `--out PATH` (not `-`), write to `PATH + ".part"` and `os.replace` it onto
+  `PATH` only after `export_records` returns; unlink the partial on any exception so a
+  failed run never truncates a previous export.
 - Exit codes 0 / 1 / 3 per the Technical Approach table. Catch `ModelException`,
   `QueryException`, `redis.exceptions.ConnectionError`, `TimeoutError`, `OSError`,
   and `KeyboardInterrupt`; print a message, never a traceback.
@@ -733,14 +814,21 @@ guard and the subprocess-test database derivation (see `DOMAIN_FRAMING.md`).
 
 - **Task ID**: build-entrypoint
 - **Depends On**: build-cli
+- **Validates**: `tests/test_transfer_cli.py::test_console_script_help` (the `--help` smoke check); the packaging line itself is covered by the "Console script declared" Verification row
 - **Assigned To**: `transfer-cli-builder`
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `popoto-transfer = "popoto.transfer.cli:main"` under the existing
   `[project.scripts]` in `pyproject.toml` (below `popoto-memory`). One line; change
   nothing else in the file.
-- Reinstall editable (`pip install -e .`) so the script exists for the test run, and
-  confirm `popoto-transfer --help` exits 0.
+- Reinstall editable **into the worktree venv, with the interpreter named explicitly**
+  (`uv pip install --python .venv/bin/python -e '.[dev,embeddings,benchmark,mcp]'`) so
+  the console script exists for the test run, and confirm `popoto-transfer --help`
+  exits 0. A bare `pip install -e .` here would install into the primary venv (see
+  Prerequisites) and validate a checkout where `cli.py` does not exist.
+- Tests invoke `python -m popoto.transfer.cli`, never the console script, so the suite
+  does not depend on the reinstall having happened. The `--help` check above is the
+  only place the installed script itself is exercised.
 
 ### 3. Tests
 
@@ -766,14 +854,25 @@ guard and the subprocess-test database derivation (see `DOMAIN_FRAMING.md`).
   assert the message names `--allow-db0`, and assert `DBSIZE` on database 0 is
   unchanged across the call. **This test must never write to database 0** — it only
   reads `DBSIZE` for the assertion.
-- Exit-code-3 test: import a file whose records the destination refuses (a write gate
-  or an `on-conflict error` collision), assert exit 3 and that the reasons reach
-  stderr.
+- Exit-code-3 test: import a file whose records the destination's **write gate**
+  refuses (`save()` returns falsy), assert exit 3 and that the reasons reach stderr.
+  Do **not** use an `on-conflict error` collision for this: that path raises
+  `ModelException` from inside the per-record loop and exits 1, never 3. See the
+  library-path-to-exit-code table in Technical Approach.
+- Exit-code-1 collision test: import a file whose first key already exists with
+  `--on-conflict error`, assert exit 1, assert stderr carries the library's
+  "records before this one are already written" warning and the
+  `on_conflict='overwrite'` recovery hint, and assert no traceback.
+- `--on-conflict skip` test: a colliding key is reported `SKIPPED` and the run exits
+  **0**, proving a deliberate skip is not miscounted as a failure to land.
 - `--json` test: parse stdout, assert the counts object sums to the records read.
 - `--out -` test: assert the JSONL lands on stdout and the summary on stderr, and
   that `--out - --json` exits 1.
 - Empty-input tests: zero-byte import file, manifest-only import file, zero-match
   export.
+- Failed-export-preserves-destination test: write a sentinel file at the `--out` path,
+  run an export with a bad `--filter`, assert exit 1, assert the sentinel file is
+  byte-identical afterwards, and assert no `.part` file is left in the directory.
 - Resolution tests: no colon, empty half, missing module, missing attribute,
   attribute that is not a Model — one distinct message each.
 - Run the suite with `POPOTO_TEST_DB` set to a non-zero database.
@@ -827,19 +926,29 @@ guard and the subprocess-test database derivation (see `DOMAIN_FRAMING.md`).
 | Help works | `python -m popoto.transfer.cli --help` | exit code 0 |
 | DB-0 refusal names the flag | `REDIS_URL=redis://localhost:6379/0 python -m popoto.transfer.cli export --model popoto:Model --out - 2>&1` | output contains --allow-db0 |
 | DB-0 refusal exits non-zero | `REDIS_URL=redis://localhost:6379/0 python -m popoto.transfer.cli export --model popoto:Model --out - > /dev/null 2>&1` | exit code 1 |
-| No `--preserve-keys` flag (anti-criterion, #557) | `grep -c -- '--preserve-keys\|--regenerate-keys' src/popoto/transfer/cli.py` | match count == 0 |
+| No `--preserve-keys` flag (anti-criterion, #557) | `grep -Ec -- '--preserve-keys|--regenerate-keys' src/popoto/transfer/cli.py` | match count == 0 |
 | Pre-existing transfer modules untouched (anti-criterion, #572) | `git diff --name-only main...HEAD -- src/popoto/transfer/export.py src/popoto/transfer/import_.py src/popoto/transfer/format.py src/popoto/transfer/results.py \| grep -c .` | match count == 0 |
+| Failed export preserves the destination | `POPOTO_TEST_DB=1 python -m pytest tests/test_transfer_cli.py -q -k "preserves_destination"` | exit code 0 |
 | No silent excepts | `grep -A1 'except Exception:' src/popoto/transfer/cli.py \| grep -c '^ *pass$'` | match count == 0 |
 | Guide documents the CLI | `grep -c 'popoto-transfer' docs/guides/export-import.md` | output > 0 |
+| Guide no longer denies a CLI exists | `grep -c 'and a CLI front-end' docs/guides/export-import.md` | output is `0` |
 | README mentions the CLI | `grep -c 'popoto-transfer' README.md` | output > 0 |
 | CHANGELOG entry present | `grep -c 'popoto-transfer' CHANGELOG.md` | output > 0 |
 | Docs build | `python -m mkdocs build --strict` | exit code 0 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Critique run:** 2026-09-04, FULL depth. **Verdict:** READY TO BUILD (with concerns) — 0 blockers, 5 concerns, 2 nits. **Revision applied** 2026-09-04: all 7 findings addressed in plan text. One critique round only, per the routing instruction. On concern 4 the appetite was kept as-is and the decision recorded in Open Questions item 3. On concern 5 the prerequisite was re-checked against the worktree venv's interpreter and passes; the critic read the ambient interpreter.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | Risk & Robustness + structural | `on_conflict="error"` collision raises `ModelException` from **inside** the per-record loop (`src/popoto/transfer/import_.py:190-198`), after earlier records have already been saved. The CLI's generic `except ModelException` then returns **1**, so exit 1 on import can mean "partially landed", contradicting the exit-code table's framing of 1 as "the run failed". Separately, Step 3's exit-code-3 test names "an `on-conflict error` collision" as a way to produce exit 3 — it cannot, that path raises rather than recording a `rejected` outcome. | Technical Approach (exit codes), Step 3 | The library raises at `import_.py:190-198` with text "records before this one are already written"; there is no progress count on the exception, and fixing it properly would require editing `import_.py` (a No-Go for #572 coordination). In-scope fix is text-only: (a) drop the "`on-conflict error` collision" option from the Step 3 exit-code-3 test and keep only the write-gate path (`on_write_gate="reject"` produces a `REJECTED` outcome at `import_.py:239-242`, which is what actually yields exit 3); (b) state in the exit-code table and in `import --help` that exit 1 on import may mean "partially landed — re-run with `--on-conflict overwrite`". |
+| CONCERN | Risk & Robustness | `--out PATH` is opened (and truncated) before `export_records` runs, but a bad `--filter` name raises `QueryException` from the query layer *after* that. A typo'd filter therefore zeroes the operator's existing backup file while the CLI exits 1 with a clean message — the same class of data loss the DB-0 guard exists to prevent, relocated. | Data Flow step 6; Technical Approach (Filters) | In the `export` handler, resolve the filter before touching the destination: call `model_class.query.filter(**filters)` (or `export_records` with `stream=None` deferred) so `QueryException` surfaces first, THEN `open(args.out, "w")`. Alternative: write to `args.out + ".part"` and `os.replace()` into place only on success. Either fix is entirely inside the new `cli.py`; `export.py` is not touched. |
+| CONCERN | History & Consistency | `docs/guides/export-import.md:203` currently asserts "Async twins (`async_export_records` / `async_import_records`) **and a CLI front-end** are not part of this API." The plan inserts `## From the command line` earlier in the same file but never updates that sentence, so the page would both document and deny the CLI. | Documentation > Feature Documentation | Edit `docs/guides/export-import.md:203` to drop the "and a CLI front-end" clause, leaving the async-twin exclusion intact. Add this as an explicit checkbox under Task 5 (`document-feature`) so the documentarian does not miss it. |
+| CONCERN | Scope & Value | The plan's own Freshness Check states this is not blocking any consumer ("it is for the next operator"), yet it ships `--json`, a three-way exit-code taxonomy, stream-separation rules, and a subprocess test matrix the Appetite section itself calls "a known-sharp edge in this repo" — speculative surface for an unconfirmed user. | Freshness Check / Appetite | If the appetite is trimmed: keep `resolve_model`, the DB-0 guard, both subcommands, and the stderr human summary; drop `--json`, the `counts` object, and the exit-code-3 branch (collapse to 0/1), plus their Verification rows and Step 3 tests. If the appetite is kept as-is (the recommended reading — `--json` and exit 3 are the plan's own answer to hazards 2 and 3 in the Problem section), record that decision in Open Questions so it is not re-litigated at review. |
+| CONCERN | Structural check | Prerequisite 3 ("editable install resolves to this checkout") **fails in this worktree**: `popoto.__file__` resolves to `/Users/valorengels/src/popoto/src/popoto/__init__.py`, not `.worktrees/sdlc-555`. Task 2 asks the builder to `pip install -e .` and confirm `popoto-transfer --help` exits 0 — done in this state, that would install the console script pointing at the *main* checkout, where `cli.py` does not exist. | Prerequisites; Step 2 | Before Task 2, run `pip install -e '.[dev,embeddings,benchmark,mcp]'` **from the worktree root** and re-assert prerequisite 3. Use `python -m popoto.transfer.cli` (which the plan already mandates via the `__main__` guard) for every test invocation so the suite never depends on which checkout owns the installed console script. |
+| NIT | History & Consistency | The anti-criterion `grep -c -- '--preserve-keys\|--regenerate-keys'` uses BRE `\|` alternation, a GNU extension. | Verification table | — |
+| NIT | Structural check | Task 2 (`build-entrypoint`) is the only task with no `Validates:` field. | Step by Step Tasks | — |
 
 ---
 
@@ -856,3 +965,17 @@ overturn either without re-deriving the reasoning:
 2. **One `--allow-db0` flag covering both read and write** rather than an export-only
    opt-in. Argued in Technical Approach: an export on database 0 is a disclosure even
    though it is read-only, and one flag is one thing to audit.
+
+3. **Scope: why a Medium and not a thin wrapper.** Nothing is blocked on this work —
+   the Freshness Check says plainly it is "for the next operator" — yet the plan ships
+   `--json`, a three-way exit-code taxonomy, and a subprocess test matrix the Appetite
+   section itself calls a known-sharp edge. That is deliberate, and each piece answers
+   a hazard named in Problem rather than being speculative polish: `--json` and the
+   exit codes exist because Problem item 3 is "there is no exit code" and item 2 is
+   "the reconciliation report is printed and ignored", and the subprocess tests exist
+   because the DB-0 guard is the whole point of Problem item 1 and cannot be proven
+   in-process, where the connection is already bound to the test database. Recorded
+   here so a reviewer can overturn the scope on its merits instead of it being
+   re-litigated at review time. Overturning it means dropping `--json` and collapsing
+   exit 3 into 0; the DB-0 guard and its subprocess test are not negotiable, since
+   they are the reason the CLI is safer than the throwaway script it replaces.
