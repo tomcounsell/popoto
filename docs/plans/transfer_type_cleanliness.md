@@ -59,7 +59,10 @@ waiver is discharged by fixing the code, not by re-recording it.
 
 ## Freshness Check
 
-**Baseline commit:** `0eef7362bffc7a29739db6fdb4b78a6b70adc5cf`
+**Baseline commit:** `0eef7362bffc7a29739db6fdb4b78a6b70adc5cf` — the commit this freshness
+check was run against. It is **not** the build's comparison point: `6c39681` and `bd1d337`
+sit between it and the plan commit, so the suite and mypy comparisons use the branch point
+`8c242cf` instead.
 **Issue filed at:** 2026-08-13T07:14:51Z
 **Disposition:** Unchanged
 
@@ -138,6 +141,13 @@ configuration this repo already ships. No new library, API, or ecosystem pattern
 - **Confidence**: high
 - **Impact on plan**: The eight `model_class` parameters get a real type instead of `Any`.
   Import goes under `if TYPE_CHECKING:`.
+- **ERRATUM (recorded at BUILD, mypy 2.3.1):** the first half of this finding **did not
+  hold** in the gate environment. `model_class._meta` raised `attr-defined` on every one of
+  the five sites, because `_meta` is attached by the metaclass at `base.py:504` and never
+  declared on `Model`. The runtime-circularity half of the finding did hold. The fix was to
+  declare `_meta: "ModelOptions"` on `Model`, mirroring the `query: Query` annotation two
+  lines above it — a one-line, runtime-inert addition that also removed 27 errors from
+  `base.py`. Spike results are environment-bound like every other measurement here.
 
 ### spike-2: What discharges the two `attr-defined` errors without a blanket ignore?
 
@@ -323,7 +333,10 @@ outside the gate regardless.
 - **Fixing `src/popoto/recipes/` too.** It has 154 errors of the same shape in this
   environment and it is tempting to sweep both. Don't. That is #506's per-module rollout, and
   bundling it turns a Small into a Large and makes the diff unreviewable.
-- **Adding mypy to `scripts/ci-local.sh` or a CI workflow.** Neither runs mypy today. Wiring
+- **Adding mypy to `scripts/ci-local.sh` or a CI workflow.** *Residual gap accepted: with no
+  gate, this package's count can drift back above zero with no CI signal. Closing that gap is
+  #506's mandate, and Task 4 posts the achieved zero into #506 so the per-module rollout has a
+  recorded baseline.* Neither runs mypy today. Wiring
   a gate is the whole substance of #506 and it needs the repo-wide decision first — gating on
   a package-scoped path would encode an allowlist this plan has no mandate to design.
 - **Quoting an error count as a repo constant.** Per CLAUDE.md, the delta is
@@ -355,11 +368,34 @@ round trip, so a wrong guess about the encoder boundary shows up as a test failu
 
 **Impact:** A reviewer reasonably objects that `cast` silences the checker just as
 `# type: ignore` would, and the change fails review.
-**Mitigation:** Place each cast directly under its `if "export_state" not in klass.__dict__:
-continue` guard, so the guard that makes the cast sound is visually adjacent. The Protocol is
-named after the contract the module docstring already describes. This is documenting a
-duck-typed interface, not suppressing a diagnostic — and unlike an ignore, it makes the
-subsequent `.export_state(instance)` call *checked*.
+**Mitigation:** Keep the soundness argument adjacent to every cast. The two sites need two
+different forms, because only one of them has a statement-level guard:
+
+- **`export.py:191-194` — adjacent-guard form.** Place the cast directly under its
+  `if "export_state" not in klass.__dict__: continue` guard, so the guard that makes the cast
+  sound is on the preceding lines.
+- **`import_.py:147-150` — guard-carrying-comprehension form.** There is no statement-level
+  guard at the `klass.import_state(...)` call site (`import_.py:159`); the
+  `"import_state" in klass.__dict__` test is a filter inside the `by_name = {...}`
+  comprehension, and the only statement above the call is the derived `if klass is None:`
+  raise. So put the cast *inside the comprehension*, on the same expression as the filter
+  that justifies it, and annotate the binding:
+
+  ```python
+  by_name: dict[str, _ImportsState] = {
+      klass.__name__: cast("_ImportsState", klass)
+      for klass in type(instance).__mro__
+      if "import_state" in klass.__dict__
+  }
+  ```
+
+  The call at `:159` then type-checks with no cast of its own. **Do not move code to
+  manufacture an adjacent guard** — restructuring would violate the "Refactoring while
+  annotating" Rabbit Hole and destroy the reviewer's ability to confirm the diff is inert.
+
+In both forms the Protocol is named after the contract the module docstring already describes.
+This is documenting a duck-typed interface, not suppressing a diagnostic — and unlike an
+ignore, it makes the subsequent `export_state` / `import_state` call *checked*.
 
 ### Risk 3: The measured count is environment-bound and a reviewer reproduces a different one
 
@@ -437,7 +473,8 @@ an agent to invoke.
 - [ ] Zero `# type: ignore` comments in `src/popoto/transfer/` (spike 2 proved none is needed)
 - [ ] `setup.cfg` unchanged — no per-package override added or removed
 - [ ] All 73 transfer tests pass **unchanged** (no test file is modified)
-- [ ] Full suite shows no new failures against the `0eef7362` baseline
+- [ ] Full suite shows no new failures against the branch point actually used for the
+      comparison — `8c242cf`, the merge base of this branch and `origin/main`
 - [ ] Runtime-inert: the diff contains only annotations, `TYPE_CHECKING` imports, `Protocol`
       declarations, and `cast` calls
 - [ ] Tests pass (`/do-test`)
@@ -523,8 +560,13 @@ an agent to invoke.
   and `record` mappings, the `drop` / `regenerate` sets, and the `landed` and `batch` list
   accumulators. Covers `_validate_manifest`, `_resolve_embedding_provenance`,
   `_restore_state`, `_process_batch`, and `import_records`.
-- Line 159 (`attr-defined`): an `_ImportsState` Protocol with an `import_state` member, cast
-  at the call site, under the existing `"import_state" in klass.__dict__` guard.
+- Line 159 (`attr-defined`): an `_ImportsState` Protocol with an `import_state` member. Do
+  **not** cast at the call site — there is no statement-level guard there. Use the
+  guard-carrying-comprehension form from Risk 2: annotate the `by_name` binding at
+  `import_.py:147-150` as `dict[str, _ImportsState]` and apply `cast("_ImportsState", klass)`
+  inside the comprehension, on the same expression as the `"import_state" in klass.__dict__`
+  filter that makes it sound. `klass.import_state(instance, from_jsonable(carried))` at `:159`
+  then type-checks unchanged. Move no code.
 - Preserve the `744c3dc` fix: `_validate_manifest`'s narrowed return must still be consumed
   by the caller, not discarded. Annotating must not reintroduce the discarded-return bug the
   issue says was already fixed.
@@ -540,25 +582,45 @@ an agent to invoke.
 - Confirm the diff is runtime-inert: read it and reject any changed default, reordered
   statement, altered control flow, or new executing import.
 - Confirm no test file appears in the diff.
-- Report the environment (mypy version, redis-py version, baseline SHA) alongside every count,
-  per CLAUDE.md.
+- Report the environment the gates **actually ran in** (mypy version, redis-py version,
+  checkout path, baseline SHA) alongside every count, per CLAUDE.md. Do not restate the
+  authoring environment recorded below.
+- Run the repo-wide mypy row and confirm the total did not increase. `check_untyped_defs =
+  True` means mypy checks the bodies of `Model.export_records` / `Model.import_records`
+  (`src/popoto/models/base.py:2812-2816`, `:2847-2855`), which call straight into the newly
+  narrowed signatures — so this change can add errors *outside* the package while
+  `mypy src/popoto/transfer/` still reads 0.
+- Post the achieved zero for `src/popoto/transfer/` as a comment on #506, so its per-module
+  mypy rollout has a recorded baseline for this package.
 
 ## Verification
 
-**Environment for the baseline figures in this plan:** mypy 2.1.0 (compiled), redis-py 7.1.1,
-Python venv at `/Users/valorengels/src/popoto/.venv`, primary checkout (not a worktree),
-baseline `0eef7362bffc7a29739db6fdb4b78a6b70adc5cf`. Per CLAUDE.md, the mypy error delta is
-redis-py-version-dependent; the *target* of 0 is not, which is why every gate below asserts
-zero rather than a delta.
+**Two environments, stated separately per CLAUDE.md.**
+
+*Authoring environment (where the plan's Problem-section figures were first measured):* mypy
+2.1.0 (compiled), redis-py 7.1.1, Python venv at `/Users/valorengels/src/popoto/.venv`,
+primary checkout (not a worktree), baseline `0eef7362`.
+
+*Gate environment (where every row below actually runs):* mypy 2.3.1 (compiled), redis-py
+8.1.0, Python venv at `.worktrees/sdlc-572/.venv`, worktree `.worktrees/sdlc-572`, branch point
+`8c242cf`. The 49-error figure re-measured here reproduces the authoring figure exactly — 2
+`attr-defined` / 15 `no-untyped-def` / 32 `type-arg`, split `export.py` 19 / `import_.py` 16 /
+`format.py` 8 / `results.py` 6 — so no number in this plan changes between the two.
+
+Per CLAUDE.md, the mypy error delta is redis-py-version-dependent; the *target* of 0 is not,
+which is why the package gate below asserts zero rather than a delta. The one repo-wide row is
+necessarily a delta and is therefore gated as "not greater than", against a baseline measured
+in the gate environment.
 
 | Check | Command | Expected |
 |-------|---------|----------|
 | Transfer package types clean | `.venv/bin/mypy src/popoto/transfer/` | exit code 0 |
 | Zero remaining errors reported | `.venv/bin/mypy src/popoto/transfer/ 2>&1 \| grep -c "^src/popoto/transfer/.*error:"` | match count == 0 |
-| No type-ignore waivers added | `grep -rc "type: ignore" src/popoto/transfer/` | match count == 0 |
-| No mypy config override for transfer | `grep -c "transfer" setup.cfg` | match count == 0 |
-| setup.cfg untouched | `git diff --name-only origin/main -- setup.cfg \| wc -l \| tr -d " "` | output contains 0 |
-| No test file modified | `git diff --name-only origin/main -- tests/ \| wc -l \| tr -d " "` | output contains 0 |
+| No type-ignore waivers added | `grep -rn "type: ignore" src/popoto/transfer/ \| wc -l \| tr -d " "` | output is 0 |
+| No mypy config override for transfer | `grep -c "transfer" setup.cfg \|\| true` | output is 0 |
+| setup.cfg untouched | `git fetch origin main && git diff --name-only $(git merge-base HEAD origin/main) -- setup.cfg \| wc -l \| tr -d " "` | output is 0 |
+| No test file modified | `git diff --name-only $(git merge-base HEAD origin/main) -- tests/ \| wc -l \| tr -d " "` | output is 0 |
+| Repo-wide mypy did not regress | `.venv/bin/mypy src/ 2>&1 \| tail -1` | error total <= 1126 (baseline at `8c242cf`, mypy 2.3.1 / redis-py 8.1.0, worktree `.worktrees/sdlc-572`); gate on "not greater than", never on the constant |
 | Transfer tests pass unchanged | `POPOTO_TEST_DB=5 .venv/bin/python -m pytest tests/test_transfer_roundtrip.py tests/test_transfer_reconciliation.py tests/test_transfer_fidelity_fields.py -q` | exit code 0 |
 | Transfer test count still 73 | `POPOTO_TEST_DB=5 .venv/bin/python -m pytest tests/test_transfer_roundtrip.py tests/test_transfer_reconciliation.py tests/test_transfer_fidelity_fields.py --collect-only -q 2>&1 \| grep -oE "^[0-9]+ tests collected"` | output contains 73 |
 | Full suite passes | `POPOTO_TEST_DB=5 .venv/bin/python -m pytest -q` | exit code 0 |
@@ -572,3 +634,10 @@ zero rather than a delta.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | History & Consistency, Risk & Robustness | Risk 2's mitigation and Task 3 both assert the `import_.py` cast sits "under the existing `\"import_state\" in klass.__dict__` guard". It does not: that membership test is a filter inside the `by_name = {...}` dict comprehension at `import_.py:147-150`, and the call at `import_.py:159` is preceded only by the derived `if klass is None: raise ModelException(...)`. The plan's own adjacency standard is unsatisfiable at one of its two target sites, and making it true by restructuring would violate the "Refactoring while annotating" Rabbit Hole. | Task 3 (build-import), Risk 2 | Do **not** move code. Prefer the no-cast form: annotate the comprehension result as `by_name: dict[str, _ImportsState] = {klass.__name__: cast("_ImportsState", klass) for klass in type(instance).__mro__ if "import_state" in klass.__dict__}` at `import_.py:147-150`, so the cast is literally on the same expression as the `__dict__` membership filter that makes it sound. Then `klass.import_state(instance, from_jsonable(carried))` at `:159` type-checks with no cast at the call site. Restate Risk 2's mitigation as two forms: adjacent-guard for `export.py:191-194`, guard-carrying-comprehension for `import_.py:147-150`. |
+| CONCERN | Risk & Robustness | No Verification row measures repo-wide mypy. `check_untyped_defs = True` means mypy checks the bodies of `Model.export_records` / `Model.import_records` (`src/popoto/models/base.py:2812-2816`, `:2847-2855`), which call straight into the newly narrowed `type[Model]` / `dict[...]` signatures, so this change can add errors outside the package while `mypy src/popoto/transfer/` reads 0. | Verification table, Task 4 (validate-transfer-types) | Add a row: `.venv/bin/mypy src/ 2>&1 \| tail -1` → total error count must not exceed the pre-change baseline measured in the SAME environment (1126 errors in 67 files at HEAD `8c242cf`, mypy 2.3.1 / redis-py 8.1.0, worktree `.worktrees/sdlc-572`). Gate on "not greater than", never on an absolute constant — per CLAUDE.md the repo-wide count is stub-version dependent, unlike the package target of 0. |
+| CONCERN | Risk & Robustness | Two Verification rows do not produce what their Expected column claims. `grep -rc "type: ignore" src/popoto/transfer/` prints one `path:0` line **per file** (5 lines), never a bare `0`, and exits 1; `grep -c "transfer" setup.cfg` prints `0` but also exits 1. Both were run and confirmed. A gate runner that checks exit status will read a clean package as a failure. | Verification table (rows "No type-ignore waivers added", "No mypy config override for transfer") | Replace with count-summing, exit-safe forms: `grep -rn "type: ignore" src/popoto/transfer/ \| wc -l \| tr -d " "` → `0`, and `grep -c "transfer" setup.cfg \|\| true` → `0` (or `! grep -q "transfer" setup.cfg`). Expected column should say "output is 0" for both, not "match count == 0", since grep's exit code is 1 on zero matches. |
+| CONCERN | Scope & Value | The issue's stated harm is decay ("Nothing re-runs mypy on this package"). Reaching 0 without any gate does not stop the package drifting back above 0 on the next commit, and the plan puts every enforcement mechanism in Rabbit Holes / No-Gos without ever naming the residual gap it is accepting. | Rabbit Holes, Risks | Deferring the gate to #506 is correct — the fix is honesty, not scope. Append to the "Adding mypy to `scripts/ci-local.sh` or a CI workflow" Rabbit Hole: "Residual gap accepted: with no gate, this package's count can drift back above zero with no CI signal. Closing that gap is #506's mandate. Task 4 must post the achieved zero into #506 so the per-module rollout has a recorded baseline." Add that cross-link as a Task 4 bullet. |
+| CONCERN | History & Consistency | The Verification section states the baseline environment as "mypy 2.1.0 (compiled), redis-py 7.1.1, ... primary checkout (not a worktree), baseline `0eef7362`" while invoking CLAUDE.md's environment doctrine, but the gates will run in `.worktrees/sdlc-572` under mypy 2.3.1 / redis-py 8.1.0 off HEAD `8c242cf`. The doctrine requires stating the environment the gates actually run in. | Verification (Environment note) | The 49-error figure was re-measured in the worktree and reproduces exactly (2 attr-defined / 15 no-untyped-def / 32 type-arg; export 19 / import_ 16 / format 8 / results 6), so no number changes — only the note. Record both environments explicitly and have Task 4 report the environment it actually ran in rather than restating the authoring one. |
+| NIT | Structural check | Two Verification rows compare against the moving ref `origin/main` (`git diff --name-only origin/main -- setup.cfg` / `-- tests/`). `origin/main` is currently `cbc7cc1`, one commit **ahead** of branch HEAD `8c242cf`; both rows output 0 today only because that commit is docs-only. Once main lands any `tests/` change, the "No test file modified" gate fails on someone else's commit. | Verification table | Compare against the merge base instead: `git diff --name-only $(git merge-base HEAD origin/main) -- tests/ \| wc -l \| tr -d " "`. Also `git fetch origin main` first, or the ref is whatever was last fetched into this worktree. |
+| NIT | Structural check | The plan's stated baseline commit `0eef7362` is a real ancestor of the branch but is two commits behind its actual base (`6c39681`, `bd1d337` sit between it and the plan commit `8c242cf`), so "Full suite shows no new failures against the `0eef7362` baseline" names the wrong comparison point. | Freshness Check, Success Criteria | Restate the baseline as the branch point actually used for the suite comparison. |

@@ -524,10 +524,7 @@ class DecisionLog:
             6,
             self.row_key(agent_id, candidate.turn_id, candidate.candidate_id),
             self.summary_key(agent_id, candidate.turn_id),
-            # _meta is a real classvar Popoto attaches to every Model
-            # subclass; mypy's Model stub doesn't declare it as a ClassVar,
-            # hence the false attr-defined here.
-            DecisionRecord._meta.db_class_set_key.redis_key,  # type: ignore[attr-defined]
+            DecisionRecord._meta.db_class_set_key.redis_key,
             *self.key_field_index_keys(
                 agent_id, candidate.turn_id, candidate.candidate_id
             ),
@@ -832,10 +829,7 @@ class DecisionLog:
         escaping are derived, not assumed. Mirrors
         ``KeyFieldMixin.filter_query``'s pattern construction.
         """
-        # _meta is a real classvar Popoto attaches to every Model subclass;
-        # mypy's Model stub doesn't declare it as a ClassVar, hence the
-        # false attr-defined here.
-        meta = DecisionRecord._meta  # type: ignore[attr-defined]
+        meta = DecisionRecord._meta
         position = meta.get_db_key_index_position("agent_id")
         pattern = meta.db_class_key.redis_key + ":"
         pattern += "*:" * (position - 1)
@@ -850,10 +844,7 @@ class DecisionLog:
         key = self.row_key(agent_id, turn_id, candidate_id)
         if not self._redis.exists(key):
             return None
-        # DecisionRecord (the class) is the correct argument here;
-        # get_many_objects' signature is typed for a Model instance because
-        # most callers hold one -- an ORM-descriptor false positive.
-        rows = Query.get_many_objects(DecisionRecord, {key})  # type: ignore[arg-type]
+        rows = Query.get_many_objects(DecisionRecord, {key})
         return rows[0] if rows else None
 
     def list_for_agent(self, agent_id: str) -> List[DecisionRecord]:
@@ -878,8 +869,7 @@ class DecisionLog:
         keys = set(self._redis.scan_iter(match=self._agent_key_pattern(agent_id)))
         if not keys:
             return []
-        # Same ORM-descriptor false positive as DecisionLog.get() above.
-        return Query.get_many_objects(DecisionRecord, keys)  # type: ignore[arg-type]
+        return Query.get_many_objects(DecisionRecord, keys)
 
     def list_pending(
         self, agent_id: str, older_than: Optional[float] = None

@@ -9,7 +9,7 @@ reconciliation ledger depends on.
 from __future__ import annotations
 
 import logging
-from typing import TextIO
+from typing import TYPE_CHECKING, Any, Protocol, TextIO, cast
 
 from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
@@ -21,9 +21,36 @@ from .format import (
     iter_lines,
     parse_line,
 )
-from .results import ERRORED, ImportReport, LANDED, PARTIAL, REJECTED, SKIPPED
+from .results import (
+    ERRORED,
+    ImportReport,
+    LANDED,
+    PARTIAL,
+    RecordOutcome,
+    REJECTED,
+    SKIPPED,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - types only, never imported at runtime
+    from ..models.base import Model
 
 logger = logging.getLogger("popoto")
+
+
+class _ImportsState(Protocol):
+    """The duck-typed model-level contract :mod:`popoto.transfer.export` describes.
+
+    Naming it lets the ``klass.import_state(...)`` call in ``_restore_state``
+    be *checked* rather than suppressed. The cast is applied inside the
+    ``by_name`` comprehension, on the same expression as the
+    ``"import_state" in klass.__dict__`` filter that makes it sound.
+    """
+
+    __name__: str
+
+    @staticmethod
+    def import_state(instance: Any, carried: Any) -> Any: ...
+
 
 BATCH_SIZE = 500
 """Records per conflict-check / reconciliation batch."""
@@ -33,14 +60,16 @@ _ON_WRITE_GATE = ("reject", "bypass")
 _ON_EMBEDDING_MISMATCH = ("error", "carry", "regenerate")
 
 
-def _check_choice(name: str, value: str, allowed: tuple) -> None:
+def _check_choice(name: str, value: str, allowed: "tuple[str, ...]") -> None:
     if value not in allowed:
         raise ValueError(
             f"{name}={value!r} is not one of {', '.join(repr(a) for a in allowed)}"
         )
 
 
-def _validate_manifest(model_class, manifest: "dict | None") -> dict:
+def _validate_manifest(
+    model_class: "type[Model]", manifest: "dict[str, Any] | None"
+) -> "dict[str, Any]":
     """Validate the manifest before a single byte is written.
 
     Raises:
@@ -73,11 +102,11 @@ def _validate_manifest(model_class, manifest: "dict | None") -> dict:
 
 
 def _resolve_embedding_provenance(
-    model_class,
-    manifest: dict,
+    model_class: "type[Model]",
+    manifest: "dict[str, Any]",
     on_embedding_mismatch: str,
     report: ImportReport,
-) -> set:
+) -> "set[str]":
     """Compare exported provider fingerprints against the destination's.
 
     Returns:
@@ -95,7 +124,7 @@ def _resolve_embedding_provenance(
         return set()
 
     destination = collect_embedding_provenance(model_class)
-    regenerate = set()
+    regenerate: "set[str]" = set()
 
     for field_name, source_print in source.items():
         destination_print = destination.get(field_name)
@@ -119,7 +148,12 @@ def _resolve_embedding_provenance(
     return regenerate
 
 
-def _restore_state(model_class, instance, record: dict, drop: set) -> None:
+def _restore_state(
+    model_class: "type[Model]",
+    instance: "Model",
+    record: "dict[str, Any]",
+    drop: "set[str]",
+) -> None:
     """Restore carried state after the save.
 
     Runs after ``save()`` on purpose: companion hashes are keyed by redis_key
@@ -144,8 +178,11 @@ def _restore_state(model_class, instance, record: dict, drop: set) -> None:
     model_state = record.get("model_state") or {}
     if not model_state:
         return
-    by_name = {
-        klass.__name__: klass
+    # The __dict__ membership filter is what makes the cast sound: the class
+    # declares import_state as its own attribute. _ImportsState names that
+    # duck-typed contract, so the call below is checked, not suppressed.
+    by_name: "dict[str, _ImportsState]" = {
+        klass.__name__: cast("_ImportsState", klass)
         for klass in type(instance).__mro__
         if "import_state" in klass.__dict__
     }
@@ -170,19 +207,19 @@ def _exists_many(keys: "list[str]") -> "dict[str, bool]":
 
 
 def _process_batch(
-    model_class,
-    batch: "list[dict]",
+    model_class: "type[Model]",
+    batch: "list[dict[str, Any]]",
     report: ImportReport,
     on_conflict: str,
     on_write_gate: str,
-    drop_state: set,
+    drop_state: "set[str]",
 ) -> None:
     """Conflict-check, save, restore state, and reconcile one batch."""
     keys = [record["key"] for record in batch]
     existing = _exists_many(keys)
 
     bypass = on_write_gate == "bypass"
-    landed: list = []
+    landed: "list[RecordOutcome]" = []
 
     for record in batch:
         key = record["key"]
@@ -276,7 +313,7 @@ def _process_batch(
 
 
 def import_records(
-    model_class,
+    model_class: "type[Model]",
     stream: TextIO,
     on_conflict: str = "error",
     on_write_gate: str = "reject",
@@ -356,7 +393,7 @@ def import_records(
         model_class, manifest, on_embedding_mismatch, report
     )
 
-    batch: "list[dict]" = []
+    batch: "list[dict[str, Any]]" = []
     for line_number, raw in lines:
         try:
             record = parse_line(raw)
