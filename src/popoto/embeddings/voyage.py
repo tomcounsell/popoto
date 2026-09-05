@@ -38,7 +38,7 @@ class VoyageProvider(AbstractEmbeddingProvider):
 
     def __init__(
         self,
-        api_key: str = None,
+        api_key: str | None = None,
         model: str = "voyage-3",
     ):
         if not _voyageai_available:

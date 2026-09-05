@@ -350,8 +350,9 @@ final full-suite regression check, which uses the standard isolated DB.
   differs from the baseline in either direction, or when any allowlisted package is above
   zero. `--update` rewrites the baseline from the current measurement.
 - **`scripts/mypy_baseline.json`** — the checked-in ground truth: the total, the allowlist of
-  packages pinned at zero, and the exact mypy and redis-py versions the total was measured
-  under. Human-readable and diff-legible on purpose; a reviewer should be able to see the
+  packages pinned at zero, and the full environment the total was measured under — the exact
+  mypy and redis-py versions, the Python minor, and the literal install recipe, because
+  `ignore_missing_imports = True` makes an absent package change the count. Human-readable and diff-legible on purpose; a reviewer should be able to see the
   number move.
 - **`mypy` job in `.github/workflows/lint.yml`** — a third job alongside `ruff` and `black`,
   installing explicit `==` pins for mypy and redis-py, and running the script with
@@ -399,23 +400,45 @@ it to `clean` in the baseline file → the package can never regress.
   Follow the `lint.yml` precedent exactly: `python -m pip install "mypy==X" "redis==Y"` in a
   named step, with a comment saying why, and bump deliberately alongside the re-baseline the
   bump requires.
-- **Pin against redis-py 8.x, not 7.x.** 8.x is what a fresh `pip install -e ".[dev]"`
-  resolves today, so it is what the `tests.yml` jobs are already running against; gating
-  against 7.x would measure a tree nothing else in CI measures. Record the 7.x number in the
-  baseline file as a documented non-gating reference so a local developer on 7.x can confirm
-  the offset rather than chase it.
+- **Pin against redis-py 8.x, not 7.x — a deliberate, permanent divergence from `uv.lock`.**
+  8.x is what a fresh `pip install -e ".[dev]"` resolves today, so it is what the `tests.yml`
+  jobs already run against; gating against 7.x would measure a tree nothing else in CI
+  measures. `uv.lock` resolves `redis==7.1.1` and will keep doing so, so a contributor running
+  `uv sync` gets the ~53-error offset. That is why the environment check exists and why the
+  7.x number is recorded in the baseline as a non-gating `reference` field. **Do not raise the
+  core `redis` floor to close the gap** — `redis>=4.4.4` is a published constraint on every
+  downstream consumer, and narrowing it to make a CI number tidy is not a trade this plan is
+  entitled to make.
 - **Raise the dev-extra mypy floor and refresh `uv.lock` in the same commit.** `mypy>=0.971`
   is stale by years and would hand a fresh contributor a materially different count. Raise it
   to the pinned major and run `uv lock`; `lock-check.yml` gates the pair and will fail if only
-  one moves.
+  one moves. This does not violate CLAUDE.md's rule that lower bounds are never
+  machine-edited: that rule governs the automated dependabot lane
+  (`versioning-strategy: lockfile-only`), and this is a deliberate human edit to the `dev`
+  extra, which downstream consumers never install. The core `redis` floor is not touched.
 - **One mypy invocation, filtered by path prefix.** Spike 3 showed a scoped `mypy
   src/popoto/<pkg>/` run is not a subset of the full run under `follow_imports = silent`, so
   per-package enforcement derives from filtering one full run's output. This is also the only
   way the total and the per-package numbers are guaranteed mutually consistent.
-- **Exact equality, not `<=`.** The gate fails when the count is *under* baseline as well as
-  over, with a message naming the `--update` command. A `<=` ratchet never tightens: a PR that
-  removes 40 errors banks no floor, and the next PR is free to add them back. Exact equality
-  costs one extra file in the occasional diff and makes every improvement permanent.
+- **`count <= baseline`, not exact equality (supervisor directive, adopted on the merits).**
+  The gate fails only when the count is *over* baseline. When it is *under*, the script emits
+  a GitHub Actions annotation — `::warning::mypy error count N is below baseline M — run
+  scripts/mypy_ratchet.py --update and commit scripts/mypy_baseline.json` — and exits 0. The
+  `::warning::` prefix is load-bearing: a bare `print` is invisible in the Actions UI.
+
+  The rejected alternative was exact equality, which force-banks every improvement. Under
+  `pull_request` merge-commit semantics it also turns *every open PR red* the moment a
+  parallel lane lowers the count — #572 takes `transfer/` from 49 to 0 — on a change the PR
+  author did not make and cannot act on. That is Risk 1's failure mode with a different
+  trigger, and a gate that fires on unambiguous improvements is the kind that gets disabled.
+
+  **Property lost, stated plainly:** an improvement is no longer permanent. Errors can creep
+  back up to the old floor inside a package that is still dirty. The `clean` allowlist
+  recovers this only for packages that reach exactly zero — it does nothing for partial
+  paydown in `fields/`, `models/`, or `recipes/`. The mitigation is the under-baseline
+  annotation plus review convention, not the mechanism. A `--strict-ratchet` flag preserving
+  exact-equality semantics is provided for anyone who wants the stronger property locally; CI
+  does not pass it.
 - **Environment mismatch is a refusal, not a failure.** When the running mypy or redis-py does
   not match the baseline's recorded pins, the script prints both, states that the counts are
   not comparable, and exits 0 — unless `--strict-env` is passed, which CI passes. A local
@@ -649,8 +672,8 @@ to an agent.
 - [ ] The gate passes at the current count on an unmodified tree
 - [ ] A deliberately introduced type error makes the gate fail, with the offending line in the
       output
-- [ ] A deliberately removed type error also makes the gate fail, with the `--update` command
-      in the output
+- [ ] A deliberately removed type error does NOT fail the gate; it exits 0 and emits a
+      `::warning::` annotation naming the `--update` command
 - [ ] Adding an error inside `src/popoto/privacy/` fails the gate on the allowlist check even
       when the total is paid for elsewhere
 - [ ] An environment whose redis-py differs from the baseline exits 0 without `--strict-env`
@@ -666,6 +689,9 @@ to an agent.
 - [ ] `pyproject.toml`'s dev-extra mypy floor is raised and `uv lock --check` passes
 - [ ] No file under `src/popoto/transfer/` is modified
 - [ ] Full suite shows no new failures against the `0dbce759` baseline
+- [ ] All four inverse Verification rows were run and their verbatim output is pasted in the
+      PR body — this criterion may not be discharged by prose, per #554/PR #558
+- [ ] The baseline was regenerated after the final rebase onto `main`
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 
@@ -718,8 +744,9 @@ to an agent.
 - `src/popoto/embeddings/voyage.py:41` — `api_key: str = None` → `str | None`.
 - `src/popoto/embeddings/openai.py:39` — same defect, not named in the issue. Fix it; leaving
   its twin behind would be indefensible in review.
-- `src/popoto/pubsub/publisher.py:156,157,158` — `data: dict`, `channel_name: str`,
-  `pipeline: Pipeline`, all defaulting to `None`.
+- `src/popoto/pubsub/publisher.py:156,157,158` — the real annotations are `data: dict = None`,
+  `channel_name: str = None`, and `pipeline: redis.client.Pipeline = None` (fully qualified in
+  the source; edit that token, not a bare `Pipeline`).
 - Signature lines only. No body edit, no default change, no new `if x is None` guard. If a
   body genuinely mishandles `None`, that is a separate bug — file it, do not fix it here.
 
@@ -763,9 +790,12 @@ to an agent.
 - **Parallel**: false
 - First: check `gh issue view 572 --json state` and `git log --oneline -- src/popoto/transfer/`.
   If #572 has merged, rebase before measuring and include `transfer` in `clean`.
-- Install the pinned pair into the working venv, or a throwaway one, and record the exact
-  versions. Pin against redis-py 8.x (what a fresh `pip install` resolves and what the
-  `tests.yml` jobs run), not the 7.1.1 that `uv.lock` happens to hold.
+- Install the full recipe from Task 4 into a Python 3.12 venv (matching `lint.yml`'s
+  `setup-python`) and record the exact versions. Pin against redis-py 8.x (what a fresh
+  `pip install` resolves and what the `tests.yml` jobs run), not the 7.1.1 that `uv.lock`
+  happens to hold. **The pinned mypy version is whatever this task actually measures with, not
+  the `2.1.0` the spikes used** — this worktree's venv already resolves mypy 2.3.1, a third
+  variance point. Carry the measured version into the workflow pin and the baseline together.
 - Run `python scripts/mypy_ratchet.py --update`. **Generate the number; do not copy any
   figure from this plan.** For orientation only, the pre-fix count under mypy 2.1.0 +
   redis-py 8.1.0 was 1126, so expect roughly 1119 after Task 1.
@@ -784,8 +814,16 @@ to an agent.
 - **Agent Type**: builder
 - **Parallel**: false
 - Add a `mypy` job to `.github/workflows/lint.yml`, matching the shape of the `ruff` and
-  `black` jobs: `setup-python` at 3.12, an install step with explicit `==` pins for mypy and
-  redis-py and a comment saying why, then `python scripts/mypy_ratchet.py --strict-env`.
+  `black` jobs: `setup-python` at 3.12, then `python scripts/mypy_ratchet.py --strict-env`.
+- **Install the whole recipe, not just the two pinned tools.** `setup.cfg` sets
+  `ignore_missing_imports = True`, so a package that is absent resolves to `Any` and *changes
+  the count*. Spike 1 reproduced its number in a venv that also held numpy, msgpack, tiktoken
+  and mcp. A job that installs only `mypy` and `redis` therefore cannot reproduce the
+  checked-in baseline. The install step is:
+  `pip install -e ".[dev,embeddings,mcp]"` followed by
+  `python -m pip install "mypy==X" "redis==Y"` to override the floors, with a comment saying
+  why both lines exist. Task 3 must generate the baseline with this exact command, and
+  `baseline.environment` records the full recipe string, not just the two versions.
 - Extend the workflow's `paths:` triggers (both `pull_request` and `push`) to include
   `setup.cfg`, `scripts/mypy_ratchet.py`, and `scripts/mypy_baseline.json`. `setup.cfg` holds
   the mypy config and is currently not a trigger for any workflow — without this, a config
@@ -801,13 +839,15 @@ to an agent.
 
 - **Task ID**: validate-gate
 - **Depends On**: build-ci-wiring
+- **Validates**: the four inverse Verification rows (added error, removed error, allowlisted
+  package regressed, environment mismatch), each run and its verbatim output captured
 - **Assigned To**: `mypy-gate-validator`
 - **Agent Type**: validator
 - **Parallel**: false
 - Introduce one unannotated function in `src/popoto/redis_db.py`; assert the script exits 1,
   names the file and line, and reports `+1`. Revert.
-- Annotate one existing unannotated function; assert the script exits 1 and its message
-  contains `--update`. Revert.
+- Annotate one existing unannotated function; assert the script exits **0** and its output
+  contains `::warning::` and `--update`. Revert.
 - Introduce one error inside `src/popoto/privacy/` and simultaneously fix one elsewhere so the
   total is unchanged; assert the script still exits 1 on the allowlist check. Revert.
 - Run with a deliberately mismatched redis-py; assert exit 0 without `--strict-env` and exit 1
@@ -820,6 +860,7 @@ to an agent.
 
 - **Task ID**: document-gate
 - **Depends On**: validate-gate
+- **Validates**: `.venv/bin/mkdocs build --strict`
 - **Assigned To**: `mypy-gate-documentarian`
 - **Agent Type**: documentarian
 - **Parallel**: false
@@ -838,9 +879,23 @@ to an agent.
 - **Assigned To**: `mypy-gate-validator`
 - **Agent Type**: validator
 - **Parallel**: false
-- Run every row in the Verification table.
+- **Validates**: `bash scripts/ci-local.sh --all`
+- Run every row in the Verification table, including the four inverse rows.
 - Run the full suite and compare against the `0dbce759` baseline.
 - Confirm every Success Criteria checkbox.
+- **Re-measure the baseline at the FINAL rebase, as the last action before requesting merge.**
+  The baseline generated in Task 3 goes stale the moment any lane lowers the count, and #572
+  is queued to do exactly that. Run:
+
+  ```
+  git fetch origin main && git rebase origin/main
+  python scripts/mypy_ratchet.py --update
+  git diff --exit-code scripts/mypy_baseline.json
+  ```
+
+  A non-empty diff here is expected output, not a process failure: commit it as part of the
+  PR. Re-run after any further rebase. The merge must not proceed on a baseline measured
+  before the final rebase.
 
 ## Verification
 
@@ -858,7 +913,7 @@ to an agent.
 | Workflow triggers on setup.cfg | `grep -c 'setup.cfg' .github/workflows/lint.yml` | output > 0 |
 | setup.cfg unchanged | `git diff --stat main... -- setup.cfg \| wc -l` | match count == 0 |
 | transfer/ untouched (anti-criterion for the #572 No-Go) | `git diff --name-only main... -- src/popoto/transfer/ \| wc -l` | match count == 0 |
-| No blanket ignores added | `grep -rc 'ignore_errors' setup.cfg` | match count == 0 |
+| No NEW blanket ignore added | `git diff main... -- setup.cfg \| grep -c '^+.*ignore_errors'` | match count == 0 |
 | No type-ignore comments added | `git diff main... -- src/popoto/ \| grep -c '^+.*type: ignore'` | match count == 0 |
 | Implicit-Optional sites fixed | `.venv/bin/mypy src/ 2>&1 \| grep -c 'stores/filesystem.py:38\|embeddings/voyage.py:41\|embeddings/openai.py:39'` | match count == 0 |
 | Lock stays in sync | `uv lock --check` | exit code 0 |
@@ -866,13 +921,27 @@ to an agent.
 | Full suite passes | `.venv/bin/pytest -q` | exit code 0 |
 | Docs build | `.venv/bin/mkdocs build --strict` | exit code 0 |
 | Lint still clean | `.venv/bin/ruff check src/` | exit code 0 |
+| **Inverse: an added error fails the gate** | inject `def _ratchet_probe(x): pass` into `src/popoto/redis_db.py`, run `python scripts/mypy_ratchet.py`, then `git checkout -- src/popoto/redis_db.py` | exit code 1, output names `redis_db.py` and the delta |
+| **Inverse: a removed error warns but passes** | annotate one existing untyped def, run `python scripts/mypy_ratchet.py`, then revert | exit code 0, output contains `::warning::` and `--update` |
+| **Inverse: an allowlisted package regressing fails even at a flat total** | inject one error under `src/popoto/privacy/` while fixing one elsewhere, run the script, then revert both | exit code 1, output names `privacy` on the allowlist check |
+| **Inverse: environment mismatch refuses locally, fails under --strict-env** | install a different redis-py into a throwaway venv; run the script bare, then with `--strict-env` | exit code 0 bare; exit code 1 with `--strict-env` |
+| Baseline is current at the final rebase | `git fetch origin main && git rebase origin/main && python scripts/mypy_ratchet.py --update && git diff --exit-code scripts/mypy_baseline.json` | exit code 0 after committing any regenerated baseline |
 | Format still clean | `.venv/bin/black --check src/ tests/` | exit code 0 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+<!-- Populated by /do-plan-critique (war room), 2026-09-04. FULL depth: Risk & Robustness, Scope & Value, History & Consistency. Verdict: NEEDS REVISION (4 blockers). -->
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | Risk & Robustness, Scope & Value, History & Consistency | CI mypy job installs only pinned `mypy`+`redis-py` (Task 4), but spike-1 reproduced 1178 only in a venv also holding numpy, msgpack, tiktoken, mcp; with `ignore_missing_imports = True` the missing packages become `Any` and change the count, so CI cannot reproduce the checked-in baseline | Task 4 install step + `environment` block in `scripts/mypy_baseline.json` | Install the SAME recipe Task 3 used: `pip install -e ".[dev,embeddings,mcp]"` then `python -m pip install "mypy==X" "redis==Y"` to override floors; record the full install recipe (not just the two tool versions) in `baseline.environment`, and generate the baseline with that exact command |
+| BLOCKER | Risk & Robustness, Scope & Value, History & Consistency | Task 5's four-direction failure proof is discharged as PR-description prose. The Verification table has zero inverse rows — every row asserts a passing state. This is the identical mechanism that waived #554/PR #558's "Types clean: exit code 0" row, the anti-pattern this plan cites | Verification table (add four inverse rows) | Add runnable rows: (a) inject a bare `def f(x): pass` into `src/popoto/redis_db.py`, run script, assert exit 1 and `+1` in output, `git checkout --` revert; (b) annotate one untyped def, assert exit 1 and `--update` in output; (c) inject an error under `src/popoto/privacy/` while fixing one elsewhere (total flat), assert exit 1 on the allowlist check; (d) mismatched redis-py: assert exit 0 bare and exit 1 with `--strict-env`. PR body must paste each command's verbatim captured output |
+| BLOCKER | Scope & Value, History & Consistency, Risk & Robustness | The baseline is generated once at Task 3 and never re-measured. Task 7 replays the Verification table but never rebases onto `main`, re-checks #572, or re-runs `--update`. Supervisor requires re-measurement at the FINAL rebase; nothing in the plan or workflow catches a baseline that goes stale between last measurement and merge | New final step in Task 7 + a Verification row | Add as the last action before requesting merge: `git fetch origin main && git rebase origin/main && python scripts/mypy_ratchet.py --update && git diff --exit-code scripts/mypy_baseline.json` — expected exit 0 after the rebase-and-update; a non-empty diff is a required part of the final commit, not a process failure |
+| BLOCKER | Supervisor directive; all three critics | Gate comparator must be `count <= baseline`, not exact equality. Under `pull_request` merge-commit semantics, any parallel lane that lowers the count (#572: `transfer/` 49 -> 0) turns every unrelated open PR red on an unambiguous improvement — precisely Risk 1's "fires on something a contributor cannot act on". Plan text (Technical Approach), Success Criteria, and Task 5 all currently mandate the opposite | Technical Approach "Exact equality, not `<=`"; Success Criteria bullet "A deliberately removed type error also makes the gate fail"; Task 5 second bullet; Verification rows | `scripts/mypy_ratchet.py`: `if total > baseline.total: exit(1)`; `elif total < baseline.total: print("::warning::mypy error count {total} is below baseline {baseline} — run scripts/mypy_ratchet.py --update and commit scripts/mypy_baseline.json"); exit(0)` (the `::warning::` prefix surfaces as a GitHub Actions annotation, a bare print does not). Keep the `clean` allowlist zero-check and the `--strict-env` mismatch check as unconditional hard failures. Property lost vs exact equality: an improvement is no longer force-banked, so errors can creep back up to the old floor inside a still-dirty package; the `clean` allowlist recovers this only for packages that reach exactly zero, not for partial paydown in `fields/`/`models/`/`recipes/`. Optionally retain the old semantics behind an opt-in `--strict-ratchet` flag |
+| CONCERN | Structural check | Verification row "No blanket ignores added — `grep -rc 'ignore_errors' setup.cfg` — match count == 0" can never pass: `setup.cfg` already contains `[mypy-tests.*] ignore_errors = True`, so the command returns 1 on an untouched tree (verified in this checkout) | Verification table row | Replace with a diff-scoped check: `git diff main... -- setup.cfg \| grep -c '^+.*ignore_errors'` expected 0, which tests "no NEW blanket ignore" rather than "none exist" |
+| CONCERN | Risk & Robustness | Pinning CI at redis-py 8.x is a permanent divergence from `uv.lock`, which resolves `redis==7.1.1`. Raising the dev-extra `mypy` floor gives `uv lock` no constraint that moves `redis` (a core dependency, `redis>=4.4.4`), so `uv sync` still hands a contributor 7.1.1 and a ~53-error offset. Separately, the dev-extra floor raise should be reconciled in-plan with CLAUDE.md's Dependency Updates rule (lower bounds deliberately never machine-edited) | Technical Approach ("Pin against redis-py 8.x", "Raise the dev-extra mypy floor") | State the divergence as deliberate and permanent, and say why the CLAUDE.md rule is not violated: it governs the automated dependabot lane (`versioning-strategy: lockfile-only`), and `mypy` lives in the `dev` extra, which downstream consumers never install. Do NOT raise the core `redis` floor as a side effect of this plan |
+| CONCERN | Structural check | Tasks 5, 6 and 7 carry no `Validates:` field, unlike Tasks 1-4. For the task that proves the gate's core correctness (Task 5) this is the same prose-discharge gap as the Verification blocker | Tasks 5, 6, 7 | Give Task 5 the four inverse commands as its `Validates`, Task 6 `.venv/bin/mkdocs build --strict`, Task 7 `bash scripts/ci-local.sh --all` |
+| NIT | Structural check | Spike figures were measured under mypy 2.1.0 / mypy 1.19.1, but this worktree's `.venv` already holds mypy 2.3.1 and redis 8.1.0 — a third variance point. The plan already says "generate the number; do not copy any figure", but the named pin `2.1.0` will read as authoritative to the builder | Task 3 / Task 4 | Say the pin is "whatever Task 3 actually measured with", not a literal version carried from the spike |
+| NIT | Structural check | Task 1 describes `src/popoto/pubsub/publisher.py:158` as `pipeline: Pipeline`; the source reads `pipeline: redis.client.Pipeline = None` | Task 1 bullet | Quote the real annotation so the builder edits the right token |
 
 ---
 

@@ -3017,7 +3017,7 @@ requires-dist = [
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.25" },
     { name = "msgpack", specifier = ">=1.0.4" },
     { name = "msgpack-numpy", marker = "extra == 'dataframe'", specifier = ">=0.4.8" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=0.971" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.3.1" },
     { name = "numpy", marker = "extra == 'dataframe'", specifier = ">=1.23.1" },
     { name = "numpy", marker = "extra == 'embeddings'", specifier = ">=1.23.1" },
     { name = "numpy", marker = "extra == 'openai'", specifier = ">=1.23.1" },

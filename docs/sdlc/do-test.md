@@ -6,11 +6,11 @@
 ```bash
 pytest                    # full suite; requires Redis/Valkey on localhost:6379
 pytest -k "test_name"     # single test
-mypy src/                 # type check
+scripts/mypy_ratchet.py   # type check as a ratchet vs scripts/mypy_baseline.json — gated by lint.yml
 ruff check src/           # lint — gated by lint.yml
 black src/ tests/         # format (line length 88; isort 79)
 mkdocs build --strict     # docs gate
-scripts/ci-local.sh       # tests + stress + docs; --all adds build, lock, guard
+scripts/ci-local.sh       # lint + types + tests + stress + docs; --all adds build, lock, guard
 ```
 
 Primary source dir is `src/`; tests live in `tests/`. `scripts/ci-local.sh`
@@ -71,10 +71,15 @@ checks all four; the fifth is manual). Each cost a review round on PR #495:
    Listed so it isn't re-diagnosed as environmental.
 4. **Shared DB 15 contention** (above) — to separate contention from a real
    regression, check base out into the *same* worktree and compare.
-5. **mypy deltas are redis-py-version-dependent** (not automated) — redis-py
-   types every command `Awaitable[T] | T` for both sync and async clients, so
-   7.x flags sites 8.x narrows. Measure base-vs-branch in both a 7.x and an 8.x
-   environment before reporting a delta.
+5. **mypy deltas are redis-py-version-dependent** (now partly automated) —
+   redis-py types every command `Awaitable[T] | T` for both sync and async
+   clients, so 7.x flags sites 8.x narrows, measured at 52 errors on the #506
+   baseline. `scripts/mypy_ratchet.py` refuses to compare when the running
+   mypy/redis-py/Python do not match `scripts/mypy_baseline.json`, so state the
+   environment and let the script decide whether a delta is even comparable.
+   `src/` is not clean and is not expected to be: the gate fails only when the
+   total rises ABOVE baseline, plus a hard zero for `integrations/` and
+   `privacy/`.
 
 **Report the environment (Python version, redis-py version, extras installed,
 `POPOTO_TEST_DB`) alongside every count.** A bare number is not usable

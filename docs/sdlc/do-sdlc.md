@@ -104,11 +104,11 @@ table: your own run_id means inherit and continue; only a genuinely foreign
 
 ```bash
 pytest                    # full suite; requires Redis/Valkey on localhost:6379
-mypy src/                 # type check
+scripts/mypy_ratchet.py   # type check as a ratchet vs scripts/mypy_baseline.json; gated by lint.yml
 ruff check src/           # lint (E4,E7,E9,F); gated by lint.yml
 black --check src/ tests/ # format (line length 88; isort 79); gated by lint.yml
 mkdocs build --strict     # docs gate
-scripts/ci-local.sh       # lint + tests + stress + docs (--all, --fast, or named gates)
+scripts/ci-local.sh       # lint + types + tests + stress + docs (--all, --fast, or named gates)
 ```
 
 There is no app to launch — popoto is a library

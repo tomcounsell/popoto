@@ -11,12 +11,16 @@ Popoto is a Python Redis/Valkey ORM providing Django-like model syntax: object p
 ```bash
 pytest                          # requires Redis on localhost:6379; isolated on DB 15 via popoto_test_db in pyproject
 pytest -k "test_name"           # single test by name
-mypy src/                       # type checking
+scripts/mypy_ratchet.py         # type checking, as a ratchet against scripts/mypy_baseline.json (gated by lint.yml)
 ruff check src/                 # lint (config in [tool.ruff.lint]; gated by lint.yml)
 black src/ tests/               # format (`black --check src/ tests/` gated by lint.yml)
 mkdocs serve                    # docs locally
-scripts/ci-local.sh             # local CI gates: lint + tests + stress + docs (--all, --fast, or named gates)
+scripts/ci-local.sh             # local CI gates: lint + types + tests + stress + docs (--all, --fast, or named gates)
 ```
+
+`src/` is not mypy-clean and no single PR can make it so, so the type gate is a **ratchet**, not a clean-tree check: `scripts/mypy_ratchet.py` runs `mypy src/` once and fails only when the total rises above the baseline in `scripts/mypy_baseline.json`. A count below baseline passes and prints a GitHub Actions warning naming the command to bank it (`scripts/mypy_ratchet.py --update`, then commit the JSON). Two packages that already measure zero — `integrations/` and `privacy/` — are pinned at exactly zero by that file's `clean` allowlist, so a regression there fails even when the total is flat. Bare `mypy src/` still works for reading errors; it just is not the gate.
+
+The baseline is only meaningful in the environment it was measured in, which the JSON records and CI reproduces. Locally the script prints the mismatch and refuses to compare; `--strict-env` (what lint.yml passes) makes that a failure instead.
 
 Tests are isolated on Redis DB 15 by the `popoto.pytest_plugin` entry point, which is opt-in: this repo opts in with `popoto_test_db = "15"` under `[tool.pytest.ini_options]`, and a downstream project that never sets it (or `POPOTO_TEST_DB`) gets no DB swap and no flush. Both `import popoto` and `import src.popoto` collapse onto one canonical module/connection. Override with `POPOTO_TEST_DB=<n>`; DB 0 is rejected to prevent accidental production data loss.
 
@@ -30,7 +34,7 @@ A `.worktrees/` checkout can report a confident, wrong number in five ways — e
 2. **Fresh worktree venv deselects ~95 tests**: `.[dev]` alone omits `numpy`/`sentence-transformers`, and omitting `mcp` skips the MCP server tests. Install `.[dev,embeddings,benchmark,mcp]` (adding `dataframe` pulls pandas, which breaks `test_dataframe_field.py` collection on 3.x).
 3. ~~**redis-py 8.x fails `test_pytest_plugin.py::test_isolated_db_subprocess`**~~ — fixed in #490 (PR #500). Root cause was not environmental: redis-py 8 injects pool-internal bookkeeping keys (`himport_registry`, `maint_notifications_*`, `orig_*`) into `connection_kwargs`, which `Redis.__init__` rejects when splatted. `redis_db.sibling_client_kwargs()` now whitelists only standard connection params for DB-0-probe sites.
 4. **Every worktree shares Redis DB 15**: concurrent suites from other checkouts have produced 73-158 phantom failures. To isolate contention from regression, check out base into the same worktree and compare.
-5. **mypy error delta is redis-py-version-dependent** (not automated): redis-py types every command `Awaitable[T] | T` for both sync/async clients, so 7.x flags sites 8.x narrows. Measure base-vs-branch in both a 7.x and 8.x environment before trusting a delta.
+5. **mypy error delta is redis-py-version-dependent** (now partly automated): redis-py types every command `Awaitable[T] | T` for both sync/async clients, so 7.x flags sites 8.x narrows. Measured on the #506 baseline, the spread is 52 errors — 1120 under `redis==8.1.0` against 1172 under `redis==7.1.1`, same tree and same mypy. Missing optional extras move it too, because `ignore_missing_imports = True` resolves an absent package to `Any`. `scripts/mypy_ratchet.py` now refuses to compare when the running versions do not match the baseline's, which turns this from a silent wrong number into a printed one; it still cannot tell you which environment is the right one, so state yours alongside any count.
 
 Rule: state the environment alongside any count, and reproduce a subagent's metric before relaying it.
 
