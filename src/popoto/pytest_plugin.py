@@ -437,8 +437,6 @@ def _popoto_db0_tripwire(request):
     Valkey.  The real fix-proof is the regression test
     (``test_src_popoto_writes_to_test_db``), which needs no idle DB 0.
     """
-    import redis as _redis
-
     # Connect to DB 0 using the same host/port as the test connection,
     # but always on database 0.  ``before is None`` means the tripwire is
     # disabled (couldn't connect, or DB 0 was non-idle at session start).
@@ -452,7 +450,11 @@ def _popoto_db0_tripwire(request):
         pool_kwargs = redis_db.sibling_client_kwargs(
             redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
         )
-        db0_client = _redis.Redis(**pool_kwargs)
+        # GuardedRedis, not a bare _redis.Redis: this client is explicitly bound
+        # to db=0. It only ever calls dbsize(), but a Popoto-constructed DB-0
+        # client that sits outside the #577 flush guard is exactly the shape of
+        # object that caused the incident.
+        db0_client = redis_db.GuardedRedis(**pool_kwargs)
         before = db0_client.dbsize()
     except Exception:
         # Can't connect to DB 0 — disable the tripwire (never a failure).
