@@ -835,6 +835,49 @@ class TestParseReplyRejections:
         assert resolution.references[0].surface == "Bob"
         assert resolution.status is ResolutionStatus.INDETERMINATE
 
+    def test_dropped_reference_forces_statement_to_verbatim_even_if_other_references_survive(
+        self,
+    ):
+        """Plan's Risk 2 (docs/plans/reference_resolution_m4.md): a per-
+        reference validation violation must degrade to verbatim rather than
+        storing the rewrite. Unlike the other partial-drop tests above,
+        this one gives the model a ``statement`` that has already applied
+        the dropped reference's (hallucinated) substitution -- "She" ->
+        "Alice" -- while "Bob" resolves cleanly. Storing that ``statement``
+        verbatim-minus-the-drop would let a rejected rewrite reach
+        ``ExtractedFact.text``/``JournalEntry.statement`` unflagged, tagged
+        only as ``res:indeterminate`` for the *other*, unrelated reason.
+        """
+        candidate = make_candidate(
+            "She and Bob deployed it, Frank confirmed.",
+            candidate_id="t-partialdrop:sent:0",
+            turn_id="t-partialdrop",
+        )
+        good_ref = ref_resolved(
+            "Bob", 8, 11, kind="definite_reference", resolved_text="Bob"
+        )
+        bad_ref = ref_resolved(
+            "She", 99, 102, kind="pronoun", resolved_text="Alice"
+        )  # bad offset -> dropped by _parse_reference
+        hallucinated_statement = "Alice and Bob deployed it, Frank confirmed."
+        client = FakeClient(
+            response_text=reply_json(
+                candidate.candidate_id, hallucinated_statement, [good_ref, bad_ref]
+            )
+        )
+
+        resolution = resolve_references(
+            candidate, candidate.text, TurnContext.now(), client=client
+        )
+
+        assert resolution.degraded is False
+        assert resolution.status is ResolutionStatus.INDETERMINATE
+        assert resolution.statement == candidate.text, (
+            "a dropped reference must force the whole statement back to "
+            "verbatim, even though 'Bob' resolved cleanly"
+        )
+        assert resolution.statement == resolution.verbatim
+
     def test_evidence_gap_with_one_candidate_drops_the_reference(self):
         candidate = make_candidate(
             "She and Bob deployed it.",

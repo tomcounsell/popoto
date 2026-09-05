@@ -709,7 +709,17 @@ def _parse_reply(
         valid_from = None
 
     return Resolution(
-        statement=statement if references else candidate.text,
+        # Plan's Risk 2 mitigation (docs/plans/reference_resolution_m4.md):
+        # a per-reference validation violation degrades to verbatim rather
+        # than storing the rewrite. `statement` is model-authored freeform
+        # text, not assembled from the surviving `references`, so a single
+        # dropped reference (`any_dropped`) gives no way to know whether the
+        # model's substitution for the dropped reference still lurks in
+        # `statement` -- e.g. "She"->"Alice" rejected for a bad offset, but
+        # `statement` still reads "Alice ...". The only sound response is
+        # for the whole reply to fall back to verbatim, not just the one
+        # reference.
+        statement=statement if references and not any_dropped else candidate.text,
         verbatim=candidate.text,
         references=tuple(references),
         status=status,

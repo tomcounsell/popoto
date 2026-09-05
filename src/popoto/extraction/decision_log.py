@@ -894,6 +894,17 @@ class DecisionLog:
         # Skip the sidecar write for a degraded-and-empty resolution: it
         # would only persist references_json="[]", duplicating the
         # res:degraded journal tag with no detail of its own to add.
+        #
+        # NOTE (M9 / #568 ambiguity): this makes "res:degraded with no
+        # sidecar row" a *legitimate* state by design, not just Race 2's
+        # failure mode (journal append succeeded, sidecar write raised --
+        # see the Race 2 note near ResolutionLog.write below). A future
+        # join-based sweep for orphaned res: tags (#568) cannot distinguish
+        # "skipped on purpose here" from "write failed" by row-absence
+        # alone; it must also re-derive or reuse this same
+        # `degraded and not references` predicate to exclude the
+        # intentional-skip case, or it will flag every degraded-empty entry
+        # as a false positive.
         if resolution is not None and not (
             resolution.degraded and not resolution.references
         ):
