@@ -46,9 +46,42 @@ WRITE_FIXTURES = [
     "openclaw_llm_output.json",
 ]
 
+TURN_IDS = {
+    # The exact per-turn identifier each fixture carries, read off the
+    # fixture files rather than restated: Claude Code sends ``prompt_id``
+    # and Codex sends ``turn_id``, both on the read event and the write
+    # event of the same turn. Hermes and OpenClaw send neither, which is
+    # what keeps them on the session-wide FIFO.
+    "claude_code_user_prompt_submit.json": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
+    "claude_code_stop.json": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
+    "codex_user_prompt_submit.json": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
+    "codex_stop.json": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
+    "hermes_pre_llm_call.json": None,
+    "hermes_post_llm_call.json": None,
+    "openclaw_before_prompt_build.json": None,
+    "openclaw_llm_output.json": None,
+}
+"""Expected ``NormalizedEvent.turn_id`` per fixture."""
+
+SENDS_A_TURN_ID = ("claude_code", "codex")
+"""Fixture-name prefixes for the harnesses that send a per-turn id."""
+
 
 def load(name):
     return json.loads((FIXTURES / name).read_text())
+
+
+def pending_entries(service, session_id):
+    """Decode the staged pending-turn list for a session."""
+    raw = POPOTO_REDIS_DB.lrange(service._pending_key(session_id), 0, -1) or []
+    return [json.loads(item) for item in raw]
+
+
+def tagged(turn_id, keys):
+    """The exact on-disk encoding `_push_pending` writes for a tagged turn."""
+    return json.dumps(
+        {"t": turn_id, "k": list(keys)}, sort_keys=True, separators=(",", ":")
+    )
 
 
 def _down_redis_url():
@@ -120,6 +153,10 @@ def test_read_fixtures_normalize_to_the_prompt(name):
     assert "health checks" in event.text
     assert event.session_id
     assert event.cwd == "/Users/dev/src/demo"
+    if name.startswith(SENDS_A_TURN_ID):
+        assert event.turn_id
+    else:
+        assert event.turn_id is None
 
 
 @pytest.mark.parametrize("name", WRITE_FIXTURES)
@@ -128,6 +165,16 @@ def test_write_fixtures_normalize_to_the_assistant_message(name):
     assert event.kind == "write"
     assert "automatic rollback" in event.text
     assert event.session_id
+    if name.startswith(SENDS_A_TURN_ID):
+        assert event.turn_id
+    else:
+        assert event.turn_id is None
+
+
+@pytest.mark.parametrize("name,expected", sorted(TURN_IDS.items()))
+def test_turn_id_is_normalized_from_every_harness(name, expected):
+    """One id per turn, whatever the harness calls it -- or None."""
+    assert hooks.normalize(load(name)).turn_id == expected
 
 
 def test_write_path_never_reads_the_transcript():
@@ -283,13 +330,102 @@ def test_kill_switch_silences_both_paths(tmp_path):
 
 
 def test_outcome_is_reported_on_the_following_stop(tmp_path):
+    # The Claude Code pair shares one prompt_id, so this exercises the
+    # turn-keyed handoff, not the FIFO. A decoy entry parked at the head of
+    # the list is what makes the two paths distinguishable: a positional
+    # LPOP would consume the decoy and leave this turn's entry behind.
     service = make_service(tmp_path)
     seed(service, "Deploys are blue-green and roll back on failed health checks")
+    stop = load("claude_code_stop.json")
+    session, turn = stop["session_id"], stop["prompt_id"]
     hooks.handle_payload(load("claude_code_user_prompt_submit.json"), service=service)
-    session = load("claude_code_stop.json")["session_id"]
-    assert POPOTO_REDIS_DB.llen(service._pending_key(session)) == 1
-    hooks.handle_payload(load("claude_code_stop.json"), service=service)
-    assert POPOTO_REDIS_DB.llen(service._pending_key(session)) == 0
+    staged = pending_entries(service, session)
+    assert len(staged) == 1
+    assert staged[0]["t"] == turn
+
+    decoy = tagged("a-turn-that-never-stops", ["DefaultMemory:decoy"])
+    POPOTO_REDIS_DB.lpush(service._pending_key(session), decoy)
+
+    hooks.handle_payload(stop, service=service)
+    remaining = pending_entries(service, session)
+    assert remaining == [json.loads(decoy)]
+
+
+class ResolutionLog(MemoryService):
+    """The real service, instrumented. Not a stand-in for one: every call
+    below runs the shipped `_push_pending`/`_pop_pending`, and the overrides
+    only record which record keys each turn staged and which each outcome
+    report claimed. Recording here rather than reading the Redis list keeps
+    the assertions about *pairing* rather than about the on-disk encoding,
+    which `test_outcome_is_reported_on_the_following_stop` already pins."""
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.staged = {}
+        self.resolved = []
+
+    def _push_pending(self, session_id, records, turn_id=None):
+        super()._push_pending(session_id, records, turn_id=turn_id)
+        self.staged[turn_id] = tuple(r.db_key.redis_key for r in records)
+
+    def _pop_pending(self, session_id, turn_id=None):
+        keys = super()._pop_pending(session_id, turn_id=turn_id)
+        self.resolved.append((turn_id, tuple(keys)))
+        return keys
+
+
+def test_a_full_turn_pair_resolves_by_turn_id(tmp_path):
+    """Two turns in one session, reported out of order.
+
+    Turn A is the live Claude Code fixture pair; turn B is a synthetic pair
+    on the same session carrying a different prompt_id. Both reads are
+    staged before either report fires, and the reports arrive in reverse
+    order -- the interleaving a positional FIFO gets wrong by construction.
+    """
+    service = ResolutionLog(
+        MemoryConfig(agent_id=AGENT, log_path=tmp_path / "memory.log")
+    )
+    seed(
+        service,
+        "Deploys are blue-green and roll back on failed health checks",
+        "Database migrations run behind a thirty second lock timeout",
+    )
+
+    read_a = load("claude_code_user_prompt_submit.json")
+    stop_a = load("claude_code_stop.json")
+    session = read_a["session_id"]
+    turn_a = read_a["prompt_id"]
+    turn_b = "3c9e77a2-0000-4d11-8f00-a1b2c3d4e5f6"
+
+    read_b = dict(read_a, prompt_id=turn_b)
+    read_b["prompt"] = "how long is the migration lock timeout?"
+    stop_b = dict(stop_a, prompt_id=turn_b)
+    stop_b["last_assistant_message"] = (
+        "Migrations take a lock for at most thirty seconds before aborting."
+    )
+
+    assert hooks.handle_payload(read_a, service=service) is not None
+    assert hooks.handle_payload(read_b, service=service) is not None
+
+    staged = service.staged
+    assert set(staged) == {turn_a, turn_b}
+    assert staged[turn_a] and staged[turn_b]
+    # Disjoint, so "resolved its own turn's records" is decidable at all.
+    assert not set(staged[turn_a]) & set(staged[turn_b])
+    assert len(pending_entries(service, session)) == 2
+
+    # Reverse order: B's stop first, then A's.
+    hooks.handle_payload(stop_b, service=service)
+    assert len(pending_entries(service, session)) == 1
+    hooks.handle_payload(stop_a, service=service)
+    assert pending_entries(service, session) == []
+
+    # Each report claimed the records its own read staged. Under the
+    # positional FIFO the first report would claim turn A's records.
+    assert service.resolved == [
+        (turn_b, staged[turn_b]),
+        (turn_a, staged[turn_a]),
+    ]
 
 
 def test_write_path_reports_used_not_acted():
@@ -306,13 +442,17 @@ def test_write_path_reports_used_not_acted():
         def capture(self, text, session_id=None):
             pass
 
-        def feedback(self, session_id, outcome="acted"):
-            self.feedback_calls.append((session_id, outcome))
+        def feedback(self, session_id, outcome="acted", turn_id=None):
+            self.feedback_calls.append((session_id, outcome, turn_id))
 
     service = RecordingService()
     payload = load("claude_code_stop.json")
     hooks.handle_payload(payload, service=service)
-    assert service.feedback_calls == [(payload["session_id"], "used")]
+    # The turn id travels with the outcome: without it the report cannot
+    # claim the entry the paired read staged.
+    assert service.feedback_calls == [
+        (payload["session_id"], "used", payload["prompt_id"])
+    ]
 
 
 # --- malformed input --------------------------------------------------------------

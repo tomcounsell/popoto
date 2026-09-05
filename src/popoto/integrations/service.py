@@ -39,7 +39,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from ..redis_db import OUTAGE_ERRORS
 from .config import redact_url, PENDING_TTL_SECONDS, MemoryConfig, bind_connection
@@ -77,6 +77,56 @@ MAX_PENDING_TURNS = 32
 """Cap on queued unresolved turns per session. A harness that reads without
 ever firing its write event (or a crashed session) would otherwise grow the
 handoff list without bound."""
+
+
+def _decode_pending_entry(
+    raw: Any,
+    on_corrupt: Optional[Callable[[BaseException], None]] = None,
+) -> Tuple[bool, Optional[str], List[str]]:
+    """Decode one pending-list element into ``(tagged, turn_id, keys)``.
+
+    The single decode step both branches of
+    :meth:`MemoryService._pop_pending` go through, so the ``LPOP`` fallback
+    reads turn-tagged entries as happily as the claiming path reads them.
+    Keeping two parsers here is the defect that would silently zero outcome
+    reporting for harnesses that send no turn id: they take the fallback
+    branch, and every entry they meet was written in the tagged shape.
+
+    Three shapes are accepted. ``{"t": ..., "k": [...]}`` is the turn-keyed
+    entry and decodes ``tagged=True``. A bare ``[...]`` array is a legacy or
+    keying-disabled entry and decodes ``tagged=False`` -- ``tagged``
+    distinguishes an entry with *no* ``t`` key from one whose ``t`` is
+    merely null, which is what bounds the upgrade-in-flight fallback.
+    Anything else is corrupt and decodes to no keys rather than raising: a
+    poisoned entry must cost one turn's outcome report, not the turn. It is
+    still reported -- ``on_corrupt`` receives the decode error so the caller
+    can log and count it, because an entry silently decoding to nothing and
+    an entry legitimately holding no keys are otherwise indistinguishable in
+    the log, and only one of them is a bug.
+    """
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    try:
+        elem = json.loads(raw)
+    except Exception as exc:
+        if on_corrupt is not None:
+            on_corrupt(exc)
+        return False, None, []
+    if isinstance(elem, dict):
+        tagged = "t" in elem
+        turn = elem.get("t")
+        keys = elem.get("k")
+    elif isinstance(elem, list):
+        tagged, turn, keys = False, None, elem
+    else:
+        if on_corrupt is not None:
+            on_corrupt(TypeError(f"pending entry is a {type(elem).__name__}"))
+        return False, None, []
+    if not isinstance(turn, str):
+        turn = None
+    if not isinstance(keys, list):
+        return tagged, turn, []
+    return tagged, turn, [k for k in keys if isinstance(k, str)]
 
 
 class MemoryService:
@@ -183,7 +233,12 @@ class MemoryService:
 
     # -- public operations ----------------------------------------------
 
-    def assemble(self, query: str, session_id: Optional[str] = None) -> str:
+    def assemble(
+        self,
+        query: str,
+        session_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+    ) -> str:
         """Read path: retrieve memories relevant to ``query``.
 
         Assembles through :class:`~popoto.recipes.ContextAssembler` on the
@@ -197,6 +252,10 @@ class MemoryService:
             session_id: Harness session identifier. Used only to scope the
                 pending-turn handoff; ``None`` disables outcome reporting
                 for this turn rather than raising.
+            turn_id: Harness turn identifier, when the payload carried one.
+                Tags the pending entry so :meth:`feedback` claims this
+                turn's records by name instead of by queue position. A
+                harness that sends none keeps the positional pairing.
 
         Returns:
             The formatted context block, or ``""`` when memory is disabled,
@@ -235,7 +294,7 @@ class MemoryService:
             return ""
 
         if session_id:
-            self._push_pending(session_id, result.records)
+            self._push_pending(session_id, result.records, turn_id=turn_id)
             self._mark_injected(session_id, result.records)
 
         return result.formatted
@@ -298,20 +357,31 @@ class MemoryService:
             )
         return keys
 
-    def feedback(self, session_id: str, outcome: str = "used") -> int:
+    def feedback(
+        self,
+        session_id: str,
+        outcome: str = "used",
+        turn_id: Optional[str] = None,
+    ) -> int:
         """Report how the memories injected for a turn were used.
 
-        Pops the oldest unresolved turn for ``session_id`` and applies
+        Claims one unresolved turn for ``session_id`` and applies
         ``outcome`` to its records through
         :class:`~popoto.fields.observation.ObservationProtocol`, which is
         what drives the confidence and decay loop.
 
-        A missing pending turn degrades to a no-op. It never reports
-        against another turn's records: the handoff is a FIFO list and this
-        method pops exactly one entry.
+        Given ``turn_id``, claims the entry :meth:`assemble` staged for that
+        same turn; otherwise pops the oldest. A missing pending turn
+        degrades to a no-op, and a turn id that matches nothing reports
+        against nothing rather than falling back to the head of the queue.
+        Either way this method consumes exactly one entry.
 
         Args:
             session_id: Harness session identifier.
+            turn_id: Harness turn identifier, when the payload carried
+                one. Must be the same value the paired :meth:`assemble` call
+                received; a value that matches no staged entry resolves
+                nothing.
             outcome: One of ``"acted"``, ``"used"``, ``"dismissed"``,
                 ``"deferred"``, ``"contradicted"``. Default ``"used"``: a
                 caller that omits the outcome cannot have observed the
@@ -324,7 +394,7 @@ class MemoryService:
         if not self.config.enabled or not session_id:
             return 0
 
-        keys = self._pop_pending(session_id)
+        keys = self._pop_pending(session_id, turn_id=turn_id)
         if not keys:
             return 0
 
@@ -519,31 +589,51 @@ class MemoryService:
     def _pending_key(self, session_id: str) -> str:
         return f"{PENDING_KEY_PREFIX}:{self.config.agent_id}:{session_id}"
 
-    def _push_pending(self, session_id: str, records: Any) -> None:
+    def _report_corrupt_pending(self, exc: BaseException) -> None:
+        """Log and count one undecodable pending entry.
+
+        Filed under ``pending_pop`` rather than a name of its own: from
+        ``doctor``'s side this is the same symptom as any other failed
+        outcome report, and a counter nobody recognizes is worse than a
+        familiar one.
+        """
+        self._record_failure("pending_pop", exc)
+
+    def _has_pending_turn(self, redis_key: str, turn_id: str) -> bool:
+        """Whether an entry for ``turn_id`` is already staged on the list."""
+        for raw in self.redis.lrange(redis_key, 0, -1) or []:
+            _tagged, turn, _keys = _decode_pending_entry(raw)
+            if turn == turn_id:
+                return True
+        return False
+
+    def _push_pending(
+        self,
+        session_id: str,
+        records: Any,
+        turn_id: Optional[str] = None,
+    ) -> None:
         """Queue this turn's injected record keys for later outcome reporting.
 
-        A FIFO list, one entry per turn, rather than a single key per
-        session. The write hook runs asynchronously on Claude Code, so a
-        fast user can submit turn N+1 while turn N is still writing; a
-        single slot would let turn N's outcome report land against turn
-        N+1's records. ``RPUSH`` then ``LPOP`` pairs each write with the
-        read that preceded it, and both commands are atomic, so no lock is
-        needed. The list carries a TTL and a length cap so an abandoned
-        session cannot leak.
+        A list, one entry per turn, rather than a single key per session.
+        The write hook runs asynchronously on Claude Code, so a fast user
+        can submit turn N+1 while turn N is still writing; a single slot
+        would let turn N's outcome report land against turn N+1's records.
+        The list carries a TTL and a length cap so an abandoned session
+        cannot leak.
 
-        NOTE (PR #546 review, tech debt): this is a session-wide FIFO, not
-        keyed on the turn identifiers Claude Code (``prompt_id``) and Codex
-        (``turn_id``) already send -- left as-is for this PR because keying
-        on those would still need a FIFO fallback for Hermes/OpenClaw
-        payloads that carry neither, and that dual-path handoff is scoped
-        as follow-up work rather than a patch-sized change (tracked in
-        #574). A read whose
-        paired write never fires (aborted turn, crashed session, or a
-        ``SubagentStop``-configured session popping more than it pushed)
-        shifts every later pairing by one and misattributes an outcome
-        report to the wrong turn's records. See
-        ``docs/features/harness-integration.md`` ("Known gap") for the
-        full disclosure.
+        When the harness sends a turn identifier -- Claude Code's
+        ``prompt_id``, Codex's ``turn_id`` -- the entry is tagged with it as
+        ``{"t": turn_id, "k": keys}`` and :meth:`_pop_pending` claims that
+        exact entry by value. Positional pairing alone is what let an
+        aborted turn, a crashed session, or a ``SubagentStop``-configured
+        session popping more than it pushed shift every later pairing by one
+        and report an outcome against the wrong turn's records (#574).
+        Harnesses that send no turn id (Hermes, OpenClaw) and sessions with
+        ``POPOTO_MEMORY_TURN_KEYED=0`` keep writing the bare key array and
+        keep the positional pairing. The ``RPUSH``/``LTRIM``/``EXPIRE``
+        pipeline, the key name, the cap, and the TTL are unchanged either
+        way.
         """
         try:
             keys = []
@@ -555,8 +645,30 @@ class MemoryService:
             if not keys:
                 return
             redis_key = self._pending_key(session_id)
+            if self.config.turn_keyed and turn_id:
+                # Advisory, not atomic: two concurrent pushes for the same
+                # turn can both read an absent entry and both write. It is
+                # here so a redelivered hook does not stage a second
+                # claimable entry that no pop will ever consume, not to
+                # serialize writers -- a lock would cost every turn a round
+                # trip to prevent a case that costs one stale list element.
+                #
+                # It keys on the turn id alone, so a second push for one turn
+                # carrying *different* records drops those records from the
+                # handoff: they are still injected and still suppressed, they
+                # just get no outcome report. One turn resolves once, which is
+                # the contract; a turn assembling twice is the anomaly.
+                if self._has_pending_turn(redis_key, turn_id):
+                    return
+                payload = json.dumps(
+                    {"t": turn_id, "k": keys},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            else:
+                payload = json.dumps(keys)
             pipe = self.redis.pipeline()
-            pipe.rpush(redis_key, json.dumps(keys))
+            pipe.rpush(redis_key, payload)
             pipe.ltrim(redis_key, -MAX_PENDING_TURNS, -1)
             pipe.expire(redis_key, PENDING_TTL_SECONDS)
             pipe.execute()
@@ -622,16 +734,57 @@ class MemoryService:
         except Exception as exc:
             self._record_failure("injected_mark", exc)
 
-    def _pop_pending(self, session_id: str) -> List[str]:
-        """Pop and return the oldest unresolved turn's record keys."""
+    def _pop_pending(
+        self,
+        session_id: str,
+        turn_id: Optional[str] = None,
+    ) -> List[str]:
+        """Claim one unresolved turn's record keys and return them.
+
+        With a turn id and turn keying enabled, claims the entry tagged with
+        that id: ``LRANGE`` the list, find the first element whose ``t``
+        matches, then ``LREM key 1 <that exact raw element>``. The keys are
+        returned only when ``LREM`` reports a removal, so of two callers
+        racing on one turn exactly one reports the outcome. ``LREM`` is
+        given the raw element ``LRANGE`` returned rather than a
+        re-serialization, so no difference in key order or separator
+        spacing can make the claim silently miss.
+
+        Falls back to the positional ``LPOP`` when there is no turn id, when
+        turn keying is off, or when every staged entry is untagged -- a
+        queue written entirely before this upgrade, where positional pairing
+        is the only pairing those entries ever had. A turn id that matches
+        nothing on a list that *does* carry tags is a miss, not a licence to
+        pop positionally: reporting against whatever sits at the head is
+        exactly the misattribution this change removes.
+        """
+        redis_key = self._pending_key(session_id)
         try:
-            raw = self.redis.lpop(self._pending_key(session_id))
+            if turn_id and self.config.turn_keyed:
+                saw_tagged = False
+                for raw in self.redis.lrange(redis_key, 0, -1) or []:
+                    tagged, turn, keys = _decode_pending_entry(
+                        raw, on_corrupt=self._report_corrupt_pending
+                    )
+                    saw_tagged = saw_tagged or tagged
+                    if turn is None or turn != turn_id:
+                        continue
+                    if not self.redis.lrem(redis_key, 1, raw):
+                        return []
+                    return keys
+                if saw_tagged:
+                    self._record_failure(
+                        "pending_miss",
+                        LookupError(f"no pending entry for turn {turn_id}"),
+                    )
+                    return []
+            raw = self.redis.lpop(redis_key)
             if not raw:
                 return []
-            if isinstance(raw, bytes):
-                raw = raw.decode("utf-8", errors="replace")
-            keys = json.loads(raw)
-            return [k for k in keys if isinstance(k, str)]
+            _tagged, _turn, keys = _decode_pending_entry(
+                raw, on_corrupt=self._report_corrupt_pending
+            )
+            return keys
         except Exception as exc:
             self._record_failure("pending_pop", exc)
             return []
