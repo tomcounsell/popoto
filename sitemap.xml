@@ -193,6 +193,10 @@
          <lastmod>2026-09-05</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/reference-resolution/</loc>
+         <lastmod>2026-09-05</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/validity-and-supersession/</loc>
          <lastmod>2026-09-05</lastmod>
     </url>
@@ -294,6 +298,14 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/extraction/decision_log/</loc>
+         <lastmod>2026-09-05</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/extraction/resolution/</loc>
+         <lastmod>2026-09-05</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/extraction/resolution_log/</loc>
          <lastmod>2026-09-05</lastmod>
     </url>
     <url>

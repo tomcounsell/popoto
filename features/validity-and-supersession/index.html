@@ -1547,6 +1547,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../reference-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -3722,6 +3750,20 @@ indexed-field phases, so a rejected save writes nothing at all: not the model
 hash, not a sibling <code>IndexedField</code>'s index entry, not an interval. On the
 external-pipeline path it queues nothing onto the caller's pipeline for that
 call.</p>
+<p>Capture-time <code>valid_from</code> now has a producer.
+<a href="../reference-resolution/">Reference Resolution</a> (M4) computes a <code>valid_from</code>
+epoch for a candidate whose single <code>relative_time</code> reference resolves to an
+onset (see its
+<a href="../reference-resolution/#the-onset-rule-for-valid_from">onset rule</a>) and
+threads it through <code>ProvenanceJournal.append(..., at=resolution.valid_from)</code>
+as the field value at construction — the ordinary declared-value path above,
+not a reconciliation call. A capture never conflicts on an interval this way:
+every <code>ProvenanceJournal.append()</code> mints a fresh <code>JournalEntry</code> keyed by its
+own <code>AutoKeyField</code> <code>entry_id</code>, so each resolution's <code>valid_from</code> opens its
+<em>own</em> interval rather than re-asserting one against an existing record.
+<code>ValidityValidFromConflictError</code> only fires on a re-save of the <em>same</em> key
+with a disagreeing declared start; M4 never re-saves and never calls
+<code>get_valid_from</code> to reconcile — it only ever constructs new entries.</p>
 <h3 id="reconciling-a-record-that-already-diverges">Reconciling a record that already diverges<a class="headerlink" href="#reconciling-a-record-that-already-diverges" title="Permanent link">&para;</a></h3>
 <p>There is <strong>no data migration</strong> — no stored key, score, or hash field changes
 shape, and no backfill runs. But a record that already carries a hash/index
@@ -3877,6 +3919,10 @@ loudly if the gate is ever added — update this entry then.
   (it needs an explicit incumbent and a construction-time valid-from, not the
   identity pointer), and uses <code>chain()</code> for provenance display only, never for
   membership</li>
+<li><a href="../reference-resolution/">Reference Resolution</a> — the M4 stage that
+  produces a caller-supplied <code>valid_from</code> for onset references, threaded
+  through as the declared value at construction, never through
+  reconciliation</li>
 <li><a href="../observation-protocol/">ObservationProtocol</a> — the outcome vocabulary
   that reports contradiction; <code>_apply_contradicted</code> writes provenance through
   this protocol when the model has a <code>ValidityField</code></li>

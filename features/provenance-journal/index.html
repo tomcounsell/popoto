@@ -1508,6 +1508,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../reference-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -3400,6 +3428,17 @@ pre-flight), not a type-system guarantee.</p>
 </tr>
 </tbody>
 </table>
+<p>On the M3 auditable path, <code>statement</code> and <code>verbatim</code> are written as the same
+string object as <code>candidate.text</code> — no distillation happens there (see
+<a href="../auditable-extraction/#the-enum-verdict-contract">Auditable Extraction</a>).
+<a href="../reference-resolution/">Reference Resolution</a> (M4) is the module that makes
+them differ: it rewrites <code>statement</code> into a resolved form (pronouns and
+relative dates anchored, definite references expanded where possible) while
+<code>verbatim</code> stays byte-identical to the candidate span on every record,
+resolved or not. The same module is also the only producer of a
+caller-supplied <code>valid_from</code> on the auditable path — see its
+<a href="../reference-resolution/#the-onset-rule-for-valid_from">onset rule</a> for which
+references set it and which deliberately don't.</p>
 <h3 id="captured_at-deliberately-not-ingested_at"><code>captured_at</code>, deliberately not <code>ingested_at</code><a class="headerlink" href="#captured_at-deliberately-not-ingested_at" title="Permanent link">&para;</a></h3>
 <p><code>ValidityField.on_save</code> hardcodes the <strong>save clock</strong> into its own
 <code>$ValidityF:{Model}:validity:ingested_at</code> ZSET and ignores any model field
@@ -3894,6 +3933,10 @@ occurrence of the record's <em>key</em> does not:</p>
   reconciliation</li>
 <li><a href="../agent-memory/">Agent Memory</a> — the primitive map this feature sits
   alongside</li>
+<li><a href="../reference-resolution/">Reference Resolution</a> — the M4 stage that
+  distills accepted candidates into <code>statement</code> (leaving <code>verbatim</code>
+  untouched), writes the <code>res:{status}</code> subject tag, and is the sole
+  producer of a caller-supplied <code>valid_from</code> on the auditable path</li>
 </ul>
 
 

@@ -1265,6 +1265,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/reference-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -4066,6 +4094,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td><code>POPOTO_DECODE_QUARANTINE_DISABLE</code></td>
 <td>unset (falsy)</td>
 <td>Kill switch for corruption-tolerant decode (#573). Read at call time, inside the decode path's <code>except</code> branch — a deploy-time flip (or <code>monkeypatch.setenv</code> in a test) takes effect immediately, with no import-time binding to work around. Default-on: unset, an undecodable non-key field is quarantined (raw bytes preserved, declared default returned, <code>_corrupt_fields</code> recorded, <code>WARNING</code> logged) rather than raising. A truthy value restores the pre-#573 reader, which raises the underlying decode exception (e.g. <code>msgpack.exceptions.ExtraData</code>) for every corrupt field, failing the whole row exactly as before this feature shipped. Never disables the KeyField-always-raises behavior, since that guard is about identity correctness, not tolerance. See <a href="../features/corruption-tolerant-decode/#the-kill-switch">Corruption-Tolerant Decode</a>.</td>
+</tr>
+<tr>
+<td><code>POPOTO_M4_RESOLUTION_ENABLED</code></td>
+<td>unset (truthy)</td>
+<td>Kill switch for the reference-resolution stage (#563). Read fresh on every call, not cached. Default-on: unset or any truthy value leaves the stage on, so a candidate's pronouns, relative dates, and definite references are rewritten into a self-contained <code>statement</code> before the journal append. Unlike most <code>_DISABLE</code>-suffixed switches, the name already reads as "enabled", so an explicit falsy value (rather than a truthy one) turns the stage off — no inversion. With the switch off, or without the optional <code>anthropic</code> package, the auditable path's output is byte-identical to M3's: no provider call, no <code>res:*</code> tag, no <code>ResolutionRecord</code> row, <code>statement == verbatim</code>. See <a href="../features/reference-resolution/#the-m4_resolution_enabled-kill-switch">Reference Resolution</a>.</td>
 </tr>
 </tbody>
 </table>

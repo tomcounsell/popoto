@@ -18,7 +18,7 @@
         <link rel="prev" href="../provenance-journal/">
       
       
-        <link rel="next" href="../prediction-ledger/">
+        <link rel="next" href="../reference-resolution/">
       
       
         
@@ -1473,6 +1473,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3397,7 +3425,10 @@ than the one asked about is treated as malformed, not silently reassigned.</p>
 code — <code>verbatim</code> and <code>statement</code> on the journal entry are the same string
 object as <code>candidate.text</code>, with no normalization, rewriting, or casing
 change. Distillation (turning verbatim spans into cleaner stored statements)
-is explicitly out of scope for M3 — it's M4's job.</p>
+is explicitly out of scope for M3 — it's
+<a href="../reference-resolution/">Reference Resolution</a> (M4)'s job: it runs after a
+candidate is accepted and before assembly, rewriting <code>statement</code> while
+leaving <code>verbatim</code> untouched on the same record.</p>
 <p>The model may only emit <code>accept</code> / <code>reject</code> / <code>withhold</code> — never
 <code>firewall_drop</code> (a trusted-code-only decision) or <code>pending</code> (an internal
 write-ordering marker). Any reply claiming either is rejected at the parse
@@ -3605,6 +3636,10 @@ turn, with nothing left to discriminate between.</p>
   module scans every candidate through, twice.</li>
 <li><a href="../../guides/subconscious-memory-recipe/">SubconsciousMemory Recipe</a> —
   where <code>auditable_extraction=</code> is wired in.</li>
+<li><a href="../reference-resolution/">Reference Resolution</a> — the stage that rewrites
+  an accepted candidate's <code>statement</code> (pronouns, relative dates, definite
+  references) before it reaches the journal, and produces <code>valid_from</code> for
+  onset references.</li>
 </ul>
 
 

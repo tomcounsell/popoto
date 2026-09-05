@@ -4745,6 +4745,21 @@ hash, not a sibling `IndexedField`'s index entry, not an interval. On the
 external-pipeline path it queues nothing onto the caller's pipeline for that
 call.
 
+Capture-time `valid_from` now has a producer.
+[Reference Resolution](reference-resolution.md) (M4) computes a `valid_from`
+epoch for a candidate whose single `relative_time` reference resolves to an
+onset (see its
+[onset rule](reference-resolution.md#the-onset-rule-for-valid_from)) and
+threads it through `ProvenanceJournal.append(..., at=resolution.valid_from)`
+as the field value at construction — the ordinary declared-value path above,
+not a reconciliation call. A capture never conflicts on an interval this way:
+every `ProvenanceJournal.append()` mints a fresh `JournalEntry` keyed by its
+own `AutoKeyField` `entry_id`, so each resolution's `valid_from` opens its
+*own* interval rather than re-asserting one against an existing record.
+`ValidityValidFromConflictError` only fires on a re-save of the *same* key
+with a disagreeing declared start; M4 never re-saves and never calls
+`get_valid_from` to reconcile — it only ever constructs new entries.
+
 ### Reconciling a record that already diverges
 
 There is **no data migration** — no stored key, score, or hash field changes
@@ -4923,6 +4938,10 @@ including `DefaultMemory`, does.
   (it needs an explicit incumbent and a construction-time valid-from, not the
   identity pointer), and uses `chain()` for provenance display only, never for
   membership
+- [Reference Resolution](reference-resolution.md) — the M4 stage that
+  produces a caller-supplied `valid_from` for onset references, threaded
+  through as the declared value at construction, never through
+  reconciliation
 - [ObservationProtocol](observation-protocol.md) — the outcome vocabulary
   that reports contradiction; `_apply_contradicted` writes provenance through
   this protocol when the model has a `ValidityField`
@@ -5027,6 +5046,18 @@ pre-flight), not a type-system guarantee.
 | `kind` | `IndexedField(str)` | `assert` / `confirm` / `supersede` / `retract`, validated against the model's kind vocabulary. Indexed so "every retraction" is one query |
 | `target` | `IndexedField(str, null=True)` | The annotated entry's Redis key. A plain indexed scalar, not a `Relationship` — the target is already addressed by Redis key, and `Relationship`'s lazy-load machinery plus its heavier save buys nothing here |
 | `validity` | `ValidityField` | The `valid_from` / `invalid_at` / `ingested_at` axes |
+
+On the M3 auditable path, `statement` and `verbatim` are written as the same
+string object as `candidate.text` — no distillation happens there (see
+[Auditable Extraction](auditable-extraction.md#the-enum-verdict-contract)).
+[Reference Resolution](reference-resolution.md) (M4) is the module that makes
+them differ: it rewrites `statement` into a resolved form (pronouns and
+relative dates anchored, definite references expanded where possible) while
+`verbatim` stays byte-identical to the candidate span on every record,
+resolved or not. The same module is also the only producer of a
+caller-supplied `valid_from` on the auditable path — see its
+[onset rule](reference-resolution.md#the-onset-rule-for-valid_from) for which
+references set it and which deliberately don't.
 
 ### `captured_at`, deliberately not `ingested_at`
 
@@ -5521,6 +5552,10 @@ occurrence of the record's *key* does not:
   reconciliation
 - [Agent Memory](agent-memory.md) — the primitive map this feature sits
   alongside
+- [Reference Resolution](reference-resolution.md) — the M4 stage that
+  distills accepted candidates into `statement` (leaving `verbatim`
+  untouched), writes the `res:{status}` subject tag, and is the sole
+  producer of a caller-supplied `valid_from` on the auditable path
 
 ---
 
@@ -5690,7 +5725,10 @@ Accepted content is the **verbatim candidate span**, assembled by trusted
 code — `verbatim` and `statement` on the journal entry are the same string
 object as `candidate.text`, with no normalization, rewriting, or casing
 change. Distillation (turning verbatim spans into cleaner stored statements)
-is explicitly out of scope for M3 — it's M4's job.
+is explicitly out of scope for M3 — it's
+[Reference Resolution](reference-resolution.md) (M4)'s job: it runs after a
+candidate is accepted and before assembly, rewriting `statement` while
+leaving `verbatim` untouched on the same record.
 
 The model may only emit `accept` / `reject` / `withhold` — never
 `firewall_drop` (a trusted-code-only decision) or `pending` (an internal
@@ -5937,6 +5975,300 @@ turn, with nothing left to discriminate between.
   module scans every candidate through, twice.
 - [SubconsciousMemory Recipe](../guides/subconscious-memory-recipe.md) —
   where `auditable_extraction=` is wired in.
+- [Reference Resolution](reference-resolution.md) — the stage that rewrites
+  an accepted candidate's `statement` (pronouns, relative dates, definite
+  references) before it reaches the journal, and produces `valid_from` for
+  onset references.
+
+---
+
+## Reference Resolution
+
+# Reference Resolution
+
+Turns a candidate span's pronouns, relative dates, and definite references
+into an audited rewrite — or an audited abstention — without ever guessing
+silently.
+
+## The gap this closes
+
+[Auditable Extraction](auditable-extraction.md) (M3) writes the **verbatim**
+candidate span to the provenance journal, untouched, on purpose — distillation
+was explicitly out of scope there. But "she wants the report filed by Friday"
+stored verbatim is nearly useless to retrieve later: nothing in the record
+says who "she" is, which Friday, or which report. Reference resolution (M4,
+[#563](https://github.com/tomcounsell/popoto/issues/563)) is the module that
+picks up exactly where M3 left off — it runs *after* a candidate is accepted
+and *before* it reaches the journal, rewriting the span into a
+self-contained `statement` while keeping the original `verbatim` intact next
+to it.
+
+## The four-way status ladder
+
+`ResolutionStatus` (`src/popoto/extraction/resolution.py`) replaces a numeric
+confidence with four cases, ordered worst-last so a candidate's aggregate
+status is the worst status among its individual references
+(`ResolutionStatus.worst_of`):
+
+| Status | Meaning |
+|---|---|
+| `resolved` | The reference was anchored with no ambiguity. |
+| `assumed` | The stage anchored it, but only by stating an assumption (e.g. picking the most recent antecedent). |
+| `evidence_gap` | Multiple plausible antecedents exist and the stage cannot pick one; the candidates are recorded and a clarifying question is posed. |
+| `indeterminate` | Nothing in the window resolves the reference. |
+
+One worked example per status, all against the same setting — Tuesday
+2026-09-01, speaker `user`, previous turn *"How's Dana settling in on
+Atlas?"*:
+
+**`resolved`** — candidate *"she's been on Atlas since March"*: the pronoun
+`she` resolves against the prior turn's "Dana", and the `relative_time`
+reference `March` resolves to 2026-03-01 with no ambiguity. `statement` =
+*"Dana's been on Atlas since March 2026-03-01."*
+
+**`assumed`** — candidate *"she wants the report filed by Friday"* where the
+window contains two named people and the model has to pick the most recently
+mentioned one as the antecedent for `she`: the reference resolves, but
+carries a one-line `assumption` ("assumed 'she' refers to the most recently
+mentioned person, Dana") rather than a clean `resolved`.
+
+**`evidence_gap`** — the same candidate's `the report` reference: two
+plausible antecedents exist ("the Atlas onboarding report", "the Q3 status
+report") and nothing in the window picks between them. The reference carries
+`candidates=["the Atlas onboarding report", "the Q3 status report"]` and
+`question="Which report does Dana need filed by Friday?"`.
+
+**`indeterminate`** — a candidate referencing "the meeting we discussed" with
+no meeting mentioned anywhere in the window: nothing resolves it, and no
+assumption is stated because there is no plausible antecedent to assume.
+
+Putting the first three references from the running example together: the
+candidate *"she wants the report filed by Friday"* aggregates to
+`evidence_gap` (the worst of `resolved`/`assumed`/`evidence_gap` among its
+three references), with `statement` = *"Dana wants the report filed by Friday
+2026-09-04."*, `verbatim` = *"she wants the report filed by Friday"*, and
+journal tag `res:evidence_gap`.
+
+## `TurnContext` — the capture header
+
+```python
+from popoto.extraction.resolution import TurnContext, WindowTurn
+
+context = TurnContext(
+    speaker="user",
+    captured_at=1756742400.0,  # epoch seconds
+    timezone="America/Los_Angeles",
+    window=(
+        WindowTurn(turn_id="t-40", speaker="agent", text="How's Dana settling in on Atlas?"),
+    ),
+)
+```
+
+`TurnContext` carries a speaker, a capture instant (epoch seconds), an IANA
+timezone, and a bounded window of prior turns. `TurnContext.now()` builds the
+degraded default — no speaker, no window, UTC, current clock — for a caller
+that has none of this.
+
+This header exists because nothing else in the system records *when and by
+whom* something was said, as opposed to when it was stored. `JournalEntry`
+has a `captured_at` field, but before M4 nothing populated it with anything
+but the save clock; `TurnContext` is the seam that finally closes that gap —
+`speaker` and a true `captured_at` reach the journal entry whenever a
+`TurnContext` supplies them (`decision_log.py`'s `_append_and_transition`
+backfills both from `resolution.context` unless the caller already supplied
+an explicit `speaker`).
+
+`captured_at` is coerced defensively: a missing, `NaN`, or infinite value is
+replaced with the current clock in `TurnContext.__post_init__`, with a
+logged warning — this is an M4 guard, not M1 behaviour, closing a fail-open
+hole where a non-finite float could otherwise propagate into `valid_from`.
+
+`TurnContext.bounded_window()` truncates the window to
+`Defaults.M4_WINDOW_MAX_TURNS` turns and `Defaults.M4_WINDOW_MAX_CHARS`
+characters, whichever binds first, dropping the *oldest* turns first, and
+reports whether truncation happened — distinguishing "the window did not
+contain the antecedent" from "the model missed it."
+
+## The onset rule for `valid_from`
+
+`valid_from` is only emitted for a very specific case: **exactly one**
+reference in a candidate is a `relative_time` reference, has status
+`resolved` or `assumed`, and carries a temporal role in
+`Defaults.M4_VALID_FROM_ROLES` — which is `("onset",)` by default.
+`TemporalRole` has four values: `onset`, `deadline`, `mention`, `none`; only
+`onset` is in the role set.
+
+**Why a deadline must not emit `valid_from`.** Under V0 membership
+(`valid_from <= t AND invalid_at > t`, see
+[ValidityField and Supersession](validity-and-supersession.md)), `valid_from`
+is not "a date the claim mentions" — it is the instant the claim *becomes
+retrievable*. "File the report by Friday" is true the moment it's said, on
+Tuesday. Emitting Friday as `valid_from` would make the fact **invisible to
+as-of retrieval until Friday** — the deadline would silently hide the very
+obligation it describes, for exactly the window in which it matters. That is
+why *"she's been on Atlas since March"* (an `onset` role) emits `valid_from`
+= 2026-03-01, while *"filed by Friday"* (a `deadline` role) emits nothing:
+the entry's `valid_from` falls back to M1's default, the capture instant.
+
+**Two or more onsets in one candidate abstain.** If a single clause carries
+two competing onsets (e.g. "she's been on Atlas since March and lead since
+June"), nothing in the reference list determines which sub-claim the
+statement is *about*, so no `valid_from` is emitted, the aggregate status
+floors at `assumed`, and a stated assumption line names the competing
+onsets (`_compute_valid_from` in `resolution.py`). A wrong `valid_from` is
+silent and near-undetectable — it shifts a record's entire retrieval window
+— whereas an absent one only costs precision.
+
+**The role set is a pinned constant, not a code literal**, so a reversal is
+a one-tuple change: `Defaults.M4_VALID_FROM_ROLES = ("onset", "deadline")`
+would make deadlines emit too, with no other code change required.
+
+## The `res:{status}` subject tag contract
+
+Every resolved candidate's journal entry gets exactly one `res:*` subject
+tag, computed by `Resolution.subject_tag`:
+
+```python
+resolution.subject_tag  # "res:resolved" | "res:assumed" | "res:evidence_gap"
+                         # | "res:indeterminate" | "res:degraded"
+```
+
+This flag rides on the journal entry itself — the same low-entropy tag
+convention `cand:{candidate_id}` uses (see
+[Auditable Extraction](auditable-extraction.md#the-candidate-generator)) — so
+an `assumed` fact can never be surfaced without its flag: querying
+`JournalEntry.query.filter(subjects__all=["res:assumed"])` needs no sidecar
+join.
+
+**The fifth literal, `res:degraded`, takes precedence over the status
+literal.** `degraded` is set whenever the resolution stage failed open — a
+missing `anthropic` client, a raising client, a malformed reply, or the
+`M4_RESOLUTION_ENABLED` kill switch — and in every one of those cases the
+model never actually rendered a verdict. Without a separate literal, a
+degraded run and a genuine model abstention would both tag
+`res:indeterminate`, and a downstream reader could not tell "the model said
+it could not resolve this" from "the resolution stage never ran." Because
+`degraded` takes precedence, the two stay distinguishable on the one channel
+guaranteed to travel with the fact — no sidecar read required.
+
+## The `ResolutionRecord` sidecar
+
+`ResolutionRecord` (`src/popoto/extraction/resolution_log.py`) is a Popoto
+model holding the full evidence M7 ([#566](https://github.com/tomcounsell/popoto/issues/566))
+is expected to consume:
+
+- **Composite key.** `agent_id` / `turn_id` / `candidate_id` are all
+  `KeyField`s (never `AutoKeyField`), mirroring
+  `DecisionRecord` — a second write for the same tuple transitions the row
+  in place instead of minting a duplicate.
+- **`references_json` is JSON, not msgpack, on purpose** — every other
+  Popoto model field is msgpack-packed by the base encoding, but this one
+  field is deliberately re-encoded as a JSON string so the reference detail
+  (surface offsets, resolved text, assumptions, candidate lists, clarifying
+  questions) stays readable with plain `redis-cli HGET`, not just from
+  Python.
+- **The `TurnContext` header**, denormalized onto the row: `speaker`,
+  `captured_at`, `timezone`, `window_truncated`.
+- **No TTL.** Matching M3's decision log, rows are unbounded and never
+  expire; retention is deferred to M9
+  ([#568](https://github.com/tomcounsell/popoto/issues/568)).
+
+```python
+from popoto.extraction.resolution_log import ResolutionLog
+
+log = ResolutionLog()
+row = log.get("agent-7", "t-41", "t-41:sentence:0")
+```
+
+`ResolutionLog.write()` never raises — a Redis error or a bad `resolution`
+shape is caught, logged, and turned into a `False` return, because the
+sidecar is not load-bearing: by the time it runs, the candidate's accept
+outcome and its `res:*` journal tag are already committed
+(`decision_log.py`'s `_append_and_transition` writes the sidecar only after
+a successful append, so it can carry `entry_id`).
+
+## `verbatim` is byte-identical to the candidate span, always
+
+`Resolution.verbatim` is the original candidate text, unmodified, on
+**every** record — including the degraded path. A resolved candidate's
+`statement` may be a rewrite; its `verbatim` never is. This is what makes a
+wrong resolution non-destructive: the source span survives on the same
+record regardless of what the resolution stage concluded, so a bad
+`statement` can always be checked against — or discarded in favor of — the
+exact words that were said.
+
+## The `M4_RESOLUTION_ENABLED` kill switch
+
+`Defaults.M4_RESOLUTION_ENABLED` is read fresh on every call (not cached),
+default `True`, and overridable with the `POPOTO_M4_RESOLUTION_ENABLED`
+environment variable, read at import time — the same deploy-level kill
+switch pattern as `NEVER_RECORD_ENABLED`, for a PyPI adopter who cannot edit
+model code.
+
+**With the switch off, the auditable path's output is byte-identical to
+M3's.** `SubconsciousMemory._extract_memories_auditable` checks the flag
+*before* calling into resolution at all — no provider call, no `res:` tag,
+no sidecar row:
+
+- `statement == verbatim` (`resolution` is `None`, so assembly falls back to
+  `candidate.text` for both).
+- `valid_from == captured_at` (no `at` is threaded through, so the entry
+  falls back to the interval's implicit start, the save clock — M1's
+  default, unless `TurnContext.captured_at` was already the same instant).
+- No `res:*` tag is appended to `subjects`.
+- No `ResolutionRecord` row is written.
+
+A caller invoking `resolve_references()` directly (rather than through
+`SubconsciousMemory`) gets the same fail-open contract one layer down: the
+function itself checks `M4_RESOLUTION_ENABLED` and, when it's `False`,
+returns a `degraded=True` `Resolution` whose `statement` is byte-identical to
+`verbatim` — the same "quality loss, not corruption" guarantee M3
+established for its own fail-open paths.
+
+## Quickstart
+
+```python
+from popoto.extraction.resolution import TurnContext, WindowTurn, resolve_references
+from popoto.extraction.candidates import generate_candidates
+
+turn_text = "she's been on Atlas since March"
+candidates = generate_candidates("t-41", turn_text)
+
+context = TurnContext(
+    speaker="user",
+    timezone="America/Los_Angeles",
+    window=(
+        WindowTurn(turn_id="t-40", speaker="agent", text="How's Dana settling in on Atlas?"),
+    ),
+)
+
+resolution = resolve_references(candidates[0], turn_text, context)
+print(resolution.status.value)      # "resolved"
+print(resolution.statement)         # "Dana's been on Atlas since March 2026-03-01." (illustrative)
+print(resolution.verbatim)          # "she's been on Atlas since March"
+print(resolution.subject_tag)       # "res:resolved"
+print(resolution.valid_from)        # epoch float for 2026-03-01 in America/Los_Angeles
+```
+
+`resolve_references` requires the optional `anthropic` package and an API
+key to produce a non-degraded result; without either it returns the same
+degraded `Resolution` the kill switch produces, matching M3's fail-open
+contract.
+
+## See Also
+
+- [Auditable Extraction](auditable-extraction.md) — the candidate generator,
+  verdict stage, and decision log this module sits downstream of; M3's
+  "distillation is M4's job" note points here.
+- [Provenance Journal](provenance-journal.md) — the `statement` /
+  `verbatim` field pair and the `captured_at` / `valid_from` axes this
+  module is a producer for.
+- [ValidityField and Supersession](validity-and-supersession.md) — the V0
+  membership rule (`valid_from <= t AND invalid_at > t`) that motivates the
+  onset-only emission rule.
+- [Tuning Magic Numbers](../guides/tuning-magic-numbers.md#reference-resolution-m4) —
+  all eleven `M4_*` constants, including the `POPOTO_M4_RESOLUTION_ENABLED`
+  kill switch.
 
 ---
 
@@ -9566,6 +9898,74 @@ plan; the right horizon isn't knowable until the M9 follow-on
 ([#568](https://github.com/tomcounsell/popoto/issues/568)) consumes the log
 at scale.
 
+### Reference Resolution (M4)
+
+Source: `src/popoto/fields/constants.py`, consumed by
+`src/popoto/extraction/resolution.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `M4_RESOLUTION_ENABLED` | `True` (env override) | n/a (boolean kill switch) | n/a |
+| `M4_WINDOW_MAX_TURNS` | 8 | Not swept (structural bound, not a quality knob) | Not swept |
+| `M4_WINDOW_MAX_CHARS` | 4000 | Not swept (structural bound) | Not swept |
+| `M4_MAX_REFERENCES_PER_CANDIDATE` | 8 | Not swept (re-validation cap) | Not swept |
+| `M4_EVIDENCE_GAP_MIN_CANDIDATES` | 2 | Not swept (vocabulary bound) | Not swept |
+| `M4_EVIDENCE_GAP_MAX_CANDIDATES` | 4 | Not swept (vocabulary bound) | Not swept |
+| `M4_ASSUMPTION_MAX_CHARS` | 200 | Not swept (re-validation cap) | Not swept |
+| `M4_QUESTION_MAX_CHARS` | 200 | Not swept (re-validation cap) | Not swept |
+| `M4_STATEMENT_MAX_GROWTH_FACTOR` | 2.0 | Not swept (re-validation cap) | Not swept |
+| `M4_STATEMENT_MAX_GROWTH_CHARS` | 120 | Not swept (re-validation cap) | Not swept |
+| `M4_VALID_FROM_ROLES` | `("onset",)` | Not swept (policy decision, not a quality knob) | Not swept |
+
+None of these eleven constants have been through this guide's benchmark
+harness — they gate structure and re-validation, not a retrieval-quality
+metric a sweep would tune:
+
+- `M4_RESOLUTION_ENABLED` is a **deploy-level kill switch**, not a tuning
+  constant — like `NEVER_RECORD_ENABLED`. It is read fresh on every call (not
+  cached, so tests can monkeypatch it), default `True`, and overridable with
+  the `POPOTO_M4_RESOLUTION_ENABLED` environment variable, read at import
+  time. With it `False`, the auditable path's output is byte-identical to
+  M3's: no provider call, no `res:` tag, no sidecar row. See
+  [Reference Resolution](../features/reference-resolution.md#the-m4_resolution_enabled-kill-switch).
+- `M4_WINDOW_MAX_TURNS` (8) and `M4_WINDOW_MAX_CHARS` (4000) are the two
+  bounds `TurnContext.bounded_window()` truncates the conversational window
+  to, whichever binds first, dropping the oldest turns first. Two bounds
+  rather than one because a turn count alone does not bound prompt size and
+  a character count alone can slice a single turn in half.
+- `M4_MAX_REFERENCES_PER_CANDIDATE` (8) caps how many references
+  re-validation accepts per candidate; a reply over this cap is rejected
+  outright rather than truncated, so a runaway model response cannot
+  silently balloon one candidate's evidence.
+- `M4_EVIDENCE_GAP_MIN_CANDIDATES` (2) and `M4_EVIDENCE_GAP_MAX_CANDIDATES`
+  (4) bound the `evidence_gap` candidate-antecedent list: below the minimum
+  there is no genuine ambiguity to report, and above the maximum the model is
+  listing possibilities rather than narrowing them, which is not useful
+  evidence for the one clarifying question the record carries.
+- `M4_ASSUMPTION_MAX_CHARS` (200) and `M4_QUESTION_MAX_CHARS` (200) cap an
+  `assumed` status's stated assumption and an `evidence_gap` status's
+  clarifying question respectively, so both stay scannable audit lines
+  rather than free-form prose.
+- `M4_STATEMENT_MAX_GROWTH_FACTOR` (2.0, multiplicative) and
+  `M4_STATEMENT_MAX_GROWTH_CHARS` (120, additive) together bound
+  `statement`'s length relative to `verbatim`: re-validation enforces
+  `len(statement) <= len(verbatim) * factor + chars`, so the model cannot
+  turn a clause into a paragraph of invention. The additive term keeps very
+  short verbatims from being bounded to near-zero growth.
+- `M4_VALID_FROM_ROLES` (`("onset",)`) is the pinned constant the onset rule
+  reads to decide which `TemporalRole` values emit `valid_from` — currently
+  onsets only, a deliberate narrowing that keeps a deadline reference from
+  silently hiding the obligation it describes until the deadline passes
+  (V0 membership: `valid_from <= t AND invalid_at > t`). It is read fresh at
+  emission time, never inlined as a literal, so reversing the decision is a
+  one-tuple change. See
+  [Reference Resolution](../features/reference-resolution.md#the-onset-rule-for-valid_from)
+  for the full argument.
+
+The `ResolutionRecord` sidecar rows themselves are **unbounded**, same as
+M3's decision log — no retention/cap constant exists for them either; see
+[the sidecar](../features/reference-resolution.md#the-resolutionrecord-sidecar).
+
 ## Cliff Effects
 
 Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):
@@ -11432,6 +11832,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_JOURNAL_COUPLING_DISABLE` | unset (falsy) | Kill switch for the provenance journal's validity coupling. Read at import time. Default-on: unset, a `supersede()` or `retract()` appends the annotation *and* closes the target's validity interval in one transaction. A truthy value keeps the annotation append but stops the interval close, so the journal still records what was said while membership stops changing. Degraded mode is observable without a Redis read via `AnnotationResult.coupling_enabled` and `target_closed`. See [Provenance Journal](features/provenance-journal.md#the-kill-switch-popoto_journal_coupling_disable). |
 | `POPOTO_DEFAULT_MEMORY_MAX_RECORDS` | unset | Cap on records **per `agent_id`** kept by `DefaultMemory` (name shortened for table brevity — the scope is per-agent, not per-store). Read at call time on every `save()`, so it can be changed without a code edit. `0`/`off`/`false`/`no` disables eviction; a positive integer sets the cap; unset defers to the class attribute (default 1000, `Defaults.DEFAULT_MEMORY_MAX_RECORDS_PER_AGENT`); a malformed value warns once and is ignored. It can lower, raise, or disable the *default* cap, but it can **never** re-arm eviction on a subclass whose `_max_records_per_agent` is set falsy — that opt-out always wins. See [DefaultMemory eviction](features/harness-integration.md#corpus-growth) for the data-loss behavior on the first save after upgrading. |
 | `POPOTO_DECODE_QUARANTINE_DISABLE` | unset (falsy) | Kill switch for corruption-tolerant decode (#573). Read at call time, inside the decode path's `except` branch — a deploy-time flip (or `monkeypatch.setenv` in a test) takes effect immediately, with no import-time binding to work around. Default-on: unset, an undecodable non-key field is quarantined (raw bytes preserved, declared default returned, `_corrupt_fields` recorded, `WARNING` logged) rather than raising. A truthy value restores the pre-#573 reader, which raises the underlying decode exception (e.g. `msgpack.exceptions.ExtraData`) for every corrupt field, failing the whole row exactly as before this feature shipped. Never disables the KeyField-always-raises behavior, since that guard is about identity correctness, not tolerance. See [Corruption-Tolerant Decode](features/corruption-tolerant-decode.md#the-kill-switch). |
+| `POPOTO_M4_RESOLUTION_ENABLED` | unset (truthy) | Kill switch for the reference-resolution stage (#563). Read fresh on every call, not cached. Default-on: unset or any truthy value leaves the stage on, so a candidate's pronouns, relative dates, and definite references are rewritten into a self-contained `statement` before the journal append. Unlike most `_DISABLE`-suffixed switches, the name already reads as "enabled", so an explicit falsy value (rather than a truthy one) turns the stage off — no inversion. With the switch off, or without the optional `anthropic` package, the auditable path's output is byte-identical to M3's: no provider call, no `res:*` tag, no `ResolutionRecord` row, `statement == verbatim`. See [Reference Resolution](features/reference-resolution.md#the-m4_resolution_enabled-kill-switch). |
 
 ## Thread Safety
 

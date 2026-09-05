@@ -1,0 +1,4980 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://popoto.io/reference/popoto/extraction/resolution/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>popoto.extraction.resolution - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#popotoextractionresolution" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              popoto.extraction.resolution
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../guides/agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Add Memory to Your Agent
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/harness-integration/" class="md-tabs__link">
+          
+  
+  
+  Add Memory to Your Harness
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Understand & Tune
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../benchmarks/results/" class="md-tabs__link">
+          
+  
+  
+  Benchmarks & Method
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../configuration/" class="md-tabs__link">
+          
+  
+  
+  Redis ORM
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../style-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Agent
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Agent
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SubconsciousMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/query-blind-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query-Blind Retrieval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/llm-memory-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Memory Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Harness
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Harness
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/harness-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/prompt-cache-efficiency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt Cache Efficiency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Codex
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-hermes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hermes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/harness-openclaw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenClaw
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understand & Tune
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Understand & Tune
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Primitives
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Primitives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/provenance-journal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provenance Journal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/auditable-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auditable Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/reference-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NeverRecordFirewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/trajectory-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TrajectoryMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/rag-chatbot-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAG Chatbot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/memory-telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MemoryLifecycle and more
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tuning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/parametric-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parametric Sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks & Method
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks & Method
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/locomo_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/locomo_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/rlt_redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT (Redis)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/results/csr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSR Regression Gate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Method and How-To
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis ORM
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Redis ORM
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/corruption-tolerant-decode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Corruption-Tolerant Decode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/content-and-embedding-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content & Embeddings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/export-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export & Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../field-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Custom Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="resolution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.RESOLUTION_MODEL" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RESOLUTION_MODEL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.RESOLUTION_MAX_TOKENS" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RESOLUTION_MAX_TOKENS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.RESOLUTION_PROMPT" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RESOLUTION_PROMPT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.RESOLUTION_SCHEMA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RESOLUTION_SCHEMA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.ResolutionStatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ResolutionStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ResolutionStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.ResolutionStatus.worst_of" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        worst_of
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.ReferenceKind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ReferenceKind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.TemporalRole" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TemporalRole
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.Reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.WindowTurn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WindowTurn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.TurnContext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TurnContext
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TurnContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.TurnContext.now" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        now
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.TurnContext.bounded_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bounded_window
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.Resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resolution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.Resolution.subject_tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        subject_tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.extraction.resolution.resolve_references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve_references
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="popotoextractionresolution"><code>popoto.extraction.resolution</code><a class="headerlink" href="#popotoextractionresolution" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="popoto.extraction.resolution" class="doc doc-heading">
+            <code>popoto.extraction.resolution</code>
+
+
+<a href="#popoto.extraction.resolution" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Reference resolution stage for auditable extraction (M4, #563).</p>
+<p>This module turns a candidate span plus its conversational window into a
+:class:<code>Resolution</code>: a rewritten <code>statement</code> with pronouns, relative
+dates and definite references either resolved, explicitly assumed,
+flagged as an evidence gap, or left indeterminate. Exactly four statuses
+make up the model's vocabulary, in :class:<code>ResolutionStatus</code>:</p>
+<ul>
+<li><code>resolved</code> -- the reference was anchored with no ambiguity.</li>
+<li><code>assumed</code> -- the stage anchored it, but only by stating an assumption
+  (e.g. picking the most recent antecedent).</li>
+<li><code>evidence_gap</code> -- multiple plausible antecedents exist and the stage
+  cannot pick one; the candidates are recorded and a clarifying question
+  is posed.</li>
+<li><code>indeterminate</code> -- nothing in the window resolves the reference.</li>
+</ul>
+<p><strong>Fail-open, per M3's precedent.</strong> :func:<code>resolve_references</code> never
+raises and never returns <code>None</code>. A missing <code>anthropic</code> client, a
+raising client, a malformed reply, or the <code>M4_RESOLUTION_ENABLED</code> kill
+switch all fall back to a <code>degraded</code> :class:<code>Resolution</code> whose
+<code>statement</code> is byte-identical to the candidate's own verbatim text --
+the entry is still captured. This is "quality loss, not corruption": M4
+never causes M3's fail-open contract to fail closed.</p>
+<p><strong>The model never emits an epoch number.</strong> Every date the model returns
+is ISO-8601 text; this module is the only thing that ever calls
+<code>datetime.fromisoformat</code> on it, and floats reaching :class:<code>Resolution</code>
+are always Python-computed (see :func:<code>_to_epoch</code>), never model-supplied.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.extraction.resolution.RESOLUTION_MODEL" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">RESOLUTION_MODEL</span> <span class="o">=</span> <span class="s1">'claude-haiku-4-5-20251001'</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.RESOLUTION_MODEL" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Pinned model for the per-candidate resolution call. Not user-configurable.</p>
+<p>Same tier as <code>verdict.py</code>'s <code>VERDICT_MODEL</code> -- this call runs once per
+<em>accepted</em> candidate, not once per turn.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.extraction.resolution.RESOLUTION_MAX_TOKENS" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">RESOLUTION_MAX_TOKENS</span> <span class="o">=</span> <span class="mi">1024</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.RESOLUTION_MAX_TOKENS" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Pinned max_tokens. A rewritten statement plus a handful of references.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.extraction.resolution.RESOLUTION_PROMPT" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">RESOLUTION_PROMPT</span> <span class="o">=</span> <span class="s1">'You are a reference-resolution engine for an AI agent</span><span class="se">\'</span><span class="s1">s memory. You are given ONE candidate statement lifted verbatim from a conversation turn, plus recent conversational context, and you resolve its pronouns, relative dates and definite references.</span><span class="se">\n\n</span><span class="s1">For each reference you find in the candidate text, report:</span><span class="se">\n</span><span class="s1">- "surface": the EXACT substring of the candidate text it covers (character for character -- do not paraphrase it).</span><span class="se">\n</span><span class="s1">- "start"/"end": its character offsets into the candidate text.</span><span class="se">\n</span><span class="s1">- "kind": "pronoun", "relative_time", or "definite_reference".</span><span class="se">\n</span><span class="s1">- "status": "resolved" (unambiguous), "assumed" (you picked one candidate and must state the assumption), "evidence_gap" (multiple plausible antecedents, list 2-4 of them and ask a clarifying question), or "indeterminate" (nothing in the context resolves it).</span><span class="se">\n</span><span class="s1">- For a resolved or assumed reference: "resolved_text" (the resolved form) and, for "relative_time", "resolved_iso" (an ISO-8601 date/datetime string -- NEVER an epoch number).</span><span class="se">\n</span><span class="s1">- For "relative_time" references only, also report "temporal_role": "onset" (the claim becomes true at this date), "deadline" (something is due by this date, but the claim is already true now), "mention" (the date is mentioned but is neither), or "none".</span><span class="se">\n</span><span class="s1">- For "assumed": a one-line "assumption" explaining your choice.</span><span class="se">\n</span><span class="s1">- For "evidence_gap": "candidates" (2-4 plausible antecedents) and a "question" that would resolve the ambiguity.</span><span class="se">\n\n</span><span class="s1">Then report "statement": the candidate rewritten with resolved references substituted in place, changing nothing else. If nothing needed resolving, "references" is an empty array and "statement" equals the candidate text verbatim.</span><span class="se">\n\n</span><span class="s1">Reply with the candidate</span><span class="se">\'</span><span class="s1">s id, the statement, and the references array only -- any other text is discarded.'</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.RESOLUTION_PROMPT" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Pinned system prompt for the resolution call. Not user-configurable.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.extraction.resolution.RESOLUTION_SCHEMA" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">RESOLUTION_SCHEMA</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'object'</span><span class="p">,</span> <span class="s1">'properties'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'candidate_id'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">},</span> <span class="s1">'statement'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">},</span> <span class="s1">'references'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'array'</span><span class="p">,</span> <span class="s1">'items'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'object'</span><span class="p">,</span> <span class="s1">'properties'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'surface'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">},</span> <span class="s1">'start'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'integer'</span><span class="p">},</span> <span class="s1">'end'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'integer'</span><span class="p">},</span> <span class="s1">'kind'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">,</span> <span class="s1">'enum'</span><span class="p">:</span> <span class="p">[</span><span class="n">k</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">ReferenceKind</span><span class="p">]},</span> <span class="s1">'status'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">,</span> <span class="s1">'enum'</span><span class="p">:</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">ResolutionStatus</span><span class="p">]},</span> <span class="s1">'temporal_role'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">,</span> <span class="s1">'enum'</span><span class="p">:</span> <span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">TemporalRole</span><span class="p">]},</span> <span class="s1">'resolved_text'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'string'</span><span class="p">,</span> <span class="s1">'null'</span><span class="p">]},</span> <span class="s1">'resolved_iso'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'string'</span><span class="p">,</span> <span class="s1">'null'</span><span class="p">]},</span> <span class="s1">'assumption'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'string'</span><span class="p">,</span> <span class="s1">'null'</span><span class="p">]},</span> <span class="s1">'candidates'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'array'</span><span class="p">,</span> <span class="s1">'items'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="s1">'string'</span><span class="p">}},</span> <span class="s1">'question'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'type'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'string'</span><span class="p">,</span> <span class="s1">'null'</span><span class="p">]}},</span> <span class="s1">'required'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'surface'</span><span class="p">,</span> <span class="s1">'start'</span><span class="p">,</span> <span class="s1">'end'</span><span class="p">,</span> <span class="s1">'kind'</span><span class="p">,</span> <span class="s1">'status'</span><span class="p">,</span> <span class="s1">'temporal_role'</span><span class="p">,</span> <span class="s1">'resolved_text'</span><span class="p">,</span> <span class="s1">'resolved_iso'</span><span class="p">,</span> <span class="s1">'assumption'</span><span class="p">,</span> <span class="s1">'candidates'</span><span class="p">,</span> <span class="s1">'question'</span><span class="p">],</span> <span class="s1">'additionalProperties'</span><span class="p">:</span> <span class="kc">False</span><span class="p">}}},</span> <span class="s1">'required'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'candidate_id'</span><span class="p">,</span> <span class="s1">'statement'</span><span class="p">,</span> <span class="s1">'references'</span><span class="p">],</span> <span class="s1">'additionalProperties'</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.RESOLUTION_SCHEMA" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>JSON schema confining the reply. Not user-configurable.</p>
+<p>One level of nesting only -- an object holding a flat array of flat
+objects -- because Anthropic's structured-output schema support is not
+full JSON Schema. This is a first line of defence, not the enforcement
+point: :func:<code>_parse_reply</code> re-validates every field.</p>
+
+    </div>
+
+</div>
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.ResolutionStatus" class="doc doc-heading">
+            <code>ResolutionStatus</code>
+
+
+<a href="#popoto.extraction.resolution.ResolutionStatus" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="str">str</span></code>, <code><span title="enum.Enum">Enum</span></code></p>
+
+
+
+        <p>The four-member status vocabulary a resolved reference may carry.</p>
+<p>Ordered worst-last for :func:<code>ResolutionStatus.worst_of</code>:
+<code>resolved</code> is the best outcome, <code>indeterminate</code> the worst.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-60">60</a></span>
+<span class="normal"><a href="#__codelineno-0-61">61</a></span>
+<span class="normal"><a href="#__codelineno-0-62">62</a></span>
+<span class="normal"><a href="#__codelineno-0-63">63</a></span>
+<span class="normal"><a href="#__codelineno-0-64">64</a></span>
+<span class="normal"><a href="#__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#__codelineno-0-67">67</a></span>
+<span class="normal"><a href="#__codelineno-0-68">68</a></span>
+<span class="normal"><a href="#__codelineno-0-69">69</a></span>
+<span class="normal"><a href="#__codelineno-0-70">70</a></span>
+<span class="normal"><a href="#__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#__codelineno-0-73">73</a></span>
+<span class="normal"><a href="#__codelineno-0-74">74</a></span>
+<span class="normal"><a href="#__codelineno-0-75">75</a></span>
+<span class="normal"><a href="#__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#__codelineno-0-77">77</a></span>
+<span class="normal"><a href="#__codelineno-0-78">78</a></span>
+<span class="normal"><a href="#__codelineno-0-79">79</a></span>
+<span class="normal"><a href="#__codelineno-0-80">80</a></span>
+<span class="normal"><a href="#__codelineno-0-81">81</a></span>
+<span class="normal"><a href="#__codelineno-0-82">82</a></span>
+<span class="normal"><a href="#__codelineno-0-83">83</a></span>
+<span class="normal"><a href="#__codelineno-0-84">84</a></span>
+<span class="normal"><a href="#__codelineno-0-85">85</a></span>
+<span class="normal"><a href="#__codelineno-0-86">86</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResolutionStatus</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">enum</span><span class="o">.</span><span class="n">Enum</span><span class="p">):</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="w">    </span><span class="sd">"""The four-member status vocabulary a resolved reference may carry.</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    Ordered worst-last for :func:`ResolutionStatus.worst_of`:</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    ``resolved`` is the best outcome, ``indeterminate`` the worst.</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    """</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a>    <span class="n">RESOLVED</span> <span class="o">=</span> <span class="s2">"resolved"</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a>    <span class="n">ASSUMED</span> <span class="o">=</span> <span class="s2">"assumed"</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a>    <span class="n">EVIDENCE_GAP</span> <span class="o">=</span> <span class="s2">"evidence_gap"</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a>    <span class="n">INDETERMINATE</span> <span class="o">=</span> <span class="s2">"indeterminate"</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a>    <span class="nd">@property</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_rank</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a>        <span class="k">return</span> <span class="n">_STATUS_RANK</span><span class="p">[</span><span class="bp">self</span><span class="p">]</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">worst_of</span><span class="p">(</span><span class="n">statuses</span><span class="p">:</span> <span class="s2">"List[ResolutionStatus]"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"ResolutionStatus"</span><span class="p">:</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="w">        </span><span class="sd">"""Return the worst (most-degraded) status among ``statuses``.</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">        Defaults to ``RESOLVED`` (the best status) for an empty input --</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">        this mirrors "nothing needed resolving" being a legitimate,</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        non-degraded outcome (see :func:`resolve_references`).</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">        """</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">statuses</span><span class="p">:</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a>            <span class="k">return</span> <span class="n">ResolutionStatus</span><span class="o">.</span><span class="n">RESOLVED</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">statuses</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">_rank</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.extraction.resolution.ResolutionStatus.worst_of" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">worst_of</span><span class="p">(</span><span class="n">statuses</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-staticmethod"><code>staticmethod</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.ResolutionStatus.worst_of" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the worst (most-degraded) status among <code>statuses</code>.</p>
+<p>Defaults to <code>RESOLVED</code> (the best status) for an empty input --
+this mirrors "nothing needed resolving" being a legitimate,
+non-degraded outcome (see :func:<code>resolve_references</code>).</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#__codelineno-0-77">77</a></span>
+<span class="normal"><a href="#__codelineno-0-78">78</a></span>
+<span class="normal"><a href="#__codelineno-0-79">79</a></span>
+<span class="normal"><a href="#__codelineno-0-80">80</a></span>
+<span class="normal"><a href="#__codelineno-0-81">81</a></span>
+<span class="normal"><a href="#__codelineno-0-82">82</a></span>
+<span class="normal"><a href="#__codelineno-0-83">83</a></span>
+<span class="normal"><a href="#__codelineno-0-84">84</a></span>
+<span class="normal"><a href="#__codelineno-0-85">85</a></span>
+<span class="normal"><a href="#__codelineno-0-86">86</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="nd">@staticmethod</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="k">def</span><span class="w"> </span><span class="nf">worst_of</span><span class="p">(</span><span class="n">statuses</span><span class="p">:</span> <span class="s2">"List[ResolutionStatus]"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"ResolutionStatus"</span><span class="p">:</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="w">    </span><span class="sd">"""Return the worst (most-degraded) status among ``statuses``.</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    Defaults to ``RESOLVED`` (the best status) for an empty input --</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">    this mirrors "nothing needed resolving" being a legitimate,</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">    non-degraded outcome (see :func:`resolve_references`).</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">    """</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">statuses</span><span class="p">:</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a>        <span class="k">return</span> <span class="n">ResolutionStatus</span><span class="o">.</span><span class="n">RESOLVED</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">statuses</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">_rank</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.ReferenceKind" class="doc doc-heading">
+            <code>ReferenceKind</code>
+
+
+<a href="#popoto.extraction.resolution.ReferenceKind" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="str">str</span></code>, <code><span title="enum.Enum">Enum</span></code></p>
+
+
+
+        <p>What kind of reference a span is.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#__codelineno-0-102">102</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-97" name="__codelineno-0-97"></a><span class="k">class</span><span class="w"> </span><span class="nc">ReferenceKind</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">enum</span><span class="o">.</span><span class="n">Enum</span><span class="p">):</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="w">    </span><span class="sd">"""What kind of reference a span is."""</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="n">PRONOUN</span> <span class="o">=</span> <span class="s2">"pronoun"</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="n">RELATIVE_TIME</span> <span class="o">=</span> <span class="s2">"relative_time"</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="n">DEFINITE_REFERENCE</span> <span class="o">=</span> <span class="s2">"definite_reference"</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.TemporalRole" class="doc doc-heading">
+            <code>TemporalRole</code>
+
+
+<a href="#popoto.extraction.resolution.TemporalRole" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="str">str</span></code>, <code><span title="enum.Enum">Enum</span></code></p>
+
+
+
+        <p>The role a <code>relative_time</code> reference plays in the statement.</p>
+<p>Only <code>onset</code> participates in the <code>valid_from</code> emission rule (see
+:func:<code>_compute_valid_from</code>); <code>deadline</code> and <code>mention</code> reference
+a date without asserting the claim became true then, and <code>none</code> is
+for non-temporal references classified with this vocabulary by
+mistake-proofing rather than by relevance.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-105">105</a></span>
+<span class="normal"><a href="#__codelineno-0-106">106</a></span>
+<span class="normal"><a href="#__codelineno-0-107">107</a></span>
+<span class="normal"><a href="#__codelineno-0-108">108</a></span>
+<span class="normal"><a href="#__codelineno-0-109">109</a></span>
+<span class="normal"><a href="#__codelineno-0-110">110</a></span>
+<span class="normal"><a href="#__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#__codelineno-0-112">112</a></span>
+<span class="normal"><a href="#__codelineno-0-113">113</a></span>
+<span class="normal"><a href="#__codelineno-0-114">114</a></span>
+<span class="normal"><a href="#__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#__codelineno-0-118">118</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-105" name="__codelineno-0-105"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalRole</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">enum</span><span class="o">.</span><span class="n">Enum</span><span class="p">):</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a><span class="w">    </span><span class="sd">"""The role a ``relative_time`` reference plays in the statement.</span>
+<a id="__codelineno-0-107" name="__codelineno-0-107"></a>
+<a id="__codelineno-0-108" name="__codelineno-0-108"></a><span class="sd">    Only ``onset`` participates in the ``valid_from`` emission rule (see</span>
+<a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="sd">    :func:`_compute_valid_from`); ``deadline`` and ``mention`` reference</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a><span class="sd">    a date without asserting the claim became true then, and ``none`` is</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">    for non-temporal references classified with this vocabulary by</span>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a><span class="sd">    mistake-proofing rather than by relevance.</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">    """</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a>    <span class="n">ONSET</span> <span class="o">=</span> <span class="s2">"onset"</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a>    <span class="n">DEADLINE</span> <span class="o">=</span> <span class="s2">"deadline"</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a>    <span class="n">MENTION</span> <span class="o">=</span> <span class="s2">"mention"</span>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a>    <span class="n">NONE</span> <span class="o">=</span> <span class="s2">"none"</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.Reference" class="doc doc-heading">
+            <code>Reference</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.Reference" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>One resolved (or attempted) reference inside a candidate span.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.surface">surface</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The exact substring of the candidate text this reference
+covers -- <code>candidate.text[start:end] == surface</code> is
+mechanically enforced by :func:<code>_parse_reference</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.start">start</span></code></td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Start offset into the candidate text.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.end">end</span></code></td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>End offset into the candidate text.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.kind">kind</span></code></td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="ReferenceKind (popoto.extraction.resolution.ReferenceKind)" href="#popoto.extraction.resolution.ReferenceKind">ReferenceKind</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>What kind of reference this is.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.status">status</span></code></td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="ResolutionStatus (popoto.extraction.resolution.ResolutionStatus)" href="#popoto.extraction.resolution.ResolutionStatus">ResolutionStatus</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>This reference's own resolution status.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.temporal_role">temporal_role</span></code></td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="TemporalRole (popoto.extraction.resolution.TemporalRole)" href="#popoto.extraction.resolution.TemporalRole">TemporalRole</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Only meaningful when <code>kind == RELATIVE_TIME</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.resolved_text">resolved_text</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The resolved human-readable text, when resolved or
+assumed.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.resolved_epoch">resolved_epoch</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The resolved instant as a Python-computed epoch
+float (via :func:<code>_to_epoch</code>), or <code>None</code>. Never taken
+directly from the model -- see the module docstring.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.assumption">assumption</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A one-line stated assumption, required when
+<code>status == ASSUMED</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.candidates">candidates</span></code></td>
+            <td>
+                  <code><span title="typing.Tuple">Tuple</span>[<span title="str">str</span>, ...]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Plausible antecedents, required (2-4) when
+<code>status == EVIDENCE_GAP</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Reference.question">question</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A clarifying question, required when
+<code>status == EVIDENCE_GAP</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#__codelineno-0-147">147</a></span>
+<span class="normal"><a href="#__codelineno-0-148">148</a></span>
+<span class="normal"><a href="#__codelineno-0-149">149</a></span>
+<span class="normal"><a href="#__codelineno-0-150">150</a></span>
+<span class="normal"><a href="#__codelineno-0-151">151</a></span>
+<span class="normal"><a href="#__codelineno-0-152">152</a></span>
+<span class="normal"><a href="#__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#__codelineno-0-157">157</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="k">class</span><span class="w"> </span><span class="nc">Reference</span><span class="p">:</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="w">    </span><span class="sd">"""One resolved (or attempted) reference inside a candidate span.</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    Attributes:</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">        surface: The exact substring of the candidate text this reference</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">            covers -- ``candidate.text[start:end] == surface`` is</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">            mechanically enforced by :func:`_parse_reference`.</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">        start: Start offset into the candidate text.</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">        end: End offset into the candidate text.</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">        kind: What kind of reference this is.</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">        status: This reference's own resolution status.</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">        temporal_role: Only meaningful when ``kind == RELATIVE_TIME``.</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">        resolved_text: The resolved human-readable text, when resolved or</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">            assumed.</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">        resolved_epoch: The resolved instant as a Python-computed epoch</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">            float (via :func:`_to_epoch`), or ``None``. Never taken</span>
+<a id="__codelineno-0-138" name="__codelineno-0-138"></a><span class="sd">            directly from the model -- see the module docstring.</span>
+<a id="__codelineno-0-139" name="__codelineno-0-139"></a><span class="sd">        assumption: A one-line stated assumption, required when</span>
+<a id="__codelineno-0-140" name="__codelineno-0-140"></a><span class="sd">            ``status == ASSUMED``.</span>
+<a id="__codelineno-0-141" name="__codelineno-0-141"></a><span class="sd">        candidates: Plausible antecedents, required (2-4) when</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a><span class="sd">            ``status == EVIDENCE_GAP``.</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="sd">        question: A clarifying question, required when</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="sd">            ``status == EVIDENCE_GAP``.</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a><span class="sd">    """</span>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a>    <span class="n">surface</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a>    <span class="n">start</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-0-149" name="__codelineno-0-149"></a>    <span class="n">end</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-0-150" name="__codelineno-0-150"></a>    <span class="n">kind</span><span class="p">:</span> <span class="n">ReferenceKind</span>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a>    <span class="n">status</span><span class="p">:</span> <span class="n">ResolutionStatus</span>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a>    <span class="n">temporal_role</span><span class="p">:</span> <span class="n">TemporalRole</span> <span class="o">=</span> <span class="n">TemporalRole</span><span class="o">.</span><span class="n">NONE</span>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a>    <span class="n">resolved_text</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a>    <span class="n">resolved_epoch</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a>    <span class="n">assumption</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="n">candidates</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="n">question</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.WindowTurn" class="doc doc-heading">
+            <code>WindowTurn</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.WindowTurn" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>One prior turn carried in a :class:<code>TurnContext</code> window.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.WindowTurn.turn_id">turn_id</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Identity of the turn.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.WindowTurn.speaker">speaker</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Who spoke it, or <code>None</code> if unknown.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.WindowTurn.text">text</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The turn's text.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="k">class</span><span class="w"> </span><span class="nc">WindowTurn</span><span class="p">:</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="w">    </span><span class="sd">"""One prior turn carried in a :class:`TurnContext` window.</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">    Attributes:</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        turn_id: Identity of the turn.</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">        speaker: Who spoke it, or ``None`` if unknown.</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">        text: The turn's text.</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    """</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="n">turn_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>    <span class="n">speaker</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.TurnContext" class="doc doc-heading">
+            <code>TurnContext</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.TurnContext" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>The conversational context a candidate is resolved against.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.TurnContext.speaker">speaker</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Who spoke the current turn, or <code>None</code> if unknown.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.TurnContext.captured_at">captured_at</span></code></td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Epoch seconds the current turn was captured. A
+<code>None</code>, NaN or infinite value is coerced to <code>time.time()</code>
+in <code>__post_init__</code> (with a logged warning) -- this is a
+guard M4 adds, not M1 behaviour; see the module docstring's
+fail-open discussion and Technical Approach §3a of the plan.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.TurnContext.timezone">timezone</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>IANA timezone name naive resolved dates are anchored
+to.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.TurnContext.window">window</span></code></td>
+            <td>
+                  <code><span title="typing.Tuple">Tuple</span>[<a class="autorefs autorefs-internal" title="WindowTurn
+
+
+  
+      dataclass
+   (popoto.extraction.resolution.WindowTurn)" href="#popoto.extraction.resolution.WindowTurn">WindowTurn</a>, ...]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior turns, oldest-first, that make up the resolution
+window. Use :meth:<code>bounded_window</code> rather than reading this
+directly when a bound is required.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="k">class</span><span class="w"> </span><span class="nc">TurnContext</span><span class="p">:</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="w">    </span><span class="sd">"""The conversational context a candidate is resolved against.</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    Attributes:</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">        speaker: Who spoke the current turn, or ``None`` if unknown.</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        captured_at: Epoch seconds the current turn was captured. A</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">            ``None``, NaN or infinite value is coerced to ``time.time()``</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">            in ``__post_init__`` (with a logged warning) -- this is a</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">            guard M4 adds, not M1 behaviour; see the module docstring's</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">            fail-open discussion and Technical Approach §3a of the plan.</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        timezone: IANA timezone name naive resolved dates are anchored</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">            to.</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">        window: Prior turns, oldest-first, that make up the resolution</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">            window. Use :meth:`bounded_window` rather than reading this</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">            directly when a bound is required.</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    """</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="n">speaker</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="n">captured_at</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">)</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="n">timezone</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"UTC"</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="n">window</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">WindowTurn</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="n">captured_at</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">captured_at</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="k">if</span> <span class="n">captured_at</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">captured_at</span><span class="p">):</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>                <span class="s2">"resolution: TurnContext.captured_at </span><span class="si">%r</span><span class="s2"> is missing or "</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>                <span class="s2">"non-finite; coercing to the current clock"</span><span class="p">,</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>                <span class="n">captured_at</span><span class="p">,</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="p">)</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>            <span class="c1"># frozen dataclass -- object.__setattr__ is the sanctioned</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>            <span class="c1"># escape hatch for __post_init__ coercion.</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>            <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"captured_at"</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">now</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"TurnContext"</span><span class="p">:</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="w">        </span><span class="sd">"""Build a context with no speaker, no window, UTC, now."""</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">speaker</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">captured_at</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">timezone</span><span class="o">=</span><span class="s2">"UTC"</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="p">())</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">bounded_window</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">WindowTurn</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">bool</span><span class="p">]:</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="w">        </span><span class="sd">"""Return the window truncated to the M4 bounds, oldest-first.</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">        Truncation drops the *oldest* turns first when either the turn</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        count or the total character count exceeds its bound (Technical</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">        Approach §9). Returns ``(turns, truncated)`` so callers can</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        record whether truncation happened, distinguishing "the window</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">        did not contain the antecedent" from "the model missed it".</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">        """</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="n">max_turns</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">M4_WINDOW_MAX_TURNS</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="n">max_chars</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">M4_WINDOW_MAX_CHARS</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="n">turns</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="p">)</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="n">original_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">turns</span><span class="p">)</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">turns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_turns</span><span class="p">:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="n">turns</span> <span class="o">=</span> <span class="n">turns</span><span class="p">[</span><span class="o">-</span><span class="n">max_turns</span><span class="p">:]</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="n">total_chars</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">text</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">turns</span><span class="p">)</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="k">while</span> <span class="n">turns</span> <span class="ow">and</span> <span class="n">total_chars</span> <span class="o">&gt;</span> <span class="n">max_chars</span><span class="p">:</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="n">dropped</span> <span class="o">=</span> <span class="n">turns</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>            <span class="n">total_chars</span> <span class="o">-=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dropped</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="n">truncated</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">turns</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">original_len</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">turns</span><span class="p">),</span> <span class="n">truncated</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.extraction.resolution.TurnContext.now" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">now</span><span class="p">()</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.TurnContext.now" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build a context with no speaker, no window, UTC, now.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="k">def</span><span class="w"> </span><span class="nf">now</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"TurnContext"</span><span class="p">:</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="w">    </span><span class="sd">"""Build a context with no speaker, no window, UTC, now."""</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">speaker</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">captured_at</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">timezone</span><span class="o">=</span><span class="s2">"UTC"</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="p">())</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.extraction.resolution.TurnContext.bounded_window" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">bounded_window</span><span class="p">()</span></code>
+
+<a href="#popoto.extraction.resolution.TurnContext.bounded_window" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the window truncated to the M4 bounds, oldest-first.</p>
+<p>Truncation drops the <em>oldest</em> turns first when either the turn
+count or the total character count exceeds its bound (Technical
+Approach §9). Returns <code>(turns, truncated)</code> so callers can
+record whether truncation happened, distinguishing "the window
+did not contain the antecedent" from "the model missed it".</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="k">def</span><span class="w"> </span><span class="nf">bounded_window</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">WindowTurn</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">bool</span><span class="p">]:</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="w">    </span><span class="sd">"""Return the window truncated to the M4 bounds, oldest-first.</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">    Truncation drops the *oldest* turns first when either the turn</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    count or the total character count exceeds its bound (Technical</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">    Approach §9). Returns ``(turns, truncated)`` so callers can</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">    record whether truncation happened, distinguishing "the window</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">    did not contain the antecedent" from "the model missed it".</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    """</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="n">max_turns</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">M4_WINDOW_MAX_TURNS</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="n">max_chars</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">M4_WINDOW_MAX_CHARS</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>    <span class="n">turns</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="p">)</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="n">original_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">turns</span><span class="p">)</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">turns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_turns</span><span class="p">:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="n">turns</span> <span class="o">=</span> <span class="n">turns</span><span class="p">[</span><span class="o">-</span><span class="n">max_turns</span><span class="p">:]</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="n">total_chars</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">text</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">turns</span><span class="p">)</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="k">while</span> <span class="n">turns</span> <span class="ow">and</span> <span class="n">total_chars</span> <span class="o">&gt;</span> <span class="n">max_chars</span><span class="p">:</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>        <span class="n">dropped</span> <span class="o">=</span> <span class="n">turns</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>        <span class="n">total_chars</span> <span class="o">-=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dropped</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">truncated</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">turns</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">original_len</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">turns</span><span class="p">),</span> <span class="n">truncated</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.extraction.resolution.Resolution" class="doc doc-heading">
+            <code>Resolution</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.Resolution" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>The outcome of resolving one candidate against its context.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.statement">statement</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The rewritten statement. Byte-identical to
+<code>verbatim</code> when the stage is degraded, or when the model
+emitted an empty references array (nothing needed
+resolving).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.verbatim">verbatim</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The original candidate text, unmodified.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.references">references</span></code></td>
+            <td>
+                  <code><span title="typing.Tuple">Tuple</span>[<a class="autorefs autorefs-internal" title="Reference
+
+
+  
+      dataclass
+   (popoto.extraction.resolution.Reference)" href="#popoto.extraction.resolution.Reference">Reference</a>, ...]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The resolved (or dropped-then-retried) references,
+in offset order.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.status">status</span></code></td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="ResolutionStatus (popoto.extraction.resolution.ResolutionStatus)" href="#popoto.extraction.resolution.ResolutionStatus">ResolutionStatus</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The aggregate :class:<code>ResolutionStatus</code> -- the worst
+status among <code>references</code>, or <code>RESOLVED</code> when
+<code>references</code> is empty.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.valid_from">valid_from</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The onset instant, as a Python-computed epoch float,
+or <code>None</code>. See the module-level onset rule documented on
+:func:<code>_compute_valid_from</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.degraded">degraded</span></code></td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> when this Resolution is a fail-open fallback
+(missing dependency, raising client, malformed reply, kill
+switch, or a non-finite float caught before construction).
+Distinct from <code>status == INDETERMINATE</code>, which can also be
+a genuine model abstention -- see :attr:<code>subject_tag</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.context">context</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<a class="autorefs autorefs-internal" title="TurnContext
+
+
+  
+      dataclass
+   (popoto.extraction.resolution.TurnContext)" href="#popoto.extraction.resolution.TurnContext">TurnContext</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The :class:<code>TurnContext</code> this resolution ran against,
+or <code>None</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.extraction.resolution.Resolution.window_truncated">window_truncated</span></code></td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether :meth:<code>TurnContext.bounded_window</code>
+reported truncation for this run.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#__codelineno-0-264">264</a></span>
+<span class="normal"><a href="#__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#__codelineno-0-268">268</a></span>
+<span class="normal"><a href="#__codelineno-0-269">269</a></span>
+<span class="normal"><a href="#__codelineno-0-270">270</a></span>
+<span class="normal"><a href="#__codelineno-0-271">271</a></span>
+<span class="normal"><a href="#__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="k">class</span><span class="w"> </span><span class="nc">Resolution</span><span class="p">:</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="w">    </span><span class="sd">"""The outcome of resolving one candidate against its context.</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    Attributes:</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">        statement: The rewritten statement. Byte-identical to</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">            ``verbatim`` when the stage is degraded, or when the model</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">            emitted an empty references array (nothing needed</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">            resolving).</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        verbatim: The original candidate text, unmodified.</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        references: The resolved (or dropped-then-retried) references,</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">            in offset order.</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        status: The aggregate :class:`ResolutionStatus` -- the worst</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">            status among ``references``, or ``RESOLVED`` when</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">            ``references`` is empty.</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">        valid_from: The onset instant, as a Python-computed epoch float,</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">            or ``None``. See the module-level onset rule documented on</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">            :func:`_compute_valid_from`.</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        degraded: ``True`` when this Resolution is a fail-open fallback</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">            (missing dependency, raising client, malformed reply, kill</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">            switch, or a non-finite float caught before construction).</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">            Distinct from ``status == INDETERMINATE``, which can also be</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">            a genuine model abstention -- see :attr:`subject_tag`.</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        context: The :class:`TurnContext` this resolution ran against,</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">            or ``None``.</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        window_truncated: Whether :meth:`TurnContext.bounded_window`</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">            reported truncation for this run.</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    """</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="n">statement</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="n">verbatim</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">references</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Reference</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">status</span><span class="p">:</span> <span class="n">ResolutionStatus</span> <span class="o">=</span> <span class="n">ResolutionStatus</span><span class="o">.</span><span class="n">RESOLVED</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="n">valid_from</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>    <span class="n">degraded</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="n">context</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">TurnContext</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="n">window_truncated</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="nd">@property</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">subject_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="w">        </span><span class="sd">"""The ``res:*`` journal subject tag for this resolution.</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">        ``degraded`` takes precedence: a degraded resolution is tagged</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        ``res:degraded`` and nothing else, so "the model abstained" and</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        "the resolution stage never ran" remain distinguishable on the</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        one channel guaranteed to travel with the fact (Technical</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">        Approach §3b).</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        """</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">degraded</span><span class="p">:</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>            <span class="k">return</span> <span class="s2">"res:degraded"</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">"res:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">"</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="popoto.extraction.resolution.Resolution.subject_tag" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">subject_tag</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#popoto.extraction.resolution.Resolution.subject_tag" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The <code>res:*</code> journal subject tag for this resolution.</p>
+<p><code>degraded</code> takes precedence: a degraded resolution is tagged
+<code>res:degraded</code> and nothing else, so "the model abstained" and
+"the resolution stage never ran" remain distinguishable on the
+one channel guaranteed to travel with the fact (Technical
+Approach §3b).</p>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.extraction.resolution.resolve_references" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">resolve_references</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">turn_text</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">client</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#popoto.extraction.resolution.resolve_references" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Resolve one candidate's pronouns, dates and definite references.</p>
+<p>Never raises and never returns <code>None</code>. Every failure mode --
+<code>Defaults.M4_RESOLUTION_ENABLED</code> is False, the optional
+<code>anthropic</code> package is unavailable, the client raises, or the reply
+is malformed -- maps to the degraded fallback:
+<code>Resolution(statement=verbatim, status=INDETERMINATE, references=(),
+valid_from=None, degraded=True)</code>, matching M3's fail-open contract
+(quality loss, not corruption).</p>
+<p>An empty/whitespace candidate span is also degraded, checked here as
+defence in depth even though M3 rejects such candidates before they
+can reach this stage -- no client call is made in that case either.</p>
+<p>A reply whose <code>references</code> array is empty is a <em>legitimate,
+non-degraded</em> outcome ("nothing needed resolving"): <code>status =
+RESOLVED</code>, <code>statement == verbatim</code>, no <code>valid_from</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>candidate</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Candidate
+
+
+  
+      dataclass
+   (popoto.extraction.candidates.Candidate)" href="../candidates/#popoto.extraction.candidates.Candidate">Candidate</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The candidate to resolve. Only <code>candidate_id</code> and
+<code>text</code> are read.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>turn_text</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The full turn text the candidate was lifted from.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>context</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="TurnContext
+
+
+  
+      dataclass
+   (popoto.extraction.resolution.TurnContext)" href="#popoto.extraction.resolution.TurnContext">TurnContext</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The conversational context to resolve against.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>client</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An Anthropic-style client (anything exposing
+<code>messages.create</code>). <code>None</code> builds the default client,
+which requires the optional <code>anthropic</code> package.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>A</code></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="Resolution
+
+
+  
+      dataclass
+   (popoto.extraction.resolution.Resolution)" href="#popoto.extraction.resolution.Resolution">Resolution</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>class:<code>Resolution</code>, always -- degraded or not.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/extraction/resolution.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+<span class="normal"><a href="#__codelineno-0-753">753</a></span>
+<span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span>
+<span class="normal"><a href="#__codelineno-0-757">757</a></span>
+<span class="normal"><a href="#__codelineno-0-758">758</a></span>
+<span class="normal"><a href="#__codelineno-0-759">759</a></span>
+<span class="normal"><a href="#__codelineno-0-760">760</a></span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span>
+<span class="normal"><a href="#__codelineno-0-773">773</a></span>
+<span class="normal"><a href="#__codelineno-0-774">774</a></span>
+<span class="normal"><a href="#__codelineno-0-775">775</a></span>
+<span class="normal"><a href="#__codelineno-0-776">776</a></span>
+<span class="normal"><a href="#__codelineno-0-777">777</a></span>
+<span class="normal"><a href="#__codelineno-0-778">778</a></span>
+<span class="normal"><a href="#__codelineno-0-779">779</a></span>
+<span class="normal"><a href="#__codelineno-0-780">780</a></span>
+<span class="normal"><a href="#__codelineno-0-781">781</a></span>
+<span class="normal"><a href="#__codelineno-0-782">782</a></span>
+<span class="normal"><a href="#__codelineno-0-783">783</a></span>
+<span class="normal"><a href="#__codelineno-0-784">784</a></span>
+<span class="normal"><a href="#__codelineno-0-785">785</a></span>
+<span class="normal"><a href="#__codelineno-0-786">786</a></span>
+<span class="normal"><a href="#__codelineno-0-787">787</a></span>
+<span class="normal"><a href="#__codelineno-0-788">788</a></span>
+<span class="normal"><a href="#__codelineno-0-789">789</a></span>
+<span class="normal"><a href="#__codelineno-0-790">790</a></span>
+<span class="normal"><a href="#__codelineno-0-791">791</a></span>
+<span class="normal"><a href="#__codelineno-0-792">792</a></span>
+<span class="normal"><a href="#__codelineno-0-793">793</a></span>
+<span class="normal"><a href="#__codelineno-0-794">794</a></span>
+<span class="normal"><a href="#__codelineno-0-795">795</a></span>
+<span class="normal"><a href="#__codelineno-0-796">796</a></span>
+<span class="normal"><a href="#__codelineno-0-797">797</a></span>
+<span class="normal"><a href="#__codelineno-0-798">798</a></span>
+<span class="normal"><a href="#__codelineno-0-799">799</a></span>
+<span class="normal"><a href="#__codelineno-0-800">800</a></span>
+<span class="normal"><a href="#__codelineno-0-801">801</a></span>
+<span class="normal"><a href="#__codelineno-0-802">802</a></span>
+<span class="normal"><a href="#__codelineno-0-803">803</a></span>
+<span class="normal"><a href="#__codelineno-0-804">804</a></span>
+<span class="normal"><a href="#__codelineno-0-805">805</a></span>
+<span class="normal"><a href="#__codelineno-0-806">806</a></span>
+<span class="normal"><a href="#__codelineno-0-807">807</a></span>
+<span class="normal"><a href="#__codelineno-0-808">808</a></span>
+<span class="normal"><a href="#__codelineno-0-809">809</a></span>
+<span class="normal"><a href="#__codelineno-0-810">810</a></span>
+<span class="normal"><a href="#__codelineno-0-811">811</a></span>
+<span class="normal"><a href="#__codelineno-0-812">812</a></span>
+<span class="normal"><a href="#__codelineno-0-813">813</a></span>
+<span class="normal"><a href="#__codelineno-0-814">814</a></span>
+<span class="normal"><a href="#__codelineno-0-815">815</a></span>
+<span class="normal"><a href="#__codelineno-0-816">816</a></span>
+<span class="normal"><a href="#__codelineno-0-817">817</a></span>
+<span class="normal"><a href="#__codelineno-0-818">818</a></span>
+<span class="normal"><a href="#__codelineno-0-819">819</a></span>
+<span class="normal"><a href="#__codelineno-0-820">820</a></span>
+<span class="normal"><a href="#__codelineno-0-821">821</a></span>
+<span class="normal"><a href="#__codelineno-0-822">822</a></span>
+<span class="normal"><a href="#__codelineno-0-823">823</a></span>
+<span class="normal"><a href="#__codelineno-0-824">824</a></span>
+<span class="normal"><a href="#__codelineno-0-825">825</a></span>
+<span class="normal"><a href="#__codelineno-0-826">826</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_references</span><span class="p">(</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>    <span class="n">candidate</span><span class="p">:</span> <span class="s2">"Candidate"</span><span class="p">,</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>    <span class="n">turn_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="n">context</span><span class="p">:</span> <span class="n">TurnContext</span><span class="p">,</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>    <span class="n">client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Resolution</span><span class="p">:</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="w">    </span><span class="sd">"""Resolve one candidate's pronouns, dates and definite references.</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    Never raises and never returns ``None``. Every failure mode --</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    ``Defaults.M4_RESOLUTION_ENABLED`` is False, the optional</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">    ``anthropic`` package is unavailable, the client raises, or the reply</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">    is malformed -- maps to the degraded fallback:</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">    ``Resolution(statement=verbatim, status=INDETERMINATE, references=(),</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">    valid_from=None, degraded=True)``, matching M3's fail-open contract</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">    (quality loss, not corruption).</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">    An empty/whitespace candidate span is also degraded, checked here as</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">    defence in depth even though M3 rejects such candidates before they</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">    can reach this stage -- no client call is made in that case either.</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">    A reply whose ``references`` array is empty is a *legitimate,</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">    non-degraded* outcome ("nothing needed resolving"): ``status =</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">    RESOLVED``, ``statement == verbatim``, no ``valid_from``.</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a><span class="sd">        candidate: The candidate to resolve. Only ``candidate_id`` and</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a><span class="sd">            ``text`` are read.</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="sd">        turn_text: The full turn text the candidate was lifted from.</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="sd">        context: The conversational context to resolve against.</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">        client: An Anthropic-style client (anything exposing</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">            ``messages.create``). ``None`` builds the default client,</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a><span class="sd">            which requires the optional ``anthropic`` package.</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a><span class="sd">        A :class:`Resolution`, always -- degraded or not.</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a><span class="sd">    """</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>    <span class="n">candidate_id</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="n">candidate_id</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">M4_RESOLUTION_ENABLED</span><span class="p">:</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>            <span class="s2">"resolution: M4_RESOLUTION_ENABLED is False; degrading </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>            <span class="n">candidate_id</span><span class="p">,</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>        <span class="p">)</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="k">return</span> <span class="n">_degraded_resolution</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">candidate</span><span class="o">.</span><span class="n">text</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">candidate</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"resolution: blank candidate </span><span class="si">%s</span><span class="s2">; degrading"</span><span class="p">,</span> <span class="n">candidate_id</span><span class="p">)</span>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a>        <span class="k">return</span> <span class="n">_degraded_resolution</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a>    <span class="n">window</span><span class="p">,</span> <span class="n">truncated</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">bounded_window</span><span class="p">()</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a>    <span class="n">bounded_context</span> <span class="o">=</span> <span class="n">TurnContext</span><span class="p">(</span>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a>        <span class="n">speaker</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">speaker</span><span class="p">,</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a>        <span class="n">captured_at</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">captured_at</span><span class="p">,</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a>        <span class="n">timezone</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">timezone</span><span class="p">,</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a>        <span class="n">window</span><span class="o">=</span><span class="n">window</span><span class="p">,</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a>    <span class="p">)</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>        <span class="k">if</span> <span class="n">client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a>            <span class="n">client</span> <span class="o">=</span> <span class="n">_default_client</span><span class="p">()</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a>        <span class="n">raw_text</span> <span class="o">=</span> <span class="n">_request_resolution</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">turn_text</span><span class="p">,</span> <span class="n">bounded_context</span><span class="p">)</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"resolution: call failed for candidate </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">candidate_id</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>            <span class="n">_degraded_resolution</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">context</span><span class="p">),</span> <span class="n">window_truncated</span><span class="o">=</span><span class="n">truncated</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>        <span class="p">)</span>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">_parse_reply</span><span class="p">(</span><span class="n">raw_text</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">bounded_context</span><span class="o">.</span><span class="n">timezone</span><span class="p">)</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a>    <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>            <span class="s2">"resolution: malformed reply for candidate </span><span class="si">%s</span><span class="s2">; degrading"</span><span class="p">,</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>            <span class="n">candidate_id</span><span class="p">,</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>        <span class="p">)</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>        <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>            <span class="n">_degraded_resolution</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">context</span><span class="p">),</span> <span class="n">window_truncated</span><span class="o">=</span><span class="n">truncated</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>        <span class="p">)</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a>    <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">,</span> <span class="n">window_truncated</span><span class="o">=</span><span class="n">truncated</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../../../js/open_in_new_tab.js"></script>
+      
+    
+  </body>
+</html>

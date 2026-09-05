@@ -1271,6 +1271,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/reference-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -1954,6 +1982,17 @@
     <span class="md-ellipsis">
       
         Auditable Extraction (M3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-resolution-m4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference Resolution (M4)
       
     </span>
   </a>
@@ -3310,6 +3349,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#reference-resolution-m4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference Resolution (M4)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3970,6 +4020,135 @@ Do not add one here without a corresponding decision recorded in the M3
 plan; the right horizon isn't knowable until the M9 follow-on
 (<a href="https://github.com/tomcounsell/popoto/issues/568">#568</a>) consumes the log
 at scale.</p>
+<h3 id="reference-resolution-m4">Reference Resolution (M4)<a class="headerlink" href="#reference-resolution-m4" title="Permanent link">&para;</a></h3>
+<p>Source: <code>src/popoto/fields/constants.py</code>, consumed by
+<code>src/popoto/extraction/resolution.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>Optimal Range</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>M4_RESOLUTION_ENABLED</code></td>
+<td><code>True</code> (env override)</td>
+<td>n/a (boolean kill switch)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M4_WINDOW_MAX_TURNS</code></td>
+<td>8</td>
+<td>Not swept (structural bound, not a quality knob)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_WINDOW_MAX_CHARS</code></td>
+<td>4000</td>
+<td>Not swept (structural bound)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_MAX_REFERENCES_PER_CANDIDATE</code></td>
+<td>8</td>
+<td>Not swept (re-validation cap)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_EVIDENCE_GAP_MIN_CANDIDATES</code></td>
+<td>2</td>
+<td>Not swept (vocabulary bound)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_EVIDENCE_GAP_MAX_CANDIDATES</code></td>
+<td>4</td>
+<td>Not swept (vocabulary bound)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_ASSUMPTION_MAX_CHARS</code></td>
+<td>200</td>
+<td>Not swept (re-validation cap)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_QUESTION_MAX_CHARS</code></td>
+<td>200</td>
+<td>Not swept (re-validation cap)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_STATEMENT_MAX_GROWTH_FACTOR</code></td>
+<td>2.0</td>
+<td>Not swept (re-validation cap)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_STATEMENT_MAX_GROWTH_CHARS</code></td>
+<td>120</td>
+<td>Not swept (re-validation cap)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M4_VALID_FROM_ROLES</code></td>
+<td><code>("onset",)</code></td>
+<td>Not swept (policy decision, not a quality knob)</td>
+<td>Not swept</td>
+</tr>
+</tbody>
+</table>
+<p>None of these eleven constants have been through this guide's benchmark
+harness — they gate structure and re-validation, not a retrieval-quality
+metric a sweep would tune:</p>
+<ul>
+<li><code>M4_RESOLUTION_ENABLED</code> is a <strong>deploy-level kill switch</strong>, not a tuning
+  constant — like <code>NEVER_RECORD_ENABLED</code>. It is read fresh on every call (not
+  cached, so tests can monkeypatch it), default <code>True</code>, and overridable with
+  the <code>POPOTO_M4_RESOLUTION_ENABLED</code> environment variable, read at import
+  time. With it <code>False</code>, the auditable path's output is byte-identical to
+  M3's: no provider call, no <code>res:</code> tag, no sidecar row. See
+  <a href="../../features/reference-resolution/#the-m4_resolution_enabled-kill-switch">Reference Resolution</a>.</li>
+<li><code>M4_WINDOW_MAX_TURNS</code> (8) and <code>M4_WINDOW_MAX_CHARS</code> (4000) are the two
+  bounds <code>TurnContext.bounded_window()</code> truncates the conversational window
+  to, whichever binds first, dropping the oldest turns first. Two bounds
+  rather than one because a turn count alone does not bound prompt size and
+  a character count alone can slice a single turn in half.</li>
+<li><code>M4_MAX_REFERENCES_PER_CANDIDATE</code> (8) caps how many references
+  re-validation accepts per candidate; a reply over this cap is rejected
+  outright rather than truncated, so a runaway model response cannot
+  silently balloon one candidate's evidence.</li>
+<li><code>M4_EVIDENCE_GAP_MIN_CANDIDATES</code> (2) and <code>M4_EVIDENCE_GAP_MAX_CANDIDATES</code>
+  (4) bound the <code>evidence_gap</code> candidate-antecedent list: below the minimum
+  there is no genuine ambiguity to report, and above the maximum the model is
+  listing possibilities rather than narrowing them, which is not useful
+  evidence for the one clarifying question the record carries.</li>
+<li><code>M4_ASSUMPTION_MAX_CHARS</code> (200) and <code>M4_QUESTION_MAX_CHARS</code> (200) cap an
+  <code>assumed</code> status's stated assumption and an <code>evidence_gap</code> status's
+  clarifying question respectively, so both stay scannable audit lines
+  rather than free-form prose.</li>
+<li><code>M4_STATEMENT_MAX_GROWTH_FACTOR</code> (2.0, multiplicative) and
+  <code>M4_STATEMENT_MAX_GROWTH_CHARS</code> (120, additive) together bound
+  <code>statement</code>'s length relative to <code>verbatim</code>: re-validation enforces
+  <code>len(statement) &lt;= len(verbatim) * factor + chars</code>, so the model cannot
+  turn a clause into a paragraph of invention. The additive term keeps very
+  short verbatims from being bounded to near-zero growth.</li>
+<li><code>M4_VALID_FROM_ROLES</code> (<code>("onset",)</code>) is the pinned constant the onset rule
+  reads to decide which <code>TemporalRole</code> values emit <code>valid_from</code> — currently
+  onsets only, a deliberate narrowing that keeps a deadline reference from
+  silently hiding the obligation it describes until the deadline passes
+  (V0 membership: <code>valid_from &lt;= t AND invalid_at &gt; t</code>). It is read fresh at
+  emission time, never inlined as a literal, so reversing the decision is a
+  one-tuple change. See
+  <a href="../../features/reference-resolution/#the-onset-rule-for-valid_from">Reference Resolution</a>
+  for the full argument.</li>
+</ul>
+<p>The <code>ResolutionRecord</code> sidecar rows themselves are <strong>unbounded</strong>, same as
+M3's decision log — no retention/cap constant exists for them either; see
+<a href="../../features/reference-resolution/#the-resolutionrecord-sidecar">the sidecar</a>.</p>
 <h2 id="cliff-effects">Cliff Effects<a class="headerlink" href="#cliff-effects" title="Permanent link">&para;</a></h2>
 <p>Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):</p>
 <p><strong><code>ACTED_CYCLE_STRENGTHEN_FACTOR</code></strong>: Values below 1.0 cause a 23% drop in nDCG@5 for the temporal scheduling scenario. When the strengthen factor is &lt; 1.0, acted outcomes actually weaken cycle amplitude instead of strengthening it, causing the system to suppress recurring tasks that should be reinforced.</p>
