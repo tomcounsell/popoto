@@ -1132,3 +1132,26 @@ One round only, as scoped. All six findings are resolved in-plan; no second crit
 - **NIT (stale mypy baseline)** — the preamble now gives both measurements in a table, 1 error on redis-py 7.1.1 and 0 on 8.1.0 with mypy 2.3.1, and requires the redis-py version to be stated alongside any reported count. The `-le 1` threshold is unchanged and satisfiable in both.
 
 Status is Ready for build.
+
+### Post-Ship Amendment (PR #628 review, 2026-09-04)
+
+The Technical Approach and Data Flow sections above (`{"t": <turn id or
+null>, "k": [...]}`, "including an untagged harness's `{"t":null,"k":[...]}`")
+describe the encoding as always object-shaped once turn keying is on, tagging
+even a `None` turn id. The shipped implementation is narrower: `_push_pending`
+writes the object shape **only when `turn_id` is truthy**, and writes the
+legacy bare array whenever `turn_id` is falsy — the same code path a
+turn-keying-disabled session takes. Untagged harnesses (Hermes, OpenClaw) and
+any turn-keyed session receiving no turn id therefore never stage
+`{"t":null,...}`; they stage a bare array, exactly as before this change.
+
+This is safe and simpler than the plan's contract, not a bug: the bare array
+still decodes as `tagged=False` in `_decode_pending_entry`, which is the same
+classification the plan's design gives a `None`-tagged object, so
+`saw_tagged`/the upgrade-fallback predicate behaves identically either way for
+every harness in scope today. The one case the plan's contract would have
+distinguished and this one does not is a single session mixing a turn-keyed
+read with an untagged read — no supported harness produces that mix, so the
+narrower encoding costs nothing in practice. Recorded here rather than
+rewritten into the prose above so the divergence and its reasoning stay
+visible to the next reader instead of being silently absorbed.
