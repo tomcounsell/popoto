@@ -84,7 +84,13 @@ You can also retrieve an object by its raw Redis key.
 restaurant = Restaurant.query.get(redis_key="Restaurant:Burger Palace")
 print(restaurant.rating)
 # => 4.5
+
+# For AccessTrackerMixin models, pass _no_track=True to load without staging a read
 ```
+
+For `AccessTrackerMixin` models, `get(..., _no_track=True)` (and `async_get`) loads by
+key without staging a read; see [Suppressing tracking for bulk
+operations](fields.md#suppressing-tracking-for-bulk-operations).
 
 If no matching instance exists, `get()` returns `None`. If more than one instance matches
 (possible when filtering on non-key fields), it raises a `QueryException`.
