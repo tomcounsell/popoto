@@ -269,14 +269,14 @@ No agent integration required. The MCP `memory_status` tool and `popoto-memory d
 
 
 ## Success Criteria
-- [ ] `grep -n "POPOTO_REDIS_DB\|run_lua" src/popoto/recipes/default_memory.py` returns nothing, and `tests/test_recipes_field_layer.py` asserts the same.
-- [ ] `tests/test_default_memory_eviction.py` passes with zero edits (`git diff --stat main -- tests/test_default_memory_eviction.py` is empty).
-- [ ] New tests pass: `tests/test_sorted_field_reads.py`, `tests/test_query_get_no_track.py`, `tests/test_counters.py`, `tests/test_recipes_field_layer.py`.
-- [ ] Anti-criterion: `git diff main --stat -- src/popoto/integrations/ src/popoto/__init__.py` is empty (No-Gos: service counters untouched, no new public export).
-- [ ] Anti-criterion: `grep -n "_zcard\s*=\|= POPOTO_REDIS_DB\.\(zcard\|zrange\|zrevrange\|incrby\|hgetall\)" src/popoto/fields/sorted_field_mixin.py src/popoto/counters.py src/popoto/models/query.py` returns nothing (no import-time capture of client methods).
-- [ ] `scripts/ci-local.sh lint tests docs` green (`--fast` is the test gate alone and would skip ruff/black): `ruff check src/`, `black --check src/ tests/`, tests on DB 15, `mkdocs build`. State the redis-py version alongside any mypy count if one is reported.
-- [ ] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [x] `grep -n "POPOTO_REDIS_DB\|run_lua" src/popoto/recipes/default_memory.py` returns nothing, and `tests/test_recipes_field_layer.py` asserts the same.
+- [x] `tests/test_default_memory_eviction.py` passes with zero edits (`git diff --stat main -- tests/test_default_memory_eviction.py` is empty).
+- [x] New tests pass: `tests/test_sorted_field_reads.py`, `tests/test_query_get_no_track.py`, `tests/test_counters.py`, `tests/test_recipes_field_layer.py`.
+- [x] Anti-criterion: `git diff main --stat -- src/popoto/integrations/ src/popoto/__init__.py` is empty (No-Gos: service counters untouched, no new public export).
+- [x] Anti-criterion: `grep -n "_zcard\s*=\|= POPOTO_REDIS_DB\.\(zcard\|zrange\|zrevrange\|incrby\|hgetall\)" src/popoto/fields/sorted_field_mixin.py src/popoto/counters.py src/popoto/models/query.py` returns nothing (no import-time capture of client methods).
+- [x] `scripts/ci-local.sh lint tests docs` green (`--fast` is the test gate alone and would skip ruff/black): `ruff check src/`, `black --check src/ tests/`, tests on DB 15, `mkdocs build`. State the redis-py version alongside any mypy count if one is reported.
+- [x] Tests pass (`/do-test`)
+- [x] Documentation updated (`/do-docs`)
 
 
 ## Team Orchestration
