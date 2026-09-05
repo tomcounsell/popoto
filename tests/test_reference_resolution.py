@@ -1014,6 +1014,40 @@ class TestResolutionProviderRaises:
         assert entries
         assert any("res:degraded" in e.subjects for e in entries)
 
+    def test_degraded_empty_resolution_skips_the_sidecar_write(self):
+        """A degraded, reference-less resolution must not write a sidecar row.
+
+        ``_resolve_for``'s fail-open fallback builds ``degraded=True,
+        references=()`` -- that row would carry nothing but
+        ``references_json="[]"``, duplicating the ``res:degraded``
+        journal subject tag with no detail of its own. The write must be
+        skipped entirely rather than persisting that empty artifact.
+        """
+        memory = SubconsciousMemory(
+            agent_id="agent-resprovider-degraded-empty",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=_StubVerdict(accept_all=True),
+                journal=ProvenanceJournal,
+                resolution_provider=_RaisingResolutionProvider(),
+            ),
+        )
+
+        facts = memory.extract_memories(
+            "Alice deployed the service.",
+            turn_id="t-resprovider-degraded-empty",
+        )
+
+        assert facts
+        candidate_id = facts[0].candidate_id
+        row = ResolutionLog().get(
+            "agent-resprovider-degraded-empty",
+            "t-resprovider-degraded-empty",
+            candidate_id,
+        )
+        assert (
+            row is None
+        ), "degraded-and-empty resolutions must not write a sidecar row"
+
 
 # ===========================================================================
 # (d) Empty/invalid input handling

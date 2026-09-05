@@ -54,6 +54,28 @@ class ExtractedFact:
             ConfidenceField at its default initial value".
         span_start: Start offset of the source span in the turn text.
         span_end: End offset of the source span in the turn text.
+
+            **Invariant (pinned, auditable path only):** ``span_start``/
+            ``span_end`` are always the exact ``(start, end)`` pair off the
+            :class:`~popoto.extraction.candidates.Candidate` this fact was
+            assembled from -- never recomputed, re-searched or adjusted --
+            so ``turn_text[span_start:span_end]`` is byte-identical to
+            that candidate's ``text`` (a half-open interval: ``span_end``
+            is one past the span's last character, matching
+            ``Candidate.end``'s own contract). That equality holds against
+            ``verbatim`` whenever ``verbatim`` is set, but **not**
+            necessarily against ``text``: once reference resolution (M4,
+            #563) rewrites the statement, ``text`` can be
+            ``resolution.statement``, a different string, while
+            ``span_start``/``span_end``/``verbatim`` keep pointing at the
+            original, unmodified span. A refactor that starts deriving
+            these offsets from anything other than the originating
+            ``Candidate`` (e.g. re-locating the resolved ``text`` in the
+            turn) would silently violate this. See
+            ``TestExtractedFactSpanInvariant`` in
+            ``tests/test_auditable_extraction.py`` for the pin. Unset
+            (``None``) on providers outside the auditable path, which
+            never populate these fields at all.
         turn_id: The turn this fact was extracted from.
         candidate_id: Identity of the candidate this fact was assembled
             from, matching the ``cand:`` subject tag on its journal entry.

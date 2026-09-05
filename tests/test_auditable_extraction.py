@@ -1443,3 +1443,77 @@ class TestAssemblyAgainstTheRealJournal:
         assert len(entries) == len([r for r in rows if r.state == Verdict.ACCEPT.value])
         for fact in facts:
             assert fact.text in {entry.statement for entry in entries}
+
+
+class TestExtractedFactSpanInvariant:
+    """Pins the ``span_start``/``span_end`` invariant documented on
+    ``ExtractedFact`` (popoto/extraction/__init__.py): these offsets are
+    always the originating ``Candidate``'s own ``(start, end)``, so
+    ``turn_text[span_start:span_end]`` is byte-identical to that
+    candidate's text -- and to ``verbatim`` whenever set -- even when
+    reference resolution (M4, #563) rewrites ``text`` to a different
+    string entirely. A refactor that starts deriving the offsets from the
+    resolved statement instead of the candidate would silently violate
+    this and must fail this test.
+    """
+
+    def test_span_offsets_slice_the_turn_text_back_to_the_candidate(self):
+        """No resolution in play: span_start/span_end/text/verbatim agree."""
+        journal = _FakeJournal()
+        memory = SubconsciousMemory(
+            agent_id="agent-span-plain",
+            auditable_extraction=AuditableExtractionConfig(
+                verdict_provider=_StubVerdict(accept_all=True),
+                journal=journal,
+            ),
+        )
+        turn_text = "Alice deployed the service. Bob reviewed the change."
+
+        facts = memory.extract_memories(turn_text, turn_id="t-span-plain")
+
+        assert facts
+        for fact in facts:
+            assert fact.span_start is not None and fact.span_end is not None
+            sliced = turn_text[fact.span_start : fact.span_end]
+            assert sliced == fact.text
+
+    def test_span_offsets_stay_pinned_to_the_candidate_when_text_is_rewritten(self):
+        """Resolution rewrites text; span_start/span_end must NOT follow it.
+
+        ``span_start``/``span_end`` must still slice back to the original
+        candidate span (and match ``verbatim``), even though ``fact.text``
+        is now a different string (``resolution.statement``).
+        """
+        from popoto.extraction.resolution import Resolution, ResolutionStatus
+
+        turn_text = "She deployed the service."
+
+        class _RewritingResolutionProvider:
+            def __call__(self, candidate, turn_text, context):
+                return Resolution(
+                    statement="Alice deployed the service.",
+                    verbatim=candidate.text,
+                    status=ResolutionStatus.RESOLVED,
+                )
+
+        enabled = Defaults.M4_RESOLUTION_ENABLED
+        Defaults.M4_RESOLUTION_ENABLED = True
+        try:
+            memory = SubconsciousMemory(
+                agent_id="agent-span-resolved",
+                auditable_extraction=AuditableExtractionConfig(
+                    verdict_provider=_StubVerdict(accept_all=True),
+                    journal=ProvenanceJournal,
+                    resolution_provider=_RewritingResolutionProvider(),
+                ),
+            )
+
+            facts = memory.extract_memories(turn_text, turn_id="t-span-resolved")
+        finally:
+            Defaults.M4_RESOLUTION_ENABLED = enabled
+
+        assert facts
+        fact = facts[0]
+        assert fact.text == "Alice deployed the service."
+        assert fact.text != turn_text[fact.span_start : fact.span_end]
+        assert turn_text[fact.span_start : fact.span_end] == fact.verbatim

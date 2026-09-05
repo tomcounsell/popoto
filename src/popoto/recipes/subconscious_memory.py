@@ -54,6 +54,7 @@ Example:
 import itertools
 import logging
 import time
+from typing import TYPE_CHECKING, Optional
 
 from .context_assembler import AssemblyResult, ContextAssembler
 from .default_memory import DefaultMemory
@@ -63,6 +64,10 @@ from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
 from ..privacy.never_record import scan_never_record, write_tombstone
 from ..redis_db import OUTAGE_ERRORS
+
+if TYPE_CHECKING:
+    from ..extraction.candidates import Candidate
+    from ..extraction.resolution import Resolution, TurnContext
 
 logger = logging.getLogger("POPOTO.SubconsciousMemory")
 
@@ -660,7 +665,9 @@ class SubconsciousMemory:
                 reason_code=ReasonCode.LLM_UNAVAILABLE,
             )
 
-    def _resolve_for(self, candidate, turn_text, context):
+    def _resolve_for(
+        self, candidate: "Candidate", turn_text: str, context: "TurnContext"
+    ) -> "Resolution":
         """Ask the configured resolution provider to resolve one candidate.
 
         Mirrors :meth:`_verdict_for`'s provider-or-callable dispatch and
@@ -801,7 +808,7 @@ class SubconsciousMemory:
         return accepted
 
     @staticmethod
-    def _resolution_assumption(resolution):
+    def _resolution_assumption(resolution: "Resolution") -> Optional[str]:
         """Join any stated-assumption lines off ``resolution`` into one string.
 
         ``Resolution`` carries assumptions per-``Reference``, not as one

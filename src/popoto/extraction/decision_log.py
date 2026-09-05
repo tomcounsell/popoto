@@ -806,6 +806,17 @@ class DecisionLog:
         resolution_log.ResolutionLog` sidecar; per Race 2, a sidecar write
         failure is only ever a logged warning and never changes this
         method's return value or the journal entry already committed.
+
+        The sidecar write is skipped entirely -- never even attempted --
+        when ``resolution`` is a degraded fallback with no references
+        (the shape ``SubconsciousMemory._resolve_for`` builds when the
+        provider raises: ``degraded=True``, ``references=()``). That row
+        would carry ``references_json="[]"`` and nothing else the ``res:
+        degraded`` journal subject tag doesn't already say, so persisting
+        it would just be an empty artifact of a stage that never ran, not
+        a durable record of anything (see the module docstring: the
+        sidecar is never load-bearing for the ``res:`` flag, and #566/M7
+        has nothing to read off an empty row).
         """
         statement = candidate.text
         at: Optional[float] = None
@@ -880,7 +891,12 @@ class DecisionLog:
             entry_id=entry_id,
         )
 
-        if resolution is not None:
+        # Skip the sidecar write for a degraded-and-empty resolution: it
+        # would only persist references_json="[]", duplicating the
+        # res:degraded journal tag with no detail of its own to add.
+        if resolution is not None and not (
+            resolution.degraded and not resolution.references
+        ):
             from .resolution_log import ResolutionLog
 
             wrote = ResolutionLog().write(
