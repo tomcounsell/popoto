@@ -2935,7 +2935,7 @@ wheels = [
 
 [[package]]
 name = "popoto"
-version = "1.8.2"
+version = "1.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "msgpack" },

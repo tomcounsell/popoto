@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "popoto"
-version = "1.8.2"
+version = "1.9.0"
 description = "Agent memory for LLM apps on Redis or Valkey: decay, confidence, associations, and context assembly, built on a full Python ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
