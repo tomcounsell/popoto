@@ -92642,141 +92642,141 @@ connection before creating a new one.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/redis_db.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-302">302</a></span>
-<span class="normal"><a href="#__codelineno-0-303">303</a></span>
-<span class="normal"><a href="#__codelineno-0-304">304</a></span>
-<span class="normal"><a href="#__codelineno-0-305">305</a></span>
-<span class="normal"><a href="#__codelineno-0-306">306</a></span>
-<span class="normal"><a href="#__codelineno-0-307">307</a></span>
-<span class="normal"><a href="#__codelineno-0-308">308</a></span>
-<span class="normal"><a href="#__codelineno-0-309">309</a></span>
-<span class="normal"><a href="#__codelineno-0-310">310</a></span>
-<span class="normal"><a href="#__codelineno-0-311">311</a></span>
-<span class="normal"><a href="#__codelineno-0-312">312</a></span>
-<span class="normal"><a href="#__codelineno-0-313">313</a></span>
-<span class="normal"><a href="#__codelineno-0-314">314</a></span>
-<span class="normal"><a href="#__codelineno-0-315">315</a></span>
-<span class="normal"><a href="#__codelineno-0-316">316</a></span>
-<span class="normal"><a href="#__codelineno-0-317">317</a></span>
-<span class="normal"><a href="#__codelineno-0-318">318</a></span>
-<span class="normal"><a href="#__codelineno-0-319">319</a></span>
-<span class="normal"><a href="#__codelineno-0-320">320</a></span>
-<span class="normal"><a href="#__codelineno-0-321">321</a></span>
-<span class="normal"><a href="#__codelineno-0-322">322</a></span>
-<span class="normal"><a href="#__codelineno-0-323">323</a></span>
-<span class="normal"><a href="#__codelineno-0-324">324</a></span>
-<span class="normal"><a href="#__codelineno-0-325">325</a></span>
-<span class="normal"><a href="#__codelineno-0-326">326</a></span>
-<span class="normal"><a href="#__codelineno-0-327">327</a></span>
-<span class="normal"><a href="#__codelineno-0-328">328</a></span>
-<span class="normal"><a href="#__codelineno-0-329">329</a></span>
-<span class="normal"><a href="#__codelineno-0-330">330</a></span>
-<span class="normal"><a href="#__codelineno-0-331">331</a></span>
-<span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span>
-<span class="normal"><a href="#__codelineno-0-335">335</a></span>
-<span class="normal"><a href="#__codelineno-0-336">336</a></span>
-<span class="normal"><a href="#__codelineno-0-337">337</a></span>
-<span class="normal"><a href="#__codelineno-0-338">338</a></span>
-<span class="normal"><a href="#__codelineno-0-339">339</a></span>
-<span class="normal"><a href="#__codelineno-0-340">340</a></span>
-<span class="normal"><a href="#__codelineno-0-341">341</a></span>
-<span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span>
-<span class="normal"><a href="#__codelineno-0-344">344</a></span>
-<span class="normal"><a href="#__codelineno-0-345">345</a></span>
-<span class="normal"><a href="#__codelineno-0-346">346</a></span>
-<span class="normal"><a href="#__codelineno-0-347">347</a></span>
-<span class="normal"><a href="#__codelineno-0-348">348</a></span>
-<span class="normal"><a href="#__codelineno-0-349">349</a></span>
-<span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span>
-<span class="normal"><a href="#__codelineno-0-352">352</a></span>
-<span class="normal"><a href="#__codelineno-0-353">353</a></span>
-<span class="normal"><a href="#__codelineno-0-354">354</a></span>
-<span class="normal"><a href="#__codelineno-0-355">355</a></span>
-<span class="normal"><a href="#__codelineno-0-356">356</a></span>
-<span class="normal"><a href="#__codelineno-0-357">357</a></span>
-<span class="normal"><a href="#__codelineno-0-358">358</a></span>
-<span class="normal"><a href="#__codelineno-0-359">359</a></span>
-<span class="normal"><a href="#__codelineno-0-360">360</a></span>
-<span class="normal"><a href="#__codelineno-0-361">361</a></span>
-<span class="normal"><a href="#__codelineno-0-362">362</a></span>
-<span class="normal"><a href="#__codelineno-0-363">363</a></span>
-<span class="normal"><a href="#__codelineno-0-364">364</a></span>
-<span class="normal"><a href="#__codelineno-0-365">365</a></span>
-<span class="normal"><a href="#__codelineno-0-366">366</a></span>
-<span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span>
-<span class="normal"><a href="#__codelineno-0-369">369</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_async_redis_db</span><span class="p">():</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="w">    </span><span class="sd">"""Return the global async Redis connection, creating it lazily if needed.</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    This function provides access to an async Redis client for use in async/await</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    contexts. The connection is created lazily on first call to avoid event loop</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    issues at module import time.</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    The async client mirrors the *current* sync client's connection parameters</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    (host, port, db, auth) rather than re-reading ``REDIS_URL`` independently.</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    This is what makes the async path follow any runtime connection swap — most</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    importantly the pytest plugin's switch to the test DB. Re-reading</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">    ``REDIS_URL`` here would silently pin the async client to DB 0 while sync</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">    writes go to the test DB, so async reads would never see them.</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        redis.asyncio.Redis: The configured async Redis client instance.</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">        async def save_data():</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">            redis = await get_async_redis_db()</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">            await redis.hset("key", mapping={"field": "value"})</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    Thread Safety:</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        Uses an asyncio lock to ensure only one async connection is created</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        even if called concurrently from multiple coroutines.</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    Connection Cleanup:</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">        The connection pool is managed automatically by ``redis.asyncio``.</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        No explicit cleanup (e.g., calling ``close()``) is needed in normal</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        usage -- the pool is cleaned up when the process exits. If you need</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">        to reconfigure the connection at runtime, use</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">        ``set_async_redis_db_settings()`` which handles closing the old</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">        connection before creating a new one.</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">    """</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="k">global</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>    <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_async_redis_lock</span><span class="p">:</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="c1"># Double-check after acquiring lock</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>            <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="c1"># Mirror the sync connection's parameters so the async client always</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="c1"># targets the same server/DB as POPOTO_REDIS_DB. The sync pool's</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="c1"># connection_kwargs were built from REDIS_URL (or the localhost</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="c1"># default) and reflect any later swap of the DB, so reusing them keeps</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="c1"># the two clients in lockstep without re-parsing REDIS_URL.</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="n">sync_kwargs</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="n">async_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"host"</span><span class="p">,</span> <span class="s2">"port"</span><span class="p">,</span> <span class="s2">"db"</span><span class="p">,</span> <span class="s2">"password"</span><span class="p">,</span> <span class="s2">"username"</span><span class="p">):</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>            <span class="n">value</span> <span class="o">=</span> <span class="n">sync_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>                <span class="n">async_kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_connect_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>            <span class="n">max_connections</span><span class="o">=</span><span class="n">_ASYNC_MAX_CONNECTIONS</span><span class="p">,</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>            <span class="o">**</span><span class="n">async_kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="p">)</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>            <span class="s2">"Async Redis connection established (db=</span><span class="si">%s</span><span class="s2">)."</span><span class="p">,</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>            <span class="n">async_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"db"</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="p">)</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>        <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span>
+<span class="normal"><a href="#__codelineno-0-592">592</a></span>
+<span class="normal"><a href="#__codelineno-0-593">593</a></span>
+<span class="normal"><a href="#__codelineno-0-594">594</a></span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span>
+<span class="normal"><a href="#__codelineno-0-598">598</a></span>
+<span class="normal"><a href="#__codelineno-0-599">599</a></span>
+<span class="normal"><a href="#__codelineno-0-600">600</a></span>
+<span class="normal"><a href="#__codelineno-0-601">601</a></span>
+<span class="normal"><a href="#__codelineno-0-602">602</a></span>
+<span class="normal"><a href="#__codelineno-0-603">603</a></span>
+<span class="normal"><a href="#__codelineno-0-604">604</a></span>
+<span class="normal"><a href="#__codelineno-0-605">605</a></span>
+<span class="normal"><a href="#__codelineno-0-606">606</a></span>
+<span class="normal"><a href="#__codelineno-0-607">607</a></span>
+<span class="normal"><a href="#__codelineno-0-608">608</a></span>
+<span class="normal"><a href="#__codelineno-0-609">609</a></span>
+<span class="normal"><a href="#__codelineno-0-610">610</a></span>
+<span class="normal"><a href="#__codelineno-0-611">611</a></span>
+<span class="normal"><a href="#__codelineno-0-612">612</a></span>
+<span class="normal"><a href="#__codelineno-0-613">613</a></span>
+<span class="normal"><a href="#__codelineno-0-614">614</a></span>
+<span class="normal"><a href="#__codelineno-0-615">615</a></span>
+<span class="normal"><a href="#__codelineno-0-616">616</a></span>
+<span class="normal"><a href="#__codelineno-0-617">617</a></span>
+<span class="normal"><a href="#__codelineno-0-618">618</a></span>
+<span class="normal"><a href="#__codelineno-0-619">619</a></span>
+<span class="normal"><a href="#__codelineno-0-620">620</a></span>
+<span class="normal"><a href="#__codelineno-0-621">621</a></span>
+<span class="normal"><a href="#__codelineno-0-622">622</a></span>
+<span class="normal"><a href="#__codelineno-0-623">623</a></span>
+<span class="normal"><a href="#__codelineno-0-624">624</a></span>
+<span class="normal"><a href="#__codelineno-0-625">625</a></span>
+<span class="normal"><a href="#__codelineno-0-626">626</a></span>
+<span class="normal"><a href="#__codelineno-0-627">627</a></span>
+<span class="normal"><a href="#__codelineno-0-628">628</a></span>
+<span class="normal"><a href="#__codelineno-0-629">629</a></span>
+<span class="normal"><a href="#__codelineno-0-630">630</a></span>
+<span class="normal"><a href="#__codelineno-0-631">631</a></span>
+<span class="normal"><a href="#__codelineno-0-632">632</a></span>
+<span class="normal"><a href="#__codelineno-0-633">633</a></span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_async_redis_db</span><span class="p">():</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="w">    </span><span class="sd">"""Return the global async Redis connection, creating it lazily if needed.</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">    This function provides access to an async Redis client for use in async/await</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    contexts. The connection is created lazily on first call to avoid event loop</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">    issues at module import time.</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">    The async client mirrors the *current* sync client's connection parameters</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="sd">    (host, port, db, auth) rather than re-reading ``REDIS_URL`` independently.</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">    This is what makes the async path follow any runtime connection swap — most</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">    importantly the pytest plugin's switch to the test DB. Re-reading</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">    ``REDIS_URL`` here would silently pin the async client to DB 0 while sync</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">    writes go to the test DB, so async reads would never see them.</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">        redis.asyncio.Redis: The configured async Redis client instance.</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a><span class="sd">        async def save_data():</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a><span class="sd">            redis = await get_async_redis_db()</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a><span class="sd">            await redis.hset("key", mapping={"field": "value"})</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a><span class="sd">    Thread Safety:</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a><span class="sd">        Uses an asyncio lock to ensure only one async connection is created</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a><span class="sd">        even if called concurrently from multiple coroutines.</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">    Connection Cleanup:</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="sd">        The connection pool is managed automatically by ``redis.asyncio``.</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a><span class="sd">        No explicit cleanup (e.g., calling ``close()``) is needed in normal</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a><span class="sd">        usage -- the pool is cleaned up when the process exits. If you need</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a><span class="sd">        to reconfigure the connection at runtime, use</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a><span class="sd">        ``set_async_redis_db_settings()`` which handles closing the old</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a><span class="sd">        connection before creating a new one.</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a><span class="sd">    """</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>    <span class="k">global</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>        <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_async_redis_lock</span><span class="p">:</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="c1"># Double-check after acquiring lock</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>        <span class="k">if</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>            <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a>        <span class="c1"># Mirror the sync connection's parameters so the async client always</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>        <span class="c1"># targets the same server/DB as POPOTO_REDIS_DB. The sync pool's</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>        <span class="c1"># connection_kwargs were built from REDIS_URL (or the localhost</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a>        <span class="c1"># default) and reflect any later swap of the DB, so reusing them keeps</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="c1"># the two clients in lockstep without re-parsing REDIS_URL.</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="n">sync_kwargs</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">async_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"host"</span><span class="p">,</span> <span class="s2">"port"</span><span class="p">,</span> <span class="s2">"db"</span><span class="p">,</span> <span class="s2">"password"</span><span class="p">,</span> <span class="s2">"username"</span><span class="p">):</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="n">value</span> <span class="o">=</span> <span class="n">sync_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>                <span class="n">async_kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="n">async_kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"socket_connect_timeout"</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">aioredis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="n">max_connections</span><span class="o">=</span><span class="n">_ASYNC_MAX_CONNECTIONS</span><span class="p">,</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="o">**</span><span class="n">async_kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="p">)</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="n">_POPOTO_ASYNC_REDIS_DB</span> <span class="o">=</span> <span class="n">GuardedAsyncRedis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>            <span class="s2">"Async Redis connection established (db=</span><span class="si">%s</span><span class="s2">)."</span><span class="p">,</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>            <span class="n">async_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"db"</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="p">)</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="k">return</span> <span class="n">_POPOTO_ASYNC_REDIS_DB</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

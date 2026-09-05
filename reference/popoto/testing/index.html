@@ -3036,7 +3036,10 @@ WARNING: This deletes ALL keys in the current database.</p>
 <span class="normal"><a href="#__codelineno-0-76">76</a></span>
 <span class="normal"><a href="#__codelineno-0-77">77</a></span>
 <span class="normal"><a href="#__codelineno-0-78">78</a></span>
-<span class="normal"><a href="#__codelineno-0-79">79</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="k">def</span><span class="w"> </span><span class="nf">flush_test_db</span><span class="p">():</span>
+<span class="normal"><a href="#__codelineno-0-79">79</a></span>
+<span class="normal"><a href="#__codelineno-0-80">80</a></span>
+<span class="normal"><a href="#__codelineno-0-81">81</a></span>
+<span class="normal"><a href="#__codelineno-0-82">82</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="k">def</span><span class="w"> </span><span class="nf">flush_test_db</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="w">    </span><span class="sd">"""Flush the current database.</span>
 <a id="__codelineno-0-69" name="__codelineno-0-69"></a>
 <a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    Use this in test teardown to clean up test data.</span>
@@ -3048,7 +3051,10 @@ WARNING: This deletes ALL keys in the current database.</p>
 <a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">        def teardown_module():</span>
 <a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">            flush_test_db()</span>
 <a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    """</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">flushdb</span><span class="p">()</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a>    <span class="c1"># Resolve the client at call time: ``set_REDIS_DB_settings`` rebinds the</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a>    <span class="c1"># module global, so an import-time snapshot would flush the database that</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a>    <span class="c1"># was bound when this module was first imported, not the one in use now.</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">flushdb</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

@@ -3633,6 +3633,17 @@
 <p>Set <code>REDIS_URL</code> as an environment variable before starting your application.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/0"</span>
 </code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Database 0 is Redis's default database, so it's an easy thing to copy into a
+script unchanged. Popoto's own client refuses <code>FLUSHDB</code> when bound to
+database 0 and refuses <code>FLUSHALL</code> on any binding, precisely because ad-hoc
+scripts pointed at this URL have wiped a live database before (see
+<a href="https://github.com/tomcounsell/popoto/issues/577">#577</a>). Prefer a
+non-zero database number for anything but a genuinely shared/production
+connection, and see <code>POPOTO_ALLOW_DB0_FLUSH</code> below if you need to disable
+the guard deliberately.</p>
+</div>
 <p>The URL format follows the Redis URI scheme:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>redis://[[username:]password@]host[:port][/database]
 </code></pre></div>
@@ -3962,6 +3973,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td><code>REDIS_URL</code></td>
 <td><em>(empty)</em></td>
 <td>Redis connection URL. Falls back to localhost:6379.</td>
+</tr>
+<tr>
+<td><code>POPOTO_ALLOW_DB0_FLUSH</code></td>
+<td>unset (falsy)</td>
+<td>Escape hatch for the destructive-flush guard on Popoto's own Redis client. Unset, the client refuses <code>FLUSHDB</code> when bound to database 0 and refuses <code>FLUSHALL</code> on any binding, raising <code>popoto.redis_db.Db0FlushRefusedError</code> before the command reaches the server. A truthy value (<code>1</code>/<code>true</code>/<code>yes</code>/<code>on</code>, case-insensitive) restores the previous behavior. Read at call time, not at import, so it can be set without restarting a process. It is the only escape hatch — there is no constructor argument. See <a href="https://github.com/tomcounsell/popoto/issues/577">#577</a>.</td>
 </tr>
 <tr>
 <td><code>BEGINNING_OF_TIME</code></td>

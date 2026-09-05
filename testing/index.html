@@ -2763,6 +2763,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#safe-ad-hocrepro-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safe Ad-Hoc/Repro Scripts
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2881,6 +2892,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#safe-ad-hocrepro-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safe Ad-Hoc/Repro Scripts
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2961,6 +2983,46 @@ of the plugin.</p>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">flush_test_db</span><span class="p">()</span>      <span class="c1"># Clear the test DB</span>
 </code></pre></div>
 <p>These are not needed when using the pytest plugin, which handles both automatically.</p>
+<p><code>flush_test_db()</code> resolves the client to flush via <code>get_REDIS_DB()</code> <strong>at call
+time</strong>, so it always follows whatever database is currently bound — including
+a rebind made by <code>use_test_db()</code> or <code>set_REDIS_DB_settings()</code> after import.
+(Previously it captured the client once and could keep flushing the
+originally-bound database after a later rebind, so the documented
+<code>use_test_db()</code> + <code>flush_test_db()</code> pairing did not always compose.)
+<code>flush_test_db()</code> also inherits Popoto's destructive-flush guard: if the
+currently bound client resolves to database 0, it raises
+<code>popoto.redis_db.Db0FlushRefusedError</code> instead of flushing. See
+<a href="../configuration/#environment-variables">Environment Variables</a> for the
+<code>POPOTO_ALLOW_DB0_FLUSH</code> escape hatch.</p>
+<h2 id="safe-ad-hocrepro-scripts">Safe Ad-Hoc/Repro Scripts<a class="headerlink" href="#safe-ad-hocrepro-scripts" title="Permanent link">&para;</a></h2>
+<p>Popoto binds its global Redis client from <code>REDIS_URL</code> <strong>at import time</strong>.
+Setting <code>REDIS_URL</code> (or exporting any other environment variable) <em>after</em>
+<code>import popoto</code> has already run does nothing — the connection pool is
+already built. With <code>REDIS_URL</code> unset, Popoto falls back to database 0,
+which on a shared or agent-hosting machine is often a <strong>live</strong> store, not a
+scratch area.</p>
+<p>The safe pattern for a one-off repro script:</p>
+<ol>
+<li>Set <code>REDIS_URL</code> to a non-zero database <strong>before <code>import popoto</code></strong> — the
+   ordering is load-bearing, since the binding happens at import time and
+   cannot be changed afterward by mutating the environment.</li>
+<li>After import, resolve the database the client actually bound to and
+   verify it isn't 0 before running anything.</li>
+<li>Prefer targeted deletes (scan a narrow key prefix, delete just those
+   keys) over any blanket <code>flushdb()</code>/<code>flushall()</code>.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/15"</span><span class="w">  </span><span class="c1"># non-zero, before import popoto</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>python<span class="w"> </span>my_repro_script.py
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"REDIS_URL"</span><span class="p">,</span> <span class="s2">"redis://localhost:6379/15"</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>  <span class="c1"># must come after the REDIS_URL setdefault above</span>
+</code></pre></div>
+<p>Copy <code>scripts/scratch_repro.py</code> as a starting point — it sets <code>REDIS_URL</code>
+before <code>import popoto</code>, refuses to run if the resolved database is 0, and
+demonstrates a targeted scan-and-delete instead of a blanket flush. See
+<a href="https://github.com/tomcounsell/popoto/issues/577">#577</a>.</p>
 
 
 
