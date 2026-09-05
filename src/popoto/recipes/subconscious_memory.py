@@ -54,6 +54,7 @@ Example:
 import itertools
 import logging
 import time
+from typing import TYPE_CHECKING, Optional
 
 from .context_assembler import AssemblyResult, ContextAssembler
 from .default_memory import DefaultMemory
@@ -63,6 +64,10 @@ from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
 from ..privacy.never_record import scan_never_record, write_tombstone
 from ..redis_db import OUTAGE_ERRORS
+
+if TYPE_CHECKING:
+    from ..extraction.candidates import Candidate
+    from ..extraction.resolution import Resolution, TurnContext
 
 logger = logging.getLogger("POPOTO.SubconsciousMemory")
 
@@ -419,7 +424,9 @@ class SubconsciousMemory:
 
         return messages, result
 
-    def extract_memories(self, response_text, importance=0.5, turn_id=None):
+    def extract_memories(
+        self, response_text, importance=0.5, turn_id=None, context=None
+    ):
         """Post-turn: extract facts from LLM response and save as Memory records.
 
         Delegates to ``self._extractor`` (an ``AbstractExtractionProvider``,
@@ -466,6 +473,12 @@ class SubconsciousMemory:
                 if you want a crashed run to be replayable, since
                 reconciliation is keyed by ``(agent_id, turn_id,
                 candidate_id)``.
+            context: The M4 (#563) :class:`~popoto.extraction.resolution.
+                TurnContext` reference resolution runs each accepted
+                candidate against on the **auditable path only**. Ignored
+                entirely when ``auditable_extraction`` is None. Defaults
+                to ``TurnContext.now()`` (no speaker, no window, UTC,
+                current clock) when not given.
 
         Returns:
             List of saved model instances. Empty list if response_text
@@ -501,7 +514,7 @@ class SubconsciousMemory:
                 return []
 
         if self._auditable is not None:
-            return self._extract_memories_auditable(response_text, turn_id)
+            return self._extract_memories_auditable(response_text, turn_id, context)
 
         facts = self._extractor.extract(response_text)
         saved = []
@@ -652,7 +665,53 @@ class SubconsciousMemory:
                 reason_code=ReasonCode.LLM_UNAVAILABLE,
             )
 
-    def _extract_memories_auditable(self, response_text, turn_id=None):
+    def _resolve_for(
+        self, candidate: "Candidate", turn_text: str, context: "TurnContext"
+    ) -> "Resolution":
+        """Ask the configured resolution provider to resolve one candidate.
+
+        Mirrors :meth:`_verdict_for`'s provider-or-callable dispatch and
+        its raise-to-degrade contract (M4, #563): accepts either a plain
+        callable or an object exposing ``resolve_references``; the
+        module-level :func:`~popoto.extraction.resolution.
+        resolve_references` is the default. A provider that raises is an
+        infrastructure loss, not a rejection -- it maps to a degraded
+        ``Resolution`` and the candidate is still captured, exactly as
+        ``resolve_references`` itself fails open on a raising client.
+
+        Only called when ``Defaults.M4_RESOLUTION_ENABLED`` is True (the
+        caller owns that check): the kill switch skips this method
+        entirely rather than routing through it, so a disabled resolution
+        stage never even builds a degraded ``Resolution``.
+        """
+        from ..extraction.resolution import (
+            Resolution,
+            ResolutionStatus,
+            resolve_references,
+        )
+
+        provider = self._auditable.resolution_provider or resolve_references
+        call = getattr(provider, "resolve_references", provider)
+        try:
+            return call(candidate, turn_text, context)
+        except Exception as e:
+            logger.warning(
+                "auditable extraction: resolution provider failed for %s: %s",
+                candidate.candidate_id,
+                e,
+            )
+            return Resolution(
+                statement=candidate.text,
+                verbatim=candidate.text,
+                references=(),
+                status=ResolutionStatus.INDETERMINATE,
+                valid_from=None,
+                degraded=True,
+                context=context,
+                window_truncated=False,
+            )
+
+    def _extract_memories_auditable(self, response_text, turn_id=None, context=None):
         """Deterministic enumeration -> enum verdict -> log -> assembly.
 
         Every candidate the generator produces terminates in exactly one
@@ -660,16 +719,27 @@ class SubconsciousMemory:
         decision log's guarded helper -- there is no path here that writes
         a row any other way.
 
+        When ``Defaults.M4_RESOLUTION_ENABLED`` is True (read fresh on
+        every call, not cached, so tests can monkeypatch it), each
+        accepted candidate is also run through :meth:`_resolve_for`
+        against ``context`` (defaulting to ``TurnContext.now()``) before
+        assembly, and the resulting ``Resolution`` is threaded into
+        ``DecisionLog.assemble``. When the switch is False, resolution is
+        skipped entirely -- no provider call, no ``res:`` tag, no sidecar
+        row -- so this path stays byte-identical to M3.
+
         Returns:
             The accepted facts, carrying span/candidate provenance.
         """
         from ..extraction.candidates import generate_candidates
+        from ..extraction.resolution import TurnContext
         from ..extraction.verdict import Verdict
 
         # Only ever called when self._auditable is not None, which is
         # exactly when self._decision_log was constructed (see __init__).
         assert self._decision_log is not None
         turn_id = turn_id or self._new_turn_id()
+        context = context or TurnContext.now()
         log = self._decision_log
         journal = self._auditable.journal
 
@@ -693,7 +763,13 @@ class SubconsciousMemory:
                 )
                 continue
 
-            entry_id = log.assemble(self.agent_id, candidate, journal)
+            resolution = None
+            if Defaults.M4_RESOLUTION_ENABLED:
+                resolution = self._resolve_for(candidate, response_text, context)
+
+            entry_id = log.assemble(
+                self.agent_id, candidate, journal, resolution=resolution
+            )
             if entry_id is None:
                 # A terminal row already records why (blocked, failed,
                 # ambiguous) or another runner owns this candidate.
@@ -701,7 +777,11 @@ class SubconsciousMemory:
 
             accepted.append(
                 ExtractedFact(
-                    text=candidate.text,
+                    text=(
+                        resolution.statement
+                        if resolution is not None
+                        else candidate.text
+                    ),
                     importance=None,
                     confidence=None,
                     span_start=candidate.start,
@@ -709,6 +789,15 @@ class SubconsciousMemory:
                     turn_id=candidate.turn_id,
                     candidate_id=candidate.candidate_id,
                     generator_rule=candidate.generator_rule,
+                    verbatim=(resolution.verbatim if resolution is not None else None),
+                    resolution_status=(
+                        resolution.status.value if resolution is not None else None
+                    ),
+                    assumption=(
+                        self._resolution_assumption(resolution)
+                        if resolution is not None
+                        else None
+                    ),
                 )
             )
 
@@ -717,6 +806,20 @@ class SubconsciousMemory:
             if summary.get(f"state:{Verdict.FIREWALL_DROP.value}"):
                 self._last_extraction_privacy_dropped = True
         return accepted
+
+    @staticmethod
+    def _resolution_assumption(resolution: "Resolution") -> Optional[str]:
+        """Join any stated-assumption lines off ``resolution`` into one string.
+
+        ``Resolution`` carries assumptions per-``Reference``, not as one
+        top-level field. This is a convenience mirror for
+        ``ExtractedFact.assumption`` so a caller doesn't have to walk
+        ``resolution.references`` (or the ``ResolutionRecord`` sidecar)
+        just to see whether a guess was made; ``None`` when no reference
+        carries one.
+        """
+        lines = [ref.assumption for ref in resolution.references if ref.assumption]
+        return "; ".join(lines) if lines else None
 
     def _seed_associations(self, instance, fact):
         """Link co-mentioned entities in ``self.co_occurrence_field``.

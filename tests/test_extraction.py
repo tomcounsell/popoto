@@ -476,3 +476,11 @@ class TestExtractedFactAndAbstractProvider:
         assert f.entities == []
         assert f.importance is None
         assert f.confidence is None
+
+    def test_extracted_fact_m4_fields_default_to_none_on_legacy_path(self):
+        """Additive-only promise (M4, #563): the new fields never appear on
+        the legacy (non-auditable) provider path unless explicitly set."""
+        f = ExtractedFact(text="Just text.")
+        assert f.verbatim is None
+        assert f.resolution_status is None
+        assert f.assumption is None

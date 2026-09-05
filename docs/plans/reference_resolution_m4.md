@@ -774,6 +774,16 @@ exists**, making the failure mode "flagged but the evidence is missing" rather t
 guess". A missing sidecar for a tagged entry is detectable by a join and is the sweep target for
 M9 (#568). Tested by forcing the sidecar write to raise.
 
+**Ambiguity for M9 (#568), noted here while fresh:** the patch round that closed the review on
+this plan also added a deliberate skip of the sidecar write for a `degraded`-and-empty
+`Resolution` (no `references`) — it would only persist `references_json="[]"`, duplicating the
+`res:degraded` journal tag with no detail to add (see the `NOTE (M9 / #568 ambiguity)` comment at
+the skip site in `decision_log.py::_append_and_transition`). That makes "`res:degraded` with no
+sidecar row" a **legitimate, by-design state**, indistinguishable by row-absence alone from this
+Race's actual failure mode (journal append succeeded, sidecar write raised). M9's sweep must
+re-derive or reuse the same `degraded and not references` predicate to exclude the intentional
+skip, or every degraded-empty entry will read as a false positive.
+
 ### Race 3: Clock skew between `captured_at` and `valid_from`
 **Location:** `provenance_journal.py:902, 929, 944`.
 **Trigger:** a caller supplies a `TurnContext.captured_at` from a different host than the one

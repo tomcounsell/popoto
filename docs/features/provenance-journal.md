@@ -89,6 +89,18 @@ pre-flight), not a type-system guarantee.
 | `target` | `IndexedField(str, null=True)` | The annotated entry's Redis key. A plain indexed scalar, not a `Relationship` — the target is already addressed by Redis key, and `Relationship`'s lazy-load machinery plus its heavier save buys nothing here |
 | `validity` | `ValidityField` | The `valid_from` / `invalid_at` / `ingested_at` axes |
 
+On the M3 auditable path, `statement` and `verbatim` are written as the same
+string object as `candidate.text` — no distillation happens there (see
+[Auditable Extraction](auditable-extraction.md#the-enum-verdict-contract)).
+[Reference Resolution](reference-resolution.md) (M4) is the module that makes
+them differ: it rewrites `statement` into a resolved form (pronouns and
+relative dates anchored, definite references expanded where possible) while
+`verbatim` stays byte-identical to the candidate span on every record,
+resolved or not. The same module is also the only producer of a
+caller-supplied `valid_from` on the auditable path — see its
+[onset rule](reference-resolution.md#the-onset-rule-for-valid_from) for which
+references set it and which deliberately don't.
+
 ### `captured_at`, deliberately not `ingested_at`
 
 `ValidityField.on_save` hardcodes the **save clock** into its own
@@ -582,3 +594,7 @@ occurrence of the record's *key* does not:
   reconciliation
 - [Agent Memory](agent-memory.md) — the primitive map this feature sits
   alongside
+- [Reference Resolution](reference-resolution.md) — the M4 stage that
+  distills accepted candidates into `statement` (leaving `verbatim`
+  untouched), writes the `res:{status}` subject tag, and is the sole
+  producer of a caller-supplied `valid_from` on the auditable path

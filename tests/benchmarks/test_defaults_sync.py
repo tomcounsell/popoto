@@ -157,6 +157,30 @@ class TestDefaultsSync:
             # read for it. Correctness under a claim that expires mid-flight
             # comes from the cand:-tag identity probe, not from this number.
             "M3_ASSEMBLY_CLAIM_TTL_MS",
+            # Reference resolution (#563) — read directly from Defaults in
+            # extraction/resolution.py; no module-level alias exists, so none
+            # of these are in MODULE_CONSTANTS.
+            # Deploy-level kill switch, like NEVER_RECORD_ENABLED above: an
+            # alias bound at import time would defeat the whole point of a
+            # runtime-flippable deploy switch for adopters who cannot edit
+            # model code.
+            "M4_RESOLUTION_ENABLED",
+            # The remaining M4_* constants are pinned magic numbers with no
+            # module-level alias (same shape as M3_ASSEMBLY_CLAIM_TTL_MS
+            # above): window truncation bounds, reference/candidate/length
+            # caps enforced by re-validation, and the valid_from role
+            # vocabulary (Decision 4). None are swept -- they bound model
+            # output shape and prompt size, not a retrieval-quality dial.
+            "M4_WINDOW_MAX_TURNS",
+            "M4_WINDOW_MAX_CHARS",
+            "M4_MAX_REFERENCES_PER_CANDIDATE",
+            "M4_EVIDENCE_GAP_MIN_CANDIDATES",
+            "M4_EVIDENCE_GAP_MAX_CANDIDATES",
+            "M4_ASSUMPTION_MAX_CHARS",
+            "M4_QUESTION_MAX_CHARS",
+            "M4_STATEMENT_MAX_GROWTH_FACTOR",
+            "M4_STATEMENT_MAX_GROWTH_CHARS",
+            "M4_VALID_FROM_ROLES",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

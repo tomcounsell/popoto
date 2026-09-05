@@ -95,6 +95,7 @@ from .verdict import TERMINAL_VERDICTS, ReasonCode, Verdict
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .candidates import Candidate
+    from .resolution import Resolution
 
 logger = logging.getLogger("POPOTO.extraction")
 
@@ -610,6 +611,7 @@ class DecisionLog:
         journal: Any,
         speaker: Optional[str] = None,
         topic_tags: Sequence[str] = (),
+        resolution: Optional["Resolution"] = None,
     ) -> Optional[str]:
         """Assemble one accepted candidate into the provenance journal.
 
@@ -649,6 +651,20 @@ class DecisionLog:
             speaker: Attribution, passed through to the entry.
             topic_tags: Extra subject tags. The ``cand:`` identity tag is
                 appended to these and is never optional.
+            resolution: The M4 (#563) :class:`~popoto.extraction.
+                resolution.Resolution` for this candidate, or ``None`` to
+                keep the pre-M4 behaviour byte-identical (the caller is
+                responsible for the M4 kill switch: pass ``None`` rather
+                than a degraded ``Resolution`` when
+                ``Defaults.M4_RESOLUTION_ENABLED`` is False). When given,
+                ``journal.append()`` is called with ``statement=
+                resolution.statement`` and ``at=resolution.valid_from``
+                instead of the candidate's raw text, ``speaker``/
+                ``captured_at`` are backfilled from
+                ``resolution.context`` when the caller did not supply
+                them, and ``resolution.subject_tag`` is appended to the
+                entry's subjects. ``verbatim`` is always
+                ``candidate.text``, unaffected either way.
 
         Returns:
             The journal ``entry_id`` when this call assembled or reconciled
@@ -679,20 +695,26 @@ class DecisionLog:
                 return None
 
             if existing is not None and existing.state == Verdict.PENDING.value:
-                reconciled = self._reconcile_pending(agent_id, candidate, journal)
+                reconciled = self._reconcile_pending(
+                    agent_id, candidate, journal, resolution
+                )
                 if reconciled is not _NOT_RECONCILED:
                     return cast(Optional[str], reconciled)
             else:
                 self.write_pending(agent_id, candidate)
 
             return self._append_and_transition(
-                agent_id, candidate, journal, speaker, topic_tags
+                agent_id, candidate, journal, speaker, topic_tags, resolution
             )
         finally:
             self.release_claim(agent_id, turn_id, candidate_id, token)
 
     def _reconcile_pending(
-        self, agent_id: str, candidate: "Candidate", journal: Any
+        self,
+        agent_id: str,
+        candidate: "Candidate",
+        journal: Any,
+        resolution: Optional["Resolution"] = None,
     ) -> Any:
         """Resolve a surviving ``pending`` row by candidate identity.
 
@@ -700,6 +722,13 @@ class DecisionLog:
         when the row was closed out as ambiguous, or the
         :data:`_NOT_RECONCILED` sentinel when the prior append never landed
         and the caller should proceed to append.
+
+        ``resolution`` is accepted for signature parity with
+        :meth:`assemble` and :meth:`_append_and_transition` but is not
+        read here: a reconciled row's ``entry_id`` and subject tags were
+        already committed by the interrupted run's own
+        ``_append_and_transition`` call, so there is nothing left for this
+        method to derive from it.
         """
         entry_model = getattr(journal, "entry_model", None)
         if entry_model is None:
@@ -753,24 +782,69 @@ class DecisionLog:
         journal: Any,
         speaker: Optional[str],
         topic_tags: Sequence[str],
+        resolution: Optional["Resolution"] = None,
     ) -> Optional[str]:
         """Append, then transition the same row to exactly one terminal state.
 
-        ``statement`` and ``verbatim`` are the **same string object** as the
-        candidate span: accepted content is byte-identical to the span, with
-        no normalization, whitespace collapsing or casing change.
-        Distillation is M4's job, and doing any of it here would violate
-        #562's own acceptance criteria.
+        ``verbatim`` is always ``candidate.text`` -- accepted content is
+        byte-identical to the span, with no normalization, whitespace
+        collapsing or casing change (#562's own acceptance criteria).
+
+        When ``resolution`` is ``None`` (pre-M4 callers, or the M4 kill
+        switch), ``statement`` is also the same string object as
+        ``candidate.text`` and behaviour is byte-identical to before M4.
+
+        When ``resolution`` is given (M4, #563): ``statement`` becomes
+        ``resolution.statement`` (the resolved form), ``at`` becomes
+        ``resolution.valid_from``, ``speaker``/``captured_at`` are
+        backfilled from ``resolution.context`` whenever the caller did not
+        supply an explicit ``speaker`` (the caller's own value always
+        wins), and ``resolution.subject_tag`` (``res:<status>`` or
+        ``res:degraded``) is appended to the entry's subjects. After a
+        *successful* append -- so the row can carry ``entry_id`` -- the
+        outcome is also mirrored into the :class:`~popoto.extraction.
+        resolution_log.ResolutionLog` sidecar; per Race 2, a sidecar write
+        failure is only ever a logged warning and never changes this
+        method's return value or the journal entry already committed.
+
+        The sidecar write is skipped entirely -- never even attempted --
+        when ``resolution`` is a degraded fallback with no references
+        (the shape ``SubconsciousMemory._resolve_for`` builds when the
+        provider raises: ``degraded=True``, ``references=()``). That row
+        would carry ``references_json="[]"`` and nothing else the ``res:
+        degraded`` journal subject tag doesn't already say, so persisting
+        it would just be an empty artifact of a stage that never ran, not
+        a durable record of anything (see the module docstring: the
+        sidecar is never load-bearing for the ``res:`` flag, and #566/M7
+        has nothing to read off an empty row).
         """
+        statement = candidate.text
+        at: Optional[float] = None
+        resolved_speaker = speaker
+        captured_at: Optional[float] = None
+        subjects = [*topic_tags, f"cand:{candidate.candidate_id}"]
+
+        if resolution is not None:
+            context = resolution.context
+            if context is not None:
+                if resolved_speaker is None:
+                    resolved_speaker = context.speaker
+                captured_at = context.captured_at
+            statement = resolution.statement
+            at = resolution.valid_from
+            subjects.append(resolution.subject_tag)
+
         try:
             result = journal.append(
                 agent_id=agent_id,
                 kind="assert",
                 verbatim=candidate.text,
-                statement=candidate.text,
-                speaker=speaker,
+                statement=statement,
+                speaker=resolved_speaker,
                 turn_id=candidate.turn_id,
-                subjects=[*topic_tags, f"cand:{candidate.candidate_id}"],
+                subjects=subjects,
+                captured_at=captured_at,
+                at=at,
             )
         except JournalBlockedError:
             # The journal runs its own never-record scan at write time over
@@ -816,6 +890,47 @@ class DecisionLog:
             ReasonCode.ACCEPTED,
             entry_id=entry_id,
         )
+
+        # Skip the sidecar write for a degraded-and-empty resolution: it
+        # would only persist references_json="[]", duplicating the
+        # res:degraded journal tag with no detail of its own to add.
+        #
+        # NOTE (M9 / #568 ambiguity): this makes "res:degraded with no
+        # sidecar row" a *legitimate* state by design, not just Race 2's
+        # failure mode (journal append succeeded, sidecar write raised --
+        # see the Race 2 note near ResolutionLog.write below). A future
+        # join-based sweep for orphaned res: tags (#568) cannot distinguish
+        # "skipped on purpose here" from "write failed" by row-absence
+        # alone; it must also re-derive or reuse this same
+        # `degraded and not references` predicate to exclude the
+        # intentional-skip case, or it will flag every degraded-empty entry
+        # as a false positive.
+        if resolution is not None and not (
+            resolution.degraded and not resolution.references
+        ):
+            from .resolution_log import ResolutionLog
+
+            wrote = ResolutionLog().write(
+                agent_id=agent_id,
+                turn_id=candidate.turn_id,
+                candidate_id=candidate.candidate_id,
+                resolution=resolution,
+                entry_id=entry_id,
+            )
+            if not wrote:
+                # ResolutionLog.write already logged the exception detail
+                # as a warning; this is just the assembly-level breadcrumb.
+                # Never a rollback and never changes entry_id -- the
+                # journal entry and the res: tag are already committed
+                # (Race 2).
+                logger.warning(
+                    "assembly: ResolutionLog sidecar write failed for "
+                    "%s/%s; journal entry %s is unaffected",
+                    agent_id,
+                    candidate.candidate_id,
+                    entry_id,
+                )
+
         return entry_id
 
     # -- reads -----------------------------------------------------------
@@ -1055,10 +1170,18 @@ class AuditableExtractionConfig:
         journal: The :class:`~popoto.recipes.provenance_journal.\
 ProvenanceJournal` class (or a subclass) accepted candidates are appended
             to.
+        resolution_provider: Anything callable as
+            ``provider(candidate, turn_text, context) -> Resolution``, or
+            an object exposing ``resolve_references(candidate, turn_text,
+            context)``. Defaults to
+            :func:`popoto.extraction.resolution.resolve_references`. Same
+            seam as ``verdict_provider``, for M4 (#563) reference
+            resolution -- this is the test injection point.
     """
 
     verdict_provider: Any = None
     journal: Any = None
+    resolution_provider: Any = None
 
 
 __all__ = [
