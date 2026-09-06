@@ -442,19 +442,151 @@ annotation (`_geo_distance` on returned rows) is unchanged, so no tool wrapper n
 
 ## Success Criteria
 
-<!-- skeleton -->
+- [ ] Two concurrent geo `filter()` calls on one model class each attach their **own** distances —
+      asserted per row, not by row identity.
+- [ ] An async geo query attaches distances (the test that fails if the carrier is ever replaced by
+      per-thread storage).
+- [ ] The new regression test **fails on base `4d9d5419`** with only `src/popoto/models/query.py`
+      reverted, verified in a separate checkout with its own venv, and the verbatim failure output is
+      pasted in the PR body.
+- [ ] `filter_for_keys_set(**kwargs) -> set` has its exact pre-change signature —
+      `inspect.signature` comparison, not eyeballing.
+- [ ] No read of `self._geo_distances` / `self._geo_distance_unit` remains outside the public
+      wrapper's mirror writes and the `__init__` seed.
+- [ ] Neither geo name is bound to `_PerThreadAttr` (anti-criterion).
+- [ ] `tests/test_geo_with_distances.py` passes **unchanged** — the compatibility gate.
+- [ ] Narrow-scope tests pass with `POPOTO_TEST_DB=2`; the full suite is run once before the PR opens.
+- [ ] `ruff check src/` clean, `black --check src/ tests/` clean.
+- [ ] `scripts/mypy_ratchet.py --strict-env` at or below baseline, with the environment stated
+      alongside the number.
+- [ ] Documentation updated (`/do-docs`), including removing #600's now-stale "One remaining
+      exception" geo admonition in `docs/configuration.md`.
 
 ## Team Orchestration
 
-<!-- skeleton -->
+### Team Members
+
+- **Builder (carrier)**
+  - Name: `geo-carrier-builder`
+  - Role: The `query.py` / `q.py` change — carrier members, delegate, call sites, mirror.
+  - Agent Type: builder
+  - Domain: async/concurrency (see `DOMAIN_FRAMING.md`)
+  - Resume: true
+
+- **Test engineer (concurrency)**
+  - Name: `geo-race-tester`
+  - Role: The concurrency and async geo tests, plus the base-revert proof.
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Validator**
+  - Name: `geo-carrier-validator`
+  - Role: Re-runs every `## Verification` row and reproduces the base-failure claim independently.
+  - Agent Type: validator
+  - Resume: true
+
+Every subagent prompt must state: worktree `.worktrees/sdlc-640`, its own venv, `POPOTO_TEST_DB=2`,
+never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for any ad-hoc script.
 
 ## Step by Step Tasks
 
-<!-- skeleton -->
+### 1. Carrier members and the state-taking delegate
+- **Task ID**: build-carrier
+- **Depends On**: none
+- **Validates**: `tests/test_geo_with_distances.py` (must pass unchanged)
+- **Assigned To**: geo-carrier-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Add `geo_distances` (default-factory dict) and `geo_distance_unit` to `_PushdownState`; extend its
+  docstring to say these two are written directly, never snapshotted, and why.
+- Move the body of `filter_for_keys_set` into `_filter_for_keys_set_with_state(self, state, **kwargs)`
+  — carrier **positional**, never a keyword.
+- At both tuple-unpack sites, write into `state` and keep the `self._geo_*` mirror write.
+- Reduce `filter_for_keys_set` to the wrapper: build a throwaway `_PushdownState`, delegate, mirror,
+  return. Signature byte-identical to before.
+- Do **not** add geo members to `_snapshot_pushdown_state`.
+
+### 2. Thread the carrier through the call sites
+- **Task ID**: build-callsites
+- **Depends On**: build-carrier
+- **Validates**: `tests/test_geo_with_distances.py`, `tests/test_query_thread_safety.py`
+- **Assigned To**: geo-carrier-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- `_filter_keys_with_pushdown`: create the carrier before the `try`, pass it to the delegate, return
+  it (signature unchanged).
+- `_execute_filter` and `async_filter`: reset onto the carrier and read `state.geo_distances` /
+  `state.geo_distance_unit` at the attach-and-sort block.
+- `_evaluate_filter_args` and `q.evaluate_q`: accept an optional carrier and pass it down so Q-object
+  geo filters accumulate into the caller's carrier.
+- Add the comment at the `_PerThreadAttr` binding block explaining why the geo names are not there.
+
+### 3. Concurrency and async geo tests
+- **Task ID**: test-races
+- **Depends On**: build-callsites
+- **Validates**: `tests/test_query_thread_safety.py`
+- **Assigned To**: geo-race-tester
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- A **stochastic** regression test in the shape of
+  `test_concurrent_sync_filters_do_not_clobber_each_other`: a geo model, several threads with
+  distinct query centers, a second indexed predicate, `sys.setswitchinterval(1e-6)` in try/finally,
+  many iterations. Assert **the attached distance per row** against the distance computed from that
+  thread's own center — never just row identity.
+- A **deterministic** barrier-based two-thread test, so the suite does not depend on the scheduler.
+- An **async geo test** asserting `_geo_distance` is attached after `async_filter` — the test that
+  fails loudly if the carrier is ever replaced by `_PerThreadAttr`.
+- A Q-object + geo case (or, if unsupported today, evidence of that recorded in the PR body).
+
+### 4. Prove the failure on base
+- **Task ID**: verify-base-failure
+- **Depends On**: test-races
+- **Assigned To**: geo-race-tester
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Separate checkout of `4d9d5419` with its **own venv** (`PYTHONPATH` loses to the editable install).
+- Revert only `src/popoto/models/query.py` (and `q.py` if touched), keep the new tests, run them with
+  `POPOTO_TEST_DB=2`, and capture verbatim output.
+- Confirm `import popoto` resolves to the *base* tree before trusting the result.
+
+### 5. Validation sweep
+- **Task ID**: validate-all
+- **Depends On**: verify-base-failure
+- **Assigned To**: geo-carrier-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run every `## Verification` row, reproduce the base-failure claim, and run the full suite once.
+- State the environment (Python, mypy, redis-py versions) alongside every number.
+
+### 6. Documentation
+- **Task ID**: document-fix
+- **Depends On**: validate-all
+- **Assigned To**: documentarian (via `/do-docs`)
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Remove/rewrite #600's stale geo admonition in `docs/configuration.md`; CHANGELOG **Fixed** entry;
+  docstrings; `mkdocs build --strict`.
+- Dispatch `/do-docs` **before** the review verdict is recorded, so the verdict's head SHA is not
+  invalidated by a later docs commit.
 
 ## Verification
 
-<!-- skeleton -->
+| Check | Command | Expected |
+|-------|---------|----------|
+| Geo compat suite unchanged | `POPOTO_TEST_DB=2 .venv/bin/pytest tests/test_geo_with_distances.py -q` | exit code 0 |
+| Concurrency suite passes | `POPOTO_TEST_DB=2 .venv/bin/pytest tests/test_query_thread_safety.py -q` | exit code 0 |
+| Geo compat tests were not edited | `git diff --stat origin/main -- tests/test_geo_with_distances.py \| wc -l` | output contains 0 |
+| Public signature unchanged | `.venv/bin/python -c "import inspect, popoto; print(inspect.signature(popoto.models.query.Query.filter_for_keys_set))"` | output contains `(self, **kwargs)` |
+| Carrier is positional, not a keyword | `grep -c "def _filter_for_keys_set_with_state(self, state" src/popoto/models/query.py` | output contains 1 |
+| No `state=` keyword on the public method | `grep -c "def filter_for_keys_set(self, \*, state" src/popoto/models/query.py` | match count == 0 |
+| Anti-criterion: geo names not per-thread | `grep -c "_geo_distances.*_PerThreadAttr\|_geo_distance_unit.*_PerThreadAttr" src/popoto/models/query.py` | match count == 0 |
+| Anti-criterion: no geo in the snapshot | `grep -c "geo_distance" <(sed -n '/def _snapshot_pushdown_state/,/^    def /p' src/popoto/models/query.py)` | match count == 0 |
+| No stray reads of the mirror | `grep -n "self\._geo_distances" src/popoto/models/query.py \| grep -v "= state\.\|= {}" \| wc -l` | output contains 0 |
+| Lint clean | `.venv/bin/ruff check src/` | exit code 0 |
+| Format clean | `.venv/bin/black --check src/ tests/` | exit code 0 |
+| Type ratchet | `.venv/bin/python scripts/mypy_ratchet.py --strict-env` | exit code 0 |
+| Docs build | `mkdocs build --strict` | exit code 0 |
+| Stale geo admonition removed | `grep -c "One remaining exception" docs/configuration.md` | match count == 0 |
 
 ## Critique Results
 
