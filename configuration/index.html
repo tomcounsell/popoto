@@ -4129,6 +4129,26 @@ While the Redis <em>connection</em> is thread-safe, the <em>logic</em> of readin
 modifying it in Python, and writing it back is not atomic. Use Redis
 transactions or Lua scripts for atomic operations.</p>
 </div>
+<p><strong>Concurrent queries on one model class.</strong> <code>Model.query</code> is a single <code>Query</code>
+instance shared by every thread, but the per-query bookkeeping it keeps —
+the sorted-field key list, the pending client-side filters, and the
+range-read bounds — is stored per-thread. Concurrent <code>filter()</code> and <code>count()</code>
+calls on the same model, with different bounds, partitions, limits and
+directions, each return their own rows and their own tally.</p>
+<p>This has not always been true. In Popoto 1.9.0 and earlier that bookkeeping
+lived on the shared instance and was reset and repopulated mid-query, so two threads
+querying different partitions of one model could return each other's rows —
+see <a href="https://github.com/tomcounsell/popoto/issues/600">#600</a>.</p>
+<div class="admonition note">
+<p class="admonition-title">One remaining exception</p>
+<p>Geo-distance annotations (<code>_geo_distances</code>) are still shared across
+threads. Concurrent geo queries on one model class can attach another
+query's distances to this query's rows; the rows themselves are correct.
+Tracked in <a href="https://github.com/tomcounsell/popoto/issues/640">#640</a>.</p>
+</div>
+<p>If you read the private query bookkeeping directly (<code>Model.query._pushdown_limit</code>
+and friends), note it is now readable <strong>only on the thread that ran the query</strong>.
+A different thread sees that attribute's default, not the querying thread's value.</p>
 <h3 id="what-is-not-thread-safe">What is NOT Thread-Safe<a class="headerlink" href="#what-is-not-thread-safe" title="Permanent link">&para;</a></h3>
 <p>Model instances should not be shared across threads. Each thread should create
 or load its own instances:</p>

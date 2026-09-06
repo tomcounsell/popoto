@@ -3213,6 +3213,12 @@ Popoto's <code>KeyField</code> already provides this naturally.</p>
 <p>Add a <code>KeyField</code> for your namespace, tenant, or project identifier. All Redis keys
 and indexes automatically partition by KeyField values, giving you complete isolation
 with zero extra machinery.</p>
+<p>That isolation holds under concurrency: querying two tenants from two threads at the
+same time returns each thread only its own tenant's rows. Popoto 1.9.0 and earlier had
+a bug here — the per-query bookkeeping on the shared <code>Model.query</code> object was not
+per-thread, so concurrent queries on one model class could return rows from another
+tenant's partition (<a href="https://github.com/tomcounsell/popoto/issues/600">#600</a>). See
+<a href="../configuration/#thread-safety">Thread Safety</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">SortedField</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Episode</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
