@@ -150,19 +150,145 @@ Each fix has narrowed the set of names that still are; this plan removes the las
 
 ## Appetite
 
-<!-- skeleton -->
+**Size:** Medium
+
+**Team:** Solo dev, PM, code reviewer
+
+**Interactions:**
+- PM check-ins: 1-2 (the public-signature decision below is the one worth confirming)
+- Review rounds: 1
+
+The code change is small and local to one file. The cost is in proving it: a genuinely-failing
+concurrency regression test plus an async test that pins the design choice.
 
 ## Prerequisites
 
-<!-- skeleton -->
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis/Valkey on localhost:6379 | `redis-cli -n 2 ping` | Tests need a server; **DB 2** for this lane |
+| Worktree venv resolves to this checkout | `.venv/bin/python -c "import popoto; print(popoto.__file__)"` | CLAUDE.md worktree hazard 1 — a venv resolving elsewhere silently tests another tree |
+| Full extras installed | `.venv/bin/python -c "import numpy, sentence_transformers, mcp"` | CLAUDE.md hazard 2 — `.[dev]` alone deselects ~95 tests |
+| Baseline mypy environment | `.venv/bin/python --version` reports 3.12 | `scripts/mypy_ratchet.py --strict-env` refuses to compare off-baseline (hazard 5) |
+
+Every gate in this plan runs with `POPOTO_TEST_DB=2`. Ad-hoc scripts must set
+`REDIS_URL=redis://localhost:6379/2` **before** `import popoto`. **Never touch DB 0 — it is a live
+agent store** (#577).
 
 ## Solution
 
-<!-- skeleton -->
+### Key Elements
+
+- **Two new carrier members**: `_PushdownState` gains `geo_distances: dict` (default-factory) and
+  `geo_distance_unit: Optional[str]`. One carrier, not a second sibling class — the async path
+  already threads this object through the exact hop the geo data has to cross.
+- **A private state-taking delegate**: `_filter_for_keys_set_with_state(state, **kwargs)` holds the
+  whole body of today's `filter_for_keys_set` and writes the geo results **into `state`**. The public
+  `filter_for_keys_set(**kwargs)` becomes a thin wrapper that builds a throwaway carrier, delegates,
+  and mirrors the result back onto `self` for compatibility.
+- **Carrier-reading call sites**: `_execute_filter` and `async_filter` read `state.geo_distances` /
+  `state.geo_distance_unit` instead of `self._geo_*` when attaching distances and sorting.
+- **Q-object threading**: `_evaluate_filter_args` and `q.evaluate_q` take an optional carrier so geo
+  distances accumulated across several `filter_for_keys_set` calls land in the caller's carrier.
+- **A back-compat mirror**: `self._geo_distances` / `self._geo_distance_unit` keep being written,
+  exactly as #600 kept its `_pushdown_limit` mirror unconditional. Nothing in-repo reads them after
+  this change; the mirror exists so an unknown downstream reader is not broken.
+
+### Flow
+
+`Model.query.filter(location__latlon=...)` → `_execute_filter` creates the per-call carrier →
+`_filter_keys_with_pushdown` → `_filter_for_keys_set_with_state` writes distances **into the carrier**
+→ hydration → `_execute_filter` reads **the carrier** → annotated, distance-sorted rows.
+
+### Technical Approach
+
+**The decision: an internal delegate, not a keyword-only `state=` parameter.**
+
+The issue offers both. Take the delegate — the `state=` keyword is not merely less tidy, it is
+**silently wrong**:
+
+`filter_for_keys_set(**kwargs)` treats every keyword as a candidate *filter field name*. A model with
+a field literally named `state` is ordinary, and this repo ships one: `src/popoto/extraction/
+decision_log.py:182` declares `state = StringField(default="")`, and `status` appears as a field name
+in a dozen more places (`src/popoto/fields/indexed_field_mixin.py:38`,
+`src/popoto/extraction/resolution_log.py:94`, and eight test models). Adding a keyword-only `state=`
+parameter means `Model.query.filter_for_keys_set(state="draft")` stops filtering on the `state` field
+and instead passes the string `"draft"` where a `_PushdownState` is expected. That is a silent
+behavior change for a public method — the worst possible shape, since the query returns *something*
+rather than raising. No `**kwargs`-collecting public method can safely grow a named parameter.
+
+The delegate has no such hazard:
+
+```python
+def filter_for_keys_set(self, **kwargs) -> set:
+    state = _PushdownState()
+    keys = self._filter_for_keys_set_with_state(state, **kwargs)
+    self._geo_distances = state.geo_distances      # back-compat mirror
+    self._geo_distance_unit = state.geo_distance_unit
+    return keys
+```
+
+`_filter_for_keys_set_with_state(self, state, **kwargs)` takes the carrier **positionally**, so no
+field name can ever collide with it.
+
+**Why per-thread storage (#600's `_PerThreadAttr`) is the wrong tool here — and must stay wrong.**
+
+`async_filter` initializes the geo names on the **event-loop thread** (`query.py:3845-3846`), while
+`filter_for_keys_set` mutates them inside the `asyncio.to_thread` **worker thread**
+(`query.py:2831-2832`, `2871-2872`), and the read-back at `query.py:3922` happens back on the loop
+thread. Per-thread cells would put the write and the read in different cells: the loop thread would
+read an empty dict, and **every async geo query would silently return rows with no distances at all**
+— a regression strictly worse than the race being fixed, and one no existing test would catch. This
+is the whole reason #600 scoped these two names out instead of folding them into its own change. The
+plan therefore requires a test that fails if someone later "simplifies" the carrier into
+`_PerThreadAttr`, and a `## Verification` anti-criterion asserting the two geo names are not bound to
+the descriptor.
+
+**Why the existing async lock does not already cover this.** `async_filter` holds
+`_pushdown_lock_for_running_loop()` around the `to_thread` hop, but the geo **reset** happens before
+the lock is acquired and the **read-back** happens after hydration, far outside it. Widening that
+lock to span hydration would serialize every concurrent async geo query on a model class — a
+throughput regression traded for a correctness fix that the carrier gives for free. Not the approach.
+
+**Integration points** (all in `src/popoto/models/query.py` unless noted):
+- `_PushdownState` (`~89`) — two new members.
+- `_snapshot_pushdown_state` (`2507`) — must NOT snapshot the geo names off `self`. Snapshotting them
+  after the fact reproduces the race it is meant to fix, because the window between another thread's
+  `update()` and this snapshot is exactly the hazard. The geo members are written directly by
+  `_filter_for_keys_set_with_state` and are already populated in the carrier it was handed.
+- `filter_for_keys_set` (`2727`) → thin wrapper; body moves to `_filter_for_keys_set_with_state`.
+- `_filter_keys_with_pushdown` (`2525`) — creates the carrier before the call rather than snapshotting
+  after, and passes it down. It already returns `(db_keys, state)`, so its signature is unchanged.
+- `_evaluate_filter_args` (`2912`) — takes `state` (positional `q_objects, kwargs` today, so a
+  keyword-only `state=None` is safe here: it does not collect `**kwargs`).
+- `src/popoto/models/q.py:222` `evaluate_q(query_instance, q_obj, all_keys)` — gains an optional
+  `state=None` and passes it through, so Q-object geo filters accumulate into the caller's carrier
+  instead of only the mirror.
+- `_execute_filter` (`3275`) and `async_filter` (`3811`) — reset onto the carrier, read from the
+  carrier.
+- `QueryBuilder._execute` (`1290`) calls `filter_for_keys_set` for `fuse()` scoping and never reads
+  geo distances — it keeps using the public wrapper unchanged.
 
 ## Failure Path Test Strategy
 
-<!-- skeleton -->
+### Exception Handling Coverage
+- [ ] No `except Exception: pass` blocks exist in the touched region of `query.py` — verify with
+      `grep -n "except Exception" src/popoto/models/query.py` and state the finding in the PR rather
+      than assuming.
+- [ ] `_filter_keys_with_pushdown` already disarms `_pushdown_allowed` in a `finally`. The carrier
+      must be created **before** the `try`, so an exception mid-query cannot leave a caller reading an
+      unbound name; add a test that a `QueryException` from a bad geo filter propagates and leaves no
+      partial annotation on any row.
+
+### Empty/Invalid Input Handling
+- [ ] A geo query that matches nothing must produce `state.geo_distances == {}` and no
+      `_geo_distance` attribute on any row (today's behavior — `tests/test_geo_with_distances.py:225`
+      and `:263` already assert the no-distance case; they must keep passing unchanged).
+- [ ] A non-geo query must leave `geo_distance_unit is None` and must not sort by distance.
+
+### Error State Rendering
+- [ ] Not user-facing in the UI sense; the observable "error state" is a missing or wrong
+      `_geo_distance`. Both are asserted directly by the new tests rather than inferred from row
+      identity.
 
 ## Test Impact
 
