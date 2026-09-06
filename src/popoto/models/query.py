@@ -136,14 +136,17 @@ class _PerThreadAttr(Generic[_T]):
     the per-thread cell rather than shadowing the descriptor in
     ``obj.__dict__``. White-box callers that assign these names directly
     (``tests/test_validity_field.py``) depend on that.
+
+    The default is always a zero-argument factory, never a bare value: sniffing
+    ``callable(default)`` to tell the two apart would misread a callable that is
+    itself the intended default, and it types as ``object``.
     """
 
-    __slots__ = ("_name", "_default", "_is_factory")
+    __slots__ = ("_name", "_factory")
 
-    def __init__(self, name: str, default: "Union[Callable[[], _T], _T]"):
+    def __init__(self, name: str, factory: "Callable[[], _T]"):
         self._name = name
-        self._default = default
-        self._is_factory = callable(default)
+        self._factory = factory
 
     def _store(self, obj: Any) -> Any:
         tls = obj.__dict__.get("_pushdown_tls")
@@ -163,11 +166,11 @@ class _PerThreadAttr(Generic[_T]):
             return self
         tls = self._store(obj)
         try:
-            return getattr(tls, self._name)  # type: ignore[no-any-return]
+            value: _T = getattr(tls, self._name)
         except AttributeError:
-            default = self._default() if self._is_factory else self._default
-            setattr(tls, self._name, default)
-            return default  # type: ignore[return-value]
+            value = self._factory()
+            setattr(tls, self._name, value)
+        return value
 
     def __set__(self, obj: Any, value: _T) -> None:
         setattr(self._store(obj), self._name, value)
@@ -2162,21 +2165,23 @@ class Query:
     # gives every thread its own cell. See _PerThreadAttr for the lifetime and
     # memory bound.
     _sorted_field_order: "_PerThreadAttr[Optional[list[Any]]]" = _PerThreadAttr(
-        "_sorted_field_order", None
+        "_sorted_field_order", lambda: None
     )
     _sorted_field_name: "_PerThreadAttr[Optional[str]]" = _PerThreadAttr(
-        "_sorted_field_name", None
+        "_sorted_field_name", lambda: None
     )
     _pending_client_filters: "_PerThreadAttr[dict[str, Any]]" = _PerThreadAttr(
         "_pending_client_filters", dict
     )
     _pushdown_limit: "_PerThreadAttr[Optional[int]]" = _PerThreadAttr(
-        "_pushdown_limit", None
+        "_pushdown_limit", lambda: None
     )
     _pushdown_requested: "_PerThreadAttr[int]" = _PerThreadAttr(
-        "_pushdown_requested", 0
+        "_pushdown_requested", lambda: 0
     )
-    _pushdown_fetched: "_PerThreadAttr[int]" = _PerThreadAttr("_pushdown_fetched", 0)
+    _pushdown_fetched: "_PerThreadAttr[int]" = _PerThreadAttr(
+        "_pushdown_fetched", lambda: 0
+    )
     _pushdown_partition: "_PerThreadAttr[dict[str, Any]]" = _PerThreadAttr(
         "_pushdown_partition", dict
     )
@@ -2185,7 +2190,7 @@ class Query:
     # `_allow_pushdown=False` retry cannot disarm another thread's in-flight
     # query.
     _pushdown_allowed: "_PerThreadAttr[bool]" = _PerThreadAttr(
-        "_pushdown_allowed", False
+        "_pushdown_allowed", lambda: False
     )
 
     def __init__(self, model_class: "Model"):
@@ -2727,6 +2732,14 @@ class Query:
         appropriate field types and combines their results via set intersection.
         Separated from `filter()` to support `count()` without the overhead of
         object instantiation.
+
+        The bookkeeping this leaves behind (`_sorted_field_order`,
+        `_pending_client_filters`, `_pushdown_*`) is readable **by the calling
+        thread only**: those names are backed by per-thread storage, because one
+        `Query` instance is shared by every thread that queries the model class.
+        Code that needs the bookkeeping on another thread must take the
+        `_PushdownState` carrier from `_filter_keys_with_pushdown` instead of
+        reading these attributes back off the instance.
 
         Processing Order:
         ----------------
@@ -3315,8 +3328,11 @@ class Query:
         ):
             kwargs["order_by"] = self.model_class._meta.order_by
 
-        # Use sorted field order if available and no explicit order_by
-        sorted_field_order = state.sorted_field_order
+        # Use sorted field order if available and no explicit order_by.
+        # Typed Any because db_keys_set carries either the key set or this
+        # ordered list from here on, and hydration accepts both; the carrier
+        # types this precisely where the old getattr() erased it to Any.
+        sorted_field_order: Any = state.sorted_field_order
         explicit_order_by = kwargs.get("order_by", None)
         # Meta.order_by is a default - sorted field order takes precedence over it
         if sorted_field_order and not explicit_order_by:
