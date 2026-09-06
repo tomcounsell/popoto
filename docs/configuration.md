@@ -42,12 +42,18 @@ REDIS_URL="redis://:mypassword@redis.example.com:6379/0"
 # Redis with username and password (Redis 6+)
 REDIS_URL="redis://myuser:mypassword@redis.example.com:6379/0"
 
-# Heroku Redis, Render, Railway, etc.
+# Heroku Redis, Render, Railway, etc. (no /database — see below)
 REDIS_URL="redis://default:abc123@some-host.cloud:6379"
 
 # Valkey (same format works)
 REDIS_URL="redis://localhost:6379/0"
 ```
+
+The `/database` component is optional, and leaving it off is not the same as
+leaving the database unset: **a URL with no `/database` selects database 0.**
+Hosted providers often hand you a URL in exactly that shape. Name the database
+explicitly whenever you care which one you get — particularly if database 0 on
+that server holds anything else.
 
 When `REDIS_URL` is set, Popoto calls `redis.from_url()` to establish the connection. This works with both Redis and Valkey servers.
 
@@ -400,7 +406,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
+| `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379, database 0. A URL with no `/database` also selects database 0. |
 | `POPOTO_ALLOW_DB0_FLUSH` | unset (falsy) | Escape hatch for the destructive-flush guard on Popoto's own Redis client. Unset, the client refuses `FLUSHDB` when bound to database 0 and refuses `FLUSHALL` on any binding, raising `popoto.redis_db.Db0FlushRefusedError` before the command reaches the server. A truthy value (`1`/`true`/`yes`/`on`, case-insensitive) restores the previous behavior. Read at call time, not at import, so it can be set without restarting a process. It is the only escape hatch — there is no constructor argument. See [#577](https://github.com/tomcounsell/popoto/issues/577). |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for ContentField filesystem storage and EmbeddingField `.npy` files. |
