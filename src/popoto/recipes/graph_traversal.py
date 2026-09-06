@@ -45,9 +45,6 @@ Example:
 
 import logging
 
-from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB
-
 logger = logging.getLogger("POPOTO.graph_traversal")
 
 
@@ -204,13 +201,9 @@ def expand_relationships(
 
                 # Reverse: bounded sample of other nodes pointing at pk.
                 try:
-                    reverse_key = DB_key(
-                        Relationship.get_special_use_field_db_key(
-                            model_class, field_name
-                        ),
-                        DB_key.from_redis_key(pk),
-                    ).redis_key
-                    members = POPOTO_REDIS_DB.srandmember(reverse_key, fanout_limit)
+                    members = Relationship.sample_related_keys(
+                        model_class, field_name, pk, fanout_limit
+                    )
                 except Exception as e:
                     logger.warning(
                         "graph_traversal: reverse lookup failed for %s.%s: %s",
@@ -219,9 +212,7 @@ def expand_relationships(
                         e,
                     )
                     members = []
-                for member in members or []:
-                    if isinstance(member, bytes):
-                        member = member.decode("utf-8")
+                for member in members:
                     if member not in visited:
                         if next_weights.get(member, 0.0) < hop_weight:
                             next_weights[member] = hop_weight
