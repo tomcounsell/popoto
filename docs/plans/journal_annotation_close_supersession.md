@@ -6,6 +6,9 @@ owner: Tom Counsell
 created: 2026-09-06
 tracking: https://github.com/tomcounsell/popoto/issues/606
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-06T00:00:00Z
+critique_verdict: READY TO BUILD (with concerns)
 ---
 
 # Journal annotation close: `execute_supersede` vs. `SupersessionProtocol`
@@ -325,8 +328,8 @@ read it.
 **S-2 — `_save_and_close` gains the two things E7 found missing.**
 
 - Also inspect `new_instance._never_record_verdict` after `save()`, matching
-  `_write`'s two-part condition. This is a strictly stronger guard for every
-  existing `save_and_supersede` / `save_and_invalidate` caller.
+  `_write`'s two-part condition (`supersession.py:651-658` today checks only
+  `if not saved:`; it becomes `if not saved or blocked is not None:`).
 - Raise a *typed* `SupersedeDeclinedError(RuntimeError)` instead of a bare
   `RuntimeError`, carrying the declining verdict when there is one. `_write`
   catches it and re-raises its own `RuntimeError` with the existing
@@ -334,6 +337,46 @@ read it.
   `tests/test_provenance_journal.py:1094` is untouched. Subclassing
   `RuntimeError` keeps every existing `pytest.raises(RuntimeError, ...)` on the
   protocol side green.
+
+**Why the check goes in the shared helper and not in `_write` (critique round 1).**
+All three critics flagged this placement, and two proposed keeping the check
+local to `_write` instead. That option is rejected on ordering grounds and the
+reason is recorded here so it is not re-litigated at review:
+
+`_save_and_close` queues the close `EVAL` *before it returns*
+(`supersession.py:669-685`). A verdict check performed by `_write` after the
+call would therefore run with the close already queued. On the caller-owned
+pipeline path `_write` raises and hands the caller a pipe carrying both the
+declined save and the close — a caller who then executes commits a membership
+change with no provenance behind it, which is precisely the failure this
+module's backstop exists to prevent. Today's ordering (check between save and
+close) is only reproducible inside the helper. So the check moves, and the two
+objections are answered directly rather than by moving it back:
+
+- **Duck typing (`getattr`) rather than `isinstance(NeverRecordMixin)`.**
+  Deliberate, and it does not add a `fields/` → `privacy/` import. Verified in
+  this tree: `_never_record_verdict` has exactly one producer,
+  `privacy/never_record.py:608,674,679`, and two consumers, both already using
+  the `getattr(..., None)` spelling —
+  `recipes/provenance_journal.py:1085` and `recipes/subconscious_memory.py:538`.
+  The `getattr` form is the established in-repo idiom for this attribute, not an
+  improvisation. An `isinstance` guard would make `fields.supersession` import
+  `privacy.never_record`, which imports `fields.constants` — not a true cycle,
+  but a new `fields → privacy → fields` edge for zero behavioral gain.
+- **Blast radius on other callers.** Measured, not assumed:
+  `grep -rn "save_and_supersede\|save_and_invalidate" src/ tests/` finds **zero
+  production call sites** outside `supersession.py` itself — every other hit is
+  a comment or docstring (`models/base.py:1442`,
+  `recipes/provenance_journal.py:1127`, `fields/validity_field.py:973`). The
+  only live callers are six tests in `tests/test_validity_field.py`
+  (`:1759, :2047, :2064, :2082, :2089, :2096`). This is a hardening change with
+  test-suite exposure, not a shipped-caller-breakage risk.
+- **The new path gets its own direct coverage.** A new test in
+  `tests/test_validity_field.py` calls `save_and_invalidate` with a
+  firewall-blocked instance and asserts `SupersedeDeclinedError`, so the shared
+  helper's new branch is not validated only transitively through the journal's
+  wrapping `except`. Adding a test is not an edit to an existing expectation and
+  does not violate the No-Go.
 
 **S-3 — replace the stale comment.**
 
@@ -343,6 +386,24 @@ ownership, kind/target consistency, the backdate pre-read, `AnnotationResult`),
 and pointing at #606 as the decision record. The two claims that are no longer
 true — "the protocol does not offer an explicit `old_member`" and "…or
 `assert_valid_from=False`" — are deleted, not softened.
+
+It must **not** claim the conversion achieves full protocol orchestration. The
+non-closing branch still calls `entry.save(pipeline=pipe)` directly (E8) and
+that is intended, so the new comment says so plainly — otherwise a future reader
+re-opens it as a bug.
+
+**S-4 — the defence-in-depth comment moves with the guard it explains.**
+
+`provenance_journal.py:1072-1084` is a twelve-line comment sitting above a
+single `blocked = getattr(entry, "_never_record_verdict", None)` check that
+today covers both branches. After S-1/S-2 that guard exists in two places: the
+non-closing branch keeps its copy in `_write`, and the closing branch's copy
+lives inside `_save_and_close`. Left untouched, the explanation would sit above
+only the non-closing copy and the closing one would ship with no rationale at
+all. The comment is therefore split: a shortened form stays with `_write`'s
+copy, and `_save_and_close` gains a comment carrying the same reasoning and a
+back-reference to this module — matching the cross-reference style already used
+at `provenance_journal.py:1119-1134`.
 
 ## Rabbit Holes
 
@@ -414,7 +475,7 @@ only difference is which Python frame issues each one.
 | Risk | Mitigation |
 |---|---|
 | ~~`_save_and_close`'s `clock` differs from the journal's `instant` in a way E3/E4 missed.~~ | **Retired by spike-S1** — measured identical on the wire and in stored state. |
-| The new `_never_record_verdict` check in `_save_and_close` breaks an existing `save_and_supersede` caller. | The check only fires where the *old* code would already have queued a close behind an unwritten record — a bug in every case. Full `tests/test_validity_field.py` run is the check. |
+| The new `_never_record_verdict` check in `_save_and_close` breaks an existing caller. | **Measured, and the exposure is test-only.** `grep -rn "save_and_supersede\|save_and_invalidate" src/ tests/` finds zero production call sites outside `supersession.py`; the only live callers are six tests in `tests/test_validity_field.py` (`:1759, :2047, :2064, :2082, :2089, :2096`). The check also only fires where the old code would already have queued a close behind an unwritten record — a bug in every case. |
 | `SupersedeDeclinedError` is a behavior change for direct protocol callers. | It subclasses `RuntimeError`; every existing `except RuntimeError` / `pytest.raises(RuntimeError)` still matches. Exported from `popoto.fields.supersession` only; not added to the top-level `popoto` namespace in this PR. |
 | Line drift collides with #630 PR 2 in this module. | #630 PR 2 is sequenced *after* this merges and rebases on it (same lane, strictly serial). |
 | DB-15 contention producing phantom failures. | Every gate runs with `POPOTO_TEST_DB=9`, stated with each count. |
@@ -427,15 +488,22 @@ redis-py 8.1.0, pytest 9.1.1, `POPOTO_TEST_DB=9`, editable install of this
 checkout verified via `python -c "import popoto; print(popoto.__file__)"`.
 
 - **Baseline (measured at `3cf8c2d0`, before any change): `tests/test_provenance_journal.py`
-  + `tests/test_validity_field.py` = 237 passed.** The same 237 must pass after,
-  with zero test-file edits to those two files.
+  + `tests/test_validity_field.py` = 237 passed.** All 237 must still pass, with
+  **zero edits to any existing test's expectations**. `tests/test_provenance_journal.py`
+  is untouched entirely. `tests/test_validity_field.py` gains exactly one new
+  test (the `SupersedeDeclinedError` case from S-2), so the post-change count is
+  **238 passed**.
 - `ruff check src/` exits 0.
 - `black --check src/ tests/` exits 0.
 - `scripts/mypy_ratchet.py` does not rise above baseline.
 - `grep -n "execute_supersede" src/popoto/recipes/provenance_journal.py` returns
   only comment/prose lines — no call.
-- S1 spike passes: the queued command stacks of old and new spellings are
-  byte-identical.
+- **Call-site inventory, re-run after the change:**
+  `grep -rn "save_and_supersede\|save_and_invalidate" src/ tests/` — the only
+  production call site outside `supersession.py` is the new one in
+  `recipes/provenance_journal.py`. Any other production hit is unplanned and
+  must be explained before merge.
+- S1 spike passed at plan time (see Spike Results); not re-run in build.
 - No `xfail`/`skip` added or removed.
 
 No expected-failure markers exist for this area (`grep -rn 'pytest.mark.xfail\|pytest.xfail('
@@ -459,14 +527,25 @@ there is nothing to convert.
    Take `close_index` from `SupersedeResult.close_index`.
 5. Keep `entry.save(pipeline=pipe)` + the existing declined-save `RuntimeError`
    on the non-closing branch.
-6. Rewrite the `provenance_journal.py:1119-1134` comment per S-3.
-7. Add the import of `SupersessionProtocol` to `provenance_journal.py`; confirm
-   no import cycle (`recipes/` already imports from `fields/`).
-8. Run `POPOTO_TEST_DB=9 pytest tests/test_provenance_journal.py
-   tests/test_validity_field.py -q`; require 237 passed.
-9. Run `ruff check src/`, `black --check src/ tests/`,
-    `scripts/mypy_ratchet.py`.
-10. `/do-docs`, then the merge gate.
+6. Split the `provenance_journal.py:1072-1084` defence-in-depth comment per S-4:
+   a shortened form stays with `_write`'s remaining copy of the guard, and
+   `_save_and_close` gains a comment carrying the same reasoning plus a
+   back-reference to `ProvenanceJournal._write`.
+7. Rewrite the `provenance_journal.py:1119-1134` comment per S-3, including the
+   explicit note that the non-closing branch stays outside the protocol.
+8. Add one new test to `tests/test_validity_field.py`: call
+   `SupersessionProtocol.save_and_invalidate` with a never-record-blocked
+   instance and assert `SupersedeDeclinedError`. Do not touch any existing test.
+9. ~~Add the import of `SupersessionProtocol`~~ — **not needed.** It is already
+   imported at `provenance_journal.py:194` and used by `chain()` at `:872`.
+   Verify, do not re-add.
+10. Run `POPOTO_TEST_DB=9 pytest tests/test_provenance_journal.py
+    tests/test_validity_field.py -q`; require **238 passed** (237 baseline + the
+    one new test from step 8).
+11. Run `ruff check src/`, `black --check src/ tests/`,
+    `scripts/mypy_ratchet.py`, and the call-site inventory grep from Success
+    Criteria.
+12. `/do-docs`, then the merge gate.
 
 ## Documentation
 
@@ -478,6 +557,32 @@ there is nothing to convert.
   `save_and_supersede`'s, which shares `_save_and_close`).
 - Add a CHANGELOG entry if the repo keeps one for behavior-neutral internal
   changes; check first rather than assuming.
+
+## Critique Round 1
+
+**Depth:** FULL. **Mode:** independent roster (3 critics — Risk & Robustness,
+Scope & Value, History & Consistency). **Verdict: READY TO BUILD (with concerns)**
+— 0 blockers, 3 concerns, 3 nits. Revision applied below; per the lane's
+one-round cap this routes to BUILD without re-critique.
+
+Structural checks: required sections PASS (15/15 present, none empty); task
+numbering PASS (0–12, no gaps); dependencies PASS (no `Depends On` graph);
+file paths PASS (8/8 referenced paths exist); cross-references PASS (every
+success criterion maps to a task; no No-Go or Rabbit Hole appears as planned
+work).
+
+| # | Severity | Critics | Finding | Resolution |
+|---|---|---|---|---|
+| C1 | CONCERN | Risk & Robustness, Scope & Value (independent) | Moving the `_never_record_verdict` check into the shared `_save_and_close` widens its blast radius to every protocol caller via a duck-typed `getattr` rather than an `isinstance(NeverRecordMixin)` guard; the plan never enumerated the other callers. | **Placement kept, justified, and bounded.** S-2 now records the ordering argument for why the check cannot live in `_write` (the close is queued before the helper returns, so a `_write`-side check would raise with the close already on a caller-owned pipe). The `getattr` spelling is kept and justified against the measured single producer (`privacy/never_record.py:608,674,679`) and the existing in-repo idiom (`recipes/subconscious_memory.py:538`), avoiding a new `fields → privacy` import edge. The call-site inventory was run: zero production callers outside `supersession.py`; six test callers named. Added as a Success Criterion. |
+| C2 | CONCERN | Scope & Value | The stated motivation — the recipe should orchestrate over `SupersessionProtocol` — is only half achieved, since the non-closing branch still calls `entry.save()` directly (E8); "record the permanent decision" may be the better-scoped answer. | **Conversion stands, claim narrowed.** E8 already priced this and the S1 spike shows the conversion is provably neutral, so the trade is a real reduction in duplicated key/ARGV knowledge for two lines of branch duplication. S-3 now requires the new comment to state plainly that the non-closing branch stays outside the protocol, so it is not re-litigated as a bug later. |
+| C3 | CONCERN | History & Consistency | The `provenance_journal.py:1072-1084` defence-in-depth comment explains a guard that becomes two guards; left in place it would document only the non-closing copy and orphan the one inside `_save_and_close`. | **Accepted.** New **S-4** and task 6 split the comment across both copies with a back-reference. |
+| N1 | NIT | Risk & Robustness | Task 7 ("add the import of `SupersessionProtocol`") is a no-op — the import already exists at `provenance_journal.py:194`. | Accepted; task struck and replaced with a verify-only step 9. |
+| N2 | NIT | Scope & Value | The new `SupersedeDeclinedError` path ships with no direct regression coverage; it is exercised only transitively through the journal's `except`. | Accepted; new task 8 adds one direct test to `tests/test_validity_field.py`, and the expected count moves 237 → 238. |
+| N3 | NIT | History & Consistency | The Risks row overstated exposure by implying a shipped caller relies on the weaker check. | Accepted; row reworded with the measured inventory. |
+
+All three critics independently confirmed the plan's central technical claims
+(E1–E8 and spike-S1) against the source. No finding disputed the conversion's
+correctness.
 
 ## Open Questions
 
