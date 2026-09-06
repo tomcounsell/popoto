@@ -141,7 +141,41 @@ round.
 | 4 | NIT | scope-value | Success Criteria silently narrow the issue's literal acceptance criterion 1 with an unstated `docs/plans/` exception; a literal re-run of the issue's own grep still shows hits. | Applied — the PR body and issue-close comment must state the exclusion and its reason. |
 
 Archaeologist and Operator lenses returned clean; `scope-value` returned clean
-on both its lenses. The Prior Art table's characterizations of #635/#637,
+on both its lenses.
+
+### Round 2 (re-critique of the revised plan)
+
+FULL depth, 3 independent critics, dispatched because the round-1 revision
+post-dated the recorded verdict. **0 blockers, 2 concerns, 2 nits.**
+
+All four round-1 dispositions were independently confirmed as landed in the plan
+*body*, not merely asserted in the table above: Task 1b matches the shipped
+`get_redis()` delegation, the shipped matcher is not line-anchored and carries
+the accepted-evasions comment, and both Verification row 1 and Success
+Criterion 1 now exclude `docs/plans/` and `docs/sdlc/`, matching the guard's
+`EXCLUDED_DIRS`.
+
+Round 2's findings are all **plan-text drift against the shipped build** — the
+code is right and the plan describes it slightly wrong. Each was reproduced
+directly in the lane worktree before being recorded here.
+
+| # | Severity | Critic | Finding | Implementation note |
+|---|---|---|---|---|
+| 5 | CONCERN | history-consistency | The plan promises "Three tests" (Test Impact), names three in Task 3, and expects "3 passed" in Verification. The shipped `tests/test_docs_redis_url.py` has **four** — `test_the_excluded_directories_are_excluded_on_purpose` was added to support round-1 finding 3 and never written back into the plan. Reproduced: `POPOTO_TEST_DB=11 pytest tests/test_docs_redis_url.py -q` → **4 passed**. | Update Test Impact to "four tests", add the fourth to Task 3's list, and change the Verification row's expectation to `4 passed`. A verifier following the plan literally hits a count mismatch and cannot tell a regression from a stale plan. |
+| 6 | CONCERN | scope-value | `## Appetite` still reads "Two documentation edits and one regression guard" — never updated after the revision added Task 1b, a `src/popoto/__init__.py` behavior change. It contradicts the Solution section's own "Four changes" framing. This is round-1 nit 4's failure mode (unstated scope narrowing) recurring in a different section. | Appetite must name the library change: a reader who trusts Appetite to bound a "Small" docs ticket currently gets no signal that `src/` moved. Risk 6 already discloses it; Appetite is the section that sets expectations first. |
+| 7 | NIT | risk-robustness | Task 1b does not anticipate that removing the only in-body use of the imported `POPOTO_REDIS_DB` name makes that import unused, tripping ruff F401 on the line Task 1b explicitly says not to touch. The shipped diff already handles it (`# noqa: F401`, `src/popoto/__init__.py:121`), so nothing is broken — but the task text re-applied from scratch would fail lint. | Note the `noqa` requirement in Task 1b and add `ruff check src/popoto/__init__.py` to its validation line. |
+| 8 | NIT | scope-value | Task 5's `Depends on: Task 1b` does not state the real ordering constraint — the issue must be filed *before the PR opens*, since Success Criteria require its number in the PR body. Task 4 makes its equivalent constraint explicit. | Say "before the PR body is written" in Task 5. |
+
+Not re-litigated: the round-1 dispositions, and the scope growth itself.
+`scope-value` pressure-tested "the docs cannot be fixed without fixing the
+accessor" this round and upheld it — the delegation is one line, changes no
+signature or API surface, is covered by a non-DB-0 test, and makes true a claim
+the edited page already teaches. Task 5 (file, do not fix) is correctly
+deferred.
+
+**Round 2 verdict: READY TO BUILD (with concerns).** No finding touches shipped
+behavior; all four are corrections to the plan's description of a build that has
+already landed as PR #652. The Prior Art table's characterizations of #635/#637,
 #639/#643, #584/#601 and #577 were independently re-verified against the actual
 issue and PR bodies by `history-consistency`.
 
