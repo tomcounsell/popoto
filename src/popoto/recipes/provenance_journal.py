@@ -191,7 +191,7 @@ from ..fields.shortcuts import (
     StringField,
     TagField,
 )
-from ..fields.supersession import SupersessionProtocol
+from ..fields.supersession import SupersedeDeclinedError, SupersessionProtocol
 from ..fields.validity_field import ValidityField, map_lua_error
 from ..models.base import Model
 from ..privacy.never_record import NeverRecordMixin, scan_never_record
@@ -939,8 +939,9 @@ class ProvenanceJournal:
             # script. ValidityField.on_save uses the field value as valid_from
             # and its ZADD NX runs earlier in the pipeline, which makes the
             # supersede script's own valid_from write a silent no-op -- so a
-            # backdated instant passed only to execute_supersede is silently
-            # replaced by the save clock (#588).
+            # backdated instant passed only to the close is silently replaced
+            # by the save clock (#588). True of ``save_and_invalidate`` for the
+            # same reason: it queues the save first, on the same pipe.
             validity=instant,
         )
 
@@ -968,6 +969,12 @@ class ProvenanceJournal:
         #    key embeds it. And ``subject_tags`` is a list, so the mixin's
         #    str-only yield never sees it.
         _scan_or_block(agent_id, *subject_tags, *entry._never_record_scan_values())
+
+        # Hydrated by the pre-flight below when there is a target, and reused as
+        # the ``closes`` argument of the close. The read is the ownership check's
+        # read, not a second one: naming the incumbent by instance rather than by
+        # key string adds no Redis command.
+        stored_target: Any = None
 
         if target_key is not None:
             # 4. The target exists, and belongs to this agent. ``target`` is a
@@ -1067,83 +1074,116 @@ class ProvenanceJournal:
         owns_pipeline = pipeline is None
         pipe = POPOTO_REDIS_DB.pipeline() if pipeline is None else pipeline
 
-        saved = entry.save(pipeline=pipe)
-
-        # Defence in depth against the whole class of bug this module's worst
-        # failure mode belongs to. ``Model.save()`` has several early-return
-        # gates (the never-record firewall, the write filter) that *return*
-        # instead of raising; each one is a way for the annotation to not be
-        # written while the invalidate EVAL below is queued anyway, closing the
-        # target's interval with zero provenance backing it -- and reporting
-        # ``target_closed=True`` for an entry that does not exist.
-        #
-        # The pre-flight now scans the same value set the firewall does, so the
-        # firewall gate is unreachable from here; this raise is what makes that
-        # claim *checkable* rather than assumed, and it covers the gates that
-        # have not been analysed yet. Raised, not asserted -- ``python -O``
-        # strips asserts, and this must hold in production above all.
-        blocked = getattr(entry, "_never_record_verdict", None)
-        if not saved or blocked is not None:
-            reason = (
-                f"the never-record firewall ({blocked.reason})"
-                if blocked is not None
-                else "an early-return gate in Model.save()"
-            )
-            raise RuntimeError(
-                f"{model.__name__}: the annotation was not written -- "
-                f"{reason} stopped it, and Model.save() signals that by "
-                f"returning rather than raising. Nothing further is issued: "
-                f"queueing the interval close now would commit a membership "
-                f"change with no provenance behind it. This is a bug in this "
-                f"module (the pre-flight should have caught it), not a caller "
-                f"error."
-            )
-
         close_index: Optional[int] = None
         if should_close and coupling_enabled:
             # ``should_close`` is ``kind_is_closing(kind) and target_key is not
             # None``, so a close can never be reached without a target. Raised
             # rather than asserted (``python -O`` strips asserts) and rather
             # than annotated away, because a ``None`` here is exactly the #588
-            # shape: ``execute_supersede`` would take its no-target branch,
-            # return without closing anything, and the caller would still be
-            # told the target was closed.
-            if target_key is None:
+            # shape: the close would have no incumbent to name, and the caller
+            # would still be told the target was closed. It is also what makes
+            # ``stored_target`` non-``None`` below -- the pre-flight hydrates it
+            # exactly when ``target_key`` is not ``None``.
+            if target_key is None or stored_target is None:
                 raise RuntimeError(
                     f"{model.__name__}: reached the interval close with no "
-                    f"target key. execute_supersede would silently close "
-                    f"nothing while the result reported a close (#588). This "
-                    f"is a bug in this module, not a caller error."
+                    f"resolved target. The close would name no incumbent while "
+                    f"the result reported a close (#588). This is a bug in this "
+                    f"module, not a caller error."
                 )
-            close_index = len(pipe.command_stack)
-            # execute_supersede, NOT SupersessionProtocol (#588 is fixed; this
-            # is still the right call). The protocol's pipeline API works now --
-            # membership is decided inside SUPERSEDE_LUA at the instant of the
-            # write -- but M1 needs two things the protocol does not offer on
-            # this path: an *explicit* ``old_member`` (the annotation target is
-            # named by the caller and validated by the pre-flight, not resolved
-            # through an identity pointer), and ``assert_valid_from=False``
-            # because valid-time is already set at construction. Converting this
-            # to ``save_and_supersede`` was offered to M4 and **declined**
-            # (see docs/plans/reference_resolution_m4.md): M4 appends
-            # targetless ``assert`` entries and never reaches this annotation
-            # branch, so the conversion would add risk to a shipped write path
-            # for no M4 benefit. It is tracked separately as #606. The
-            # pre-flight above also carries firewall, cross-agent-ownership and
-            # kind/target checks the protocol cannot express, so any conversion
-            # has to reproduce those first.
-            ValidityField.execute_supersede(
-                model,
-                VALIDITY_FIELD_NAME,
-                new_member=entry.db_key.redis_key,
-                mode="invalidate",
-                now=instant,
-                valid_from=instant,
-                ingested_at=instant,
-                close_at=instant,
-                old_member=target_key,
-                pipeline=pipe,
-            )
+            # ``save_and_invalidate``, not a bare ``execute_supersede`` (#606).
+            # The protocol expresses everything this call site needs: an
+            # *explicit* ``old_member`` (``closes=``, the target the pre-flight
+            # already hydrated and validated) and ``assert_valid_from=False``,
+            # which it passes unconditionally because ``at`` is a close-time
+            # assertion about the incumbent, never a start-time assertion about
+            # the successor. Valid-time is still set at CONSTRUCTION above; the
+            # script's own ``valid_from`` write is a no-op behind ``on_save``'s
+            # earlier ``ZADD NX`` either way.
+            #
+            # The save moves inside the protocol, which is why it does not
+            # appear above: the whole point of routing through here is that the
+            # entry HSET and the close EVAL are queued by one caller onto one
+            # MULTI, with the declined-save guard between them. The atomicity
+            # guarantee is unchanged -- same commands, same order, same pipe.
+            #
+            # The non-closing branch stays outside the protocol. There is no
+            # incumbent to name, so ``save_and_invalidate`` has nothing to be
+            # given; it saves the entry directly and carries its own copy of the
+            # declined-save guard.
+            #
+            # The D7 pre-flight above is NOT delegated. Its firewall scan,
+            # cross-agent ownership check and kind/target consistency check are
+            # journal semantics the protocol has no vocabulary for, and every
+            # one of them must run before the first command is queued.
+            try:
+                supersede_result = SupersessionProtocol.save_and_invalidate(
+                    entry,
+                    closes=stored_target,
+                    at=instant,
+                    field_name=VALIDITY_FIELD_NAME,
+                    pipeline=pipe,
+                )
+            except SupersedeDeclinedError as exc:
+                # Re-raised in this module's own vocabulary. The protocol's
+                # message is about a successor and an incumbent; a journal
+                # caller needs to hear that the *annotation* was not written,
+                # which is the contract this module has documented and tested.
+                verdict = getattr(exc, "verdict", None)
+                reason = (
+                    f"the never-record firewall ({verdict.reason})"
+                    if verdict is not None
+                    else "an early-return gate in Model.save()"
+                )
+                raise RuntimeError(
+                    f"{model.__name__}: the annotation was not written -- "
+                    f"{reason} stopped it, and Model.save() signals that by "
+                    f"returning rather than raising. Nothing further is "
+                    f"issued: queueing the interval close now would commit a "
+                    f"membership change with no provenance behind it. This is "
+                    f"a bug in this module (the pre-flight should have caught "
+                    f"it), not a caller error."
+                ) from exc
+            close_index = supersede_result.close_index
+        else:
+            saved = entry.save(pipeline=pipe)
+
+            # Defence in depth against the whole class of bug this module's
+            # worst failure mode belongs to. ``Model.save()`` has several
+            # early-return gates (the never-record firewall, the write filter)
+            # that *return* instead of raising, and in pipeline mode what they
+            # return is the pipeline -- indistinguishable from success.
+            #
+            # Nothing is closed on this branch, so the immediate harm the
+            # closing branch guards against cannot occur here; what this raise
+            # buys is that a silently-dropped annotation is never reported back
+            # as a written one. The closing branch has the same guard inside
+            # ``SupersessionProtocol._save_and_close``, where it sits *between*
+            # the save and the close -- the only position from which it can stop
+            # the close from being queued.
+            #
+            # The pre-flight scans the same value set the firewall does, so the
+            # firewall gate is unreachable from here; this raise is what makes
+            # that claim *checkable* rather than assumed, and it covers the
+            # gates that have not been analysed yet. Raised, not asserted --
+            # ``python -O`` strips asserts, and this must hold in production
+            # above all.
+            blocked = getattr(entry, "_never_record_verdict", None)
+            if not saved or blocked is not None:
+                reason = (
+                    f"the never-record firewall ({blocked.reason})"
+                    if blocked is not None
+                    else "an early-return gate in Model.save()"
+                )
+                raise RuntimeError(
+                    f"{model.__name__}: the annotation was not written -- "
+                    f"{reason} stopped it, and Model.save() signals that by "
+                    f"returning rather than raising. Nothing further is issued: "
+                    f"queueing the interval close now would commit a membership "
+                    f"change with no provenance behind it. This is a bug in this "
+                    f"module (the pre-flight should have caught it), not a "
+                    f"caller error."
+                )
 
         if not owns_pipeline:
             # The caller owns execution, so nothing has run yet and there is no
