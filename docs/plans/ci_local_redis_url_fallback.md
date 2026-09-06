@@ -306,7 +306,7 @@ the environment the test hands it is corrected.
 - [x] The "Redis not reachable" preflight still fires and exits 2 when Redis is down.
 - [x] Every `REDIS_URL`-reading test file passes with the variable unset.
 - [x] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 
