@@ -187,7 +187,7 @@ class Q:
         return not self.filters and not self.children
 
 
-def evaluate_q(query_instance, q_obj, all_keys=None):
+def evaluate_q(query_instance, q_obj, all_keys=None, *, state=None):
     """Evaluate a Q object expression tree and return matching Redis keys.
 
     This function recursively evaluates Q object trees, computing result
@@ -203,6 +203,11 @@ def evaluate_q(query_instance, q_obj, all_keys=None):
         q_obj: The Q object to evaluate
         all_keys: Set of all Redis keys for the model (used for negation).
                  If None, will be fetched when needed for NOT operations.
+        state: Optional `_PushdownState` carrier. When given, leaf nodes
+            route to `query_instance._filter_for_keys_set_with_state(state,
+            ...)` so any geo distances a leaf's filter produces accumulate
+            into the caller's carrier instead of a throwaway one. Threaded
+            down every recursive call unchanged.
 
     Returns:
         Set of Redis keys matching the Q expression.
@@ -219,11 +224,17 @@ def evaluate_q(query_instance, q_obj, all_keys=None):
 
     if q_obj.is_leaf():
         # Leaf node - execute the filter
-        result = query_instance.filter_for_keys_set(**q_obj.filters)
+        if state is not None:
+            result = query_instance._filter_for_keys_set_with_state(
+                state, **q_obj.filters
+            )
+        else:
+            result = query_instance.filter_for_keys_set(**q_obj.filters)
     elif q_obj.children:
         # Internal node - combine children
         child_results = [
-            evaluate_q(query_instance, child, all_keys) for child in q_obj.children
+            evaluate_q(query_instance, child, all_keys, state=state)
+            for child in q_obj.children
         ]
 
         if q_obj.connector == Q.AND:

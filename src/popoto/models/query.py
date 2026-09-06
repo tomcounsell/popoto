@@ -96,6 +96,16 @@ class _PushdownState:
     overwrite all seven fields mid-flight. The async path therefore snapshots
     them into one of these inside the single ``to_thread`` hop and never reads
     ``self._pushdown_*`` again.
+
+    ``geo_distances`` and ``geo_distance_unit`` are different from the seven
+    fields above: they are written **directly** into this carrier by
+    ``_filter_for_keys_set_with_state`` at the moment its geo tuple is
+    unpacked, and they are never snapshotted off ``self`` afterwards (see
+    ``_snapshot_pushdown_state``). Snapshotting them after the fact would
+    reproduce the race this carrier exists to close — the window between
+    another thread's ``update()`` (or reset) and the snapshot is exactly the
+    hazard, so the only safe moment to record them is the moment they are
+    produced, into the caller's own carrier.
     """
 
     sorted_field_order: "Optional[list[Any]]" = None
@@ -105,6 +115,8 @@ class _PushdownState:
     pushdown_requested: int = 0
     pushdown_fetched: int = 0
     pushdown_partition: "dict[str, Any]" = dataclass_field(default_factory=dict)
+    geo_distances: "dict[Any, float]" = dataclass_field(default_factory=dict)
+    geo_distance_unit: "Optional[str]" = None
 
 
 _T = TypeVar("_T")
@@ -2192,6 +2204,17 @@ class Query:
     _pushdown_allowed: "_PerThreadAttr[bool]" = _PerThreadAttr(
         "_pushdown_allowed", lambda: False
     )
+    # _geo_distances / _geo_distance_unit are deliberately NOT bound to
+    # _PerThreadAttr here, even though they share the "shared Query instance"
+    # problem the names above solve. async_filter resets/reads them on the
+    # event-loop thread while filter_for_keys_set writes them inside the
+    # asyncio.to_thread worker thread (see _filter_for_keys_set_with_state);
+    # per-thread cells would put that write and that read in different cells,
+    # so every async geo query would silently come back with no distances at
+    # all. They are instead threaded through the call as a _PushdownState
+    # carrier (an ordinary object, visible across the to_thread hop by
+    # reference), with a write-only back-compat mirror kept on self. Do not
+    # "simplify" this by adding them to the descriptor list above.
 
     def __init__(self, model_class: "Model"):
         """
@@ -2205,8 +2228,8 @@ class Query:
         """
         self.model_class = model_class
         self.options = model_class._meta
-        self._geo_distances = {}  # {redis_key: distance}
-        self._geo_distance_unit = None  # unit for distance values
+        self._geo_distances: "dict[Any, float]" = {}  # {redis_key: distance}
+        self._geo_distance_unit: "Optional[str]" = None  # unit for distance values
 
     def get(
         self,
@@ -2504,23 +2527,37 @@ class Query:
             **kwargs,
         )
 
-    def _snapshot_pushdown_state(self) -> "_PushdownState":
+    def _snapshot_pushdown_state(
+        self, into: "Optional[_PushdownState]" = None
+    ) -> "_PushdownState":
         """Copy the bookkeeping ``filter_for_keys_set`` left on ``self``.
 
         Mutable members are copied, not aliased, so a later query on the same
         shared ``Query`` cannot mutate a snapshot already handed out.
+
+        This copies the same seven non-geo pushdown fields it always has. It
+        deliberately does NOT touch ``geo_distances`` / ``geo_distance_unit``:
+        those are written directly into the carrier by
+        ``_filter_for_keys_set_with_state`` at the moment they are produced,
+        and snapshotting them here — after the fact, off ``self`` — would
+        reopen the exact race this method exists to avoid for the other seven
+        fields. When ``into`` is given, fill that carrier in place and return
+        it, so any geo data already written into it survives; otherwise build
+        a fresh ``_PushdownState``.
         """
-        return _PushdownState(
-            sorted_field_order=getattr(self, "_sorted_field_order", None),
-            sorted_field_name=getattr(self, "_sorted_field_name", None),
-            pending_client_filters=dict(
-                getattr(self, "_pending_client_filters", None) or {}
-            ),
-            pushdown_limit=getattr(self, "_pushdown_limit", None),
-            pushdown_requested=getattr(self, "_pushdown_requested", 0),
-            pushdown_fetched=getattr(self, "_pushdown_fetched", 0),
-            pushdown_partition=dict(getattr(self, "_pushdown_partition", None) or {}),
+        state = into if into is not None else _PushdownState()
+        state.sorted_field_order = getattr(self, "_sorted_field_order", None)
+        state.sorted_field_name = getattr(self, "_sorted_field_name", None)
+        state.pending_client_filters = dict(
+            getattr(self, "_pending_client_filters", None) or {}
         )
+        state.pushdown_limit = getattr(self, "_pushdown_limit", None)
+        state.pushdown_requested = getattr(self, "_pushdown_requested", 0)
+        state.pushdown_fetched = getattr(self, "_pushdown_fetched", 0)
+        state.pushdown_partition = dict(
+            getattr(self, "_pushdown_partition", None) or {}
+        )
+        return state
 
     def _filter_keys_with_pushdown(
         self, allow_pushdown: bool, kwargs: "dict[str, Any]"
@@ -2535,12 +2572,13 @@ class Query:
         I/O, so its reset can otherwise land between another call's populate and
         its snapshot.
         """
+        state = _PushdownState()
         self._pushdown_allowed = allow_pushdown
         try:
-            db_keys = self.filter_for_keys_set(**kwargs)
+            db_keys = self._filter_for_keys_set_with_state(state, **kwargs)
         finally:
             self._pushdown_allowed = False
-        return db_keys, self._snapshot_pushdown_state()
+        return db_keys, self._snapshot_pushdown_state(into=state)
 
     def _bound_keys_before_hydration(
         self,
@@ -2741,6 +2779,17 @@ class Query:
         `_PushdownState` carrier from `_filter_keys_with_pushdown` instead of
         reading these attributes back off the instance.
 
+        Geo results (`_geo_distances` / `_geo_distance_unit`) travel through a
+        per-call `_PushdownState` carrier rather than shared instance state —
+        this wrapper builds a throwaway one and delegates to
+        `_filter_for_keys_set_with_state`, which is also where callers that
+        already hold a carrier (e.g. `_filter_keys_with_pushdown`, Q-object
+        evaluation) route instead of coming through here. `self._geo_distances`
+        / `self._geo_distance_unit` are still written as a back-compat mirror
+        (by the delegate, so every path updates them), but nothing in this
+        codebase reads them back — they exist only for an unknown downstream
+        reader.
+
         Processing Order:
         ----------------
         1. **Sorted fields first**: SortedFields use Redis sorted sets with range
@@ -2771,6 +2820,31 @@ class Query:
             This method does not apply ordering or limits - it only identifies
             matching keys. Use `filter()` for the complete query pipeline.
         """
+        # Throwaway carrier: this path has no caller-supplied one.
+        return self._filter_for_keys_set_with_state(_PushdownState(), **kwargs)
+
+    def _filter_for_keys_set_with_state(
+        self, state: "_PushdownState", **kwargs: Any
+    ) -> "set[Any]":
+        """Delegate holding the body of `filter_for_keys_set`, state-taking.
+
+        `state` is positional-only by convention (never pass it as a keyword):
+        `**kwargs` here are candidate model field names, and this repo ships a
+        field literally named `state`
+        (`src/popoto/extraction/decision_log.py`), so a keyword-only `state=`
+        parameter would silently swallow a real filter value instead of
+        raising. Taking it positionally means no field name can ever collide
+        with it.
+
+        Geo results are written directly into `state.geo_distances` /
+        `state.geo_distance_unit` at the moment they are produced — never
+        snapshotted after the fact (see `_PushdownState` and
+        `_snapshot_pushdown_state`). The back-compat mirror onto
+        `self._geo_distances` / `self._geo_distance_unit` is written once,
+        here, immediately before returning, so every caller (the public
+        wrapper, `_filter_keys_with_pushdown`, Q-object evaluation) keeps it
+        current.
+        """
         db_keys_sets = []
         self._sorted_field_order = None
         self._sorted_field_name = None
@@ -2783,8 +2857,10 @@ class Query:
             {"limit", "order_by", "values"}
         )
         if not len(yet_employed_kwargs_set):
-            # No filter criteria - return all keys (same as all())
-            return set(self.keys())
+            # No filter criteria - return all keys (same as all()). No geo
+            # field was queried, so state.geo_distances is still empty; fall
+            # through to the single mirror-and-return at the bottom.
+            return self._finish_filter_for_keys_set_with_state(state, set(self.keys()))
 
         # todo: use redis.SINTER for keyfield exact match filters
 
@@ -2828,8 +2904,8 @@ class Query:
             # Handle tuple return from GeoField with distances
             if isinstance(result, tuple) and len(result) == 3:
                 keys_set, distances, unit = result
-                self._geo_distances.update(distances)
-                self._geo_distance_unit = unit
+                state.geo_distances.update(distances)
+                state.geo_distance_unit = unit
                 db_keys_sets.append(keys_set)
             else:
                 # result is now a list (preserving ZRANGEBYSCORE order)
@@ -2868,8 +2944,8 @@ class Query:
             # Handle tuple return from GeoField with distances
             if isinstance(result, tuple) and len(result) == 3:
                 keys_set, distances, unit = result
-                self._geo_distances.update(distances)
-                self._geo_distance_unit = unit
+                state.geo_distances.update(distances)
+                state.geo_distance_unit = unit
                 db_keys_sets.append(keys_set)
             else:
                 db_keys_sets.append(result)
@@ -2900,8 +2976,10 @@ class Query:
         if not len(db_keys_sets):
             if self._pending_client_filters:
                 # Only plain field filters — load all keys for client-side filtering
-                return set(self.keys())
-            return set()
+                return self._finish_filter_for_keys_set_with_state(
+                    state, set(self.keys())
+                )
+            return self._finish_filter_for_keys_set_with_state(state, set())
         # return intersection of all the db keys sets, effectively &&-ing all filters
         intersection = set.intersection(*db_keys_sets)
         if self._sorted_field_order is not None:
@@ -2909,9 +2987,28 @@ class Query:
             self._sorted_field_order = [
                 k for k in self._sorted_field_order if k in matched_keys
             ]
-        return intersection
+        return self._finish_filter_for_keys_set_with_state(state, intersection)
 
-    def _evaluate_filter_args(self, q_objects: list, kwargs: dict) -> set:
+    def _finish_filter_for_keys_set_with_state(
+        self, state: "_PushdownState", result: "set[Any]"
+    ) -> "set[Any]":
+        """Write the back-compat geo mirror and return the delegate's result.
+
+        Every return path of `_filter_for_keys_set_with_state` funnels
+        through here so the mirror is written in exactly one place in this
+        file, regardless of which early-return branch produced the result.
+        """
+        self._geo_distances = state.geo_distances
+        self._geo_distance_unit = state.geo_distance_unit
+        return result
+
+    def _evaluate_filter_args(
+        self,
+        q_objects: list,
+        kwargs: dict,
+        *,
+        state: "Optional[_PushdownState]" = None,
+    ) -> "set[Any]":
         """Evaluate filter arguments including Q objects and return matching keys.
 
         This method handles both traditional kwargs filtering and Q object
@@ -2921,6 +3018,12 @@ class Query:
         Args:
             q_objects: List of Q objects for complex query expressions
             kwargs: Dict of filter parameters and result modifiers
+            state: Optional carrier. When given, every internal
+                `filter_for_keys_set` call routes to
+                `_filter_for_keys_set_with_state(state, ...)` instead, so geo
+                distances produced by Q-object leaves and by the kwargs
+                filter accumulate into the caller's carrier rather than being
+                lost on a throwaway one.
 
         Returns:
             Set of Redis keys matching all filter criteria.
@@ -2942,6 +3045,8 @@ class Query:
 
         if not q_objects:
             # No Q objects - use traditional filtering
+            if state is not None:
+                return self._filter_for_keys_set_with_state(state, **kwargs)
             return self.filter_for_keys_set(**kwargs)
 
         # Evaluate Q objects
@@ -2949,11 +3054,14 @@ class Query:
         all_keys = None  # Lazy-loaded for negation operations
 
         for q_obj in q_objects:
-            result_sets.append(evaluate_q(self, q_obj, all_keys))
+            result_sets.append(evaluate_q(self, q_obj, all_keys, state=state))
 
         # If there are also kwargs filters, include them
         if filter_kwargs:
-            kwargs_result = self.filter_for_keys_set(**kwargs)
+            if state is not None:
+                kwargs_result = self._filter_for_keys_set_with_state(state, **kwargs)
+            else:
+                kwargs_result = self.filter_for_keys_set(**kwargs)
             result_sets.append(kwargs_result)
 
         # Intersect all result sets (AND logic between multiple Q args and kwargs)
@@ -3295,21 +3403,25 @@ class Query:
         Returns:
             List of Model instances or dicts
         """
-        # Reset geo distances for this query
-        self._geo_distances = {}
-        self._geo_distance_unit = None
-
         # Use _evaluate_filter_args if Q objects present, otherwise filter_for_keys_set
         if q_objects:
             self._pushdown_allowed = False
-            db_keys_set = self._evaluate_filter_args(q_objects, kwargs)
+            # Build the carrier before evaluating, so any geo distances a
+            # leaf's filter_query produces have somewhere to land (a fresh
+            # carrier per call *is* the reset — no separate self._geo_* clear
+            # is needed).
+            state = _PushdownState()
+            db_keys_set = self._evaluate_filter_args(q_objects, kwargs, state=state)
             # Q objects combine results from multiple filter_for_keys_set calls,
             # so _sorted_field_order is unreliable — clear it
             self._sorted_field_order = None
             self._sorted_field_name = None
-            # Snapshot AFTER the clear so the "ordering is unreliable" decision
-            # travels in the carrier like every other per-call fact.
-            state = self._snapshot_pushdown_state()
+            # Snapshot the seven non-geo fields AFTER the clear so the
+            # "ordering is unreliable" decision travels in the carrier like
+            # every other per-call fact. Fill `state` in place — it already
+            # holds the geo distances the Q evaluation wrote into it, and a
+            # bare no-arg snapshot here would silently drop them.
+            self._snapshot_pushdown_state(into=state)
         else:
             # Arm, query and snapshot in one hop that contains no yield point,
             # so nothing below re-reads bookkeeping off the shared instance.
@@ -3391,11 +3503,13 @@ class Query:
                     filtered.append(obj)
             objects = filtered
 
-        # Attach geo distances to objects if available
-        if self._geo_distances:
+        # Attach geo distances to objects if available. Read off the carrier,
+        # not self._geo_distances — the carrier is the one this call's own
+        # key query wrote into, immune to another thread's reset/update.
+        if state.geo_distances:
             # Normalize distance dict keys to strings for consistent lookup
             normalized_distances = {}
-            for key, dist in self._geo_distances.items():
+            for key, dist in state.geo_distances.items():
                 if isinstance(key, bytes):
                     normalized_distances[key.decode()] = dist
                 else:
@@ -3411,7 +3525,7 @@ class Query:
                 distance = normalized_distances.get(redis_key)
                 if distance is not None:
                     obj._geo_distance = distance
-                    obj._geo_distance_unit = self._geo_distance_unit
+                    obj._geo_distance_unit = state.geo_distance_unit
 
             # Sort by distance (ascending) to preserve geo-sorted order
             # Only sort model objects, not dicts
@@ -3841,10 +3955,12 @@ class Query:
             Object loading uses native async Redis for better performance on
             bulk data retrieval.
         """
-        # Reset geo distances for this query
-        self._geo_distances = {}
-        self._geo_distance_unit = None
-
+        # A fresh _PushdownState per call (built inside
+        # _filter_keys_with_pushdown below) is the reset — no separate
+        # self._geo_* clear is needed, and none is safe here: async_filter
+        # runs on the event-loop thread while filter_for_keys_set mutates
+        # inside the to_thread worker, so a reset on self could race that
+        # worker's write.
         # Get keys using sync method in thread pool (field query implementations
         # are sync). Arming the pushdown, running the query and snapshotting its
         # bookkeeping all happen inside that one hop, under a per-loop lock:
@@ -3918,10 +4034,13 @@ class Query:
                     filtered.append(obj)
             objects = filtered
 
-        # Attach geo distances to objects if available
-        if self._geo_distances:
+        # Attach geo distances to objects if available. Read off the carrier
+        # (written by the worker thread inside _filter_keys_with_pushdown),
+        # never self._geo_distances — see the note above about the
+        # loop-thread/worker-thread split.
+        if state.geo_distances:
             normalized_distances = {}
-            for key, dist in self._geo_distances.items():
+            for key, dist in state.geo_distances.items():
                 if isinstance(key, bytes):
                     normalized_distances[key.decode()] = dist
                 else:
@@ -3936,7 +4055,7 @@ class Query:
                 distance = normalized_distances.get(redis_key)
                 if distance is not None:
                     obj._geo_distance = distance
-                    obj._geo_distance_unit = self._geo_distance_unit
+                    obj._geo_distance_unit = state.geo_distance_unit
 
             model_objects = [o for o in objects if not isinstance(o, dict)]
             dict_objects = [o for o in objects if isinstance(o, dict)]
