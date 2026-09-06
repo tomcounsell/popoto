@@ -90,6 +90,15 @@ issue text.
   the test guard refuses*. Established that a bind resolving to DB 0 is refused
   rather than silently honoured. Closed. This is precisely what makes "just
   delete the variable" less safe than it looks.
+- **#549 / PR #605**: *test_pytest_plugin.py hardcodes DB 15* → *resolve the
+  expected test DB instead of hardcoding 15* (MERGED). The repo's closest
+  precedent on the exact hardcode-vs-resolve tension this plan argues through.
+  Five assertions hardcoded the literal `15` and broke under a `POPOTO_TEST_DB`
+  override; the fix was to resolve the DB dynamically. The drift guard below
+  already honours that precedent — it reads `popoto_test_db` from
+  `pyproject.toml` rather than asserting a literal — and the workflow constant
+  is safe against it because no CI workflow sets `POPOTO_TEST_DB` (see
+  Technical Approach point 2). Surfaced by the plan critique.
 
 ## Research
 
@@ -167,7 +176,9 @@ that names no database, sitting in the environment of every CI step.
   pytest plugin isolates onto — instead of naming none.
 - **A drift guard test**: asserts the database number in the workflow's
   `REDIS_URL` equals `popoto_test_db` in `pyproject.toml`, so the two cannot
-  silently disagree later.
+  silently disagree later — and, symmetrically, that if any workflow ever sets
+  `POPOTO_TEST_DB`, it names the same database. Both halves guard the same
+  invariant: everything CI can bind with resolves to one database.
 
 ### Flow
 
@@ -202,7 +213,9 @@ Option 1 is the only candidate under which a from-env bind in CI actually
 contradicts a `POPOTO_TEST_DB` override, which parallel worktree lanes rely on.
 That objection is about *developer machines*, where lanes genuinely do vary the
 DB (this lane is on DB 6). **No workflow in `.github/workflows/` sets
-`POPOTO_TEST_DB` at all** — verified — so in CI the database is always
+`POPOTO_TEST_DB` at all** — verified by `grep -rn 'POPOTO_TEST_DB'
+.github/`, which returns no matches (exit code 1) — so in CI the database is
+always
 `pyproject.toml`'s `popoto_test_db = "15"`. There is no override to contradict.
 Inheriting the #635 conclusion here would be inheriting a premise that is false
 in this environment.
@@ -229,6 +242,24 @@ not be waved away. It is closed cheaply by a test that parses both files and
 asserts they agree. That test needs no Redis and no CI, so unlike the change
 itself it is provable locally.
 
+The critique raised a second drift vector on the same invariant: `_swap_db`
+makes `POPOTO_TEST_DB` — not `pyproject.toml` — the actual authority for the
+plugin's database (`src/popoto/pytest_plugin.py:288-306`). A future workflow
+edit that introduced `POPOTO_TEST_DB` would move Path A while the hardcoded
+`REDIS_URL` held Path B on 15, reproducing exactly the split-brain this section
+argues against, with a one-sided guard still green. The guard therefore asserts
+both directions. Today the second assertion is vacuous (no workflow sets the
+variable), which is the point: it fires the moment that stops being true.
+
+The critique also questioned whether a new permanent test belongs in a
+two-line workflow fix at all, since none of the issue's three options proposed
+one. The guard stays, because it is not decoration on the fix — it is the
+mitigation that makes option 1 defensible instead of merely convenient.
+Choosing option 1 without it would leave the plan's own Risk 2 unanswered and
+the departure from #635 unearned. What the objection does correctly identify is
+over-specification, so the guard is scoped down below to two assertions with
+plain messages rather than an enumerated failure-mode spec.
+
 **Considered and rejected:** deriving the workflow's `REDIS_URL` from
 `pyproject.toml` at job setup (a step that writes `GITHUB_ENV`). It removes the
 duplication at its root, but adds a scripted step to both jobs to eliminate a
@@ -243,13 +274,12 @@ for a fraction of the moving parts.
   test; neither introduces nor modifies a `try`/`except` block.
 
 ### Empty/Invalid Input Handling
-- The new drift test parses two files that are committed to the repo. Its
-  failure modes are: the workflow key is missing, the URL has no database
-  component, or the two numbers disagree. The test must fail with a message
-  naming both observed values in all three cases, rather than raising an
-  opaque `AttributeError` or `IndexError` on a `None`/no-match — otherwise a
-  future editor sees a stack trace instead of "workflow says 15, pyproject says
-  14".
+- The new drift test parses two files that are committed to the repo. Every
+  failure must name both observed values ("workflow says 15, pyproject says
+  14") rather than raising an opaque `AttributeError`/`IndexError` on a
+  `None`/no-match, so a future editor sees the disagreement instead of a stack
+  trace. That is the whole requirement; the builder owns how many assertions it
+  takes.
 
 ### Error State Rendering
 - No user-visible output. This is CI configuration.
@@ -359,7 +389,9 @@ test. No tool or MCP surface is involved.
 
 - [ ] Both `tests.yml` jobs set `REDIS_URL` with an explicit database number
       matching `popoto_test_db`
-- [ ] A guard test fails if the workflow and `pyproject.toml` disagree
+- [ ] A guard test fails if the workflow and `pyproject.toml` disagree, in
+      either direction (`REDIS_URL`'s database component, and `POPOTO_TEST_DB`
+      if a workflow ever sets it)
 - [ ] The `pytest (Redis)` and `pytest (Valkey)` jobs are both green on the PR
 - [ ] The relationship to #635 is recorded in the PR body so the two are not
       re-litigated separately
@@ -394,14 +426,17 @@ this size.
 - Set `REDIS_URL: redis://localhost:6379/15` at `.github/workflows/tests.yml:51`
   and `:121`, with a comment above each naming `popoto_test_db` and the guard
   test.
-- Create `tests/test_ci_workflow_redis_url.py`: parse the database component of
-  `REDIS_URL` from both job `env:` blocks and compare against `popoto_test_db`
-  in `pyproject.toml`. Assert both jobs are covered (so a future third job
-  cannot slip through unchecked) and that the URL has a database component at
-  all. Every failure message must name both observed values.
-- Do not use a YAML library unless one is already a test dependency; if not,
-  parse the two lines directly rather than adding a dependency for a
-  three-field read.
+- Create `tests/test_ci_workflow_redis_url.py` with two assertions:
+  1. Every `REDIS_URL` in `.github/workflows/` has a database component, and
+     that component equals `popoto_test_db` in `pyproject.toml`. Covering
+     *every* occurrence rather than the two known lines means a future third
+     job cannot slip through unchecked.
+  2. If any workflow sets `POPOTO_TEST_DB`, its value equals `popoto_test_db`
+     too. Vacuous today (no workflow sets it) and deliberately so — it exists
+     to fire when that changes. See Technical Approach point 4.
+  Failure messages must name both observed values.
+- Outcome constraint, not an implementation directive: this check must not add
+  a new test dependency. How the two files get parsed is the builder's call.
 
 ### 2. Verify locally, then on CI
 
@@ -410,17 +445,38 @@ this size.
 - **Assigned To**: `ci-config-builder`
 - **Agent Type**: builder
 - **Parallel**: false
-- Run the guard test, plus the three files containing ambient sites, on DB 6.
+- Run the guard test, plus the two files containing ambient sites and
+  `test_integrations_mcp.py` (the #637 regression check), on DB 6.
 - Confirm the guard actually fails when the two values disagree (red-state
   proof — temporarily edit one, observe the failure and its message, revert).
+  Do the same for the `POPOTO_TEST_DB` assertion by temporarily adding a
+  disagreeing value to one job's `env:`, since it is vacuous otherwise and an
+  always-green assertion proves nothing.
+- Write the PR body: it must state the relationship to #635 (same hazard class,
+  opposite remedy) and why, so the two are not re-litigated separately, and
+  must note that only CI can prove the workflow half.
 - Push and read the Redis and Valkey job results; iterate on the PR.
+
+### 3. Record the coupling in CLAUDE.md
+
+- **Task ID**: docs-ci-redis-url
+- **Depends On**: validate-ci-redis-url
+- **Assigned To**: `ci-config-builder`
+- **Agent Type**: builder
+- **Parallel**: false
+- The `ci-local.sh` paragraph added by #635 states the script does not export
+  `REDIS_URL`. Record that `tests.yml` takes the opposite approach and why, so
+  the two do not read as an inconsistency. Handled in the DOCS stage if
+  `/do-docs` reaches it first; this task exists so the Documentation section
+  maps to a task rather than to nothing.
 
 ## Verification
 
 | Check | Command | Expected |
 |---|---|---|
 | Drift guard passes | `POPOTO_TEST_DB=6 .venv/bin/python -m pytest tests/test_ci_workflow_redis_url.py -q` | exit code 0 |
-| Ambient-site files unaffected | `POPOTO_TEST_DB=6 .venv/bin/python -m pytest tests/test_pytest_plugin.py tests/test_production_contracts.py tests/test_integrations_mcp.py -q` | exit code 0 |
+| Ambient-site files unaffected | `POPOTO_TEST_DB=6 .venv/bin/python -m pytest tests/test_pytest_plugin.py tests/test_production_contracts.py -q` | exit code 0 |
+| No regression on #637's fix | `POPOTO_TEST_DB=6 .venv/bin/python -m pytest tests/test_integrations_mcp.py -q` | exit code 0 |
 | No db-less REDIS_URL left in any workflow | `grep -rn 'redis://localhost:6379$' .github/workflows/` | exit code 1 |
 | Both jobs carry a database number | `grep -c 'REDIS_URL: redis://localhost:6379/15' .github/workflows/tests.yml` | output contains 2 |
 | Workflow and pyproject agree | `grep -o 'popoto_test_db = "[0-9]*"' pyproject.toml` | output contains 15 |
@@ -430,7 +486,28 @@ this size.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Depth:** FULL (3 critics, independent roster) · **Verdict:** NEEDS REVISION →
+revised in one round, routed to BUILD · **Findings:** 6 (0 blockers, 3
+concerns, 3 nits)
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | CONCERN | Drift guard checks only `REDIS_URL` vs `pyproject.toml`; `_swap_db` makes `POPOTO_TEST_DB` the real authority for Path A, so a future workflow adding it would split-brain with the guard still green | **Accepted.** Second assertion added (Technical Approach point 4, Task 1). |
+| 2 | CONCERN | The drift guard is scope creep — none of the issue's three options proposed a new permanent test | **Partly accepted.** Guard kept (it is what makes option 1 defensible rather than merely convenient); its spec scaled back from enumerated failure modes to two assertions with plain messages. |
+| 3 | CONCERN | Prior Art omits #549 / PR #605, the repo's closest precedent on hardcode-vs-resolve | **Accepted.** Bullet added; both verified to exist via `gh`. |
+| 4 | NIT | "No workflow sets `POPOTO_TEST_DB`" was asserted without evidence | **Accepted.** Verifying command and its result inlined. |
+| 5 | NIT | Task 1 over-specified the parsing method | **Accepted.** Restated as an outcome constraint ("no new test dependency"). |
+| 6 | NIT | Verification table lists `test_integrations_mcp.py` as an ambient site; it clears `REDIS_URL` itself at `tests/test_integrations_mcp.py:334` | **Accepted.** Split into its own "no regression on #637's fix" row. |
+
+Structural checks: all required sections present and non-empty; task numbering
+and dependencies valid, no cycles; every referenced path exists except
+`tests/test_ci_workflow_redis_url.py`, which this plan creates. One orphaned
+success criterion (the #635 relationship in the PR body) and one unmapped
+Documentation item (`CLAUDE.md`) now map to Tasks 2 and 3.
+
+Findings 1 and 2 flag the same component from opposite directions — one wanting
+the guard stronger, one wanting it gone. Resolved by keeping it and taking the
+actionable half of each.
 
 ---
 
@@ -439,4 +516,9 @@ this size.
 1. The plan departs from the #635 precedent (option 1 rather than option 2) on
    the grounds that `DEFAULT_URL` is `.../0`, so deleting the variable trades a
    "no database" refusal for a "database 0" refusal without fixing the class.
-   Confirm that reading, since the issue itself recommends option 2.
+   Confirm that reading, since the issue itself recommends option 2. The
+   critique did not challenge the departure itself — no critic argued for
+   option 2, and the one objection near it (finding 2) was about the guard's
+   size, not the choice. So this remains a supervisor confirmation, not an
+   unresolved technical question; BUILD proceeds on option 1 unless told
+   otherwise.
