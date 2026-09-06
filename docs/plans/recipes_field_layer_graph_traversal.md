@@ -103,19 +103,144 @@ introduces no command that is not already issued today.
 
 ## Data Flow
 
-_TBD_
+1. **Entry point**: `traverse(...)` (line 354) → `expand_relationships(model_class,
+   seeds, relationship_field_names, hops, fanout_limit, ...)` (line 106).
+2. **Per hop, per frontier node**: for each self-referential `Relationship`
+   field name, the loop does a forward expansion (`load` the instance, resolve
+   the field value to a pk) and a reverse expansion.
+3. **Reverse expansion (the site this plan changes)**: `pk` (a redis_key string)
+   + `field_name` are turned into the reverse index key, one `SRANDMEMBER key
+   fanout_limit` is issued, and the returned members are decoded to `str`.
+4. **Output**: decoded member pks are folded into `next_weights` at
+   `hop_weight`, deduplicated against `visited`, and returned as the
+   `{pk: weight}` result map.
+
+After this change, step 3's key construction, command issue, and decode move
+behind one `Relationship` classmethod call; steps 1, 2 and 4 are untouched.
 
 ## Appetite
 
-_TBD_
+**Size:** Small
+
+**Team:** Solo dev, PM, code reviewer
+
+**Interactions:**
+- PM check-ins: 1 (the two design questions the PM asked to be argued, answered
+  in Solution below before build starts)
+- Review rounds: 1
 
 ## Prerequisites
 
-_TBD_
+| Requirement | Check Command | Purpose |
+|---|---|---|
+| Redis/Valkey reachable on DB 9 | `redis-cli -n 9 PING` | Lane-isolated test database (never DB 0 — live agent store) |
+| Worktree venv resolves to this checkout | `.venv/bin/python -c "import popoto, pathlib; print(pathlib.Path(popoto.__file__).resolve())"` | The wrong-package trap (CLAUDE.md, worktree gotcha 1) |
+| Optional extras installed | `.venv/bin/python -c "import numpy, sentence_transformers, mcp"` | Otherwise ~95 tests silently deselect (worktree gotcha 2) |
 
 ## Solution
 
-_TBD_
+### The two design decisions the PM asked to be argued
+
+**Decision 1 — a new PUBLIC classmethod on `Relationship`, not a private
+helper.** Three arguments, in descending weight:
+
+1. *No existing API can express the read.* Demonstrated in Problem above:
+   `filter_query` is unbounded, instance-only, and pipeline-wrapping. A
+   bounded sample of a reverse index is a genuinely new capability of the
+   field, not a rephrasing of one it already has.
+2. *A leading-underscore helper called from another module is the worst of both
+   worlds.* It would carry every maintenance obligation of a public API (a
+   second module depends on its signature and its return contract) while
+   advertising that callers may ignore it. The private-helper option only wins
+   when the caller and the helper live in the same module; here they do not.
+3. *Precedent.* `ValidityField.get_valid_from` is exactly this shape — a public
+   classmethod on a field class wrapping one read of that field's own index —
+   and PR #644 used it for exactly this purpose. `Field` already exposes
+   `get_special_use_field_db_key` publicly for the same reason.
+
+The counter-argument ("one call site does not justify public API surface") is
+real but weaker than it looks: the site count is one *today* because
+`memory_lifecycle` (#649) and `context_assembler` (#648) have not been
+converted yet, and reverse-index sampling is the natural primitive for any
+recipe that walks edges. Even if it stayed at one caller forever, the
+alternative is not "less API" — it is the same knowledge duplicated in a recipe
+where no field-layer change can find it.
+
+**Decision 2 — the signature is NOT `sample_reverse(pk, n)`.** The issue's
+suggested shape cannot name the index it reads. Building the reverse key needs
+three inputs, not one: the model class, the field name, and the related key. A
+two-argument `sample_reverse(pk, n)` would have to be an *instance* method on a
+bound field to recover the other two, and `Relationship`'s existing index
+methods (`on_save`, `on_delete`, `filter_query`) are all classmethods taking
+`(model, field_name, ...)`. Mirroring them:
+
+```python
+@classmethod
+def sample_related_keys(
+    cls,
+    model: Type["Model"],
+    field_name: str,
+    related_key: Union[str, DB_key],
+    count: int,
+) -> list[str]:
+```
+
+- `model`, `field_name` — same leading pair as `filter_query`, so the family
+  reads consistently.
+- `related_key` — accepts either a `DB_key` (used as-is, like `filter_query`
+  uses `query_value.db_key`) or a `str` redis_key, which is parsed with
+  `DB_key.from_redis_key`. This is where the colon trap moves: the recipe stops
+  needing to know that `DB_key(str)` escapes and `from_redis_key(str)`
+  unescapes, because the field owns it.
+- `count` — passed through to `SRANDMEMBER` unchanged, deliberately unvalidated
+  (see Risks). `fanout_limit` is a public parameter of `expand_relationships`,
+  so callers can already pass any int; adding validation here would change
+  observable behavior and break the byte-identical contract.
+- Returns `list[str]` — members decoded from bytes inside the method. Decoding
+  is the storage layer's contract, and centralizing it means a future
+  `decode_responses=True` client is a one-line change in one place.
+
+**Decision 3 (unasked, but the PM invited a call) — do NOT pair #646 with
+#647.** Three reasons: (a) #647's substance is a different argument entirely —
+whether the recipe should keep owning `TD_UPDATE_LUA` or whether the Lua moves
+into a field — and merging the two would bury it; (b) two closing keywords in
+one PR re-creates in miniature the one-slot-many-PRs problem the #630 split
+just fixed, since each sub-issue now has its own plan slot and its own
+`session-ensure` run; (c) a thin PR is not a defect. #646's whole value is that
+it is small enough to verify exhaustively.
+
+### Key Elements
+
+- **`Relationship.sample_related_keys`** (new, public): builds the reverse index
+  key, issues one `SRANDMEMBER`, returns decoded `str` members.
+- **`graph_traversal.expand_relationships`** (modified): calls it; drops the
+  hand-built key, the direct client call, and the decode loop.
+- **Module imports** (modified): `graph_traversal.py` drops both
+  `from ..models.db_key import DB_key` and
+  `from ..redis_db import POPOTO_REDIS_DB` — after the swap neither is used
+  anywhere in the file, so the recipe stops importing the client at all.
+
+### Flow
+
+`traverse()` → `expand_relationships()` → **`Relationship.sample_related_keys(model_class, field_name, pk, fanout_limit)`** → one `SRANDMEMBER` → `list[str]` → weight accumulation → result map
+
+### Technical Approach
+
+- **What stays in the recipe:** the `try/except Exception` around the reverse
+  lookup and its `logger.warning("graph_traversal: reverse lookup failed ...")`.
+  Degradation policy belongs to the traversal — "a failed reverse hop yields no
+  neighbors and the walk continues" is a traversal decision, and the log
+  message names the recipe. The new field method must therefore **not** catch
+  exceptions; it propagates, and the recipe keeps deciding what a failure means.
+- **What moves into the field:** key construction, the `from_redis_key` parse,
+  the `SRANDMEMBER` issue, and the bytes→str decode.
+- **Byte-identical constraint:** exactly one `SRANDMEMBER key count` is emitted,
+  with the same key bytes and the same count, in the same position in the
+  sequence. No pipeline, no extra `EXISTS`, no validation round trip. This is
+  verified empirically, not by inspection — see Success Criteria.
+- **Non-goal:** this is not itself the storage-backend seam. Like
+  `popoto.batch()` in #644, it is a prerequisite — it removes one more direct
+  client consumer so that a future seam has fewer places to intercept.
 
 ## Failure Path Test Strategy
 
