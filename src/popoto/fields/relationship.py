@@ -38,7 +38,7 @@ Example:
     memberships = Membership.query.filter(person__name="Alice")
 """
 
-from typing import TYPE_CHECKING, Type, Union
+from typing import TYPE_CHECKING, Any, Union
 import redis
 from .field import Field
 import logging
@@ -529,7 +529,7 @@ class Relationship(Field):
     @classmethod
     def sample_related_keys(
         cls,
-        model: Type["Model"],
+        model: "Model",
         field_name: str,
         related_key: Union[str, DB_key],
         count: int,
@@ -550,7 +550,10 @@ class Relationship(Field):
         than a key, and it wraps its reads in a pipeline.
 
         Args:
-            model: The Model class owning the Relationship field.
+            model: The Model class owning the Relationship field. Typed
+                ``"Model"`` rather than ``Type["Model"]`` to match
+                :meth:`filter_query` and :meth:`on_save`, which are annotated
+                the same way and are likewise called with the class.
             field_name: The name of the Relationship field.
             related_key: The key of the related instance being pointed at.
                 A ``DB_key`` is used as-is; a ``str`` is parsed with
@@ -581,8 +584,8 @@ class Relationship(Field):
             cls.get_special_use_field_db_key(model, field_name),
             related_db_key,
         ).redis_key
-        members = POPOTO_REDIS_DB.srandmember(reverse_index_key, count)
+        members: Any = POPOTO_REDIS_DB.srandmember(reverse_index_key, count)
         return [
-            member.decode("utf-8") if isinstance(member, bytes) else member
+            member.decode("utf-8") if isinstance(member, bytes) else str(member)
             for member in members or []
         ]
