@@ -392,16 +392,203 @@ this worktree.
 
 ## Rabbit Holes
 
+- **Designing the storage-backend operation vocabulary.** Rejected above. If
+  the build starts sketching a backend `td_update`, stop.
+- **Generalizing to "any atomic single-field hash update".** A generic
+  `Model.hset_field` / `refresh_field` is a tempting adjacent API (spike-1
+  showed none exists). It is out of scope: it would need an encoding contract,
+  an index-consistency story with `IndexedFieldMixin`, and a much larger test
+  surface. Build the narrow field.
+- **Rewriting the Lua for clarity.** The script is dense and the `__Decimal__`
+  branch reads awkwardly. Leave it byte-identical; readability edits change the
+  SHA and forfeit the parity argument.
+- **Fixing `expected_value` / `base_score_field`'s silent `1.0` fallback.**
+  Spike-3 surfaced a real latent hazard: an unexpected encoding degrades
+  silently. It deserves its own issue, not this PR.
+- **Touching the other five #630 recipes.** One recipe, one PR.
+- **Adding a pipeline parameter to the public `update_q_value`.** The field
+  gets one; the recipe shim's signature stays exactly as documented.
+
 ## Risks
+
+### Risk 1: A moved script that is not byte-identical
+
+Any whitespace change alters the `Script` SHA and the `EVALSHA` payload,
+breaking the parity claim even though behavior is identical. **Mitigation:**
+move by cut-and-paste, then verify with a diff of the extracted constant
+between base and branch (`git show origin/main:src/popoto/recipes/policy_cache.py`
+vs the new module) before running anything.
+
+### Risk 2: Field-class swap changes the on-disk encoding
+
+If `TDValueField` fails to inherit `DecimalField`'s `type=Decimal`, the
+`q_value` column encodes differently and `DECAY_SCORE_LUA` silently falls back
+to `1.0` — ranking regresses with no exception. **Mitigation:**
+`TDValueField(DecimalField)` with no `__init__` override of `type`, plus the
+existing `test_rank_derives_from_stored_q_value` and
+`test_decay_rank_with_missing_q_value` as detectors, plus the command capture.
+
+### Risk 3: Import cycle
+
+`fields/td_value_field.py` importing from `redis_db` at module level, or
+`recipes/policy_cache.py` re-exporting from it, can create a cycle with
+`fields/shortcuts.py`. **Mitigation:** import the client inside the function
+(which the call-time-resolution rule already requires) and keep the new module
+importing only `DecimalField`, `Defaults`, and `run_lua`.
+
+### Risk 4: `ruff` F401 on the now-unused `POPOTO_REDIS_DB` / `run_lua` import
+
+Same failure PR #644 hit. **Mitigation:** delete the import in the same commit
+as the call-site swap and run `ruff check src/` before pushing.
+
+### Risk 5: A re-export that is not a real re-export
+
+Downstream code and the guide import `TD_UPDATE_LUA` from
+`popoto.recipes.policy_cache`. If the name is dropped rather than re-exported,
+that is a silent breaking change in a "no behavior change" PR.
+**Mitigation:** explicit re-export plus a test asserting
+`policy_cache.TD_UPDATE_LUA is td_value_field.TD_UPDATE_LUA`.
+
+### Risk 6: mypy ratchet
+
+The new module adds typed surface; the ratchet
+(`scripts/mypy_ratchet.py`) fails if the total rises above baseline. `fields/`
+is not in the `clean` allowlist, so a small increase is survivable only if the
+total stays at or below baseline. **Mitigation:** annotate the new
+module fully; measure the ratchet in this worktree's environment and state the
+redis-py version alongside the number.
 
 ## Race Conditions
 
+Unchanged by this PR, and that is the point. The TD update's atomicity comes
+entirely from being a single `EVALSHA` — read-modify-write of `q_value` happens
+server-side in one script invocation. Two concurrent `td_update` calls on the
+same instance serialize at the server, exactly as before. Nothing in the
+refactor moves the read or the write out of the script, and nothing introduces
+a client-side round trip between them.
+
+The one thing to guard: `td_update` must **not** be reimplemented as a
+Python-side `HGET`, compute, `HSET`. That would be a lost-update race and is a
+build-time blocker, not a review nit.
+
 ## No-Gos (Out of Scope)
+
+- The other five recipes in the #630 series (#646, #648, #649 and the rest).
+- Any storage-backend abstraction or backend-level operation vocabulary.
+- A generic single-field hash accessor on `Model`.
+- Changing `DecayingSortedField`'s `base_score_field` decode fallback.
+- Changing any tuning constant value, or promoting `alpha`/`gamma` to user
+  config (CLAUDE.md: these are magic numbers for experimental tuning).
+- Any change to `update_q_value`'s public signature or return type.
+- Deprecating or renaming `initialize_q_value`.
 
 ## Documentation
 
+### Feature Documentation
+
+- `docs/guides/policy-cache-recipe.md` — the Q-value section describes
+  `update_q_value` and the TD script. Update it to say the script is owned by
+  `TDValueField` and that `update_q_value` is a convenience wrapper. Keep the
+  worked example unchanged (it is executed by `tests/test_guide_examples.py`).
+- Add `TDValueField` to whatever field reference the docs site carries
+  (`docs/` field index / API reference), following how `ConfidenceField` is
+  documented.
+
+### Inline Documentation
+
+- The KEYS/ARGV contract comment block moves with the script.
+- Add a Valkey-compatibility note to the new module docstring, matching
+  `validity_field.py:30-33`.
+- Re-read every comment adjacent to a swapped line before finalizing — PR #638
+  found a stale justifying comment surviving a refactor; PR #644 made this a
+  standing rule for the series.
+- `policy_cache.py`'s module docstring lists `update_q_value(): Atomic Q-value
+  TD update via Lua script` — restate as "via `TDValueField`".
+
 ## Success Criteria
+
+- [ ] `src/popoto/recipes/policy_cache.py` contains no `run_lua` call, no
+      `POPOTO_REDIS_DB` reference, and no Lua script definition.
+- [ ] `grep -n 'TD_UPDATE_LUA' src/popoto/fields/td_value_field.py` is the only
+      definition site; `policy_cache.py` re-exports it.
+- [ ] The moved script text is byte-identical to the base version.
+- [ ] Every test listed in Test Impact passes with **zero edits to test
+      expectations**.
+- [ ] The base-vs-branch Redis command capture diff is empty for the three
+      named tests.
+- [ ] New tests in `tests/test_td_value_field.py` cover unsaved-instance,
+      pipeline, non-`PolicyEntry` model, and field-level alpha/gamma.
+- [ ] `ruff check src/` exits 0; `black --check src/ tests/` passes.
+- [ ] `scripts/mypy_ratchet.py` is at or below baseline, with the environment
+      stated in the PR body.
+- [ ] No Redis-module command appears in the new module
+      (`grep -rnE '"\s*(BF|CMS|TOPK|TS|JSON)\.'` clean).
+- [ ] PR body carries `Closes #647`.
 
 ## Step by Step Tasks
 
+### 1. New field module
+
+- Create `src/popoto/fields/td_value_field.py`.
+- Move `TD_UPDATE_LUA` verbatim from `policy_cache.py:132-172`, with its
+  contract comment block; add the Valkey note.
+- Add `class TDValueField(DecimalField)` with `alpha` / `gamma` kwargs
+  defaulting to `Defaults.TD_ALPHA` / `Defaults.TD_GAMMA`.
+- Add `td_update` classmethod modeled on
+  `ConfidenceField.update_confidence` (`confidence_field.py:495-587`):
+  member-key resolution, unsaved guard, pipeline branch, `run_lua` with the
+  client resolved at call time, float decode, in-memory sync.
+- Verify byte-identity of the moved script against `origin/main` before
+  proceeding.
+
+### 2. Recipe swap
+
+- `q_value = TDValueField(default=Decimal("0"))` in `PolicyEntry`.
+- `update_q_value()` delegates to `TDValueField.td_update`; signature, defaults,
+  return type and docstring contract unchanged.
+- Re-export `TD_UPDATE_LUA`; drop the `POPOTO_REDIS_DB, run_lua` import.
+- Re-read every comment adjacent to a changed line; fix stale claims.
+
+### 3. Tests
+
+- Add `tests/test_td_value_field.py` with the four cases from Test Impact.
+- Add the `TD_UPDATE_LUA` identity re-export assertion.
+- Change no existing test expectation.
+
+### 4. Parity validation
+
+- Capture the Redis command sequence base-vs-branch for
+  `test_q_value_update`, `test_td_update_nil_q_treated_as_zero`,
+  `test_rank_derives_from_stored_q_value`; diff must be empty.
+- Run the scoped pytest selection with a lane-scoped `POPOTO_TEST_DB`
+  (never DB 0, never the full suite from this worktree).
+- Run `ruff check src/`, `black --check src/ tests/`,
+  `scripts/mypy_ratchet.py`; record the environment.
+
+### 5. Documentation
+
+- Update `docs/guides/policy-cache-recipe.md` and the field reference.
+- Sequence the docs cascade and any review-driven patches **before**
+  `verdict finalize`, then re-review the delta (#642).
+
+### 6. Pull request
+
+- Open against `main` from `session/sdlc-647` with `Closes #647`, the parity
+  capture pasted in, and the environment stated next to every count.
+
 ## Open Questions
+
+1. **Field name.** `TDValueField` is the issue's own suggestion and this plan
+   adopts it. `QValueField` would be more domain-honest (the column is
+   literally `q_value`) but leaks RL vocabulary into the field layer;
+   `TDValueField` names the update rule instead. Confirm, or say the word and
+   it becomes `QValueField`.
+2. **Should `update_q_value` gain a `pipeline=` parameter?** The plan says no
+   (No-Gos), keeping the recipe shim frozen. The counter-argument is that the
+   field gains the capability and the recipe is the only documented way to
+   reach it. Deferring costs a follow-up issue if a caller ever wants it.
+3. **Does `initialize_q_value` also belong on the field** (as
+   `TDValueField.initialize`)? It currently sets the attribute and calls
+   `save()` — pure Python, no bypass — so #630 does not require moving it. It
+   would be tidier to have both TD entry points on the field. Left alone for
+   now to keep the diff a relocation.
