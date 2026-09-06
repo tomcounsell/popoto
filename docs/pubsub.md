@@ -72,10 +72,10 @@ useful when processing a batch of orders at once, such as marking all orders fro
 restaurant as delayed.
 
 ```python
-from popoto.redis_db import POPOTO_REDIS_DB
+import popoto
 
 publisher = OrderStatusPublisher(channel_name="order_updates")
-pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline = popoto.batch()
 
 publisher.publish(data={"order_id": "order_1", "status": "delayed"}, pipeline=pipeline)
 publisher.publish(data={"order_id": "order_2", "status": "delayed"}, pipeline=pipeline)
@@ -88,6 +88,11 @@ pipeline.execute()  # All three messages sent in one round-trip
     Pipeline batching significantly improves throughput when publishing many messages in quick
     succession. Instead of one network round-trip per message, you pay the latency cost once
     for the entire batch.
+
+`popoto.batch()` returns the shared connection's pipeline, so publishing does not need to
+import the Redis client. A pipeline built directly off the client
+(`popoto.get_redis().pipeline()`) is the same object and still works. See
+[Batching Commands into One Transaction](query.md#batching-commands-into-one-transaction).
 
 ## Subscriber
 
