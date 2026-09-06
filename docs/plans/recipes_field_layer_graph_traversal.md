@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Small
 created: 2026-09-06
@@ -133,7 +133,7 @@ behind one `Relationship` classmethod call; steps 1, 2 and 4 are untouched.
 
 | Requirement | Check Command | Purpose |
 |---|---|---|
-| Redis/Valkey reachable on DB 9 | `redis-cli -n 9 PING` | Lane-isolated test database (never DB 0 — live agent store) |
+| Redis/Valkey reachable on DB 12 | `redis-cli -n 12 PING` | Lane-isolated test database (never DB 0 — live agent store) |
 | Worktree venv resolves to this checkout | `.venv/bin/python -c "import popoto, pathlib; print(pathlib.Path(popoto.__file__).resolve())"` | The wrong-package trap (CLAUDE.md, worktree gotcha 1) |
 | Optional extras installed | `.venv/bin/python -c "import numpy, sentence_transformers, mcp"` | Otherwise ~95 tests silently deselect (worktree gotcha 2) |
 
@@ -408,11 +408,11 @@ The full `/do-docs` cascade runs after build and before `verdict finalize`.
 | # | Criterion | Check |
 |---|---|---|
 | 1 | The recipe issues no direct client call | `grep -n 'POPOTO_REDIS_DB' src/popoto/recipes/graph_traversal.py` returns nothing |
-| 2 | The recipe no longer builds index keys | `grep -n 'DB_key\|get_special_use_field_db_key' src/popoto/recipes/graph_traversal.py` returns no code hits (docstring prose at lines 4/14/19-23 may remain) |
-| 3 | Behavior is byte-identical | Redis command sequence captured for a fixed traversal on base and on branch is identical, command-for-command and key-for-key |
-| 4 | Existing tests unchanged and green | `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_graph_traversal.py` — 20 passed, and `git diff --stat` shows no deletions in that file |
-| 5 | New coverage lands | `test_reverse_lookup_failure_warns_and_continues` plus `tests/test_relationship_sample.py` pass on DB 9 |
-| 6 | Relationship suite unaffected | `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_relationship*.py` green |
+| 2 | The recipe no longer builds index keys | `grep -n 'DB_key\|get_special_use_field_db_key' src/popoto/recipes/graph_traversal.py` returns no code hits (the module docstring's `$RelationshipF:...` prose may remain) |
+| 3 | Behavior is byte-identical | Redis command sequence captured for a fixed traversal on base and on branch is identical, command-for-command and key-for-key. Capture by wrapping `POPOTO_REDIS_DB.execute_command` to record `(name, args)`; record the **whole** sequence (the `load()` traffic too), not just `SRANDMEMBER` |
+| 4 | Existing tests unchanged and green | `git diff main...HEAD -- tests/test_graph_traversal.py` shows **additions only** — no existing test deleted or modified. Count check: 20 passed after task 4 (before task 6 adds one), 21 passed at task 7 |
+| 5 | New coverage lands | `test_reverse_lookup_failure_warns_and_continues` plus `tests/test_relationship_sample.py` pass on DB 12 |
+| 6 | Relationship suite unaffected | `POPOTO_TEST_DB=12 .venv/bin/python -m pytest tests/test_relationship*.py` green |
 | 7 | Gates pass | `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` at or below baseline (state the redis-py version with the count) |
 | 8 | Docs build | `PYTHONPATH=$PWD/src mkdocs build --strict` exits 0 |
 | 9 | *(anti-criterion for the No-Gos)* No sibling recipe touched | `git diff --name-only main...HEAD` contains no `policy_cache.py`, `context_assembler.py`, or `memory_lifecycle.py` |
@@ -426,17 +426,26 @@ The full `/do-docs` cascade runs after build and before `verdict finalize`.
    does today (`get_special_use_field_db_key` joined with the related `DB_key`),
    parse a `str` `related_key` with `DB_key.from_redis_key`, issue one
    `SRANDMEMBER`, decode members to `str`, return `list[str]`. No try/except.
+   The `Union[str, DB_key]` overload has one real caller today and it always
+   passes a `str`; the docstring must say the `DB_key` arm exists for signature
+   symmetry with `filter_query`/`on_delete`, so a reader does not go looking for
+   the caller that uses it (critique C2). One `isinstance` line, not a branch
+   worth abstracting.
    *Validate:* `ruff check src/ && black --check src/`.
 
 2. **Add `tests/test_relationship_sample.py`.** Cases from Failure Path Test
    Strategy: populated index, empty index, `count=0`, `str` vs `DB_key`
    `related_key`, colon-containing key, `str` return type.
-   *Validate:* `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_relationship_sample.py`.
+   *Validate:* `POPOTO_TEST_DB=12 .venv/bin/python -m pytest tests/test_relationship_sample.py`.
    *Depends on:* 1.
 
 3. **Capture the base command sequence.** On `main` in this worktree, run a
-   fixed traversal under a command-recording client and save the sequence.
-   Repro script must set `REDIS_URL=redis://localhost:6379/9` **before**
+   fixed traversal under a command-recording client and save the sequence. The
+   recorder wraps `POPOTO_REDIS_DB.execute_command` and appends `(name, args)`
+   per call, capturing every command the traversal issues — not only
+   `SRANDMEMBER` — so a reordering of the surrounding `load()` traffic is caught
+   too (critique C1).
+   Repro script must set `REDIS_URL=redis://localhost:6379/12` **before**
    `import popoto` (copy `scripts/scratch_repro.py`; never DB 0).
    *Validate:* a saved sequence file with a non-zero `SRANDMEMBER` count.
 
@@ -453,7 +462,7 @@ The full `/do-docs` cascade runs after build and before `verdict finalize`.
 
 6. **Add `test_reverse_lookup_failure_warns_and_continues`** to
    `tests/test_graph_traversal.py`.
-   *Validate:* `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_graph_traversal.py` — 21 passed.
+   *Validate:* `POPOTO_TEST_DB=12 .venv/bin/python -m pytest tests/test_graph_traversal.py` — 21 passed.
    *Depends on:* 4.
 
 7. **Run the narrow gate set.** `tests/test_graph_traversal.py`,
@@ -475,4 +484,55 @@ The full `/do-docs` cascade runs after build and before `verdict finalize`.
 
 ## Critique Results
 
-_Pending `/do-plan-critique`._
+**Date:** 2026-09-06 · **Depth:** FULL · **Mode:** independent roster (3 critics)
+**Critics:** Risk & Robustness, Scope & Value, History & Consistency
+**Findings:** 4 total (0 blockers, 3 concerns, 1 nit)
+**Verdict: READY TO BUILD (with concerns)**
+
+### Concerns
+
+**C1 — The command-sequence oracle is named but not specified.** (Risk & Robustness;
+*Risk 2 / Tasks 3 and 5*) The plan calls the Redis command capture "the actual oracle
+for byte-identical" but cites only "as PR #644 did" — no wrapper, no patch target.
+*Implementation Note:* wrap `POPOTO_REDIS_DB.execute_command` to append
+`(command_name, args)` tuples to a list, run the fixed traversal from a
+`scripts/scratch_repro.py`-derived script with `REDIS_URL` set **before**
+`import popoto`, and diff the serialized list base-vs-branch. Capture the whole
+sequence — the `load()`/`HGETALL` traffic too, not just `SRANDMEMBER` — since a
+reordering there would also break "byte-identical".
+
+**C2 — `related_key: Union[str, DB_key]` is generality for a caller that does not
+exist.** (Scope & Value; *Solution / Decision 2*) `expand_relationships` always holds a
+`str` (`graph_traversal.py:170` stringifies seeds; `:213` feeds `pk` to
+`DB_key.from_redis_key`), so the `DB_key` branch is justified only by analogy to
+`filter_query`.
+*Resolution:* keep the `Union`, and say why in the docstring — it exists for
+signature symmetry with `filter_query`/`on_delete`, which take a `DB_key`-shaped
+related value, so the family reads consistently. No behavior rides on it.
+*Implementation Note:* the `DB_key` branch is one `isinstance` line
+(`related_db_key = related_key if isinstance(related_key, DB_key) else
+DB_key.from_redis_key(related_key)`); the colon test covers the `str` path, and one
+assertion covers the `DB_key` path resolving to the same key.
+
+**C3 — Success Criterion 4 pins a literal count that Task 6 invalidates.**
+(History & Consistency; *Success Criteria row 4 vs Task 6*) Criterion 4 says
+"20 passed"; Task 6 adds a test to the same file and Task 7 runs after it, so the
+final gate sees 21.
+*Resolution:* criterion 4 is restated below as the real invariant — no deletions or
+modifications to existing tests in `tests/test_graph_traversal.py` — with the count
+scoped to the pre-Task-6 state.
+
+### Nits
+
+**N1 — Criterion 2's line-number parenthetical is wrong.** Lines 4/14/19-23 of
+`graph_traversal.py` contain neither `DB_key` nor `get_special_use_field_db_key`;
+the docstring's field-layer prose is the `$RelationshipF:...` reference. Parenthetical
+dropped below.
+
+### Revision applied
+
+- Success Criterion 3 now names the capture mechanism (C1).
+- Success Criterion 4 restated as a no-deletion invariant with the count scoped (C3).
+- Success Criterion 2's parenthetical corrected (N1).
+- Task 1 records the `Union` rationale that must land in the docstring (C2).
+- Task 3 names the `execute_command` wrapper and full-sequence capture (C1).

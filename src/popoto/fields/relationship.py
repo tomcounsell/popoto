@@ -38,7 +38,7 @@ Example:
     memberships = Membership.query.filter(person__name="Alice")
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 import redis
 from .field import Field
 import logging
@@ -525,3 +525,67 @@ class Relationship(Field):
                 *[set(key_list) for key_list in keys_lists_to_intersect]
             )
         return set()
+
+    @classmethod
+    def sample_related_keys(
+        cls,
+        model: "Model",
+        field_name: str,
+        related_key: Union[str, DB_key],
+        count: int,
+    ) -> list[str]:
+        """
+        Return a bounded random sample of the redis_keys pointing at ``related_key``.
+
+        Reads the Relationship reverse index Set — the same
+        ``$RelationshipF:<Model>:<field_name>:<related_key>`` Set that
+        :meth:`on_save` populates and :meth:`filter_query` reads in full — and
+        issues a single ``SRANDMEMBER`` bounded by ``count``.
+
+        This is the bounded counterpart to :meth:`filter_query`'s ``SMEMBERS``.
+        On a hub node the full Set can be arbitrarily large, so a caller that
+        walks edges (graph traversal, fan-out-limited expansion) needs a sampled
+        read rather than an unbounded one. ``filter_query`` cannot serve that
+        need: it is unbounded, it requires a loaded ``Model`` instance rather
+        than a key, and it wraps its reads in a pipeline.
+
+        Args:
+            model: The Model class owning the Relationship field. Typed
+                ``"Model"`` rather than ``Type["Model"]`` to match
+                :meth:`filter_query` and :meth:`on_save`, which are annotated
+                the same way and are likewise called with the class.
+            field_name: The name of the Relationship field.
+            related_key: The key of the related instance being pointed at.
+                A ``DB_key`` is used as-is; a ``str`` is parsed with
+                :meth:`DB_key.from_redis_key`, which unescapes the colon
+                separators — constructing ``DB_key(some_redis_key)`` instead
+                would escape them and silently address a different key. The
+                ``DB_key`` arm exists for signature symmetry with
+                :meth:`filter_query` and :meth:`on_delete`, which both hold a
+                ``DB_key``; the only caller today passes a ``str``.
+            count: Maximum number of members to return, passed through to
+                ``SRANDMEMBER`` unchanged. A positive count yields distinct
+                members with no ordering guarantee; ``0`` yields an empty list.
+
+        Returns:
+            A list of member redis_keys decoded to ``str``. Empty if the reverse
+            index does not exist.
+
+        Note:
+            No exception handling by design — a caller that wants to degrade on
+            a failed read owns that policy and should catch around this call.
+        """
+        related_db_key = (
+            related_key
+            if isinstance(related_key, DB_key)
+            else DB_key.from_redis_key(related_key)
+        )
+        reverse_index_key = DB_key(
+            cls.get_special_use_field_db_key(model, field_name),
+            related_db_key,
+        ).redis_key
+        members: Any = POPOTO_REDIS_DB.srandmember(reverse_index_key, count)
+        return [
+            member.decode("utf-8") if isinstance(member, bytes) else str(member)
+            for member in members or []
+        ]

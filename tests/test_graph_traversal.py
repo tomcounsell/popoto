@@ -13,6 +13,7 @@ Covers:
 - ContextAssembler integration: relationship-only-connected record surfaced
 """
 
+import logging
 import os
 import sys
 import time
@@ -254,6 +255,37 @@ class TestTraverseMerge:
         # Co-occurrence signal still comes through despite the relationship
         # expansion raising.
         assert b_key in results
+
+    def test_reverse_lookup_failure_warns_and_continues(self, monkeypatch, caplog):
+        """The reverse-hop handler in expand_relationships is not silent.
+
+        Before #646 this handler was unreachable from a test: the reverse read
+        was an inline key build plus a client call with no seam to patch. Now
+        that its body is one named call, patch it and assert the documented
+        degradation — warn, yield no reverse neighbors, keep the forward walk.
+        """
+        a = GTRelated.create()
+        b = GTRelated.create()
+        a.related = b
+        a.save()
+        a_key, b_key = a.db_key.redis_key, b.db_key.redis_key
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("reverse index unavailable")
+
+        monkeypatch.setattr(
+            popoto.Relationship, "sample_related_keys", staticmethod(boom)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="POPOTO.graph_traversal"):
+            results = graph_traversal.expand_relationships(
+                GTRelated, [a_key], ["related"], depth=1
+            )
+
+        assert "reverse lookup failed" in caplog.text
+        # Forward direction survives the reverse failure.
+        assert b_key in results
+        assert results[b_key] == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------
