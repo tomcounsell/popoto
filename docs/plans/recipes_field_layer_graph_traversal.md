@@ -318,7 +318,7 @@ New tests only:
   Sets with different member semantics, and there is one caller. Add it if and
   when #648/#649 produce a second and third.
 - **Fixing `filter_query`.** It has real problems (unconditional pipeline,
-  `str.strip` used as a prefix-strip at lines 500 and 508, which is a latent
+  `str.strip` used as a prefix-strip at lines 501 and 510, which is a latent
   character-class bug). None of them are this PR. Do not touch it.
 - **Changing the sampling semantics.** `SRANDMEMBER` with a positive count is
   distinct-member sampling with no ordering guarantee. Do not "improve" it to
@@ -366,19 +366,112 @@ add an edge between hops) is unchanged by this PR, in either direction.
 
 ## No-Gos (Out of Scope)
 
-_TBD_
+- [SEPARATE-SLUG #647] `policy_cache` — 1 direct site, but the recipe owns
+  `TD_UPDATE_LUA`; the design question is Lua ownership, unrelated to this one.
+  Deliberately NOT paired into this lane run (Solution, Decision 3).
+- [SEPARATE-SLUG #648] `context_assembler` — 7 sites, two Lua scripts with
+  recipe-owned KEYS layouts.
+- [SEPARATE-SLUG #649] `memory_lifecycle` — 17 sites, hand-built tombstone
+  store, Redis-only `OBJECT idletime`. Closes umbrella #630 when it lands.
+- [SEPARATE-SLUG #630] The storage-backend seam itself. This PR removes one
+  direct client consumer; it does not introduce a backend abstraction, and
+  nothing in the diff should read like one.
 
 ## Documentation
 
-_TBD_
+`grep -rln 'graph_traversal\|expand_relationships'` across `docs/`, `README.md`
+and `CHANGELOG.md` (excluding historical `docs/plans/`) returns exactly one
+file: `docs/benchmarks.md:703`, which names the
+`graph_traversal_relationship_fields` benchmark arm. That reference is about
+what the benchmark measures, not how the recipe reads Redis, and this PR does
+not change it.
+
+Docs work in scope:
+
+- `docs/relationship.md` — add a short section documenting
+  `Relationship.sample_related_keys` as public API: what it reads (the reverse
+  index Set), that `count` maps to `SRANDMEMBER`'s count (distinct members, no
+  ordering guarantee), and that a `str` `related_key` is parsed as a redis_key.
+- `CHANGELOG.md` `[Unreleased]` — one **Added** entry for the new classmethod,
+  one **Changed** entry for the recipe no longer calling Redis directly,
+  matching the phrasing PR #644 used.
+- `mkdocs build --strict` must pass. Run it with
+  `PYTHONPATH=<worktree>/src` — `docs/scripts/gen_api_pages.py` does an
+  `importlib.import_module` importability check, and without the override it
+  resolves against the primary checkout and silently omits new modules (the
+  trap that cost a round on #644).
+
+The full `/do-docs` cascade runs after build and before `verdict finalize`.
 
 ## Success Criteria
 
-_TBD_
+| # | Criterion | Check |
+|---|---|---|
+| 1 | The recipe issues no direct client call | `grep -n 'POPOTO_REDIS_DB' src/popoto/recipes/graph_traversal.py` returns nothing |
+| 2 | The recipe no longer builds index keys | `grep -n 'DB_key\|get_special_use_field_db_key' src/popoto/recipes/graph_traversal.py` returns no code hits (docstring prose at lines 4/14/19-23 may remain) |
+| 3 | Behavior is byte-identical | Redis command sequence captured for a fixed traversal on base and on branch is identical, command-for-command and key-for-key |
+| 4 | Existing tests unchanged and green | `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_graph_traversal.py` — 20 passed, and `git diff --stat` shows no deletions in that file |
+| 5 | New coverage lands | `test_reverse_lookup_failure_warns_and_continues` plus `tests/test_relationship_sample.py` pass on DB 9 |
+| 6 | Relationship suite unaffected | `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_relationship*.py` green |
+| 7 | Gates pass | `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` at or below baseline (state the redis-py version with the count) |
+| 8 | Docs build | `PYTHONPATH=$PWD/src mkdocs build --strict` exits 0 |
+| 9 | *(anti-criterion for the No-Gos)* No sibling recipe touched | `git diff --name-only main...HEAD` contains no `policy_cache.py`, `context_assembler.py`, or `memory_lifecycle.py` |
+| 10 | *(anti-criterion)* No backend abstraction introduced | The diff adds no new module, protocol, or `Backend`/`Store` class — only one method on `Relationship` |
 
 ## Step by Step Tasks
 
-_TBD_
+1. **Add `Relationship.sample_related_keys`.**
+   `src/popoto/fields/relationship.py`, placed next to `filter_query` so the
+   index-reading methods stay together. Build the key exactly as the recipe
+   does today (`get_special_use_field_db_key` joined with the related `DB_key`),
+   parse a `str` `related_key` with `DB_key.from_redis_key`, issue one
+   `SRANDMEMBER`, decode members to `str`, return `list[str]`. No try/except.
+   *Validate:* `ruff check src/ && black --check src/`.
+
+2. **Add `tests/test_relationship_sample.py`.** Cases from Failure Path Test
+   Strategy: populated index, empty index, `count=0`, `str` vs `DB_key`
+   `related_key`, colon-containing key, `str` return type.
+   *Validate:* `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_relationship_sample.py`.
+   *Depends on:* 1.
+
+3. **Capture the base command sequence.** On `main` in this worktree, run a
+   fixed traversal under a command-recording client and save the sequence.
+   Repro script must set `REDIS_URL=redis://localhost:6379/9` **before**
+   `import popoto` (copy `scripts/scratch_repro.py`; never DB 0).
+   *Validate:* a saved sequence file with a non-zero `SRANDMEMBER` count.
+
+4. **Swap the recipe call site.** Replace lines 205-222 of
+   `graph_traversal.py` with the `sample_related_keys` call inside the existing
+   `try`, keeping the `except`/`logger.warning` verbatim and dropping the
+   decode loop. Remove the now-unused `DB_key` and `POPOTO_REDIS_DB` imports.
+   *Validate:* Success Criteria 1 and 2.
+   *Depends on:* 1.
+
+5. **Capture the branch command sequence and diff it against task 3.**
+   *Validate:* empty diff (Success Criterion 3).
+   *Depends on:* 3, 4.
+
+6. **Add `test_reverse_lookup_failure_warns_and_continues`** to
+   `tests/test_graph_traversal.py`.
+   *Validate:* `POPOTO_TEST_DB=9 .venv/bin/python -m pytest tests/test_graph_traversal.py` — 21 passed.
+   *Depends on:* 4.
+
+7. **Run the narrow gate set.** `tests/test_graph_traversal.py`,
+   `tests/test_relationship*.py`, `ruff`, `black --check`,
+   `scripts/mypy_ratchet.py`. Narrow scope only — a full-suite run from this
+   worktree collides with the other lanes on Redis state.
+   *Validate:* all green; record the redis-py version alongside the mypy count.
+   *Depends on:* 2, 5, 6.
+
+8. **Docs.** `docs/relationship.md` section, `CHANGELOG.md` `[Unreleased]`
+   entries, then `PYTHONPATH=$PWD/src mkdocs build --strict`.
+   *Depends on:* 7.
+
+9. **Open the PR with `Closes #646`** (this one does close its issue — unlike
+   #644, which deliberately carried no closing keyword because #630 was an
+   umbrella). Then: `/do-pr-review` → patch → `/do-docs` cascade → re-review the
+   delta → `verdict finalize` **last** → merge gate.
+   *Depends on:* 8.
 
 ## Critique Results
 
