@@ -189,9 +189,14 @@ agent store** (#577).
   `state.geo_distance_unit` instead of `self._geo_*` when attaching distances and sorting.
 - **Q-object threading**: `_evaluate_filter_args` and `q.evaluate_q` take an optional carrier so geo
   distances accumulated across several `filter_for_keys_set` calls land in the caller's carrier.
-- **A back-compat mirror**: `self._geo_distances` / `self._geo_distance_unit` keep being written,
-  exactly as #600 kept its `_pushdown_limit` mirror unconditional. Nothing in-repo reads them after
-  this change; the mirror exists so an unknown downstream reader is not broken.
+- **A back-compat mirror, written in exactly one place**: `self._geo_distances` /
+  `self._geo_distance_unit` keep being written, exactly as #600 kept its `_pushdown_limit` mirror
+  unconditional — but the write lives at the **end of `_filter_for_keys_set_with_state`**, not in the
+  public wrapper. Every path (public wrapper, `_filter_keys_with_pushdown`, `evaluate_q`) reaches the
+  delegate, so one write site covers them all; a write in the wrapper alone would leave the mirror
+  stale on the dominant `.filter()` path, which routes through `_filter_keys_with_pushdown`
+  (CRITIQUE-B3). Nothing in-repo reads the mirror after this change; it exists so an unknown
+  downstream reader is not broken.
 
 ### Flow
 
@@ -220,15 +225,19 @@ The delegate has no such hazard:
 
 ```python
 def filter_for_keys_set(self, **kwargs) -> set:
-    state = _PushdownState()
-    keys = self._filter_for_keys_set_with_state(state, **kwargs)
-    self._geo_distances = state.geo_distances      # back-compat mirror
+    # Throwaway carrier: this path has no caller-supplied one.
+    return self._filter_for_keys_set_with_state(_PushdownState(), **kwargs)
+
+def _filter_for_keys_set_with_state(self, state, **kwargs) -> set:
+    ...                                            # today's body, writing into `state`
+    self._geo_distances = state.geo_distances      # back-compat mirror, ONE site
     self._geo_distance_unit = state.geo_distance_unit
-    return keys
+    return intersection
 ```
 
 `_filter_for_keys_set_with_state(self, state, **kwargs)` takes the carrier **positionally**, so no
-field name can ever collide with it.
+field name can ever collide with it. The mirror is written by the **delegate**, not the wrapper —
+see the Key Elements bullet: the dominant `.filter()` path never calls the wrapper.
 
 **Why per-thread storage (#600's `_PerThreadAttr`) is the wrong tool here — and must stay wrong.**
 
@@ -255,16 +264,49 @@ throughput regression traded for a correctness fix that the carrier gives for fr
   after the fact reproduces the race it is meant to fix, because the window between another thread's
   `update()` and this snapshot is exactly the hazard. The geo members are written directly by
   `_filter_for_keys_set_with_state` and are already populated in the carrier it was handed.
+  **It must keep doing its existing job**: it is the only code that copies the seven non-geo pushdown
+  fields off `self` into the carrier, and `_execute_filter` / `async_filter` read those seven back
+  exclusively via `state.*` at ~11 sites. It therefore grows an `into` parameter rather than being
+  dropped (CRITIQUE-B2):
+
+  ```python
+  def _snapshot_pushdown_state(self, into: "Optional[_PushdownState]" = None) -> "_PushdownState":
+      state = into if into is not None else _PushdownState()
+      state.sorted_field_order = getattr(self, "_sorted_field_order", None)
+      ...                                  # the same seven fields, copied not aliased
+      return state                         # geo members on `into` are left untouched
+  ```
+
+  Filling in place preserves the geo members the delegate already wrote into that carrier. Returning
+  a *fresh* object here — or calling the no-arg form after the delegate ran — silently discards them.
 - `filter_for_keys_set` (`2727`) → thin wrapper; body moves to `_filter_for_keys_set_with_state`.
-- `_filter_keys_with_pushdown` (`2525`) — creates the carrier before the call rather than snapshotting
-  after, and passes it down. It already returns `(db_keys, state)`, so its signature is unchanged.
-- `_evaluate_filter_args` (`2912`) — takes `state` (positional `q_objects, kwargs` today, so a
-  keyword-only `state=None` is safe here: it does not collect `**kwargs`).
-- `src/popoto/models/q.py:222` `evaluate_q(query_instance, q_obj, all_keys)` — gains an optional
-  `state=None` and passes it through, so Q-object geo filters accumulate into the caller's carrier
-  instead of only the mirror.
-- `_execute_filter` (`3275`) and `async_filter` (`3811`) — reset onto the carrier, read from the
-  carrier.
+- `_filter_keys_with_pushdown` (`2525`) — creates the carrier **before the `try`**, passes it
+  positionally to `_filter_for_keys_set_with_state` in place of today's public call at `2540`, and
+  then still snapshots the seven non-geo fields **onto that same carrier**:
+  `return db_keys, self._snapshot_pushdown_state(into=state)`. Its signature and return shape are
+  unchanged. Dropping the snapshot here — which the pre-critique wording implied — would leave
+  `sorted_field_order`, `pushdown_limit`, `pushdown_partition` and the rest at their dataclass
+  defaults and silently revert #600's pushdown on **every** query, geo or not.
+- `_evaluate_filter_args` (`2914`) — gains a keyword-only `state: Optional[_PushdownState] = None`
+  (its parameters are positional `q_objects, kwargs` today and it does not collect `**kwargs`, so a
+  named parameter is safe here). When `state` is given, its two internal
+  `self.filter_for_keys_set(**kwargs)` calls (`2945`, `2956`) route to
+  `self._filter_for_keys_set_with_state(state, **kwargs)` instead, so their geo results accumulate
+  into the caller's carrier.
+- `src/popoto/models/q.py:190` `evaluate_q(query_instance, q_obj, all_keys=None)` — gains a
+  keyword-only `state=None`, passes it down every recursive call, and at the leaf (`q.py:222`) calls
+  `query_instance._filter_for_keys_set_with_state(state, **q_obj.filters)` when `state is not None`,
+  falling back to the public wrapper when it is `None`. Threading the carrier without switching the
+  leaf call gives the distances nowhere to land (CRITIQUE-B1).
+- `_execute_filter` (`3275`) and `async_filter` (`3811`) — delete the `self._geo_*` resets at
+  `3299-3300` / `3845-3846` (a fresh carrier per call is the reset) and read from the carrier.
+  **The Q-objects branch needs the same carrier**: `_execute_filter` at `3303-3312` must build one
+  `_PushdownState` *before* calling `_evaluate_filter_args(q_objects, kwargs, state=state)`, and
+  after the `_sorted_field_order` / `_sorted_field_name` clear call
+  `self._snapshot_pushdown_state(into=state)` rather than the bare no-arg form. Today's bare call at
+  `3312` returns a fresh carrier; leaving it would hand the attach-and-sort step an empty
+  `geo_distances` on **every** Q + geo query — a deterministic regression, not a race, and strictly
+  worse than the bug being fixed (CRITIQUE-B1).
 - `QueryBuilder._execute` (`1290`) calls `filter_for_keys_set` for `fuse()` scoping and never reads
   geo distances — it keeps using the public wrapper unchanged.
 
@@ -379,7 +421,9 @@ land between the mutation and the snapshot.
 **Data prerequisite:** none — this variant is simply unsound.
 **Mitigation:** `_filter_for_keys_set_with_state` writes the geo members into the carrier at the
 moment the tuple is unpacked. The plan states explicitly that `_snapshot_pushdown_state` must not
-grow geo members, and a `## Verification` row asserts it.
+grow geo members, and a `## Verification` row asserts it. Note the method still runs — it keeps
+copying the seven non-geo fields, now via `into=state` so it fills the carrier in place instead of
+returning a fresh one that would drop the geo members already written into it.
 
 ### Race 3: async loop-thread / worker-thread split
 **Location:** `async_filter` (`3845`, `3922`) vs `filter_for_keys_set` (`2831`), across the
@@ -451,8 +495,13 @@ annotation (`_geo_distance` on returned rows) is unchanged, so no tool wrapper n
       pasted in the PR body.
 - [ ] `filter_for_keys_set(**kwargs) -> set` has its exact pre-change signature —
       `inspect.signature` comparison, not eyeballing.
-- [ ] No read of `self._geo_distances` / `self._geo_distance_unit` remains outside the public
-      wrapper's mirror writes and the `__init__` seed.
+- [ ] No read of `self._geo_distances` / `self._geo_distance_unit` remains anywhere — the only
+      surviving occurrences are the `__init__` seed and the single mirror write at the end of
+      `_filter_for_keys_set_with_state`.
+- [ ] A `filter(Q(location__latlon=...))` query still attaches distances — the Q + geo path is
+      reachable today and must not regress to no-distances (CRITIQUE-B1).
+- [ ] `_snapshot_pushdown_state` still copies the seven non-geo pushdown fields, and both its call
+      sites pass `into=state` — #600's pushdown is not silently reverted (CRITIQUE-B2).
 - [ ] Neither geo name is bound to `_PerThreadAttr` (anti-criterion).
 - [ ] `tests/test_geo_with_distances.py` passes **unchanged** — the compatibility gate.
 - [ ] Narrow-scope tests pass with `POPOTO_TEST_DB=2`; the full suite is run once before the PR opens.
@@ -501,10 +550,14 @@ never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for 
   docstring to say these two are written directly, never snapshotted, and why.
 - Move the body of `filter_for_keys_set` into `_filter_for_keys_set_with_state(self, state, **kwargs)`
   — carrier **positional**, never a keyword.
-- At both tuple-unpack sites, write into `state` and keep the `self._geo_*` mirror write.
-- Reduce `filter_for_keys_set` to the wrapper: build a throwaway `_PushdownState`, delegate, mirror,
-  return. Signature byte-identical to before.
-- Do **not** add geo members to `_snapshot_pushdown_state`.
+- At both tuple-unpack sites (`2831-2832`, `2871-2872`), write into `state` **only** — replace
+  `self._geo_distances.update(distances)` with `state.geo_distances.update(distances)`. The mirror is
+  not written here.
+- Write the mirror **once**, at the end of the delegate, immediately before its `return`.
+- Reduce `filter_for_keys_set` to the wrapper: build a throwaway `_PushdownState` and delegate.
+  Signature byte-identical to before; the wrapper does **not** mirror (the delegate already did).
+- Do **not** add geo members to `_snapshot_pushdown_state`, but do give it the `into` parameter and
+  keep it copying the seven non-geo fields — see the Technical Approach.
 
 ### 2. Thread the carrier through the call sites
 - **Task ID**: build-callsites
@@ -513,12 +566,17 @@ never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for 
 - **Assigned To**: geo-carrier-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- `_filter_keys_with_pushdown`: create the carrier before the `try`, pass it to the delegate, return
-  it (signature unchanged).
-- `_execute_filter` and `async_filter`: reset onto the carrier and read `state.geo_distances` /
-  `state.geo_distance_unit` at the attach-and-sort block.
-- `_evaluate_filter_args` and `q.evaluate_q`: accept an optional carrier and pass it down so Q-object
-  geo filters accumulate into the caller's carrier.
+- `_snapshot_pushdown_state`: add `into: Optional[_PushdownState] = None` and fill in place.
+- `_filter_keys_with_pushdown`: create the carrier before the `try`, pass it to the delegate, and
+  return `db_keys, self._snapshot_pushdown_state(into=state)` (signature unchanged).
+- `_execute_filter` and `async_filter`: delete the `self._geo_*` resets and read
+  `state.geo_distances` / `state.geo_distance_unit` at the attach-and-sort block.
+- `_execute_filter`'s **Q-objects branch**: build the carrier before `_evaluate_filter_args`, pass it
+  as `state=`, and replace the bare `self._snapshot_pushdown_state()` at `3312` with
+  `self._snapshot_pushdown_state(into=state)`.
+- `_evaluate_filter_args` and `q.evaluate_q`: accept a keyword-only carrier, pass it down every
+  recursive call, and **route the leaf/kwargs calls to `_filter_for_keys_set_with_state`** when it is
+  not `None`, so Q-object geo filters accumulate into the caller's carrier.
 - Add the comment at the `_PerThreadAttr` binding block explaining why the geo names are not there.
 
 ### 3. Concurrency and async geo tests
@@ -536,7 +594,11 @@ never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for 
 - A **deterministic** barrier-based two-thread test, so the suite does not depend on the scheduler.
 - An **async geo test** asserting `_geo_distance` is attached after `async_filter` — the test that
   fails loudly if the carrier is ever replaced by `_PerThreadAttr`.
-- A Q-object + geo case (or, if unsupported today, evidence of that recorded in the PR body).
+- A **Q-object + geo** test asserting the distance is attached for `filter(Q(location__latlon=...))`.
+  This combination is reachable today (`q.py:222` → the public `filter_for_keys_set`, whose results
+  `_execute_filter` reads off the shared mirror at `3395`), so it must be a hard assertion, not a
+  documented gap. It is also the test that catches CRITIQUE-B1: it fails outright if the Q branch's
+  carrier is not the one the leaf calls wrote into.
 
 ### 4. Prove the failure on base
 - **Task ID**: verify-base-failure
@@ -580,8 +642,15 @@ never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for 
 | Carrier is positional, not a keyword | `grep -c "def _filter_for_keys_set_with_state(self, state" src/popoto/models/query.py` | output contains 1 |
 | No `state=` keyword on the public method | `grep -c "def filter_for_keys_set(self, \*, state" src/popoto/models/query.py` | match count == 0 |
 | Anti-criterion: geo names not per-thread | `grep -c "_geo_distances.*_PerThreadAttr\|_geo_distance_unit.*_PerThreadAttr" src/popoto/models/query.py` | match count == 0 |
-| Anti-criterion: no geo in the snapshot | `grep -c "geo_distance" <(sed -n '/def _snapshot_pushdown_state/,/^    def /p' src/popoto/models/query.py)` | match count == 0 |
-| No stray reads of the mirror | `grep -n "self\._geo_distances" src/popoto/models/query.py \| grep -v "= state\.\|= {}" \| wc -l` | output contains 0 |
+| Anti-criterion: no geo in the snapshot | `sed -n '/def _snapshot_pushdown_state/,/^    def _filter_keys_with_pushdown/p' src/popoto/models/query.py \| grep -c "geo_distance" \|\| true` | prints `0` |
+| Snapshot still copies the seven non-geo fields | `sed -n '/def _snapshot_pushdown_state/,/^    def _filter_keys_with_pushdown/p' src/popoto/models/query.py \| grep -c "sorted_field_order\|pushdown_limit\|pushdown_partition\|pending_client_filters\|pushdown_requested\|pushdown_fetched\|sorted_field_name"` | prints `7` or more (it was NOT dropped — CRITIQUE-B2) |
+| Snapshot fills in place | `grep -c "def _snapshot_pushdown_state(self, into" src/popoto/models/query.py` | prints `1` |
+| Both snapshot call sites pass the carrier | `grep -c "_snapshot_pushdown_state(into=state)" src/popoto/models/query.py` | prints `2` (`_filter_keys_with_pushdown` and `_execute_filter`'s Q branch) |
+| No bare snapshot call survives | `grep -c "_snapshot_pushdown_state()" src/popoto/models/query.py \|\| true` | prints `0` |
+| Q leaf routes to the delegate | `grep -c "_filter_for_keys_set_with_state" src/popoto/models/q.py` | prints `1` or more (CRITIQUE-B1) |
+| Mirror written in exactly one place | `grep -c "self\._geo_distances = state.geo_distances" src/popoto/models/query.py` | prints `1` (in the delegate, not the wrapper — CRITIQUE-B3) |
+| Mirror is never read | `grep -n "self\._geo_distances" src/popoto/models/query.py \| grep -vc "self\._geo_distances = " \|\| true` | prints `0` — every surviving occurrence is a plain assignment, so no `.update()`, no truthiness test, no read |
+| Per-call resets deleted | `grep -c "^        self\._geo_distances = {}" src/popoto/models/query.py` | prints `1` (the `__init__` seed only; the sync and async resets are gone) |
 | Lint clean | `.venv/bin/ruff check src/` | exit code 0 |
 | Format clean | `.venv/bin/black --check src/ tests/` | exit code 0 |
 | Type ratchet | `.venv/bin/python scripts/mypy_ratchet.py --strict-env` | exit code 0 |
@@ -590,4 +659,24 @@ never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for 
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Round 1** — 2026-09-06, FULL depth, independent roster of 3 (Risk & Robustness, Scope & Value,
+History & Consistency), all grounded against this plan and against `query.py` / `q.py` at HEAD
+`87c900de`. **Verdict: NEEDS REVISION** (3 blockers, 1 concern, 3 nits). Cap is one round: the
+revision below is applied in place and the lane routes straight to BUILD.
+
+| Severity | Critic(s) | Location | Finding | Resolution |
+|---|---|---|---|---|
+| BLOCKER (B1) | Risk & Robustness; corroborated by Scope & Value | Technical Approach — Q-object threading / Task 2 | Threading an optional carrier through `_evaluate_filter_args` and `evaluate_q` gives the geo results nowhere to land: the leaf at `q.py:222` calls the **public** `filter_for_keys_set`, which builds a throwaway carrier, and `_execute_filter`'s Q branch derives its `state` from a bare `_snapshot_pushdown_state()` at `query.py:3312`, which the plan forbids from carrying geo members. As written, every Q + geo query would get an empty `geo_distances` **100% of the time** — a deterministic regression, not a race, and strictly worse than the bug being fixed. | **Applied.** Technical Approach now pins: `evaluate_q` routes the leaf to `_filter_for_keys_set_with_state(state, ...)` when `state is not None`; `_evaluate_filter_args` routes its two internal calls (`2945`, `2956`) the same way; `_execute_filter` builds the carrier **before** the Q branch and replaces `3312`'s bare snapshot with `_snapshot_pushdown_state(into=state)`. Task 2 and a Verification row encode it; Task 3's Q + geo case is now a hard assertion rather than "or record that it is unsupported". |
+| BLOCKER (B2) | History & Consistency | Technical Approach — Integration points, `_filter_keys_with_pushdown` | The pre-critique wording ("creates the carrier before the call rather than snapshotting after") reads as dropping `_snapshot_pushdown_state`, which is the **only** code copying the seven non-geo pushdown fields off `self` into the carrier. `_execute_filter` / `async_filter` read those seven back exclusively via `state.*` at ~11 sites, so a literal implementation would silently revert #600's sorted/limit/partition pushdown on **every** query, geo or not. | **Applied.** `_snapshot_pushdown_state` keeps its job and grows `into: Optional[_PushdownState] = None`, filling the given carrier in place so the geo members already written into it survive. `_filter_keys_with_pushdown` returns `db_keys, self._snapshot_pushdown_state(into=state)`. Four Verification rows now assert the seven fields are still copied, that the signature took `into`, that both call sites pass it, and that no bare call survives. |
+| BLOCKER (B3) | Risk & Robustness; corroborated by History & Consistency | Solution Key Elements vs. Technical Approach snippet vs. Task 1 | The plan was self-contradictory about **where** the back-compat mirror is written: the Technical Approach snippet wrote it once in the public wrapper, while Task 1 said to keep the mirror write at both tuple-unpack sites. Worse, a wrapper-only write leaves the mirror stale on the dominant `.filter()` path, which reaches the delegate through `_filter_keys_with_pushdown` and never touches the wrapper — defeating the mirror's entire stated purpose. | **Applied.** The mirror is pinned to exactly one site: the end of `_filter_for_keys_set_with_state`, which every path reaches. The wrapper no longer mirrors; the tuple-unpack sites write into `state` only. Key Elements, the snippet, and Task 1 now agree, and a Verification row asserts the single write site. |
+| CONCERN | History & Consistency | Verification — "No stray reads of the mirror" | The row's `grep -v "= state\.\|= {}"` filter excluded neither `self._geo_distances.update(distances)` (Task 1's own instruction at the time) nor the mirror write, so it would report a nonzero count even under a fully compliant implementation. | **Applied.** Replaced with a row that asserts every surviving `self._geo_distances` occurrence is a plain assignment (`grep -vc "self\._geo_distances = "` → `0`), which is now exactly true: two `__init__` seeds and two mirror writes, no reads. |
+| NIT | driver (structural check) | Technical Approach — Integration points | `_evaluate_filter_args` was cited at `2912`; it is at `2914` at HEAD `87c900de`. All other pinned line references in the Freshness Check re-verified as correct. | **Applied** — corrected to `2914`. |
+| NIT | History & Consistency | Verification table | Several rows use `grep -c` with an expected count of `0`, but `grep -c` **exits 1** when it matches nothing, so those rows fail under `set -e` despite printing the right number. | **Applied** — the zero-expectation rows now end in `|| true` and state the expected stdout explicitly. |
+| NIT | driver (structural check) | Verification — "No `state=` keyword on the public method" | The anti-grep matches only the literal spelling `def filter_for_keys_set(self, *, state`. Left as-is: the adjacent row asserts the full signature via `inspect.signature`, which catches every spelling, so the grep is redundant belt-and-braces rather than a gap. | Acknowledged, no change. |
+
+**Scope & Value returned "No findings."** It independently verified that Task 2's Q-object threading
+is necessary rather than scope creep (without it, Q + geo regresses from racy-but-present to absent),
+that Task 3's four-test bundle matches the shape `tests/test_query_thread_safety.py` already
+established under #600, and that `src/popoto/recipes/context_assembler.py:2367` — a
+`filter_for_keys_set` caller the plan does not name — reads only the returned key set and
+`_pending_client_filters`, never `_geo_distances`, so the plan's silence about it is correct.
