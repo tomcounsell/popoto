@@ -296,19 +296,35 @@ docstrings on each method for the exact raise conditions.
 ## The one-transaction annotate-and-close sequence, stated precisely
 
 `supersede()` and `retract()` queue two things into a single Redis
-`MULTI`/`EXEC`: the annotation's `save()`, and `ValidityField.execute_supersede(
-..., mode="invalidate", old_member=<target key>, new_member=<annotation key>)`.
-The write path calls `execute_supersede` directly rather than routing through
-`SupersessionProtocol`. Not because the protocol cannot survive a pipeline —
-membership is decided inside `SUPERSEDE_LUA` at the instant of the write, so
-[the same-pipeline shape works](validity-and-supersession.md#same-transaction-successor)
-and `SupersessionProtocol.save_and_supersede` is the supported combined entry
-point elsewhere. The reason is that this path needs an *explicit* incumbent (the
-annotation target is named by the caller and validated by the pre-flight, not
-resolved through an identity pointer) and it sets valid-time at construction
-rather than asserting it through the script. Converging the two is the retrieval
-milestone's design work — the pre-flight carries firewall, cross-agent
-ownership, and kind/target checks the protocol cannot express.
+`MULTI`/`EXEC`: the annotation's `save()`, and the interval close. Both are
+queued by one call —
+`SupersessionProtocol.save_and_invalidate(entry, closes=<the target instance>,
+at=<instant>, pipeline=<the shared pipe>)` — which is the supported combined
+entry point and is what this path uses (#606).
+
+That path needs an *explicit* incumbent: the annotation target is named by the
+caller and validated by the pre-flight, not resolved through an identity
+pointer. `save_and_invalidate` is exactly that form — `closes=` names the
+incumbent — and it passes `assert_valid_from=False` unconditionally, which is
+what this path needs because valid-time is set at **construction** rather than
+asserted through the script. The incumbent it is handed is the instance the
+pre-flight already hydrated for its cross-agent ownership check, so naming it
+by instance rather than by key string costs no extra Redis command.
+
+What is *not* delegated is the D7 pre-flight. Its never-record firewall scan,
+cross-agent ownership check and kind/target consistency check are journal
+semantics the protocol has no vocabulary for, and every one of them still runs
+before the first command is queued. The `append()` path — which has no
+incumbent to close — stays outside the protocol entirely and saves its entry
+directly.
+
+Earlier revisions of this path called `ValidityField.execute_supersede`
+directly, on the premise that the protocol could express neither an explicit
+`old_member` nor `assert_valid_from=False`. That stopped being true when
+`save_and_invalidate` shipped; the conversion is behavior-neutral (same
+commands, same order, same `MULTI`), and the protocol's own declined-save guard
+sits between the save and the close, which is the only position from which it
+can stop the close being queued.
 
 **What an explicit incumbent costs.** Naming the incumbent makes it a caller
 *assertion*, so a target hard-deleted between the pre-flight and `EXEC` returns
@@ -455,8 +471,13 @@ and the firewall is not weakened for anything a human or a model ever wrote.
 The pre-flight derives its scanned values from the *same method* the mixin uses
 (`_never_record_scan_values`) rather than a parallel list, so the two cannot
 drift apart and let the mixin block something the pre-flight passed. If a
-`save()` in the annotate-and-close path ever does return falsy, the journal
-raises `RuntimeError` rather than proceeding to close the target.
+`save()` in the annotate-and-close path ever is declined anyway — a falsy
+return, or the truthy pipeline return with a `_never_record_verdict` stamped on
+the instance — the close is never queued and the journal raises `RuntimeError`
+rather than proceeding to close the target. On the closing branch that check
+lives inside `SupersessionProtocol` (as `SupersedeDeclinedError`, a
+`RuntimeError` subclass) and the journal re-raises it in its own vocabulary;
+`append()` carries its own copy.
 
 **A blocked capture leaves only a content-free tombstone, and that is the
 whole signal.** A capture the firewall drops never reaches the journal at
