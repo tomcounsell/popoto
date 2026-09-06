@@ -3725,10 +3725,27 @@ redis-py raises during <code>pipe.execute()</code> result parsing — long after
 <code>redis.exceptions.ResponseError</code>. <code>save_and_supersede</code> / <code>save_and_invalidate</code>
 own their <code>execute()</code> and are the supported way to get a typed error in pipeline
 shape.</p>
+<p><strong><code>SupersedeDeclinedError</code></strong> is the fourth typed error and the one exception to
+the <code>ValidityError</code> family above: it is a <code>RuntimeError</code> subclass, because it
+reports a broken invariant inside the write path rather than a malformed
+argument or a Lua reply token. <code>save_and_supersede</code> / <code>save_and_invalidate</code>
+raise it when the successor's <code>save()</code> was <strong>declined</strong> — by the never-record
+firewall or the write filter, both of which <em>return</em> instead of raising. Two
+shapes are checked: a falsy return, and the truthy pipeline-mode return with a
+<code>_never_record_verdict</code> stamped on the instance. The check sits between the save
+and the close, so nothing is queued behind a record that was never written, and
+the error carries the content-free <code>verdict</code> for callers that need the reason
+code. <code>verdict</code> is itself <code>None</code> on a non-firewall decline, so guard the
+attribute access rather than the value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">save_and_invalidate</span><span class="p">(</span><span class="n">new</span><span class="p">,</span> <span class="n">closes</span><span class="o">=</span><span class="n">old</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">except</span> <span class="n">SupersedeDeclinedError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">reason</span> <span class="o">=</span> <span class="n">exc</span><span class="o">.</span><span class="n">verdict</span><span class="o">.</span><span class="n">reason</span> <span class="k">if</span> <span class="n">exc</span><span class="o">.</span><span class="n">verdict</span> <span class="k">else</span> <span class="kc">None</span>  <span class="c1"># e.g. 'payment_card'</span>
+</code></pre></div>
 <h2 id="valid-time-has-one-writer">Valid-time has one writer<a class="headerlink" href="#valid-time-has-one-writer" title="Permanent link">&para;</a></h2>
 <p>The field value at construction is the single authoritative writer of
 valid-time:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">Fact</span><span class="p">(</span><span class="n">fact_id</span><span class="o">=</span><span class="s2">"plan-2"</span><span class="p">,</span> <span class="n">validity</span><span class="o">=</span><span class="n">event_time</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">Fact</span><span class="p">(</span><span class="n">fact_id</span><span class="o">=</span><span class="s2">"plan-2"</span><span class="p">,</span> <span class="n">validity</span><span class="o">=</span><span class="n">event_time</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <p><code>at=</code> on <code>supersede()</code> / <code>invalidate()</code> is a <strong>close-time</strong> assertion about the
 incumbent, never a start-time assertion about the successor. Asserting it for
@@ -3770,23 +3787,23 @@ shape, and no backfill runs. But a record that already carries a hash/index
 divergence will refuse a <em>full</em> <code>save()</code> until an operator reconciles it. A
 partial save of an unrelated column is unaffected, because the dispatch is scoped
 to <code>update_fields</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Adopt the index -- the value every as_of query already answers against:</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">effective</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_valid_from</span><span class="p">(</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">,</span> <span class="n">member_key</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">)</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">obj</span><span class="o">.</span><span class="n">validity</span> <span class="o">=</span> <span class="n">effective</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1"># Or make the declared value authoritative -- plain ZADD, no NX, so it</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># overwrites the score ZADD NX refused to update:</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="n">vf_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_interval_keys</span><span class="p">(</span><span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">)</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">vf_key</span><span class="p">,</span> <span class="p">{</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">validity</span><span class="p">)})</span>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Adopt the index -- the value every as_of query already answers against:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">effective</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_valid_from</span><span class="p">(</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">,</span> <span class="n">member_key</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">obj</span><span class="o">.</span><span class="n">validity</span> <span class="o">=</span> <span class="n">effective</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># Or make the declared value authoritative -- plain ZADD, no NX, so it</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># overwrites the score ZADD NX refused to update:</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">vf_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_interval_keys</span><span class="p">(</span><span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">)</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">vf_key</span><span class="p">,</span> <span class="p">{</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">validity</span><span class="p">)})</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="bidirectional-chain-traversal">Bidirectional chain traversal<a class="headerlink" href="#bidirectional-chain-traversal" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">superseded_by</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>  <span class="c1"># one hop forward, or None at the head</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersedes</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>     <span class="c1"># one hop backward, or None at the tail</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>          <span class="c1"># full chain, oldest first, from any anchor</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">superseded_by</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>  <span class="c1"># one hop forward, or None at the head</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersedes</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>     <span class="c1"># one hop backward, or None at the tail</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>          <span class="c1"># full chain, oldest first, from any anchor</span>
 </code></pre></div>
 <p><code>chain()</code> walks backward to the oldest ancestor and forward to the newest
 descendant, so it is recoverable from any member, not just an endpoint.
@@ -3844,7 +3861,7 @@ is the only one that enforces membership on the composite path; Layer 3 is the
 only one that reaches <code>fuse</code>/BM25/graph. The one path no layer covers is a
 direct <code>top_by_decay</code> on a <code>CyclicDecayField</code> — see "Known limitations".</p>
 <h2 id="point-in-time-reconstruction">Point-in-time reconstruction<a class="headerlink" href="#point-in-time-reconstruction" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"plan"</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"plan"</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
 </code></pre></div>
 <p><code>assemble()</code> gains a keyword-only <code>as_of: float | None = None</code>. The default
 <code>None</code> means "now" — only currently-valid records. Passing an epoch
@@ -3857,8 +3874,8 @@ keyword-only <code>as_of</code> directly, for callers that bypass the assembler.
 and all three gating layers a pure passthrough; retrieval stays byte-identical
 to pre-#580 behavior.</p>
 <h2 id="kill-switch">Kill switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
 </code></pre></div>
 <p><code>Defaults.VALIDITY_GATING_ENABLED</code> is a deploy-level boolean, default <code>True</code>,
 read <strong>at call time</strong> in every gating layer — never captured at import — so
@@ -3915,10 +3932,10 @@ loudly if the gate is ever added — update this entry then.
 <ul>
 <li><a href="../provenance-journal/">Provenance Journal</a> — this feature's first real
   consumer: <code>JournalEntry</code> composes <code>ValidityField</code> for its membership axis,
-  calls <code>execute_supersede</code> directly on the annotate-and-close write path
-  (it needs an explicit incumbent and a construction-time valid-from, not the
-  identity pointer), and uses <code>chain()</code> for provenance display only, never for
-  membership</li>
+  routes its annotate-and-close write path through <code>save_and_invalidate</code> (it
+  needs an explicit incumbent and a construction-time valid-from, not the
+  identity pointer — both of which that entry point expresses), and uses
+  <code>chain()</code> for provenance display only, never for membership</li>
 <li><a href="../reference-resolution/">Reference Resolution</a> — the M4 stage that
   produces a caller-supplied <code>valid_from</code> for onset references, threaded
   through as the declared value at construction, never through

@@ -3666,19 +3666,32 @@ caller-supplied pipeline (<code>ValueError</code> in each of those cases). See t
 docstrings on each method for the exact raise conditions.</p>
 <h2 id="the-one-transaction-annotate-and-close-sequence-stated-precisely">The one-transaction annotate-and-close sequence, stated precisely<a class="headerlink" href="#the-one-transaction-annotate-and-close-sequence-stated-precisely" title="Permanent link">&para;</a></h2>
 <p><code>supersede()</code> and <code>retract()</code> queue two things into a single Redis
-<code>MULTI</code>/<code>EXEC</code>: the annotation's <code>save()</code>, and <code>ValidityField.execute_supersede(
-..., mode="invalidate", old_member=&lt;target key&gt;, new_member=&lt;annotation key&gt;)</code>.
-The write path calls <code>execute_supersede</code> directly rather than routing through
-<code>SupersessionProtocol</code>. Not because the protocol cannot survive a pipeline —
-membership is decided inside <code>SUPERSEDE_LUA</code> at the instant of the write, so
-<a href="../validity-and-supersession/#same-transaction-successor">the same-pipeline shape works</a>
-and <code>SupersessionProtocol.save_and_supersede</code> is the supported combined entry
-point elsewhere. The reason is that this path needs an <em>explicit</em> incumbent (the
-annotation target is named by the caller and validated by the pre-flight, not
-resolved through an identity pointer) and it sets valid-time at construction
-rather than asserting it through the script. Converging the two is the retrieval
-milestone's design work — the pre-flight carries firewall, cross-agent
-ownership, and kind/target checks the protocol cannot express.</p>
+<code>MULTI</code>/<code>EXEC</code>: the annotation's <code>save()</code>, and the interval close. Both are
+queued by one call —
+<code>SupersessionProtocol.save_and_invalidate(entry, closes=&lt;the target instance&gt;,
+at=&lt;instant&gt;, pipeline=&lt;the shared pipe&gt;)</code> — which is the supported combined
+entry point and is what this path uses (#606).</p>
+<p>That path needs an <em>explicit</em> incumbent: the annotation target is named by the
+caller and validated by the pre-flight, not resolved through an identity
+pointer. <code>save_and_invalidate</code> is exactly that form — <code>closes=</code> names the
+incumbent — and it passes <code>assert_valid_from=False</code> unconditionally, which is
+what this path needs because valid-time is set at <strong>construction</strong> rather than
+asserted through the script. The incumbent it is handed is the instance the
+pre-flight already hydrated for its cross-agent ownership check, so naming it
+by instance rather than by key string costs no extra Redis command.</p>
+<p>What is <em>not</em> delegated is the D7 pre-flight. Its never-record firewall scan,
+cross-agent ownership check and kind/target consistency check are journal
+semantics the protocol has no vocabulary for, and every one of them still runs
+before the first command is queued. The <code>append()</code> path — which has no
+incumbent to close — stays outside the protocol entirely and saves its entry
+directly.</p>
+<p>Earlier revisions of this path called <code>ValidityField.execute_supersede</code>
+directly, on the premise that the protocol could express neither an explicit
+<code>old_member</code> nor <code>assert_valid_from=False</code>. That stopped being true when
+<code>save_and_invalidate</code> shipped; the conversion is behavior-neutral (same
+commands, same order, same <code>MULTI</code>), and the protocol's own declined-save guard
+sits between the save and the close, which is the only position from which it
+can stop the close being queued.</p>
 <p><strong>What an explicit incumbent costs.</strong> Naming the incumbent makes it a caller
 <em>assertion</em>, so a target hard-deleted between the pre-flight and <code>EXEC</code> returns
 <code>POPOTO_VALIDITY_MEMBER_ABSENT</code> rather than taking an idempotent no-op branch.
@@ -3805,8 +3818,13 @@ and the firewall is not weakened for anything a human or a model ever wrote.</p>
 <p>The pre-flight derives its scanned values from the <em>same method</em> the mixin uses
 (<code>_never_record_scan_values</code>) rather than a parallel list, so the two cannot
 drift apart and let the mixin block something the pre-flight passed. If a
-<code>save()</code> in the annotate-and-close path ever does return falsy, the journal
-raises <code>RuntimeError</code> rather than proceeding to close the target.</p>
+<code>save()</code> in the annotate-and-close path ever is declined anyway — a falsy
+return, or the truthy pipeline return with a <code>_never_record_verdict</code> stamped on
+the instance — the close is never queued and the journal raises <code>RuntimeError</code>
+rather than proceeding to close the target. On the closing branch that check
+lives inside <code>SupersessionProtocol</code> (as <code>SupersedeDeclinedError</code>, a
+<code>RuntimeError</code> subclass) and the journal re-raises it in its own vocabulary;
+<code>append()</code> carries its own copy.</p>
 <p><strong>A blocked capture leaves only a content-free tombstone, and that is the
 whole signal.</strong> A capture the firewall drops never reaches the journal at
 all: it leaves a random id and a reason code in the <code>$NR:</code> keyspace (see
