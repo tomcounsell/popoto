@@ -3647,7 +3647,7 @@ depends on who owns the pipeline:</p>
   <code>True</code> for a queued close would be affirmatively wrong. Read the real
   outcome from your own <code>execute()</code>:</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">supersede</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>                                     <span class="n">statement</span><span class="o">=</span><span class="s2">"..."</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">target_closed</span> <span class="ow">is</span> <span class="kc">None</span>          <span class="c1"># nothing has executed yet</span>
@@ -3658,6 +3658,14 @@ depends on who owns the pipeline:</p>
 caller's pipeline. It is <code>None</code> whenever no close was queued — always so on
 the journal-owned path, where the pipeline has already executed and
 <code>target_closed</code> carries the answer directly.</p>
+<p>Open the pipeline with <code>popoto.batch()</code> (#630). It returns the shared
+connection's transactional pipeline — the same object <code>popoto.get_redis()
+.pipeline()</code> returns, so a pipeline built directly off the client is still
+accepted here — but <code>batch()</code> is the spelling that survives the move of the
+Redis client behind the field layer, and the raw-client spelling is deprecated
+for that reason. <code>batch(transaction=False)</code> opens a non-transactional batch,
+which the journal's own methods reject: a caller-supplied pipeline must be
+transactional or <code>supersede()</code>/<code>retract()</code> raise <code>ValueError</code> before writing.</p>
 <p>Every method also raises before writing anything on: a firewall-blocked
 value (<code>JournalBlockedError</code>), an out-of-vocabulary <code>kind</code> or an inconsistent
 <code>kind</code>/<code>target</code> pairing, a missing <code>agent_id</code>, a nonexistent or unsaved

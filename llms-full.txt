@@ -4657,7 +4657,7 @@ Append the new claim and close the old claim's validity interval in a single
 `MULTI`/`EXEC`, so no reader ever sees both open or neither present:
 
 ```python
-pipe = popoto.get_redis().pipeline()
+pipe = popoto.batch()
 new.save(pipeline=pipe)
 SupersessionProtocol.invalidate(old, superseded_by=new, pipeline=pipe)
 pipe.execute()
@@ -5251,7 +5251,7 @@ depends on who owns the pipeline:
   outcome from your own `execute()`:
 
 ```python
-pipe = popoto.get_redis().pipeline()
+pipe = popoto.batch()
 result = ProvenanceJournal.supersede(first, agent_id="agent-1",
                                      statement="...", pipeline=pipe)
 assert result.target_closed is None          # nothing has executed yet
@@ -5263,6 +5263,15 @@ closed = bool(results[result.close_index])   # the real answer
 caller's pipeline. It is `None` whenever no close was queued — always so on
 the journal-owned path, where the pipeline has already executed and
 `target_closed` carries the answer directly.
+
+Open the pipeline with `popoto.batch()` (#630). It returns the shared
+connection's transactional pipeline — the same object `popoto.get_redis()
+.pipeline()` returns, so a pipeline built directly off the client is still
+accepted here — but `batch()` is the spelling that survives the move of the
+Redis client behind the field layer, and the raw-client spelling is deprecated
+for that reason. `batch(transaction=False)` opens a non-transactional batch,
+which the journal's own methods reject: a caller-supplied pipeline must be
+transactional or `supersede()`/`retract()` raise `ValueError` before writing.
 
 Every method also raises before writing anything on: a firewall-blocked
 value (`JournalBlockedError`), an out-of-vocabulary `kind` or an inconsistent
@@ -14439,6 +14448,63 @@ If no matching instance exists, `get()` returns `None`. If more than one instanc
     For models with composite keys, pass all key field values to `get()`. For models with
     `AutoKeyField`, use the auto-generated key value or `redis_key`.
 
+## Check Existence Without Loading
+
+When you only need to know *whether* a record is stored, `Model.exists()` answers in one
+`EXISTS` command without decoding the hash.
+
+```python
+Restaurant.exists(name="Burger Palace")
+# => True
+
+Restaurant.exists(name="Nowhere Diner")
+# => False
+```
+
+It takes the same three spellings as `get()` — key field values, a `DB_key`, or a raw
+Redis key string (positionally or as `redis_key=`):
+
+```python
+Restaurant.exists("Restaurant:Burger Palace")
+Restaurant.exists(redis_key="Restaurant:Burger Palace")
+Restaurant.exists(db_key=restaurant.db_key)
+```
+
+!!! warning
+    Pass a full Redis key as a **string**, not as `DB_key("Restaurant:Burger Palace")`.
+    `DB_key` treats a string as a single key partial and escapes the `:` inside it, so a
+    multi-segment key wrapped that way names a key that never exists. `exists()`
+    short-circuits a `str` straight through, exactly as `get()` does.
+
+`exists()` reports storage, not validity: a record whose `ValidityField` interval has been
+closed still exists. Use the [ValidityField filters](#validityfield-filters) for
+as-of membership.
+
+## Batching Commands into One Transaction
+
+`popoto.batch()` opens a batch of queued commands against Popoto's shared connection, so
+you do not need to import the Redis client to start a transaction.
+
+```python
+import popoto
+
+pipe = popoto.batch()
+Restaurant(name="Sushi Zen", cuisine="Japanese").save(pipeline=pipe)
+Restaurant(name="Taco Stand", cuisine="Mexican").save(pipeline=pipe)
+pipe.execute()   # both saves, and all their index writes, in one MULTI/EXEC
+```
+
+Every `save()`/`delete()` and every field hook accepts `pipeline=`, so a batch groups a
+whole unit of work — model hashes and index maintenance alike — into a single atomic
+round-trip. `batch(transaction=False)` queues without a `MULTI`/`EXEC` wrapper, which
+pipelines for throughput but gives up atomicity; some callers (the
+[provenance journal](features/provenance-journal.md)) require a transactional pipeline and
+raise if given a non-transactional one.
+
+The returned object is a `redis.client.Pipeline` — the same type
+`popoto.get_redis().pipeline()` returns — so existing code that builds one off the client
+keeps working. `batch()` is the preferred spelling.
+
 ## Get Multiple Objects by Key
 
 When you already have a list of Redis keys (for example, from a set intersection, a cache of
@@ -18061,10 +18127,10 @@ useful when processing a batch of orders at once, such as marking all orders fro
 restaurant as delayed.
 
 ```python
-from popoto.redis_db import POPOTO_REDIS_DB
+import popoto
 
 publisher = OrderStatusPublisher(channel_name="order_updates")
-pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline = popoto.batch()
 
 publisher.publish(data={"order_id": "order_1", "status": "delayed"}, pipeline=pipeline)
 publisher.publish(data={"order_id": "order_2", "status": "delayed"}, pipeline=pipeline)
@@ -18077,6 +18143,11 @@ pipeline.execute()  # All three messages sent in one round-trip
     Pipeline batching significantly improves throughput when publishing many messages in quick
     succession. Instead of one network round-trip per message, you pay the latency cost once
     for the entire batch.
+
+`popoto.batch()` returns the shared connection's pipeline, so publishing does not need to
+import the Redis client. A pipeline built directly off the client
+(`popoto.get_redis().pipeline()`) is the same object and still works. See
+[Batching Commands into One Transaction](query.md#batching-commands-into-one-transaction).
 
 ## Subscriber
 

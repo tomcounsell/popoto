@@ -3171,10 +3171,10 @@ without a <code>channel_name</code> argument revert to the instance default.</p>
 <p>Use a Redis pipeline to batch multiple order updates into a single round-trip to Redis. This is
 useful when processing a batch of orders at once, such as marking all orders from a closing
 restaurant as delayed.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">publisher</span> <span class="o">=</span> <span class="n">OrderStatusPublisher</span><span class="p">(</span><span class="n">channel_name</span><span class="o">=</span><span class="s2">"order_updates"</span><span class="p">)</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">pipeline</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">publisher</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s2">"order_id"</span><span class="p">:</span> <span class="s2">"order_1"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"delayed"</span><span class="p">},</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">publisher</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s2">"order_id"</span><span class="p">:</span> <span class="s2">"order_2"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"delayed"</span><span class="p">},</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
@@ -3188,6 +3188,10 @@ restaurant as delayed.</p>
 succession. Instead of one network round-trip per message, you pay the latency cost once
 for the entire batch.</p>
 </div>
+<p><code>popoto.batch()</code> returns the shared connection's pipeline, so publishing does not need to
+import the Redis client. A pipeline built directly off the client
+(<code>popoto.get_redis().pipeline()</code>) is the same object and still works. See
+<a href="../query/#batching-commands-into-one-transaction">Batching Commands into One Transaction</a>.</p>
 <h2 id="subscriber">Subscriber<a class="headerlink" href="#subscriber" title="Permanent link">&para;</a></h2>
 <p>The <code>Subscriber</code> class listens for messages on one or more channels. Subclass it and override
 <code>handle()</code> to process incoming order updates.</p>
