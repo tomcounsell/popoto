@@ -1,7 +1,7 @@
 ---
 status: Planning
 revision_applied: true
-revision_applied_at: 2026-09-06T12:02:41Z
+revision_applied_at: 2026-09-06T12:07:44Z
 type: chore
 appetite: Small
 created: 2026-09-06
@@ -211,7 +211,8 @@ caller: update_q_value(policy, reward=1.0, max_future_q=0.4)   # unchanged shim
           key construction, not the recipe)
        -> run_lua(<client resolved at call time>, TD_UPDATE_LUA, 1, key, ...)
             -> identical EVALSHA / HGET / HSET sequence
-       -> decode float, sync instance.q_value in memory
+       -> decode float (td_error only; the script returns no new_q, and the
+          in-memory instance.q_value is left untouched, as today)
   <- td_error
 ```
 
@@ -304,9 +305,20 @@ to be implemented by every future backend. TD(0) is a modeling concern.
     pipeline=None) -> float | None` — the classmethod wrapper, shaped after
     `ConfidenceField.update_confidence` **in structure only**: it resolves the
     member key from `model_instance.db_key`, raises on an unsaved instance,
-    runs the script, decodes the TD error to `float`, and syncs the new Q back
-    onto the Python instance. Returns `None` on the pipeline branch (result is
-    only available after `execute()`), matching `update_confidence`.
+    runs the script, and decodes the TD error to `float`. Returns `None` on
+    the pipeline branch (result is only available after `execute()`), matching
+    `update_confidence`.
+  - **It does NOT sync the new Q onto the Python instance.** `update_confidence`
+    does (`setattr(model_instance, field_name, new_confidence)`), but it can:
+    its script returns the new value. `TD_UPDATE_LUA` returns only
+    `tostring(td_error)` — there is no `new_q` in the reply. Synthesizing one
+    client-side would re-duplicate the very TD arithmetic and encoding this PR
+    is removing from the recipe (and could diverge from the persisted value
+    under concurrency); re-reading it would add an `HGET` and break the parity
+    diff. Today's `update_q_value` does not touch the attribute either, so
+    leaving it alone *is* the relocation. A caller that wants the new Q reloads
+    the instance, exactly as today. Widening the script's return arity is a
+    separate, deliberate change and is a No-Go here.
   - **The unsaved-instance guard must NOT be copied wholesale from
     `update_confidence`.** That twin guards with *two* checks — a
     `db_key.redis_key` try/except **and** a separate
@@ -352,8 +364,8 @@ to be implemented by every future backend. TD(0) is a modeling concern.
    and DB rebinds still intercept.
 4. The script issues the identical `HGET` / `HSET` pair against the identical
    key with the identical encoding.
-5. The float TD error is returned to the caller; `policy.q_value` is refreshed
-   in memory.
+5. The float TD error is returned to the caller. `policy.q_value` in memory is
+   left stale, exactly as today — reload the instance to see the new value.
 
 ### Technical Approach
 
@@ -518,6 +530,8 @@ build-time blocker, not a review nit.
 - Any storage-backend abstraction or backend-level operation vocabulary.
 - A generic single-field hash accessor on `Model`.
 - Changing `DecayingSortedField`'s `base_score_field` decode fallback.
+- Widening `TD_UPDATE_LUA`'s return arity (e.g. returning `new_q` alongside
+  `td_error`) — it changes the script text, the SHA and the parity claim.
 - Changing any tuning constant value, or promoting `alpha`/`gamma` to user
   config (CLAUDE.md: these are magic numbers for experimental tuning).
 - Field-declared `alpha` / `gamma` constructor kwargs on `TDValueField`. They
@@ -561,8 +575,9 @@ build-time blocker, not a review nit.
       expectations**.
 - [ ] The base-vs-branch Redis command capture diff is empty for the three
       named tests.
-- [ ] New tests in `tests/test_td_value_field.py` cover unsaved-instance,
-      pipeline, non-`PolicyEntry` model, and field-level alpha/gamma.
+- [ ] New tests in `tests/test_td_value_field.py` cover unsaved-instance
+      (`ValueError`, zero Redis commands), pipeline, non-`PolicyEntry` model,
+      and the `TD_UPDATE_LUA` re-export identity check.
 - [ ] `ruff check src/` exits 0; `black --check src/ tests/` passes.
 - [ ] `scripts/mypy_ratchet.py` is at or below baseline, with the environment
       stated in the PR body.
@@ -668,3 +683,16 @@ Rejected as non-contradictions by History & Consistency: the No-Go on
 `update_q_value`'s signature vs. the field's pipeline branch (different
 surfaces), and the No-Go on a generic hash accessor vs. `td_update` (TD-rule
 specific, not generic).
+
+### Round 2 (2026-09-06) — verdict: READY TO BUILD (with concerns), concern bound reached
+
+Same FULL roster, re-run against the revised plan; all three critics confirmed
+the round-1 concerns were genuinely resolved in the text. 0 blockers, 2 distinct
+concerns, 1 nit. Both concerns applied below; the concern re-critique bound
+(2 rounds) is now exhausted, so the remaining risk is accepted on the record and
+the plan is buildable.
+
+| Critic | Severity | Finding | Applied as |
+|---|---|---|---|
+| Risk & Robustness | CONCERN | The plan claimed `td_update` "syncs the new Q back onto the Python instance", but `TD_UPDATE_LUA` returns only `tostring(td_error)` — no `new_q`. Delivering the sync would mean either recomputing the value client-side (re-duplicating the arithmetic and encoding this PR removes, with a divergence risk under concurrency) or an extra `HGET` that breaks the parity diff. Today's `update_q_value` does not touch the attribute at all, so the sync was new behavior, not relocation. | Sync claim removed from Key Elements, Data Flow and Flow; the plan now states explicitly that the in-memory value is left stale as today, and widening the script's return arity is a new No-Go. |
+| Scope & Value, History & Consistency, Risk & Robustness (3/3 agreement) | CONCERN | Success Criteria still required a "field-level alpha/gamma" test after the round-1 revision cut that feature everywhere else — a builder following the checklist literally would reintroduce the configuration surface the No-Gos forbid. | Success Criteria bullet rewritten to the four tests Test Impact actually lists. |
