@@ -1,5 +1,7 @@
 ---
-status: Planning
+status: Ready
+revision_applied: true
+revision_applied_at: 2026-09-06T09:45:00Z
 type: bug
 appetite: Small
 owner: Valor Engels
@@ -243,10 +245,11 @@ see Verification.
 ### Risk 1: a gate silently depended on the exported `REDIS_URL`
 **Impact:** removing the export breaks a different gate (stress, docs, build) that
 never named the variable in the script but read it from the environment.
-**Mitigation:** `grep -n REDIS_URL scripts/ci-local.sh` shows only three uses, all
-of which the local variable still serves. Beyond that, the Verification table runs
-the full set of `REDIS_URL`-reading test files with the variable absent, which is
-the real check.
+**Mitigation:** `grep -n REDIS_URL scripts/ci-local.sh` returns five lines across
+three consumers — the definition and `export` (`:53-54`), the reachability probe
+(`:96-97`), and the status banner (`:333`) — all of which the local variable still
+serves. Beyond that, the Verification table runs the full set of
+`REDIS_URL`-reading test files with the variable absent, which is the real check.
 
 ### Risk 2: a developer relied on the script working with no Redis config at all
 **Impact:** none for the probe — the local default keeps the reachability check and
@@ -309,9 +312,9 @@ the environment the test hands it is corrected.
 
 ### Team Members
 
-- **Builder (script + test)**
+- **Builder (script + test + docs)**
   - Name: `ci-local-builder`
-  - Role: apply both edits and the inline comments
+  - Role: apply both edits, their inline comments, and the stale-docs sweep
   - Agent Type: builder
   - Resume: true
 
@@ -324,50 +327,49 @@ the environment the test hands it is corrected.
 
 ## Step by Step Tasks
 
-### 1. Fix the script's exported fallback
-- **Task ID**: build-script
+Collapsed to two tasks after critique (Scope & Value CONCERN): a two-line change
+does not warrant four serialized hops across three roles. Both edits and the
+stale-docs sweep are one builder task; the validator remains a distinct pass
+because it must run after both edits land.
+
+### 1. Apply both fixes and sweep the docs
+- **Task ID**: build-fix
 - **Depends On**: none
-- **Validates**: `scripts/ci-local.sh`
+- **Validates**: `scripts/ci-local.sh`, `tests/test_integrations_mcp.py`
 - **Assigned To**: ci-local-builder
 - **Agent Type**: builder
-- **Parallel**: true
+- **Parallel**: false
 - Replace the `REDIS_URL="${REDIS_URL:-...}"` + `export REDIS_URL` pair at
   `scripts/ci-local.sh:53-54` with a non-exported local (e.g. `REDIS_PROBE_URL`)
   defaulting to `${REDIS_URL:-redis://localhost:6379}`.
 - Point the reachability probe (`:96-97`) and the status banner (`:333`) at the
   local variable; keep the failure message text and the `exit 2` unchanged.
+  **The script runs under `set -uo pipefail` (`scripts/ci-local.sh:45`), so a
+  read site left naming the now-unset `$REDIS_URL` crashes with "unbound
+  variable" — but only when the developer has no `REDIS_URL`, which is precisely
+  the case the old fallback masked.** After editing, `grep -n 'REDIS_URL'
+  scripts/ci-local.sh` must show the bare name only inside the `${REDIS_URL:-...}`
+  default expansion; every other site must read the local variable.
 - Add a comment naming issue #635 and stating the variable must not be exported.
-
-### 2. Enforce the contract in the test
-- **Task ID**: build-test
-- **Depends On**: none
-- **Validates**: `tests/test_integrations_mcp.py`
-- **Assigned To**: ci-local-builder
-- **Agent Type**: builder
-- **Parallel**: true
 - Add `monkeypatch.delenv("REDIS_URL", raising=False)` beside the existing
   `POPOTO_MEMORY_URL` delenv, mirroring `tests/test_integrations_cli.py:59-62`.
 - Update the docstring: the URL is cleared by the test, not merely assumed unset.
+- Grep `docs/` and `CLAUDE.md` for guidance that assumes `ci-local.sh` exports a
+  `REDIS_URL`; correct anything stale.
 
-### 3. Validate across the environment matrix
+### 2. Validate across the environment matrix
 - **Task ID**: validate-matrix
-- **Depends On**: build-script, build-test
+- **Depends On**: build-fix
 - **Assigned To**: ci-local-validator
 - **Agent Type**: validator
 - **Parallel**: false
 - Run the affected test with `REDIS_URL` unset, set to `redis://localhost:6379`,
   and set to `redis://localhost:6379/6`. All three must pass.
-- Run every `REDIS_URL`-reading test file with the variable unset.
+- Run every `REDIS_URL`-reading test file named in Test Impact with the variable
+  unset — all seven, not a subset.
+- Run `env -u REDIS_URL scripts/ci-local.sh tests` end to end, which is the only
+  check that exercises the `set -u` unbound-variable path.
 - Confirm the script's Redis preflight still exits 2 against an unreachable URL.
-
-### 4. Documentation
-- **Task ID**: document-fix
-- **Depends On**: validate-matrix
-- **Assigned To**: ci-local-builder
-- **Agent Type**: documentarian
-- **Parallel**: false
-- Grep `docs/` and `CLAUDE.md` for guidance that assumes `ci-local.sh` exports a
-  `REDIS_URL`; correct anything stale.
 
 ## Verification
 
@@ -380,14 +382,26 @@ All commands run from the worktree root with `POPOTO_TEST_DB=6`.
 | Script exports no REDIS_URL | `grep -c '^export REDIS_URL' scripts/ci-local.sh` | match count == 0 |
 | Script still probes a URL | `grep -c 'redis-cli -u' scripts/ci-local.sh` | output > 0 |
 | Preflight fails closed when Redis is down | `REDIS_URL=redis://localhost:6399 scripts/ci-local.sh tests >/dev/null 2>&1; echo $?` | output contains 2 |
-| REDIS_URL-reading suites pass unset | `env -u REDIS_URL POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_pytest_plugin.py tests/test_integrations_cli.py tests/test_integrations_db0_isolation.py tests/test_integrations_service.py -q` | exit code 0 |
+| REDIS_URL-reading suites pass unset | `env -u REDIS_URL POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_pytest_plugin.py tests/test_integrations_cli.py tests/test_integrations_db0_isolation.py tests/test_integrations_service.py tests/test_default_memory_eviction.py tests/test_production_contracts.py tests/test_transfer_cli.py -q` | exit code 0 |
+| Script survives `set -u` with REDIS_URL unset | `env -u REDIS_URL scripts/ci-local.sh lint >/dev/null 2>&1; echo $?` | output contains 0 |
+| No bare $REDIS_URL read sites remain | `grep -c '\$REDIS_URL' scripts/ci-local.sh` | match count == 0 |
+| Acceptance: full tests gate, no REDIS_URL | `env -u REDIS_URL POPOTO_TEST_DB=6 scripts/ci-local.sh tests` | exit code 0 |
 | Shell script parses | `bash -n scripts/ci-local.sh` | exit code 0 |
 | Black clean | `.venv/bin/black --check src/ tests/` | exit code 0 |
 | Ruff clean | `.venv/bin/ruff check src/` | exit code 0 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+FULL war room, independent roster (3 critics), 2026-09-06. Verdict:
+**READY TO BUILD (with concerns)** — 0 blockers, 3 concerns, 1 nit. One revision
+round applied; all four findings addressed below.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | Risk & Robustness | The Verification row for `REDIS_URL`-reading suites ran 4 files while Test Impact names 7 — three were silently dropped from the command actually executed. | Verification row extended to all seven files; task 2 says "all seven, not a subset". | `test_default_memory_eviction.py`, `test_production_contracts.py`, and `test_transfer_cli.py` set `REDIS_URL` in a subprocess `env` dict, so they *should* be immune — but "should be immune" is the claim under test, so they must actually run. |
+| CONCERN | Risk & Robustness | No Verification row ran `scripts/ci-local.sh` end-to-end with `REDIS_URL` unset, which is the only way to exercise the `set -u` unbound-variable path. | Two rows added: a cheap `lint`-gate run and the full acceptance `tests`-gate run. Task 1 carries the gotcha inline. | `scripts/ci-local.sh:45` is `set -uo pipefail`. A read site left as bare `$REDIS_URL` after the rename crashes with "unbound variable" *only when the variable is unset* — the exact case the old fallback masked, so every `REDIS_URL`-set test would pass while the fix is broken. The `lint` gate exercises the assignment and banner; only the `tests`/`stress` gates also reach the probe at `:96-97`. |
+| CONCERN | Scope & Value | Three agent roles across four serialized tasks is disproportionate to a change the plan itself calls "two lines of shell and one `monkeypatch.delenv` call". | Tasks collapsed from four to two; the documentarian task folded into the builder task. | Keep the validator as a separate pass — it must run *after* both edits land, and its value is the environment matrix, not the edit. |
+| NIT | History & Consistency | Risk 1 claimed `grep -n REDIS_URL scripts/ci-local.sh` "shows only three uses"; it returns 5 lines. | Reworded to "five lines across three consumers" with the line numbers named. | Also confirmed: the exported fallback traces to PR #405, not #497. Prior Art is otherwise accurate — no missing prior art found. |
 
 ---
 
