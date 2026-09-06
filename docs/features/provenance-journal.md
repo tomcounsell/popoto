@@ -273,7 +273,7 @@ depends on who owns the pipeline:
   outcome from your own `execute()`:
 
 ```python
-pipe = popoto.get_redis().pipeline()
+pipe = popoto.batch()
 result = ProvenanceJournal.supersede(first, agent_id="agent-1",
                                      statement="...", pipeline=pipe)
 assert result.target_closed is None          # nothing has executed yet
@@ -285,6 +285,15 @@ closed = bool(results[result.close_index])   # the real answer
 caller's pipeline. It is `None` whenever no close was queued — always so on
 the journal-owned path, where the pipeline has already executed and
 `target_closed` carries the answer directly.
+
+Open the pipeline with `popoto.batch()` (#630). It returns the shared
+connection's transactional pipeline — the same object `popoto.get_redis()
+.pipeline()` returns, so a pipeline built directly off the client is still
+accepted here — but `batch()` is the spelling that survives the move of the
+Redis client behind the field layer, and the raw-client spelling is deprecated
+for that reason. `batch(transaction=False)` opens a non-transactional batch,
+which the journal's own methods reject: a caller-supplied pipeline must be
+transactional or `supersede()`/`retract()` raise `ValueError` before writing.
 
 Every method also raises before writing anything on: a firewall-blocked
 value (`JournalBlockedError`), an out-of-vocabulary `kind` or an inconsistent

@@ -99,6 +99,63 @@ If no matching instance exists, `get()` returns `None`. If more than one instanc
     For models with composite keys, pass all key field values to `get()`. For models with
     `AutoKeyField`, use the auto-generated key value or `redis_key`.
 
+## Check Existence Without Loading
+
+When you only need to know *whether* a record is stored, `Model.exists()` answers in one
+`EXISTS` command without decoding the hash.
+
+```python
+Restaurant.exists(name="Burger Palace")
+# => True
+
+Restaurant.exists(name="Nowhere Diner")
+# => False
+```
+
+It takes the same three spellings as `get()` — key field values, a `DB_key`, or a raw
+Redis key string (positionally or as `redis_key=`):
+
+```python
+Restaurant.exists("Restaurant:Burger Palace")
+Restaurant.exists(redis_key="Restaurant:Burger Palace")
+Restaurant.exists(db_key=restaurant.db_key)
+```
+
+!!! warning
+    Pass a full Redis key as a **string**, not as `DB_key("Restaurant:Burger Palace")`.
+    `DB_key` treats a string as a single key partial and escapes the `:` inside it, so a
+    multi-segment key wrapped that way names a key that never exists. `exists()`
+    short-circuits a `str` straight through, exactly as `get()` does.
+
+`exists()` reports storage, not validity: a record whose `ValidityField` interval has been
+closed still exists. Use the [ValidityField filters](#validityfield-filters) for
+as-of membership.
+
+## Batching Commands into One Transaction
+
+`popoto.batch()` opens a batch of queued commands against Popoto's shared connection, so
+you do not need to import the Redis client to start a transaction.
+
+```python
+import popoto
+
+pipe = popoto.batch()
+Restaurant(name="Sushi Zen", cuisine="Japanese").save(pipeline=pipe)
+Restaurant(name="Taco Stand", cuisine="Mexican").save(pipeline=pipe)
+pipe.execute()   # both saves, and all their index writes, in one MULTI/EXEC
+```
+
+Every `save()`/`delete()` and every field hook accepts `pipeline=`, so a batch groups a
+whole unit of work — model hashes and index maintenance alike — into a single atomic
+round-trip. `batch(transaction=False)` queues without a `MULTI`/`EXEC` wrapper, which
+pipelines for throughput but gives up atomicity; some callers (the
+[provenance journal](features/provenance-journal.md)) require a transactional pipeline and
+raise if given a non-transactional one.
+
+The returned object is a `redis.client.Pipeline` — the same type
+`popoto.get_redis().pipeline()` returns — so existing code that builds one off the client
+keeps working. `batch()` is the preferred spelling.
+
 ## Get Multiple Objects by Key
 
 When you already have a list of Redis keys (for example, from a set intersection, a cache of
