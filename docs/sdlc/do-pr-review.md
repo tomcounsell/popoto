@@ -93,23 +93,19 @@ with `popoto_test_db = "15"` in `pyproject.toml`. Override with
 `POPOTO_TEST_DB=<n>`; DB 0 is rejected outright to prevent production data
 loss.
 
-**Five tests hardcode `assert db == 15` and therefore fail by construction
-under any non-15 DB.** This is not a regression — it is the expected result of
-running with `POPOTO_TEST_DB` set to anything else (which reviewers running
-alongside other pipelines routinely do):
+**`tests/test_pytest_plugin.py` no longer hardcodes DB 15 in the parent
+process** — #549 parameterised it, and the whole file passes under an override
+(verified 2026-09-06: `POPOTO_TEST_DB=6` → 43 passed). The two surviving
+`assert db == 15` lines (`tests/test_pytest_plugin.py:832`, `:866`) sit inside
+child-process probe scripts whose own pytest config pins DB 15, so the parent's
+override does not reach them. Do not carry forward the old "five tests fail by
+construction on a non-15 DB" caveat; it described the pre-#549 file.
 
-- `tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db`
-- `tests/test_pytest_plugin.py::TestDatabaseIsolation::test_swap_happens_before_test_modules_are_imported`
-- `tests/test_pytest_plugin.py::TestAsyncIntegration::test_async_connection_on_test_db`
-- `tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db`
-- `tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_canonical_redis_db_on_test_db`
-
-Also expected: `tests/test_version.py::test_version_matches_pyproject` fails on
+Still expected: `tests/test_version.py::test_version_matches_pyproject` fails on
 a stale editable install (reinstall the package, don't file it as a bug).
 
-Before calling any of these six a blocker, state the DB you ran on. If you ran
-on a non-15 DB and see exactly this set, the correct review note is "expected
-under `POPOTO_TEST_DB=<n>`", not a finding. Misreading it as a regression has
+Before calling that one a blocker, state the DB you ran on. Misreading an
+environmental failure as a regression has
 already cost real review time.
 
 ## Reproducing counts: worktree verification gotchas

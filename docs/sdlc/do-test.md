@@ -36,20 +36,19 @@ first.
 
 Because every worktree shares DB 15, concurrent pipelines collide there and
 have produced 73–158 phantom failures. Setting `POPOTO_TEST_DB=<n>` avoids the
-collision but introduces a fixed, known failure set — **six tests fail by
-construction on any non-15 DB.** Five hardcode `assert db == 15`:
+collision. It no longer costs you a known failure set: `tests/test_pytest_plugin.py`
+used to hardcode `assert db == 15` in five tests, but #549 parameterised them and
+the file passes under an override (verified 2026-09-06: `POPOTO_TEST_DB=6` →
+43 passed). The two `assert db == 15` lines that remain (`:832`, `:866`) are
+inside child-process probe scripts that pin DB 15 in their own config, so the
+parent's override does not reach them.
 
-- `tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db`
-- `tests/test_pytest_plugin.py::TestDatabaseIsolation::test_swap_happens_before_test_modules_are_imported`
-- `tests/test_pytest_plugin.py::TestAsyncIntegration::test_async_connection_on_test_db`
-- `tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db`
-- `tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_canonical_redis_db_on_test_db`
+The one failure still expected outside a fresh install is
+`tests/test_version.py::test_version_matches_pyproject`, on a stale editable
+install (reinstall, don't file it).
 
-plus `tests/test_version.py::test_version_matches_pyproject`, which fails on a
-stale editable install (reinstall, don't file it).
-
-Classify that exact set as **environmental, not PR-introduced**, and say in the
-report which DB you ran on. Anything beyond that set on a non-15 DB is a real
+Classify that one as **environmental, not PR-introduced**, and say in the
+report which DB you ran on. Anything beyond it on a non-15 DB is a real
 signal. Never conclude "regression" without the DB stated.
 
 ## Before trusting any count

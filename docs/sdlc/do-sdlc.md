@@ -121,16 +121,13 @@ Every popoto checkout's suite isolates onto **Redis DB 15** via the
 one database and have produced 73–158 phantom failures. When several `/do-sdlc`
 runs are live at once (routine here), set `POPOTO_TEST_DB=<n>` per run.
 
-The catch, and it must be passed to every TEST and REVIEW stage: **six tests
-fail by construction on a non-15 DB.** Five hardcode `assert db == 15` —
-`tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db`,
-`::test_swap_happens_before_test_modules_are_imported`,
-`TestAsyncIntegration::test_async_connection_on_test_db`,
-`TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db`,
-`::test_canonical_redis_db_on_test_db` — and
-`tests/test_version.py::test_version_matches_pyproject` fails on a stale
-editable install. That exact set is expected noise, not a regression. DB 0 is
-rejected outright.
+The catch, and it must be passed to every TEST and REVIEW stage: **one test
+fails by construction outside a fresh install** —
+`tests/test_version.py::test_version_matches_pyproject`, on a stale editable
+install. That is expected noise, not a regression. DB 0 is rejected outright.
+`tests/test_pytest_plugin.py` used to contribute five more here, but #549
+parameterised its DB assertions and the file passes under an override
+(verified 2026-09-06: `POPOTO_TEST_DB=6` → 43 passed).
 
 Full reviewer-facing detail, including the five worktree-verification gotchas
 (wrong package under test, `.[dev]`-only venvs deselecting ~95 tests, the
