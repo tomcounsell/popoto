@@ -215,10 +215,103 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
 
 ## Step by Step Tasks
 
+### Task 1 — `docs/features/confidence-field.md`: use popoto's own connection
+**Depends on:** none
+
+- In the "Inspecting Companion Hash Keys" snippet (lines ~159-184), drop
+  `import redis` and replace `r = redis.from_url("redis://localhost:6379")` with
+  `r = popoto.get_redis()`.
+- Add `import popoto` to the snippet's imports if the existing `from popoto
+  import …` line does not already make the module available (it does not — check
+  and add).
+- Add one short line of prose after the snippet: reading the companion hash
+  through `get_redis()` guarantees the same database popoto wrote it to.
+- **Validation:** `grep -n 'from_url' docs/features/confidence-field.md` → no
+  output.
+
+### Task 2 — `docs/configuration.md`: state what a missing database means
+**Depends on:** none
+
+- Annotate the hosted-provider example at line 46 inline (it keeps its db-less
+  URL — that is what providers issue).
+- Add one line beneath the examples block: a URL with no `/database` component
+  selects database 0.
+- Update the env-var table row at line ~403 so "Falls back to localhost:6379"
+  names database 0.
+- **Validation:** `grep -n 'database 0' docs/configuration.md` → at least one
+  hit in the URL-format section.
+
+### Task 3 — `tests/test_docs_redis_url.py`: regression guard
+**Depends on:** Tasks 1, 2
+
+- `test_no_user_facing_doc_constructs_a_dbless_client` — scan the doc set,
+  assert zero db-less `from_url(` calls.
+- `test_the_guard_scans_a_nonempty_doc_set` — assert the scanned set is
+  non-empty **and** contains `docs/features/confidence-field.md` and
+  `docs/configuration.md`. Kills vacuity mode 1.
+- `test_the_matcher_detects_a_dbless_url` — run the matcher over a synthetic
+  db-less snippet and assert it fires; run it over `redis://h:6379/15` and
+  assert it does not. Kills vacuity mode 2.
+- **Validation:** the three commands in the Verification table.
+
+### Task 4 — `CLAUDE.md`: record the third remedy
+**Depends on:** Tasks 1-3
+
+- The file already explains why `tests.yml` and `ci-local.sh` took opposite
+  remedies (#639). Add one sentence for the docs case — the accessor removes the
+  database rather than naming it — so the three do not later read as
+  inconsistent.
+- **Validation:** `grep -n 'get_redis' CLAUDE.md` → one hit.
+
 ## Success Criteria
+
+- `grep -rn 'from_url("redis://localhost:6379")' docs/` returns nothing outside
+  `docs/plans/` (issue acceptance 1).
+- The rest of the user-facing doc set is swept, with the boundary between
+  "hazard" and "prose" written down rather than left to the next reader (issue
+  acceptance 2).
+- The confidence-field example explains why it uses popoto's connection, so a
+  reader has a reason not to substitute a raw client back in (issue acceptance 3).
+- A reader of `docs/configuration.md` can learn what a db-less URL does without
+  leaving the page.
+- The guard fails if any of the above is undone, and is demonstrably not
+  vacuous.
+- Both CI jobs stay green.
 
 ## Verification
 
+Run from the lane worktree with `POPOTO_TEST_DB=6`.
+
+| Check | Command | Expected |
+|---|---|---|
+| No db-less client in user-facing docs | `grep -rn 'from_url("redis://[^"]*:6379")' docs/ README.md \| grep -v '^docs/plans/'` | exit code 1 |
+| Confidence-field example uses the accessor | `grep -c 'popoto.get_redis()' docs/features/confidence-field.md` | output contains 1 |
+| Configuration explains the missing database | `grep -ci 'database 0' docs/configuration.md` | non-zero |
+| Guard passes | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q` | 3 passed |
+| Guard is not vacuous — it catches a reintroduction | `printf 'r = redis.from_url("redis://localhost:6379")\n' >> docs/features/confidence-field.md; POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q; git checkout docs/features/confidence-field.md` | the run **fails** before the checkout restores the file |
+| Sibling guard still green | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_ci_workflow_redis_url.py -q` | 3 passed |
+| Docs build | `.venv/bin/mkdocs build --strict 2>&1 \| tail -3` | no error |
+
+The mutation row is the one that matters: a guard that has never been observed
+failing has not been observed at all.
+
 ## Risks
 
+| # | Risk | Mitigation |
+|---|---|---|
+| 1 | The guard is vacuous and nobody notices for months (the #643 lesson). | Two dedicated anti-vacuity tests plus the mutation row above, which must be run and its failure observed. |
+| 2 | `get_redis()` is not importable the way the snippet writes it, so the example is broken in a new way. | Execute the edited snippet end-to-end against DB 6 before the PR opens — not merely eyeball it. |
+| 3 | The exclusion of `docs/plans/` is read later as an oversight and someone "fixes" the archive. | The exclusion is stated in No-Gos *and* encoded in the guard with a comment giving the reason. |
+| 4 | Scope creep into `docs/configuration.md`'s `/0` recommendation. | Named as a rabbit hole and raised as an Open Question instead of being acted on. |
+| 5 | Lane runs on the shared main checkout for the plan doc while other lanes are active. | Plan committed after each section (already done); code work stays in `.worktrees/sdlc-645`. |
+
 ## Open Questions
+
+1. **`docs/configuration.md` recommends `redis://localhost:6379/0` in four
+   examples, while #584 makes `MemoryConfig.from_env` *refuse* DB 0.** A reader
+   who follows the configuration page and then uses the memory integrations hits
+   `Db0RefusedError`. That is a genuine documentation/behaviour contradiction,
+   but resolving it means deciding what popoto's recommended default database
+   *is* — a maintainer call with release-note consequences, and one that
+   `adhoc_db0_guard.md` already declined once. **This plan does not touch it.**
+   Flagging for a separate issue if wanted.
