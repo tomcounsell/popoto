@@ -6,11 +6,20 @@ the pytest plugin isolates onto (issue #639). That constant duplicates
 ``popoto_test_db`` in ``pyproject.toml``, so this module fails loudly if the two
 ever disagree — in either direction:
 
-1. every ``REDIS_URL`` in ``.github/workflows/`` names a database, and it is the
-   one ``pyproject.toml`` declares;
+1. every ``REDIS_URL`` assignment in ``.github/workflows/`` names a database,
+   and it is the one ``pyproject.toml`` declares;
 2. if a workflow ever sets ``POPOTO_TEST_DB`` (none does today), it names the
    same database too — ``_swap_db`` makes that variable the real authority for
-   the plugin's connection, so a disagreement there is the same split-brain.
+   the plugin's connection, so a disagreement there is the same split-brain;
+3. every job in ``tests.yml`` still sets ``REDIS_URL`` at all. Without this the
+   first two checks pass vacuously when the variable is deleted, which restores
+   the very database-0 hazard #639 closed.
+
+Scope note: these checks read ``NAME: value`` / ``NAME=value`` assignments at
+the start of a line, which is how the workflows declare their environment. A
+value injected at runtime (``echo "REDIS_URL=..." >> $GITHUB_ENV`` inside a
+``run:`` block) is not covered — if that pattern is ever introduced, this
+module needs extending.
 
 Both files are parsed from disk with the standard library only: no new test
 dependency, and no Redis connection. ``tomllib`` is deliberately not used —
@@ -90,6 +99,63 @@ def test_workflow_redis_url_names_the_pyproject_test_db() -> None:
             f"{database!r}, but pyproject.toml says popoto_test_db = "
             f"{expected!r}. Update whichever is stale so both name one "
             "database."
+        )
+
+
+TESTS_WORKFLOW = WORKFLOW_DIR / "tests.yml"
+
+_JOB_HEADER = re.compile(r"^  (?P<name>[A-Za-z_][\w-]*):\s*$", re.MULTILINE)
+
+
+def _tests_workflow_jobs() -> list[tuple[str, int, int]]:
+    """Each job in ``tests.yml`` as (name, first line, last line).
+
+    Scanning starts at the ``jobs:`` key: two-space keys also appear under
+    ``on:`` (``pull_request``, ``push``, ``workflow_dispatch``), and treating
+    those as jobs would fail the guard on a correct workflow.
+    """
+    text = TESTS_WORKFLOW.read_text(encoding="utf-8")
+    jobs_key = re.search(r"^jobs:\s*$", text, re.MULTILINE)
+    if jobs_key is None:
+        pytest.fail(f"no top-level `jobs:` key found in {TESTS_WORKFLOW}")
+    starts = [
+        (m.group("name"), text.count("\n", 0, m.start()) + 1)
+        for m in _JOB_HEADER.finditer(text, jobs_key.end())
+    ]
+    if not starts:
+        pytest.fail(
+            f"no jobs found in {TESTS_WORKFLOW}; this guard cannot confirm "
+            "that CI still pins a test database"
+        )
+    last_line = text.count("\n") + 1
+    bounds = [end for _, end in starts[1:]] + [last_line + 1]
+    return [(name, start, end - 1) for (name, start), end in zip(starts, bounds)]
+
+
+def test_every_tests_workflow_job_sets_redis_url() -> None:
+    """No job may drop ``REDIS_URL``, which would silently restore DB 0.
+
+    The other two checks only constrain assignments that exist. Deleting
+    ``REDIS_URL`` outright satisfies them vacuously while putting a from-env
+    consumer back on ``DEFAULT_URL``'s database 0 — the hazard #639 closed, and
+    the one remedy #635 chose for ``ci-local.sh`` that does not transfer here.
+    Anchoring on jobs rather than a fixed count means a future third job has to
+    pin the database too.
+    """
+    assignments = [
+        (line, url)
+        for path, line, url in _assignments("REDIS_URL")
+        if path == TESTS_WORKFLOW
+    ]
+
+    for name, start, end in _tests_workflow_jobs():
+        covered = [url for line, url in assignments if start <= line <= end]
+        assert covered, (
+            f"{TESTS_WORKFLOW.relative_to(REPO_ROOT)}: job {name!r} "
+            f"(lines {start}-{end}) sets no REDIS_URL. Deleting it does not "
+            "leave the variable unset — popoto's DEFAULT_URL resolves to "
+            "database 0, which the #584 guard refuses. Pin the database "
+            "instead (see #639)."
         )
 
 

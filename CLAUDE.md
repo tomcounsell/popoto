@@ -28,6 +28,8 @@ Tests are isolated on Redis DB 15 by the `popoto.pytest_plugin` entry point, whi
 
 `scripts/ci-local.sh` deliberately does **not** export a `REDIS_URL` for its gates (#635). It keeps one internally for its own reachability probe and banner, but passes your shell's environment through untouched, so the pytest plugin stays the only thing binding the test connection. It used to export a db-less `redis://localhost:6379` default, which resolves to DB 0 and broke any test whose contract is that the variable is unset.
 
+`.github/workflows/tests.yml` takes the **opposite** approach on purpose (#639): both jobs export `REDIS_URL: redis://localhost:6379/15`, naming the database rather than omitting the variable. The two are not inconsistent — deleting the variable does not leave it unset, because `DEFAULT_URL` is `redis://localhost:6379/0`, so a from-env bind would resolve to DB 0 and hit the #584 refusal. On a developer machine that is the right trade, since a hardcoded 15 would silently contradict the `POPOTO_TEST_DB` override that parallel worktree lanes rely on. In CI there is no such override (no workflow sets `POPOTO_TEST_DB`), so naming the database is strictly better: a test that binds from the environment lands where the plugin isolates. `tests/test_ci_workflow_redis_url.py` fails if the workflow constant and `popoto_test_db` ever drift apart, in either direction, or if a job drops `REDIS_URL` altogether.
+
 ### Verifying in a worktree (read before trusting a test or mypy number)
 
 A `.worktrees/` checkout can report a confident, wrong number in five ways — each cost a review round on PR #495. `scripts/ci-local.sh` checks four automatically:
