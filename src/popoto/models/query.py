@@ -158,9 +158,7 @@ class _PerThreadAttr(Generic[_T]):
     @overload
     def __get__(self, obj: Any, objtype: Any = None) -> _T: ...
 
-    def __get__(
-        self, obj: Any, objtype: Any = None
-    ) -> "Union[_PerThreadAttr[_T], _T]":
+    def __get__(self, obj: Any, objtype: Any = None) -> "Union[_PerThreadAttr[_T], _T]":
         if obj is None:
             return self
         tls = self._store(obj)
@@ -2559,16 +2557,19 @@ class Query:
         bound, since the sorted set alone cannot honor the other index, but not
         this one: the intersection is already reflected in _sorted_field_order.
 
-        ``state`` is the async path's per-call snapshot: when supplied the guard
-        reads and writes it instead of ``self``, which is what keeps concurrent
-        ``async_filter`` calls from clobbering each other's bound. ``None`` keeps
-        the sync path on shared instance state exactly as before.
+        ``state`` is the caller's per-call snapshot: when supplied the guard
+        reads it instead of re-reading ``self``, which is what keeps concurrent
+        calls from clobbering each other's bound. ``None`` snapshots here
+        instead, for callers that have no carrier of their own.
+
+        The bound is written to ``state`` *and* mirrored onto ``self`` on both
+        branches. The mirror is what keeps ``Model.query._pushdown_limit``
+        readable by white-box callers after a sync ``filter()``; per-thread
+        storage (see ``_PerThreadAttr``) makes it a thread-private write, so it
+        costs nothing and cannot leak to another thread's query.
         """
         if state is None:
             state = self._snapshot_pushdown_state()
-            write_back = True
-        else:
-            write_back = False
 
         if q_objects or not allow_pushdown:
             return db_keys
@@ -2600,10 +2601,9 @@ class Query:
         state.pushdown_limit = limit
         state.pushdown_requested = fetch
         state.pushdown_fetched = len(bounded)
-        if write_back:
-            self._pushdown_limit = limit
-            self._pushdown_requested = fetch
-            self._pushdown_fetched = len(bounded)
+        self._pushdown_limit = limit
+        self._pushdown_requested = fetch
+        self._pushdown_fetched = len(bounded)
         return bounded
 
     def _short_result_action(
@@ -3294,12 +3294,15 @@ class Query:
             # so _sorted_field_order is unreliable — clear it
             self._sorted_field_order = None
             self._sorted_field_name = None
+            # Snapshot AFTER the clear so the "ordering is unreliable" decision
+            # travels in the carrier like every other per-call fact.
+            state = self._snapshot_pushdown_state()
         else:
-            self._pushdown_allowed = _allow_pushdown
-            try:
-                db_keys_set = self.filter_for_keys_set(**kwargs)
-            finally:
-                self._pushdown_allowed = False
+            # Arm, query and snapshot in one hop that contains no yield point,
+            # so nothing below re-reads bookkeeping off the shared instance.
+            db_keys_set, state = self._filter_keys_with_pushdown(
+                _allow_pushdown, kwargs
+            )
         if not len(db_keys_set):
             return []
 
@@ -3308,12 +3311,12 @@ class Query:
         if (
             "order_by" not in kwargs
             and self.model_class._meta.order_by
-            and not getattr(self, "_sorted_field_order", None)
+            and not state.sorted_field_order
         ):
             kwargs["order_by"] = self.model_class._meta.order_by
 
         # Use sorted field order if available and no explicit order_by
-        sorted_field_order = getattr(self, "_sorted_field_order", None)
+        sorted_field_order = state.sorted_field_order
         explicit_order_by = kwargs.get("order_by", None)
         # Meta.order_by is a default - sorted field order takes precedence over it
         if sorted_field_order and not explicit_order_by:
@@ -3327,7 +3330,7 @@ class Query:
         # it takes hydration from every key in the partition to `limit` HGETALLs.
         # The Redis-side bound saves transferring the key list, a smaller win.
         db_keys_set = self._bound_keys_before_hydration(
-            db_keys_set, q_objects, _allow_pushdown, kwargs
+            db_keys_set, q_objects, _allow_pushdown, kwargs, state=state
         )
 
         # A pending client-side filter must see every candidate before any
@@ -3337,7 +3340,7 @@ class Query:
         # Meta.order_by is a KeyField returned the first two keys, filtered
         # them all away, and answered [] although matches existed further down.
         # prepare_results re-applies the limit after the client filters run.
-        client_filters_pending = bool(getattr(self, "_pending_client_filters", None))
+        client_filters_pending = bool(state.pending_client_filters)
         objects = Query.get_many_objects(
             self.model_class,
             db_keys_set,
@@ -3346,9 +3349,7 @@ class Query:
             values=kwargs.get("values", None),
         )
 
-        if self._short_result_action(
-            len(objects), _allow_pushdown, self._snapshot_pushdown_state()
-        ):
+        if self._short_result_action(len(objects), _allow_pushdown, state):
             return self._execute_filter(
                 q_objects=q_objects,
                 _no_track=_no_track,
@@ -3357,7 +3358,7 @@ class Query:
             )
 
         # Apply client-side filters for plain (unindexed) fields
-        client_filters = getattr(self, "_pending_client_filters", {})
+        client_filters = state.pending_client_filters
         if client_filters:
             filtered = []
             for obj in objects:
@@ -3528,8 +3529,10 @@ class Query:
                 POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key.redis_key)
                 or 0
             )
-        db_keys = self.filter_for_keys_set(**kwargs)
-        client_filters = getattr(self, "_pending_client_filters", {})
+        # allow_pushdown=False preserves today's behavior exactly: count() never
+        # armed the pushdown and must not start, because a bound tally is wrong.
+        db_keys, state = self._filter_keys_with_pushdown(False, kwargs)
+        client_filters = state.pending_client_filters
         if client_filters:
             # Must load objects to apply client-side filters
             objects = Query.get_many_objects(self.model_class, db_keys)
@@ -3976,9 +3979,13 @@ class Query:
             )
             return int(count or 0)
 
-        # Use sync filter_for_keys_set in thread pool for complex filter logic
-        db_keys = await to_thread(self.filter_for_keys_set, **kwargs)
-        client_filters = getattr(self, "_pending_client_filters", {})
+        # Use the sync key query in a thread pool for complex filter logic, and
+        # take the client filters off the carrier it returns. Reading them back
+        # off `self` here would read the event-loop thread's cell -- the query
+        # ran in a worker thread, whose per-thread bookkeeping this thread
+        # cannot see -- and silently return the unfiltered key count.
+        db_keys, state = await to_thread(self._filter_keys_with_pushdown, False, kwargs)
+        client_filters = state.pending_client_filters
         if client_filters:
             # Must load objects to apply client-side filters
             objects = await self._async_get_many_objects(self.model_class, db_keys)
