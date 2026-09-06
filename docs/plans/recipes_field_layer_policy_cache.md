@@ -1,5 +1,7 @@
 ---
 status: Planning
+revision_applied: true
+revision_applied_at: 2026-09-06T12:02:41Z
 type: chore
 appetite: Small
 created: 2026-09-06
@@ -282,22 +284,50 @@ to be implemented by every future backend. TD(0) is a modeling concern.
 
 - **New module `src/popoto/fields/td_value_field.py`**
   - `TD_UPDATE_LUA` — the script text moved **verbatim** from
-    `policy_cache.py`, with its KEYS/ARGV contract comment block, plus a
+    `policy_cache.py`, with its KEYS/ARGV contract comment block. A
     Valkey-safety note matching `validity_field.py:30-33` (core commands only:
-    `HGET`, `HSET`, `cmsgpack`).
+    `HGET`, `HSET`, `cmsgpack`) goes in the **module docstring**, as Python
+    prose *outside* the script string literal — **never as a Lua comment
+    inside it**. `lua_script()` caches the `Script` object keyed by the exact
+    script text (`redis_db.py:838-854`), so a comment added inside the literal
+    changes the SHA and the `EVALSHA` payload. That is a cache-key change, not
+    a cosmetic one, and it forfeits the parity argument.
   - `class TDValueField(DecimalField)` — adds no storage of its own; the value
     still lives in the model hash under the field's own name, encoded exactly
-    as `DecimalField` encodes it. Carries `alpha` and `gamma` as field-level
-    defaults so a model can declare its learning rate where the column is
-    declared, defaulting to `Defaults.TD_ALPHA` / `Defaults.TD_GAMMA`.
+    as `DecimalField` encodes it. **No new constructor kwargs.** An earlier
+    draft gave the field `alpha`/`gamma` defaults; that is new configuration
+    surface, not a relocation, and it is now a No-Go (see Open Question 4).
+    `alpha` and `gamma` stay exactly where they are today: caller arguments
+    defaulting to `Defaults.TD_ALPHA` / `Defaults.TD_GAMMA`.
   - `TDValueField.td_update(cls, model_instance, field_name, *, reward,
-    max_future_q=0.0, alpha=None, gamma=None, pipeline=None) -> float | None` —
-    the classmethod wrapper, shaped after
-    `ConfidenceField.update_confidence`: resolves the member key from
-    `model_instance.db_key`, raises on an unsaved instance, runs the script,
-    decodes the TD error to `float`, and syncs the new Q back onto the Python
-    instance. Returns `None` on the pipeline branch (result is only available
-    after `execute()`), matching `update_confidence`.
+    max_future_q=0.0, alpha=Defaults.TD_ALPHA, gamma=Defaults.TD_GAMMA,
+    pipeline=None) -> float | None` — the classmethod wrapper, shaped after
+    `ConfidenceField.update_confidence` **in structure only**: it resolves the
+    member key from `model_instance.db_key`, raises on an unsaved instance,
+    runs the script, decodes the TD error to `float`, and syncs the new Q back
+    onto the Python instance. Returns `None` on the pipeline branch (result is
+    only available after `execute()`), matching `update_confidence`.
+  - **The unsaved-instance guard must NOT be copied wholesale from
+    `update_confidence`.** That twin guards with *two* checks — a
+    `db_key.redis_key` try/except **and** a separate
+    `POPOTO_REDIS_DB.exists(member_key)` round trip on the non-pipeline branch
+    (`confidence_field.py:~494`) — and it raises `TypeError`. Today's
+    `_get_redis_key` (`policy_cache.py:416-424`) does neither: attribute /
+    `db_key` lookup only, raising `ValueError`, zero extra Redis commands.
+    `td_update` must reproduce *today's* guard:
+
+    ```python
+    redis_key = getattr(model_instance, "_redis_key", None)
+    if not redis_key:
+        try:
+            redis_key = model_instance.db_key.redis_key
+        except Exception:
+            raise ValueError("Cannot operate on unsaved PolicyEntry")
+    ```
+
+    No `.exists()` call. An added `EXISTS` is a new command in the captured
+    sequence and makes the mandatory parity diff non-empty — which this plan
+    defines as a hard failure, not a nit.
 - **`src/popoto/recipes/policy_cache.py`**
   - `q_value = TDValueField(default=Decimal("0"))`.
   - `update_q_value()` becomes a thin delegation to
@@ -340,15 +370,21 @@ to be implemented by every future backend. TD(0) is a modeling concern.
 - **Pipeline branch is additive, not required.** Add it because every sibling
   field has it and because `run_lua`'s pipeline path already exists, but no
   current caller passes a pipeline, so it must not change the default path's
-  command sequence.
+  command sequence. It is argued from precedent, not from a requirement of
+  #647 — say so in the PR body so a reviewer does not read it as scope
+  attached to the issue.
 - **No change to `PolicyEntry.expected_value`.** `base_score_field="q_value"`
   stays a string and keeps resolving to the same hash field with the same
   encoding (spike-3).
 - **`Defaults.TD_ALPHA` / `Defaults.TD_GAMMA` stay in
-  `fields/constants.py`.** Per CLAUDE.md these are tuning magic numbers, not
-  user config: the new field's `alpha`/`gamma` constructor kwargs default to
-  them and the recipe keeps re-exporting `TD_ALPHA` / `TD_GAMMA` at module
-  level for the guide's sake.
+  `fields/constants.py`, and stay *call-time* defaults.** Per CLAUDE.md these
+  are tuning magic numbers, not user config. Promoting them to field-declared
+  defaults would create a third resolution tier (field-declared > module
+  constant > caller) that nothing asks for, and two models declaring different
+  `alpha` on the same field name would diverge with no runtime detection —
+  the hazard `ConfidenceField` already documents for `evidence_cap`. The
+  recipe keeps re-exporting `TD_ALPHA` / `TD_GAMMA` at module level for the
+  guide's sake.
 
 ## Test Impact
 
@@ -369,15 +405,20 @@ Tests that must pass untouched (`tests/test_policy_cache.py`):
 
 New tests (additive only, in a new `tests/test_td_value_field.py`):
 
-1. `TDValueField.td_update` on an unsaved instance raises, with the same
-   exception type the recipe raised before.
+1. `TDValueField.td_update` on an unsaved instance raises **`ValueError`** —
+   the exception the recipe raised before, not `update_confidence`'s
+   `TypeError` — **and issues zero Redis commands** while doing so. Assert
+   both: the type, and that no `EXISTS` (or any other command) reaches the
+   server on that path. The two halves are the same borrowed code path;
+   fixing only the exception type while keeping the twin's `.exists()` call
+   still breaks parity.
 2. `td_update` through a `popoto.batch()` pipeline returns `None`, queues one
    `EVALSHA`, and applies on `execute()`.
 3. A model that is *not* `PolicyEntry` can declare a `TDValueField` and get a
    TD update — proving the primitive is genuinely reusable and not
    `PolicyEntry`-shaped.
-4. Field-level `alpha`/`gamma` declared on the field are used when the caller
-   omits them, and a caller-supplied value still wins.
+4. `policy_cache.TD_UPDATE_LUA is td_value_field.TD_UPDATE_LUA` — the
+   re-export is a real re-export (Risk 5).
 
 **Parity proof (mandatory, PR #644's technique).** Capture the Redis command
 sequence for `test_q_value_update`, `test_td_update_nil_q_treated_as_zero` and
@@ -479,6 +520,10 @@ build-time blocker, not a review nit.
 - Changing `DecayingSortedField`'s `base_score_field` decode fallback.
 - Changing any tuning constant value, or promoting `alpha`/`gamma` to user
   config (CLAUDE.md: these are magic numbers for experimental tuning).
+- Field-declared `alpha` / `gamma` constructor kwargs on `TDValueField`. They
+  are new configuration surface with a silent-divergence hazard and no caller
+  asking for them; if a real per-model learning rate is ever needed, that is a
+  follow-up issue.
 - Any change to `update_q_value`'s public signature or return type.
 - Deprecating or renaming `initialize_q_value`.
 
@@ -532,14 +577,20 @@ build-time blocker, not a review nit.
 - Create `src/popoto/fields/td_value_field.py`.
 - Move `TD_UPDATE_LUA` verbatim from `policy_cache.py:132-172`, with its
   contract comment block; add the Valkey note.
-- Add `class TDValueField(DecimalField)` with `alpha` / `gamma` kwargs
-  defaulting to `Defaults.TD_ALPHA` / `Defaults.TD_GAMMA`.
+- Add `class TDValueField(DecimalField)` — no new constructor kwargs; `alpha`
+  and `gamma` remain call-time arguments of `td_update` defaulting to
+  `Defaults.TD_ALPHA` / `Defaults.TD_GAMMA`.
+- Put the Valkey-safety note in the module docstring, outside the script
+  literal.
 - Add `td_update` classmethod modeled on
   `ConfidenceField.update_confidence` (`confidence_field.py:495-587`):
   member-key resolution, unsaved guard, pipeline branch, `run_lua` with the
   client resolved at call time, float decode, in-memory sync.
 - Verify byte-identity of the moved script against `origin/main` before
-  proceeding.
+  proceeding: diff the `TD_UPDATE_LUA` string literal character-for-character
+  against `git show origin/main:src/popoto/recipes/policy_cache.py` (lines
+  132-172). If the diff shows any note text *inside* the literal, the note
+  landed in the wrong place and must move to the module docstring.
 
 ### 2. Recipe swap
 
@@ -552,7 +603,7 @@ build-time blocker, not a review nit.
 ### 3. Tests
 
 - Add `tests/test_td_value_field.py` with the four cases from Test Impact.
-- Add the `TD_UPDATE_LUA` identity re-export assertion.
+- Assert the guard path issues zero Redis commands (no `EXISTS`).
 - Change no existing test expectation.
 
 ### 4. Parity validation
@@ -592,3 +643,28 @@ build-time blocker, not a review nit.
    `save()` — pure Python, no bypass — so #630 does not require moving it. It
    would be tidier to have both TD entry points on the field. Left alone for
    now to keep the diff a relocation.
+
+4. **Field-declared `alpha` / `gamma`** — dropped in the round-1 revision as
+   unrequested configuration surface. Flag if a per-model learning rate is
+   actually wanted and it becomes a follow-up issue rather than a No-Go.
+
+## Critique Results
+
+### Round 1 (2026-09-06) — verdict: READY TO BUILD (with concerns)
+
+Roster: Risk & Robustness, Scope & Value, History & Consistency (FULL depth,
+independent roster, 3 critics). 0 blockers, 3 concerns, 1 nit. All three
+concerns were applied to the plan in the revision commit that follows.
+
+| Critic | Severity | Finding | Applied as |
+|---|---|---|---|
+| Risk & Robustness | CONCERN | `td_update` "shaped after `ConfidenceField.update_confidence`" would import that twin's *two-check* guard, including a `POPOTO_REDIS_DB.exists()` round trip the current `_get_redis_key` does not make — a new `EXISTS` in the captured command sequence, which makes the mandatory parity diff non-empty. | Key Elements now pins the exact guard body (attribute / `db_key` lookup, `ValueError`, no `.exists()`), and Test Impact case 1 asserts zero Redis commands on that path. |
+| Risk & Robustness | CONCERN | The unsaved-instance test as written pinned only the exception type, so a guard that raised `ValueError` *and* called `.exists()` would pass the test while failing parity. | Test Impact case 1 now asserts both halves: `ValueError` **and** zero commands. |
+| Scope & Value | CONCERN | Field-level `alpha`/`gamma` constructor kwargs are new configuration surface, not a relocation: a third default tier with a silent cross-process divergence hazard (the one `ConfidenceField` documents for `evidence_cap`), unrequested by #630. | Kwargs dropped. `alpha`/`gamma` stay call-time arguments; the idea is now an explicit No-Go plus Open Question 4. |
+| History & Consistency | CONCERN | Key Elements read as if the Valkey-safety note goes inside `TD_UPDATE_LUA`; since `lua_script()` caches by exact script text, a comment inside the literal changes the SHA and forfeits the byte-identity claim the whole PR rests on. | Key Elements now says module docstring, outside the literal, and task 1 diffs the literal character-for-character against base. |
+| Scope & Value | NIT | The pipeline branch is argued from precedent, not from a requirement of #647. | Kept, with a note to say so in the PR body. |
+
+Rejected as non-contradictions by History & Consistency: the No-Go on
+`update_q_value`'s signature vs. the field's pipeline branch (different
+surfaces), and the No-Go on a generic hash accessor vs. `td_update` (TD-rule
+specific, not generic).
