@@ -454,8 +454,8 @@ range-read bounds — is stored per-thread. Concurrent `filter()` and `count()`
 calls on the same model, with different bounds, partitions, limits and
 directions, each return their own rows and their own tally.
 
-This has not always been true. Before Popoto 1.9.1 that bookkeeping lived on
-the shared instance and was reset and repopulated mid-query, so two threads
+This has not always been true. In Popoto 1.9.0 and earlier that bookkeeping
+lived on the shared instance and was reset and repopulated mid-query, so two threads
 querying different partitions of one model could return each other's rows —
 see [#600](https://github.com/tomcounsell/popoto/issues/600).
 
