@@ -39,7 +39,7 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Tuple, Union
 
 import redis
 
@@ -2014,6 +2014,52 @@ class Model(metaclass=ModelBase):
             user = User.load(email="test@example.com")
         """
         return cls.query.get(db_key=db_key or cls(**kwargs).db_key)
+
+    @classmethod
+    def exists(
+        cls,
+        db_key: Union[str, DB_key, None] = None,
+        redis_key: Optional[str] = None,
+        **kwargs: Any,
+    ) -> bool:
+        """Return ``True`` when a record for this key is stored in Redis.
+
+        One ``EXISTS`` round trip and no deserialization -- the cheap way to
+        answer "is this record there" without paying for
+        :meth:`load`/``query.get``. Three ways to name the record, mirroring
+        :meth:`load`:
+
+        Args:
+            db_key: A :class:`DB_key`, or a full Redis key **string**. A string
+                is treated as ``redis_key`` (see the note below).
+            redis_key: A full Redis key string, named explicitly.
+            **kwargs: KeyField values, from which the key is built.
+
+        Returns:
+            True if a Redis key with that value exists, False otherwise.
+
+        Note:
+            A ``str`` passed as ``db_key`` is short-circuited to ``redis_key``
+            rather than fed to ``DB_key(...)``, exactly as
+            :meth:`Query.get` does. ``DB_key`` treats a string as ONE key
+            partial and :meth:`DB_key.clean` escapes the ``:`` inside it, so
+            ``DB_key("User:alice").redis_key`` is ``User{&#58;}alice`` -- a key
+            that never exists. This is why ``load`` is safe: it delegates to
+            ``query.get``, which short-circuits the same way.
+
+        Example:
+            User.exists(email="test@example.com")     # by KeyField values
+            User.exists("User:test@example.com")      # by Redis key string
+            User.exists(redis_key=some_key)           # the same, explicit
+        """
+        key: Optional[str] = redis_key or None
+        if key is None:
+            if isinstance(db_key, str):
+                key = db_key
+            else:
+                resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
+                key = resolved.redis_key
+        return bool(POPOTO_REDIS_DB.exists(key))
 
     def delete(
         self,

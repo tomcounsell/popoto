@@ -260,7 +260,7 @@ Append the new claim and close the old claim's validity interval in a single
 `MULTI`/`EXEC`, so no reader ever sees both open or neither present:
 
 ```python
-pipe = popoto.get_redis().pipeline()
+pipe = popoto.batch()
 new.save(pipeline=pipe)
 SupersessionProtocol.invalidate(old, superseded_by=new, pipeline=pipe)
 pipe.execute()

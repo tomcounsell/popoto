@@ -112,6 +112,7 @@ from .transfer import (
     import_records,
 )
 from .redis_db import POPOTO_REDIS_DB, get_async_redis_db
+from .batch import batch
 from ._error_reporting import enable_error_reporting
 
 
@@ -253,6 +254,7 @@ __all__ = [
     "PublisherException",
     "SubscriberException",
     "get_redis",
+    "batch",
     "StreamConsumer",
     "get_async_redis_db",
     "ContextAssembler",

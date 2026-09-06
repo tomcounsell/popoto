@@ -178,6 +178,7 @@ from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union
 import redis.client
 import redis.exceptions
 
+from ..batch import batch
 from ..exceptions import JournalBlockedError
 from ..fields.constants import Defaults
 from ..fields.append_only import AppendOnlyMixin
@@ -195,7 +196,6 @@ from ..fields.supersession import SupersedeDeclinedError, SupersessionProtocol
 from ..fields.validity_field import ValidityField, map_lua_error
 from ..models.base import Model
 from ..privacy.never_record import NeverRecordMixin, scan_never_record
-from ..redis_db import POPOTO_REDIS_DB
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from redis.client import Pipeline
@@ -600,7 +600,11 @@ class ProvenanceJournal:
                 :class:`JournalEntry` or its Redis key.
             pipeline: Optional caller pipeline. Must be transactional. When
                 supplied it is returned unexecuted on
-                :attr:`AnnotationResult.pipeline`.
+                :attr:`AnnotationResult.pipeline`. Open it with
+                :func:`popoto.batch`; a pipeline built directly off the Redis
+                client is still accepted (and is the same object type), but
+                that spelling is deprecated -- ``batch()`` is the seam that
+                survives #630's move of the client behind the field layer.
 
         Returns:
             AnnotationResult: with ``target_closed=False`` -- a capture never
@@ -981,7 +985,7 @@ class ProvenanceJournal:
             #    full Redis key that could name another agent's partition, so a
             #    cross-agent annotation is rejected rather than silently
             #    closing a neighbour's record.
-            if not POPOTO_REDIS_DB.exists(target_key):
+            if not model.exists(redis_key=target_key):
                 raise ValueError(
                     f"{model.__name__}: annotation target {target_key!r} does "
                     f"not exist. Save the target before annotating it."
@@ -1008,10 +1012,13 @@ class ProvenanceJournal:
             #    so it never fires. Without this pre-read, a genuine backdate
             #    surfaces as a raw ResponseError from execute() with the
             #    annotation already written.
-            valid_from_key, _ = ValidityField.get_interval_keys(
-                model, VALIDITY_FIELD_NAME
+            #
+            #    ``get_valid_from`` is the field's own read of the same index
+            #    (#630): one ZSCORE against the key ``get_interval_keys`` used
+            #    to build here by hand, returning the same ``Optional[float]``.
+            stored_valid_from = ValidityField.get_valid_from(
+                model, VALIDITY_FIELD_NAME, target_key
             )
-            stored_valid_from = POPOTO_REDIS_DB.zscore(valid_from_key, target_key)
             if stored_valid_from is not None and instant < float(stored_valid_from):
                 raise ValueError(
                     f"{model.__name__}: annotation instant {instant} precedes "
@@ -1072,7 +1079,10 @@ class ProvenanceJournal:
             _warn_uncoupled_once(model.__name__)
 
         owns_pipeline = pipeline is None
-        pipe = POPOTO_REDIS_DB.pipeline() if pipeline is None else pipeline
+        # ``batch()`` opens the shared connection's transactional pipeline --
+        # the same object this line used to build by hand, without this module
+        # importing the client (#630).
+        pipe = batch() if pipeline is None else pipeline
 
         close_index: Optional[int] = None
         if should_close and coupling_enabled:
