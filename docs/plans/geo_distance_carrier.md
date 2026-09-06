@@ -1,11 +1,11 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: Valor Engels
 created: 2026-09-06
 tracking: https://github.com/tomcounsell/popoto/issues/640
-last_comment_id:
+last_comment_id: none
 ---
 
 # Thread the geo-distance bookkeeping through a carrier
