@@ -238,7 +238,157 @@ expectation, the appetite is blown and the plan is wrong — stop and re-plan.
 
 ## Solution
 
+### The design decision: field, not backend op
+
+#647 requires this plan to pick between promoting `TD_UPDATE_LUA` to a field
+and adding a backend-level `td_update` operation, and to argue the choice.
+
+**Chosen: a field.** Add `TDValueField`, a subclass of `DecimalField`, which
+owns `TD_UPDATE_LUA` and exposes `td_update()` as a classmethod. `PolicyEntry`
+declares `q_value = TDValueField(default=Decimal("0"))`.
+
+Why the field wins:
+
+1. **It is the only shape with precedent.** Eighteen Lua scripts in this repo
+   are owned by a field or mixin and driven from a method on the owner
+   (spike-2). Zero are owned by the backend. A backend op would be the first of
+   its kind and would have to invent its own conventions for keys, pipelines
+   and error remap, while the field shape inherits `ConfidenceField`'s and
+   `ValidityField`'s conventions wholesale.
+2. **The backend seam does not exist yet.** #630 is a *prerequisite for* the
+   storage-backend seam, not a consumer of it. Adding a `td_update` op means
+   designing that seam's operation vocabulary as a side effect of a recipe
+   cleanup — the largest possible rabbit hole for a Small appetite, and a
+   design that would be argued from a single call site.
+3. **The knowledge being relocated is field knowledge, not backend knowledge.**
+   What the recipe wrongly owns is (a) how a `Decimal` is encoded in the model
+   hash and (b) which hash field the value lives in. Both are the property of
+   the field that declares the column. A backend op would have to be told the
+   encoding and the field name by its caller — the duplication would move, not
+   disappear.
+4. **It makes the field pair honest.** `q_value` and `expected_value` are a
+   deliberately coupled pair: `DecayingSortedField(base_score_field="q_value")`
+   reads `q_value` out of the model hash in Lua (spike-3). Today one half of
+   that pair is a field and the other half's writer is a loose function. After
+   this change both halves are fields, and the coupling is expressed in field
+   declarations rather than in a recipe's imports.
+
+Why the backend op was rejected rather than deferred: it is not merely more
+work, it is the wrong layer. A backend named `td_update` would encode a
+reinforcement-learning update rule into the storage abstraction, which then has
+to be implemented by every future backend. TD(0) is a modeling concern.
+
+### Key Elements
+
+- **New module `src/popoto/fields/td_value_field.py`**
+  - `TD_UPDATE_LUA` — the script text moved **verbatim** from
+    `policy_cache.py`, with its KEYS/ARGV contract comment block, plus a
+    Valkey-safety note matching `validity_field.py:30-33` (core commands only:
+    `HGET`, `HSET`, `cmsgpack`).
+  - `class TDValueField(DecimalField)` — adds no storage of its own; the value
+    still lives in the model hash under the field's own name, encoded exactly
+    as `DecimalField` encodes it. Carries `alpha` and `gamma` as field-level
+    defaults so a model can declare its learning rate where the column is
+    declared, defaulting to `Defaults.TD_ALPHA` / `Defaults.TD_GAMMA`.
+  - `TDValueField.td_update(cls, model_instance, field_name, *, reward,
+    max_future_q=0.0, alpha=None, gamma=None, pipeline=None) -> float | None` —
+    the classmethod wrapper, shaped after
+    `ConfidenceField.update_confidence`: resolves the member key from
+    `model_instance.db_key`, raises on an unsaved instance, runs the script,
+    decodes the TD error to `float`, and syncs the new Q back onto the Python
+    instance. Returns `None` on the pipeline branch (result is only available
+    after `execute()`), matching `update_confidence`.
+- **`src/popoto/recipes/policy_cache.py`**
+  - `q_value = TDValueField(default=Decimal("0"))`.
+  - `update_q_value()` becomes a thin delegation to
+    `TDValueField.td_update(...)`. Its signature, defaults, return value and
+    docstring contract are unchanged — it is public recipe API and the guide
+    documents it.
+  - `TD_UPDATE_LUA` is **re-exported** from the module (`from
+    ..fields.td_value_field import TD_UPDATE_LUA`) so any downstream import of
+    the name keeps working; the definition no longer lives here.
+  - The `POPOTO_REDIS_DB, run_lua` import is dropped if nothing else in the
+    file uses it (it does not — spike-1's inventory found no other site).
+  - `_get_redis_key()` is retained only if `initialize_q_value` still needs its
+    unsaved-instance guard; otherwise deleted with the same guard expressed by
+    the field.
+
+### Flow
+
+1. `update_q_value(policy, reward=r)` — unchanged public entry point.
+2. Delegates to `TDValueField.td_update(policy, "q_value", reward=r, ...)`.
+3. The field resolves the member key and runs `TD_UPDATE_LUA` through
+   `run_lua`, resolving the client at call time (PR #634's rule) so test spies
+   and DB rebinds still intercept.
+4. The script issues the identical `HGET` / `HSET` pair against the identical
+   key with the identical encoding.
+5. The float TD error is returned to the caller; `policy.q_value` is refreshed
+   in memory.
+
+### Technical Approach
+
+- **Client resolution at call time.** Do not capture `POPOTO_REDIS_DB` at
+  import in the new module. Follow the #634 rule and resolve the client inside
+  `td_update` (`from ..redis_db import POPOTO_REDIS_DB` at call time, or the
+  module-attribute lookup the sibling fields use). `run_lua` itself caches the
+  `Script` object against the module-level client but passes the caller's
+  client into `Script.__call__`, so the execution target is per-call
+  (`redis_db.py:857-880`) — preserve that property, do not narrow it.
+- **Move the script verbatim.** Byte-identical script text is what keeps the
+  cached `Script` SHA and the on-wire `EVALSHA` payload the same. Reformatting
+  the Lua, even whitespace, changes the SHA. Do not touch it.
+- **Pipeline branch is additive, not required.** Add it because every sibling
+  field has it and because `run_lua`'s pipeline path already exists, but no
+  current caller passes a pipeline, so it must not change the default path's
+  command sequence.
+- **No change to `PolicyEntry.expected_value`.** `base_score_field="q_value"`
+  stays a string and keeps resolving to the same hash field with the same
+  encoding (spike-3).
+- **`Defaults.TD_ALPHA` / `Defaults.TD_GAMMA` stay in
+  `fields/constants.py`.** Per CLAUDE.md these are tuning magic numbers, not
+  user config: the new field's `alpha`/`gamma` constructor kwargs default to
+  them and the recipe keeps re-exporting `TD_ALPHA` / `TD_GAMMA` at module
+  level for the guide's sake.
+
 ## Test Impact
+
+**No test expectation may change.** The existing suite is the oracle.
+
+Tests that must pass untouched (`tests/test_policy_cache.py`):
+`test_q_value_update` (136), `test_q_value_update_requires_save` (164),
+`test_composite_score_query` (279), `test_end_to_end` (848),
+`class TestQValueStorageSlotSeparation` (926) — `test_q_value_survives_save`,
+`test_q_value_survives_touch`, `test_q_value_survives_acted_outcome`,
+`test_q_value_encoding_round_trip`, `test_negative_q_value_ranking` (1101),
+`test_rank_derives_from_stored_q_value` (1150),
+`test_td_update_then_save_q_survives` (1184),
+`test_save_then_td_then_save_no_reset` (1225),
+`test_td_update_nil_q_treated_as_zero` (1271),
+`test_decay_rank_with_missing_q_value` (1306). Plus the Q-value block in
+`tests/test_guide_examples.py:368-388`.
+
+New tests (additive only, in a new `tests/test_td_value_field.py`):
+
+1. `TDValueField.td_update` on an unsaved instance raises, with the same
+   exception type the recipe raised before.
+2. `td_update` through a `popoto.batch()` pipeline returns `None`, queues one
+   `EVALSHA`, and applies on `execute()`.
+3. A model that is *not* `PolicyEntry` can declare a `TDValueField` and get a
+   TD update — proving the primitive is genuinely reusable and not
+   `PolicyEntry`-shaped.
+4. Field-level `alpha`/`gamma` declared on the field are used when the caller
+   omits them, and a caller-supplied value still wins.
+
+**Parity proof (mandatory, PR #644's technique).** Capture the Redis command
+sequence for `test_q_value_update`, `test_td_update_nil_q_treated_as_zero` and
+`test_rank_derives_from_stored_q_value` on `origin/main` and on the branch —
+against a non-zero, lane-scoped test DB — and diff. The diff must be empty. A
+green suite alone is not the proof, because spike-4 established that no test
+asserts the wire format.
+
+Run scoped: `pytest tests/test_policy_cache.py tests/test_td_value_field.py
+tests/test_guide_examples.py -k policy or q_value`. Never the full suite from
+this worktree.
 
 ## Rabbit Holes
 
