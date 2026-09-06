@@ -45,10 +45,17 @@ nothing on the page says what that means.
 
 ## Appetite
 
-**Small.** Two documentation edits and one regression guard. The judgement in
-this plan is about *where the boundary is* — which of the 40-odd `6379` hits in
-`docs/` are the hazard and which are prose or historical record — not about the
-edits themselves.
+**Small.** Two documentation edits, a one-line accessor fix in `src/`, and one
+regression guard. The judgement in this plan is about *where the boundary is* —
+which of the 40-odd `6379` hits in `docs/` are the hazard and which are prose or
+historical record — not about the edits themselves.
+
+The `src/` touch (Task 1b, `get_redis()`) was **not** in the original appetite.
+Critique round 1 found the accessor is not rebind-safe, which made the
+documentation this plan writes untrue without it. It is one line, changes no
+signature, and carries its own test — but a reader calibrating how closely to
+review a "Small" docs ticket should learn here, not in Risk 6, that library
+behavior moves.
 
 ## Freshness Check
 
@@ -175,7 +182,14 @@ deferred.
 
 **Round 2 verdict: READY TO BUILD (with concerns).** No finding touches shipped
 behavior; all four are corrections to the plan's description of a build that has
-already landed as PR #652. The Prior Art table's characterizations of #635/#637,
+already landed as PR #652.
+
+**Disposition:** all four applied to the plan body. They could not go through a
+`/do-plan` revision pass — guard G3 locks plan-stage dispatch once a PR is open
+— so they were carried into the PR #652 review as tech debt and fixed in the
+patch that followed. Test Impact and the Verification row now say four tests and
+`4 passed`; Task 3 lists the fourth; Appetite names the `src/` accessor fix;
+Task 1b anticipates the ruff F401; Task 5 states its real ordering constraint. The Prior Art table's characterizations of #635/#637,
 #639/#643, #584/#601 and #577 were independently re-verified against the actual
 issue and PR bodies by `history-consistency`.
 
@@ -315,7 +329,7 @@ Stdlib only (`re`, `pathlib`), no `tomllib`, consistent with
 
 ## Test Impact
 
-New file: `tests/test_docs_redis_url.py`. Three tests, no Redis server required
+New file: `tests/test_docs_redis_url.py`. Four tests, no Redis server required
 (pure file reads) — so it runs in both CI jobs and adds no DB contention.
 
 No existing test changes. `tests/test_ci_workflow_redis_url.py` (from #639) is
@@ -347,12 +361,19 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
   `return get_REDIS_DB()`.
 - Do **not** touch the `from .redis_db import POPOTO_REDIS_DB` re-export on
   line 114 — other call sites use it and its staleness is a separate issue.
+- **Expect ruff F401 on that import.** `get_redis()`'s body was the only thing
+  in this module reading the name; once it delegates, the import is unused and
+  `ruff check src/` fails. Add `# noqa: F401` plus a comment saying why. Do
+  **not** take ruff's suggested fix of adding it to `__all__` — that promotes a
+  name known to go stale after `set_REDIS_DB_settings()` to declared public
+  API, which is the opposite of what Task 5 files.
 - Add `tests/test_get_redis_rebind.py`: bind DB 6, call
   `set_REDIS_DB_settings(db=7)`, assert `popoto.get_redis()` now reports db 7.
   The test must restore the original settings in a finally block so it does not
   poison sibling tests.
 - **Never bind DB 0 in this test** — use DB 6/7 only.
-- **Validation:** `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_get_redis_rebind.py -q` → 1 passed.
+- **Validation:** `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_get_redis_rebind.py -q` → 1 passed,
+  and `ruff check src/popoto/__init__.py` → clean.
 
 ### Task 2 — `docs/configuration.md`: state what a missing database means
 **Depends on:** none
@@ -377,6 +398,11 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
 - `test_the_matcher_detects_a_dbless_url` — run the matcher over a synthetic
   db-less snippet and assert it fires; run it over `redis://h:6379/15` and
   assert it does not. Kills vacuity mode 2.
+- `test_the_excluded_directories_are_excluded_on_purpose` — assert the guard
+  really skips `docs/plans/` and `docs/sdlc/`. Added while applying critique
+  round-1 finding 3, which aligned that exclusion across the guard, Verification
+  row 1 and Success Criterion 1. The exclusion is load-bearing enough that
+  silently widening or dropping it should fail.
 - Record the two accepted evasions (variable indirection, assembled URLs) in a
   comment beside the pattern, with the reason they are accepted.
 - **Validation:** the three commands in the Verification table.
@@ -393,7 +419,8 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
 - **Validation:** `grep -n 'get_redis' CLAUDE.md` → at least one hit.
 
 ### Task 5 — file the residual re-export staleness as its own issue
-**Depends on:** Task 1b
+**Depends on:** Task 1b — and must complete **before the PR body is written**,
+since Success Criteria require the issue number to appear there.
 
 - `popoto.POPOTO_REDIS_DB` (re-exported at `src/popoto/__init__.py:114`) stays
   stale after `set_REDIS_DB_settings()`. Task 1b fixes the accessor but cannot
@@ -433,7 +460,7 @@ Run from the lane worktree with `POPOTO_TEST_DB=6`.
 | `get_redis()` survives a rebind | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_get_redis_rebind.py -q` | 1 passed |
 | The edited snippet actually runs | execute the Task 1 snippet end-to-end against DB 6 | prints a non-empty companion hash |
 | Configuration explains the missing database | `grep -ci 'database 0' docs/configuration.md` | non-zero |
-| Guard passes | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q` | 3 passed |
+| Guard passes | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q` | 4 passed |
 | Guard is not vacuous — it catches a reintroduction | `printf 'r = redis.from_url("redis://localhost:6379")\n' >> docs/features/confidence-field.md; POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q; git checkout docs/features/confidence-field.md` | the run **fails** before the checkout restores the file |
 | Sibling guard still green | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_ci_workflow_redis_url.py -q` | 3 passed |
 | Docs build | `.venv/bin/mkdocs build --strict 2>&1 \| tail -3` | no error |
