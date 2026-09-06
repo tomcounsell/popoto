@@ -572,7 +572,7 @@ question either way.
 
 ## No-Gos (Out of Scope)
 
-- `[SEPARATE-SLUG — filed by Task 9]` Geo-distance bookkeeping (`_geo_distances`,
+- `[SEPARATE-SLUG — #640]` Geo-distance bookkeeping (`_geo_distances`,
   `_geo_distance_unit`). It has the same hazard and a *different* fix (carrier through a public
   signature, not per-thread storage, because the async path writes and reads it on two different
   threads by design). Task 9 files the issue and the plan's tracking comment records the number;

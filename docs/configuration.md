@@ -447,6 +447,28 @@ with ThreadPoolExecutor(max_workers=10) as pool:
     modifying it in Python, and writing it back is not atomic. Use Redis
     transactions or Lua scripts for atomic operations.
 
+**Concurrent queries on one model class.** `Model.query` is a single `Query`
+instance shared by every thread, but the per-query bookkeeping it keeps —
+the sorted-field key list, the pending client-side filters, and the
+range-read bounds — is stored per-thread. Concurrent `filter()` and `count()`
+calls on the same model, with different bounds, partitions, limits and
+directions, each return their own rows and their own tally.
+
+This has not always been true. Before Popoto 1.9.1 that bookkeeping lived on
+the shared instance and was reset and repopulated mid-query, so two threads
+querying different partitions of one model could return each other's rows —
+see [#600](https://github.com/tomcounsell/popoto/issues/600).
+
+!!! note "One remaining exception"
+    Geo-distance annotations (`_geo_distances`) are still shared across
+    threads. Concurrent geo queries on one model class can attach another
+    query's distances to this query's rows; the rows themselves are correct.
+    Tracked in [#640](https://github.com/tomcounsell/popoto/issues/640).
+
+If you read the private query bookkeeping directly (`Model.query._pushdown_limit`
+and friends), note it is now readable **only on the thread that ran the query**.
+A different thread sees that attribute's default, not the querying thread's value.
+
 ### What is NOT Thread-Safe
 
 Model instances should not be shared across threads. Each thread should create

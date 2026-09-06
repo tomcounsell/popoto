@@ -13,6 +13,13 @@ Add a `KeyField` for your namespace, tenant, or project identifier. All Redis ke
 and indexes automatically partition by KeyField values, giving you complete isolation
 with zero extra machinery.
 
+That isolation holds under concurrency: querying two tenants from two threads at the
+same time returns each thread only its own tenant's rows. Popoto 1.9.0 and earlier had
+a bug here — the per-query bookkeeping on the shared `Model.query` object was not
+per-thread, so concurrent queries on one model class could return rows from another
+tenant's partition ([#600](https://github.com/tomcounsell/popoto/issues/600)). See
+[Thread Safety](configuration.md#thread-safety).
+
 ```python
 from popoto import Model, KeyField, AutoKeyField, Field, SortedField
 
