@@ -201,7 +201,13 @@ class TDValueField(DecimalField):
             try:
                 redis_key = model_instance.db_key.redis_key
             except Exception:
-                raise ValueError("Cannot operate on unsaved PolicyEntry")
+                # Name the caller's own class, not PolicyEntry: this field is
+                # general-purpose and the recipe is only its first consumer.
+                # The string has no wire effect, so it is safe to differ from
+                # the guard this replaced.
+                raise ValueError(
+                    f"Cannot operate on unsaved " f"{type(model_instance).__name__}"
+                )
 
         # Client resolved at call time (module attribute, not an import-time
         # binding) so a rebound connection or a test spy still intercepts.

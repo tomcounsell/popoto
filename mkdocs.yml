@@ -44,6 +44,7 @@ nav:
                 - DecayingSortedField: 'features/decaying-sorted-field.md'
                 - CyclicDecayField: 'features/cyclic-decay-field.md'
                 - ConfidenceField: 'features/confidence-field.md'
+                - TDValueField: 'features/td-value-field.md'
                 - CoOccurrenceField: 'features/co-occurrence-field.md'
                 - ExistenceFilter: 'features/existence-filter.md'
                 - ObservationProtocol: 'features/observation-protocol.md'
