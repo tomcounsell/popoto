@@ -855,3 +855,71 @@ def test_q_object_geo_query_attaches_distances():
         assert abs(row._geo_distance - expected) < _tolerance(
             "km"
         ), f"{row.place_id}: distance={row._geo_distance}, expected {expected}"
+
+
+# ---------------------------------------------------------------------------
+# J. The carrier parameter must not shadow a model field named ``state``.
+#
+# #640 threads the geo bookkeeping through ``_PushdownState``, and the delegate
+# that receives it is ``_filter_for_keys_set_with_state(self, state, /,
+# **kwargs)``. The ``/`` is load-bearing. ``**kwargs`` there are candidate
+# model *field names*, and this repo ships a field literally named ``state``
+# (``src/popoto/extraction/decision_log.py:182``). Without the ``/`` the
+# parameter is positional-OR-keyword, so Python binds it twice and raises
+# ``TypeError: got multiple values for argument 'state'`` before the body runs
+# -- on every entry point, for any model with such a field.
+#
+# Declaring a parameter before ``**kwargs`` does NOT make it positional-only;
+# only ``/`` does. The general rule: a ``**kwargs``-collecting method may not
+# grow a named parameter that a caller could supply by keyword.
+# ---------------------------------------------------------------------------
+
+
+class StateNamedFieldDoc(popoto.Model):
+    """A model whose field name collides with the carrier parameter."""
+
+    doc_id = popoto.KeyField()
+    state = popoto.StringField(default="")
+
+
+class TestCarrierParameterDoesNotShadowModelFields:
+    @staticmethod
+    def _fixture():
+        for doc_id, state in (("carrier_a", "accept"), ("carrier_b", "reject")):
+            StateNamedFieldDoc(doc_id=doc_id, state=state).save()
+
+    def test_carrier_param_is_positional_only(self):
+        """The declaration itself, so a future edit that drops ``/`` is loud."""
+        import inspect
+
+        params = inspect.signature(
+            QueryClass._filter_for_keys_set_with_state
+        ).parameters
+        assert params["state"].kind is inspect.Parameter.POSITIONAL_ONLY
+
+    def test_kwargs_filter_on_a_field_named_state(self):
+        self._fixture()
+        rows = list(StateNamedFieldDoc.query.filter(state="accept"))
+        assert [r.doc_id for r in rows] == ["carrier_a"]
+
+    def test_q_object_filter_on_a_field_named_state(self):
+        self._fixture()
+        rows = list(StateNamedFieldDoc.query.filter(Q(state="accept")))
+        assert [r.doc_id for r in rows] == ["carrier_a"]
+
+    def test_public_filter_for_keys_set_on_a_field_named_state(self):
+        """The public method is the one a downstream caller reaches for."""
+        self._fixture()
+        keys = StateNamedFieldDoc.query.filter_for_keys_set(state="accept")
+        assert isinstance(keys, set)
+        assert len(keys) >= 1
+
+    def test_async_filter_on_a_field_named_state(self):
+        """The async path routes through the same delegate."""
+        self._fixture()
+
+        async def _run():
+            return await StateNamedFieldDoc.query.async_filter(state="accept")
+
+        rows = list(asyncio.run(_run()))
+        assert [r.doc_id for r in rows] == ["carrier_a"]

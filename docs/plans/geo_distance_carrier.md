@@ -235,8 +235,14 @@ def _filter_for_keys_set_with_state(self, state, **kwargs) -> set:
     return intersection
 ```
 
-`_filter_for_keys_set_with_state(self, state, **kwargs)` takes the carrier **positionally**, so no
-field name can ever collide with it. The mirror is written by the **delegate**, not the wrapper —
+`_filter_for_keys_set_with_state(self, state, /, **kwargs)` takes the carrier **positionally-only**
+— the `/` is required and load-bearing. Declaring the parameter before `**kwargs` is *not* enough:
+an ordinary positional-or-keyword parameter still binds from a keyword, so `filter(state="accept")`
+on a model with a `state` field raises `TypeError: got multiple values for argument 'state'`. Only
+`/` makes the name unreachable from `**kwargs`. (Round-3 review caught this: the first
+implementation omitted the `/`, and the verification row below originally grepped the declaration
+text, which passed while the bug was live — the same vacuous-guard shape PR #643 cost this repo
+once. The row now observes binding behavior.) The mirror is written by the **delegate**, not the wrapper —
 see the Key Elements bullet: the dominant `.filter()` path never calls the wrapper.
 
 **Why per-thread storage (#600's `_PerThreadAttr`) is the wrong tool here — and must stay wrong.**
@@ -639,7 +645,8 @@ never DB 0, and `REDIS_URL=redis://localhost:6379/2` before `import popoto` for 
 | Concurrency suite passes | `POPOTO_TEST_DB=2 .venv/bin/pytest tests/test_query_thread_safety.py -q` | exit code 0 |
 | Geo compat tests were not edited | `git diff --stat origin/main -- tests/test_geo_with_distances.py \| wc -l` | output contains 0 |
 | Public signature unchanged | `.venv/bin/python -c "import inspect, popoto; print(inspect.signature(popoto.models.query.Query.filter_for_keys_set))"` | output contains `(self, **kwargs)` |
-| Carrier is positional, not a keyword | `grep -c "def _filter_for_keys_set_with_state(self, state" src/popoto/models/query.py` | output contains 1 |
+| Carrier cannot be bound from `**kwargs` | `POPOTO_TEST_DB=10 .venv/bin/pytest tests/test_query_thread_safety.py -k CarrierParameter -q` | 5 passed |
+| Carrier is positional-**only** (declaration) | `.venv/bin/python -c "import inspect; from src.popoto.models.query import Query; print(inspect.signature(Query._filter_for_keys_set_with_state).parameters['state'].kind)"` | prints `POSITIONAL_ONLY` |
 | No `state=` keyword on the public method | `grep -c "def filter_for_keys_set(self, \*, state" src/popoto/models/query.py` | match count == 0 |
 | Anti-criterion: geo names not per-thread | `grep -c "_geo_distances.*_PerThreadAttr\|_geo_distance_unit.*_PerThreadAttr" src/popoto/models/query.py` | match count == 0 |
 | Anti-criterion: no geo in the snapshot | `sed -n '/def _snapshot_pushdown_state/,/^    def _filter_keys_with_pushdown/p' src/popoto/models/query.py \| grep -c "geo_distance" \|\| true` | prints `0` |

@@ -2828,17 +2828,24 @@ class Query:
         return self._filter_for_keys_set_with_state(_PushdownState(), **kwargs)
 
     def _filter_for_keys_set_with_state(
-        self, state: _PushdownState, **kwargs: Any
+        self, state: _PushdownState, /, **kwargs: Any
     ) -> set[Any]:
         """Delegate holding the body of `filter_for_keys_set`, state-taking.
 
-        `state` is positional-only by convention (never pass it as a keyword):
-        `**kwargs` here are candidate model field names, and this repo ships a
-        field literally named `state`
-        (`src/popoto/extraction/decision_log.py`), so a keyword-only `state=`
-        parameter would silently swallow a real filter value instead of
-        raising. Taking it positionally means no field name can ever collide
-        with it.
+        `state` is **positional-only** — note the `/`, which is load-bearing
+        and not decoration. `**kwargs` here are candidate model field names,
+        and this repo ships a field literally named `state`
+        (`src/popoto/extraction/decision_log.py:182`,
+        `state = StringField(default="")`). Declaring the parameter *before*
+        `**kwargs` is not enough: an ordinary positional-or-keyword parameter
+        still binds from a keyword, so `filter(state="accept")` raised
+        `TypeError: got multiple values for argument 'state'` on every entry
+        point — `.filter()`, `Q(...)` and the public `filter_for_keys_set()`.
+        The `/` is what makes the name unreachable from `**kwargs`, so no
+        model field can ever collide with the carrier.
+
+        Regression test: `tests/test_query_thread_safety.py::
+        TestCarrierParameterDoesNotShadowModelFields`.
 
         Geo results are written directly into `state.geo_distances` /
         `state.geo_distance_unit` at the moment they are produced — never
