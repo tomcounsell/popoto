@@ -18,8 +18,25 @@ These tests exercise:
        switch interval must never clobber each other's keys or partitions.
     E. ``async_count`` must read the client-filter carrier, not the event-loop
        thread's (empty) per-thread cell.
+
+Also (#640): ``_geo_distances`` / ``_geo_distance_unit`` are two more names
+that were shared instance state on ``Query`` -- reset / mutate / read-back
+around blocking geo queries, exactly like the pushdown names above, but never
+folded into ``_PerThreadAttr`` (the async loop-thread / to_thread-worker split
+would silently drop every async geo distance if they were). These tests
+exercise:
+    F. Stochastic concurrent geo filter() calls, each with its own center,
+       unit and expected distance, asserting the per-row ``_geo_distance`` /
+       ``_geo_distance_unit`` -- never just row identity.
+    G. A deterministic two-thread version using a monkeypatch hook instead of
+       a timing knob, so a green run does not depend on the scheduler.
+    H. An async geo query attaches distances -- the test that fails loudly if
+       the carrier is ever "simplified" back onto ``_PerThreadAttr``.
+    I. A Q-object + geo query attaches distances -- the Q leaf must route
+       into the same carrier the caller reads back from.
 """
 
+import math
 import os
 import sys
 import threading
@@ -30,10 +47,38 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
+from src.popoto.models.q import Q
+from src.popoto.models.query import Query as QueryClass
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 import src.popoto.redis_db as redis_db_module
 import asyncio
+
+# Same earth-radius constant Redis's GEO commands use (geohash-int.c), so a
+# distance computed here from fixture coordinates matches what Redis returns
+# to well under our tolerance -- this is not an independent approximation.
+_GEO_EARTH_RADIUS_KM = 6372.797560856
+_KM_TO_MI = 0.621371192
+
+
+def _lat_offset_deg(distance_km):
+    """Degrees of latitude that put a point ``distance_km`` due north.
+
+    A meridian is a great circle, so the geodesic distance between two points
+    that differ only in latitude is exactly ``R * radians(delta_lat)`` -- no
+    approximation beyond the spherical-earth model Redis itself uses.
+    """
+    return math.degrees(distance_km / _GEO_EARTH_RADIUS_KM)
+
+
+def _expected_km(offset_km, unit, is_anchor):
+    if is_anchor:
+        return 0.0
+    return offset_km if unit == "km" else offset_km * _KM_TO_MI
+
+
+def _tolerance(unit):
+    return 0.05 if unit == "km" else 0.05 * _KM_TO_MI
 
 
 class ThreadSafeDoc(popoto.Model):
@@ -58,6 +103,12 @@ class AsyncCountDoc(popoto.Model):
     label = popoto.Field(type=str, null=True)
 
 
+class GeoRaceDoc(popoto.Model):
+    place_id = popoto.KeyField(type=str)
+    coordinates = popoto.GeoField()
+    bucket = popoto.IndexedField(type=str, null=True)
+
+
 @pytest.fixture(autouse=True)
 def clean_docs():
     """Flush this file's models and reset the cached async connection.
@@ -77,7 +128,12 @@ def clean_docs():
 
 
 def _flush():
-    for pattern in ("*ThreadSafeDoc*", "*ConcurrentDoc*", "*AsyncCountDoc*"):
+    for pattern in (
+        "*ThreadSafeDoc*",
+        "*ConcurrentDoc*",
+        "*AsyncCountDoc*",
+        "*GeoRaceDoc*",
+    ):
         for key in POPOTO_REDIS_DB.keys(pattern):
             POPOTO_REDIS_DB.delete(key)
 
@@ -364,3 +420,438 @@ async def test_async_count_reports_filtered_not_total():
 
     count = await AsyncCountDoc.query.async_count(label="x")
     assert count == 5, f"expected the filtered count (5), got {count}"
+
+
+# ---------------------------------------------------------------------------
+# F. The geo regression itself: stochastic concurrent geo filter() calls
+# must each attach their own distances, never another query's.
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_geo_filters_attach_each_querys_own_distances():
+    """Real concurrent geo filter() calls, each with a distinct center.
+
+    Four threads, each anchored at a different latitude (2200+ km apart, far
+    beyond any query radius here, so no thread's rows can genuinely overlap
+    another's), each also filtering on its own ``bucket`` -- a second indexed
+    predicate that forces a Redis round trip between the geo populate and the
+    later distance read-back, which is exactly the window a shared (not
+    per-call) ``_geo_distances`` / ``_geo_distance_unit`` would let another
+    thread's reset or update land in.
+
+    Threads alternate distance units (km / mi) so the single shared
+    ``_geo_distance_unit`` string -- if it survives as shared state -- gets
+    clobbered deterministically rather than only when two same-unit threads
+    race. Each thread also gets a distinct expected offset distance, so a row
+    that picks up another thread's distance value fails the tolerance check
+    rather than coincidentally matching.
+
+    The rows themselves would still be correct under this bug (right doc,
+    right partition) -- only the ``_geo_distance`` / ``_geo_distance_unit``
+    annotation would be wrong or missing, so every assertion here is against
+    those two attributes, never row identity alone.
+    """
+    configs = []
+    for i in range(4):
+        configs.append(
+            dict(
+                idx=i,
+                lat=i * 20 - 30,
+                unit="km" if i % 2 == 0 else "mi",
+                offset_km=(i + 1) * 3,
+                bucket=f"race{i}",
+            )
+        )
+
+    for cfg in configs:
+        far_delta = _lat_offset_deg(cfg["offset_km"])
+        GeoRaceDoc(
+            place_id=f"race{cfg['idx']}_anchor",
+            coordinates=popoto.GeoField.Coordinates(
+                latitude=cfg["lat"], longitude=10.0
+            ),
+            bucket=cfg["bucket"],
+        ).save()
+        GeoRaceDoc(
+            place_id=f"race{cfg['idx']}_far",
+            coordinates=popoto.GeoField.Coordinates(
+                latitude=cfg["lat"] + far_delta, longitude=10.0
+            ),
+            bucket=cfg["bucket"],
+        ).save()
+
+    iterations = 50
+    errors = []
+    errors_lock = threading.Lock()
+
+    def worker(cfg):
+        tol = _tolerance(cfg["unit"])
+        for _ in range(iterations):
+            try:
+                rows = list(
+                    GeoRaceDoc.query.filter(
+                        coordinates=(cfg["lat"], 10.0),
+                        coordinates_radius=20,
+                        coordinates_radius_unit=cfg["unit"],
+                        coordinates_with_distances=True,
+                        bucket=cfg["bucket"],
+                    )
+                )
+            except Exception as exc:  # pragma: no cover - surfaced via errors
+                with errors_lock:
+                    errors.append(f"idx={cfg['idx']}: exception {exc!r}")
+                continue
+
+            if len(rows) != 2:
+                with errors_lock:
+                    errors.append(f"idx={cfg['idx']}: expected 2 rows, got {len(rows)}")
+                continue
+
+            for row in rows:
+                if not hasattr(row, "_geo_distance"):
+                    with errors_lock:
+                        errors.append(
+                            f"idx={cfg['idx']} place_id={row.place_id}: "
+                            "missing _geo_distance"
+                        )
+                    continue
+                if row._geo_distance_unit != cfg["unit"]:
+                    with errors_lock:
+                        errors.append(
+                            f"idx={cfg['idx']} place_id={row.place_id}: "
+                            f"unit={row._geo_distance_unit!r}, expected "
+                            f"{cfg['unit']!r}"
+                        )
+                is_anchor = row.place_id.endswith("_anchor")
+                expected = _expected_km(cfg["offset_km"], cfg["unit"], is_anchor)
+                if abs(row._geo_distance - expected) > tol:
+                    with errors_lock:
+                        errors.append(
+                            f"idx={cfg['idx']} place_id={row.place_id}: "
+                            f"distance={row._geo_distance}, expected "
+                            f"{expected} (tolerance {tol})"
+                        )
+
+    orig_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=worker, args=(cfg,)) for cfg in configs]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+    finally:
+        sys.setswitchinterval(orig_interval)
+
+    assert not errors, "\n".join(errors)
+
+
+# ---------------------------------------------------------------------------
+# G. Deterministic two-thread geo isolation, forced by a monkeypatch hook
+# instead of a timing knob.
+# ---------------------------------------------------------------------------
+
+
+def test_deterministic_geo_distance_isolation():
+    """Force thread B's entire filter() to run inside thread A's window.
+
+    ``_filter_keys_with_pushdown`` is the seam both the pre-fix and post-fix
+    code share: it is the point where a thread's own geo key-query and
+    distance bookkeeping are already complete, but before that thread's
+    ``_execute_filter`` hydrates objects and reads the distances back. On the
+    pre-fix code that read-back is off the shared ``self._geo_distances`` /
+    ``self._geo_distance_unit``, so forcing thread B's *entire* filter() call
+    (reset, query, hydrate, read-back) to run inside that window reliably
+    wipes thread A's entries before A reads them -- A's rows come back with
+    no ``_geo_distance`` at all. On the post-fix code A's distances live in
+    a carrier private to A's call, so B's run cannot touch them.
+    """
+    lat_a, lat_b = -40.0, 40.0
+    offset_a_km, offset_b_km = 5.0, 9.0
+    unit_a, unit_b = "km", "km"
+
+    GeoRaceDoc(
+        place_id="detA_anchor",
+        coordinates=popoto.GeoField.Coordinates(latitude=lat_a, longitude=10.0),
+        bucket="detA",
+    ).save()
+    GeoRaceDoc(
+        place_id="detA_far",
+        coordinates=popoto.GeoField.Coordinates(
+            latitude=lat_a + _lat_offset_deg(offset_a_km), longitude=10.0
+        ),
+        bucket="detA",
+    ).save()
+    GeoRaceDoc(
+        place_id="detB_anchor",
+        coordinates=popoto.GeoField.Coordinates(latitude=lat_b, longitude=10.0),
+        bucket="detB",
+    ).save()
+    GeoRaceDoc(
+        place_id="detB_far",
+        coordinates=popoto.GeoField.Coordinates(
+            latitude=lat_b + _lat_offset_deg(offset_b_km), longitude=10.0
+        ),
+        bucket="detB",
+    ).save()
+
+    a_ready = threading.Event()
+    b_done = threading.Event()
+    errors = []
+    orig_fkwp = QueryClass._filter_keys_with_pushdown
+
+    def patched(self, allow_pushdown, kwargs):
+        result = orig_fkwp(self, allow_pushdown, kwargs)
+        if threading.current_thread().name == "GeoDetA":
+            a_ready.set()
+            if not b_done.wait(timeout=10):
+                errors.append("thread B did not complete inside A's window")
+        return result
+
+    resultsA, resultsB = [], []
+
+    def run_a():
+        threading.current_thread().name = "GeoDetA"
+        rows = list(
+            GeoRaceDoc.query.filter(
+                coordinates=(lat_a, 10.0),
+                coordinates_radius=20,
+                coordinates_radius_unit=unit_a,
+                coordinates_with_distances=True,
+                bucket="detA",
+            )
+        )
+        resultsA.extend(rows)
+
+    def run_b():
+        if not a_ready.wait(timeout=10):
+            errors.append("thread A never reached its window")
+            b_done.set()
+            return
+        threading.current_thread().name = "GeoDetB"
+        rows = list(
+            GeoRaceDoc.query.filter(
+                coordinates=(lat_b, 10.0),
+                coordinates_radius=20,
+                coordinates_radius_unit=unit_b,
+                coordinates_with_distances=True,
+                bucket="detB",
+            )
+        )
+        resultsB.extend(rows)
+        b_done.set()
+
+    QueryClass._filter_keys_with_pushdown = patched
+    try:
+        ta = threading.Thread(target=run_a)
+        tb = threading.Thread(target=run_b)
+        ta.start()
+        tb.start()
+        ta.join(timeout=30)
+        tb.join(timeout=30)
+    finally:
+        QueryClass._filter_keys_with_pushdown = orig_fkwp
+
+    assert not errors, "\n".join(errors)
+    assert len(resultsA) == 2, f"thread A expected 2 rows, got {len(resultsA)}"
+    assert len(resultsB) == 2, f"thread B expected 2 rows, got {len(resultsB)}"
+
+    for row in resultsA:
+        assert hasattr(
+            row, "_geo_distance"
+        ), f"A row {row.place_id} missing _geo_distance"
+        assert row._geo_distance_unit == unit_a
+        expected = _expected_km(offset_a_km, unit_a, row.place_id.endswith("_anchor"))
+        assert abs(row._geo_distance - expected) < _tolerance(unit_a), (
+            f"A row {row.place_id}: distance={row._geo_distance}, "
+            f"expected {expected}"
+        )
+
+    for row in resultsB:
+        assert hasattr(
+            row, "_geo_distance"
+        ), f"B row {row.place_id} missing _geo_distance"
+        assert row._geo_distance_unit == unit_b
+        expected = _expected_km(offset_b_km, unit_b, row.place_id.endswith("_anchor"))
+        assert abs(row._geo_distance - expected) < _tolerance(unit_b), (
+            f"B row {row.place_id}: distance={row._geo_distance}, "
+            f"expected {expected}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# H. Async geo query must attach distances -- fails loudly if the carrier is
+# ever "simplified" back onto _PerThreadAttr (loop thread vs to_thread worker
+# would split the write from the read).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_async_geo_filter_attaches_distances():
+    lat = 25.0
+    offset_km = 6.0
+
+    GeoRaceDoc(
+        place_id="asyncA_anchor",
+        coordinates=popoto.GeoField.Coordinates(latitude=lat, longitude=10.0),
+        bucket="asyncA",
+    ).save()
+    GeoRaceDoc(
+        place_id="asyncA_far",
+        coordinates=popoto.GeoField.Coordinates(
+            latitude=lat + _lat_offset_deg(offset_km), longitude=10.0
+        ),
+        bucket="asyncA",
+    ).save()
+
+    rows = await GeoRaceDoc.query.async_filter(
+        coordinates=(lat, 10.0),
+        coordinates_radius=20,
+        coordinates_radius_unit="km",
+        coordinates_with_distances=True,
+        bucket="asyncA",
+    )
+
+    assert len(rows) == 2
+    for row in rows:
+        assert hasattr(row, "_geo_distance"), f"{row.place_id} missing _geo_distance"
+        assert row._geo_distance_unit == "km"
+        expected = _expected_km(offset_km, "km", row.place_id.endswith("_anchor"))
+        assert abs(row._geo_distance - expected) < _tolerance(
+            "km"
+        ), f"{row.place_id}: distance={row._geo_distance}, expected {expected}"
+
+
+@pytest.mark.asyncio
+async def test_async_geo_filter_concurrent_gather_do_not_clobber_each_other():
+    """``asyncio.gather`` over distinct centers, each on its own unit.
+
+    ``async_filter`` runs its key query in a ``to_thread`` worker while the
+    caller stays on the event-loop thread, so a shared (not per-call)
+    ``_geo_distances`` / ``_geo_distance_unit`` can be reset or overwritten by
+    another coroutine's call between this coroutine's write and its
+    read-back, exactly as the sync stochastic test exercises via real OS
+    threads.
+    """
+    configs = []
+    for i in range(4):
+        configs.append(
+            dict(
+                idx=i,
+                lat=i * 20 - 30 + 7,
+                unit="km" if i % 2 == 0 else "mi",
+                offset_km=(i + 1) * 2 + 1,
+                bucket=f"asyncrace{i}",
+            )
+        )
+
+    for cfg in configs:
+        far_delta = _lat_offset_deg(cfg["offset_km"])
+        GeoRaceDoc(
+            place_id=f"asyncrace{cfg['idx']}_anchor",
+            coordinates=popoto.GeoField.Coordinates(
+                latitude=cfg["lat"], longitude=10.0
+            ),
+            bucket=cfg["bucket"],
+        ).save()
+        GeoRaceDoc(
+            place_id=f"asyncrace{cfg['idx']}_far",
+            coordinates=popoto.GeoField.Coordinates(
+                latitude=cfg["lat"] + far_delta, longitude=10.0
+            ),
+            bucket=cfg["bucket"],
+        ).save()
+
+    async def run_one(cfg):
+        rows = await GeoRaceDoc.query.async_filter(
+            coordinates=(cfg["lat"], 10.0),
+            coordinates_radius=20,
+            coordinates_radius_unit=cfg["unit"],
+            coordinates_with_distances=True,
+            bucket=cfg["bucket"],
+        )
+        return cfg, rows
+
+    errors = []
+    for _ in range(15):
+        results = await asyncio.gather(*(run_one(cfg) for cfg in configs))
+        for cfg, rows in results:
+            if len(rows) != 2:
+                errors.append(f"idx={cfg['idx']}: expected 2 rows, got {len(rows)}")
+                continue
+            tol = _tolerance(cfg["unit"])
+            for row in rows:
+                if not hasattr(row, "_geo_distance"):
+                    errors.append(
+                        f"idx={cfg['idx']} place_id={row.place_id}: "
+                        "missing _geo_distance"
+                    )
+                    continue
+                if row._geo_distance_unit != cfg["unit"]:
+                    errors.append(
+                        f"idx={cfg['idx']} place_id={row.place_id}: "
+                        f"unit={row._geo_distance_unit!r}, expected "
+                        f"{cfg['unit']!r}"
+                    )
+                is_anchor = row.place_id.endswith("_anchor")
+                expected = _expected_km(cfg["offset_km"], cfg["unit"], is_anchor)
+                if abs(row._geo_distance - expected) > tol:
+                    errors.append(
+                        f"idx={cfg['idx']} place_id={row.place_id}: "
+                        f"distance={row._geo_distance}, expected "
+                        f"{expected} (tolerance {tol})"
+                    )
+
+    assert not errors, "\n".join(errors)
+
+
+# ---------------------------------------------------------------------------
+# I. Q-object + geo query must attach distances -- the Q leaf must route into
+# the same carrier the caller reads back from (CRITIQUE-B1).
+# ---------------------------------------------------------------------------
+
+
+def test_q_object_geo_query_attaches_distances():
+    lat = 15.0
+    offset_km = 4.0
+
+    GeoRaceDoc(
+        place_id="qtest_anchor",
+        coordinates=popoto.GeoField.Coordinates(latitude=lat, longitude=10.0),
+        bucket="qtest",
+    ).save()
+    GeoRaceDoc(
+        place_id="qtest_far",
+        coordinates=popoto.GeoField.Coordinates(
+            latitude=lat + _lat_offset_deg(offset_km), longitude=10.0
+        ),
+        bucket="qtest",
+    ).save()
+    # Same coordinates, different bucket -- must be excluded by the AND, and
+    # must not contaminate the distances attached to the qtest-bucket rows.
+    GeoRaceDoc(
+        place_id="qtest_other_bucket",
+        coordinates=popoto.GeoField.Coordinates(latitude=lat, longitude=10.0),
+        bucket="other",
+    ).save()
+
+    rows = list(
+        GeoRaceDoc.query.filter(
+            Q(bucket="qtest")
+            & Q(
+                coordinates=(lat, 10.0),
+                coordinates_radius=20,
+                coordinates_radius_unit="km",
+                coordinates_with_distances=True,
+            )
+        )
+    )
+
+    assert len(rows) == 2, f"expected 2 rows, got {len(rows)}"
+    for row in rows:
+        assert hasattr(row, "_geo_distance"), f"{row.place_id} missing _geo_distance"
+        assert row._geo_distance_unit == "km"
+        expected = _expected_km(offset_km, "km", row.place_id.endswith("_anchor"))
+        assert abs(row._geo_distance - expected) < _tolerance(
+            "km"
+        ), f"{row.place_id}: distance={row._geo_distance}, expected {expected}"
