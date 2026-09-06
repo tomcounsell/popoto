@@ -315,6 +315,14 @@ def test_an_in_process_client_lists_and_calls_the_tools(tmp_path, monkeypatch):
     and log path are set here; the URL is deliberately left unset so
     ``bind_connection`` stays inert and the suite keeps the pytest plugin's
     isolated database.
+
+    The test clears BOTH URL variables itself rather than assuming the caller
+    left them unset (#635). ``MemoryConfig.from_env`` falls back to
+    ``REDIS_URL`` when ``POPOTO_MEMORY_URL`` is absent, so any caller that
+    exports one -- ``scripts/ci-local.sh`` used to export a db-less default --
+    hands the server a URL the #584 refusal rejects, and ``memory_search``
+    returns that error instead of the seeded record. Same guard, same reason,
+    as ``test_doctor_reports_evictions_as_data_loss_not_failures``.
     """
     import anyio
     from mcp.client.session import ClientSession
@@ -323,6 +331,7 @@ def test_an_in_process_client_lists_and_calls_the_tools(tmp_path, monkeypatch):
     monkeypatch.setenv("POPOTO_MEMORY_AGENT_ID", AGENT)
     monkeypatch.setenv("POPOTO_MEMORY_LOG", str(tmp_path / "memory.log"))
     monkeypatch.delenv("POPOTO_MEMORY_URL", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
 
     seed(make_service(tmp_path), "Rate limits are enforced in the gateway")
 
