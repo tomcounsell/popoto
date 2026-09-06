@@ -244,23 +244,125 @@ it is small enough to verify exhaustively.
 
 ## Failure Path Test Strategy
 
-_TBD_
+### Exception Handling Coverage
+
+There is one broad handler in scope: the `except Exception` at
+`graph_traversal.py:214-221` wrapping the reverse lookup. It is not silent — it
+logs `logger.warning("graph_traversal: reverse lookup failed for %s.%s: %s")`
+and sets `members = []` — but **no existing test exercises it**. The closest,
+`test_exception_in_relationship_expansion_degrades_gracefully` (line 233),
+monkeypatches `graph_traversal.expand_relationships` wholesale, so it never
+reaches this handler.
+
+This is a real coverage gap today, and the seam is what makes it cheaply
+closable: once the body of the `try` is a single named call,
+`Relationship.sample_related_keys` becomes a patch point. Add
+`test_reverse_lookup_failure_warns_and_continues`: monkeypatch
+`sample_related_keys` to raise, then assert (a) `caplog` contains the
+`reverse lookup failed` warning, and (b) the forward-direction neighbors are
+still returned — degradation, not collapse.
+
+The new field method itself contains **no exception handler by design** (see
+Technical Approach); there is nothing there to test for swallowing.
+
+### Empty/Invalid Input Handling
+
+`sample_related_keys` receives inputs from an internal loop, but its parameters
+are reachable from public API (`fanout_limit` is a public kwarg of
+`expand_relationships`). Behavior to pin with tests:
+
+- **Empty/missing reverse index** — `SRANDMEMBER` on a nonexistent key returns
+  `[]`; the method returns `[]`, not `None`. Test directly.
+- **`count=0`** — Redis returns `[]`. Passed through unchanged; test that no
+  exception is raised and the walk yields no reverse neighbors.
+- **`related_key` as `str` vs `DB_key`** — both accepted; a `str` containing a
+  colon (`"User:alice"`) must round-trip through `from_redis_key` and hit the
+  same key the `DB_key` form produces. This is the colon trap, tested directly.
+- **Empty-string `related_key`** — must not silently read a truncated key;
+  assert the key built is the namespace joined with an empty segment (whatever
+  `DB_key` already does), i.e. that the method adds no new special-casing.
+
+Not agent-output processing; no empty-output loop risk.
+
+### Error State Rendering
+
+No user-visible rendering surface — the observable failure behavior is the
+`logger.warning` plus the degraded (non-empty, forward-only) result, both
+asserted in the test above.
 
 ## Test Impact
 
-_TBD_
+No existing test is expected to change. Justification, verified against
+`0e3146af`:
+
+- `tests/test_graph_traversal.py` (20 tests) asserts only on the `{pk: weight}`
+  return values of `traverse` / `expand_relationships`, never on Redis calls.
+- No test monkeypatches `srandmember`, the reverse-path client, or
+  `POPOTO_REDIS_DB` for this recipe. Line 31's `POPOTO_REDIS_DB` import is used
+  only by `test_decay_modulation_lowers_stale_weight` (line 293, a `zadd` for
+  an unrelated decay fixture), so the swap breaks no patch point.
+- No `xfail`/`skip` markers relate to this behavior.
+
+New tests only:
+
+- [ ] `tests/test_graph_traversal.py::test_reverse_lookup_failure_warns_and_continues` — ADD (closes the handler gap above)
+- [ ] `tests/test_relationship_sample.py` — ADD: unit coverage for
+      `sample_related_keys` (populated index, empty index, `count=0`,
+      `str` vs `DB_key` related_key, colon-containing key, decode returns `str`)
 
 ## Rabbit Holes
 
-_TBD_
+- **Generalizing to "sample any field index."** A generic
+  `Field.sample_index_members` across `SortedFieldMixin`, `KeyFieldMixin`, and
+  `Relationship` is tempting and wrong here: those indexes are Sorted Sets and
+  Sets with different member semantics, and there is one caller. Add it if and
+  when #648/#649 produce a second and third.
+- **Fixing `filter_query`.** It has real problems (unconditional pipeline,
+  `str.strip` used as a prefix-strip at lines 500 and 508, which is a latent
+  character-class bug). None of them are this PR. Do not touch it.
+- **Changing the sampling semantics.** `SRANDMEMBER` with a positive count is
+  distinct-member sampling with no ordering guarantee. Do not "improve" it to
+  `SSCAN` with a cursor, or to a deterministic sample for testability — that
+  changes command sequence and observable behavior, both of which this PR
+  forbids.
+- **Making the recipe's `try/except` narrower.** Tightening it to
+  `RedisError` is a behavior change (a `TypeError` from a bad `fanout_limit`
+  would newly propagate). It may well be right; it is #646's neighbor, not
+  #646.
 
 ## Risks
 
-_TBD_
+### Risk 1: The `str` overload of `related_key` re-introduces the colon trap at a new layer
+**Impact:** If `sample_related_keys` parses a `str` with `DB_key(...)` instead
+of `DB_key.from_redis_key(...)`, every colon-containing pk silently reads a
+wrong (escaped) key and the reverse expansion returns nothing — a silent
+recall regression with no error.
+**Mitigation:** The dedicated colon test in `test_relationship_sample.py`
+asserts the `str` and `DB_key` forms resolve to the same key, and the
+command-sequence capture (Success Criteria) would show the changed key bytes.
+
+### Risk 2: Behavior drift hidden by the tests' coarse granularity
+**Impact:** The existing tests assert on final weights, so a subtly different
+key or an extra command could pass all 20 and still change what a production
+walk touches.
+**Mitigation:** Do not rely on the suite alone. Capture the Redis command
+sequence base-vs-branch for a fixed traversal and diff it, as PR #644 did. That
+is the actual oracle for "byte-identical".
+
+### Risk 3: Public API added for one caller
+**Impact:** If #648/#649 turn out not to need reverse sampling, the repo carries
+a one-caller public method forever.
+**Mitigation:** Accepted, and argued in Solution Decision 1 — the alternative
+is not less surface but duplicated field-layer knowledge in a recipe. The
+method is six lines and fully tested; the carrying cost is near zero.
 
 ## Race Conditions
 
-_TBD_
+**No race conditions identified.** The change adds no new command, no new
+ordering between commands, and no shared mutable state — it relocates the
+construction of one key and the issue of one already-atomic `SRANDMEMBER`. The
+pre-existing read-your-own-writes looseness of a BFS walk (another writer can
+add an edge between hops) is unchanged by this PR, in either direction.
 
 ## No-Gos (Out of Scope)
 
