@@ -113,11 +113,128 @@ construction.
 
 ## Spike Results
 
+### spike-1: Is there any existing field/model helper that reads or writes a single field on the model hash?
+
+- **Assumption**: `Model` or `DecimalField` already offers a single-field
+  read/write that the recipe could have called instead of Lua.
+- **Method**: code-read.
+- **Result**: **False — none exists.** `DecimalField`
+  (`fields/shortcuts.py:115-144`) is a bare `Field` subclass that only sets
+  `type=Decimal`; it defines no accessors and relies entirely on the bulk
+  `HSET`/`HGETALL` save/load path in `models/base.py`. The only single-field,
+  non-full-save accessor on `Model` is `touch()` (`models/base.py:2389-2419`),
+  which type-checks for `DecayingSortedField` and operates on the ZSET score,
+  explicitly *not* the model hash. So the refactor cannot be a swap onto an
+  existing method — new API is required, exactly as #647 anticipates.
+- **Confidence**: high.
+- **Impact if false**: the plan would collapse to a two-line call-site swap.
+
+### spike-2: Where does the repo put a Lua script that a field owns?
+
+- **Assumption**: field-owned scripts are class attributes.
+- **Method**: code-read across `src/popoto/fields/` and `src/popoto/models/`.
+- **Result**: **Refined.** Every one of the ~18 Lua constants in the repo is a
+  **module-level** `NAME_LUA = ...` string in the owning field's module, with a
+  KEYS/ARGV contract comment block directly above it, invoked through a method
+  on the owning class via `run_lua`. Not one is a class attribute. Examples:
+  `SUPERSEDE_LUA` (`validity_field.py:301`),
+  `CAPPED_BAYESIAN_UPDATE_LUA` (`confidence_field.py:63`),
+  `INDEX_SWAP_LUA` (`indexed_field_mixin.py:128`),
+  `DECAY_SCORE_LUA` (`decaying_sorted_field.py:75`),
+  `PURGE_ORPHAN_LUA` (`models/base.py:75`).
+- **Confidence**: high.
+- **Impact if false**: cosmetic only — placement would change, not ownership.
+
+### spike-3: Would changing `q_value`'s field class break `DecayingSortedField(base_score_field="q_value")`?
+
+- **Assumption**: `base_score_field` is resolved by field type and would need
+  updating.
+- **Method**: code-read.
+- **Result**: **False, with a sharp caveat.** `base_score_field` is stored as a
+  bare **string name** (`decaying_sorted_field.py:271`), threaded through
+  `query.py:549-552` as `ARGV[4]`, and consumed in Lua by a raw
+  `redis.call('HGET', member, base_score_field)` (`decaying_sorted_field.py:147`).
+  It never looks at the Python field class. The caveat is the decoder: only a
+  plain msgpack number, or a table carrying `as_encodable`, is accepted; **any
+  other encoding falls through to the `1.0` default silently**
+  (`decaying_sorted_field.py:149-160`). So the new field type is free to be any
+  class it likes *provided its on-disk encoding stays the `__Decimal__` tagged
+  dict*.
+- **Confidence**: high.
+- **Impact if false**: would force `base_score_field` plumbing changes and blow
+  the Small appetite.
+
+### spike-4: Do any tests pin the wire format or the command sequence?
+
+- **Assumption**: a test asserts the raw cmsgpack bytes, constraining the
+  refactor.
+- **Method**: code-read of `tests/test_policy_cache.py` (1328 lines) and
+  `tests/test_guide_examples.py`.
+- **Result**: **No.** Despite its name,
+  `test_q_value_encoding_round_trip` (`tests/test_policy_cache.py:1057`) goes
+  through the Python API and asserts only `isinstance(reloaded.q_value,
+  Decimal)` plus numeric closeness. No `Mock`, no `assert_called`, no literal
+  `__Decimal__` byte assertion anywhere. The suite is a behavioral oracle, not
+  an encoding oracle — which is precisely why this plan requires an explicit
+  base-vs-branch command capture rather than trusting a green run.
+- **Confidence**: high.
+- **Impact if false**: a pinned test would become the parity proof and the
+  capture step could be dropped.
+
 ## Data Flow
+
+Today, one call:
+
+```
+caller: update_q_value(policy, reward=1.0, max_future_q=0.4)
+  -> policy_cache._get_redis_key(instance)      # raw key string off db_key
+  -> redis_db.run_lua(POPOTO_REDIS_DB, TD_UPDATE_LUA, 1, key, r, a, g, mfq)
+       -> lua_script(text)  # process-wide cache, registered against POPOTO_REDIS_DB
+       -> Script(keys=[key], args=[...], client=POPOTO_REDIS_DB)
+            -> EVALSHA on the server:
+                 HGET <key> q_value
+                 (decode cmsgpack; __Decimal__ tagged dict or bare number)
+                 compute td_error, new_q
+                 HSET <key> q_value <cmsgpack __Decimal__ tagged dict>
+  <- td_error (string) -> float()
+```
+
+After this PR, the same wire sequence, reached one layer lower:
+
+```
+caller: update_q_value(policy, reward=1.0, max_future_q=0.4)   # unchanged shim
+  -> TDValueField.td_update(instance, "q_value", reward=..., max_future_q=...,
+                            alpha=..., gamma=..., pipeline=None)
+       -> field resolves the member key from instance.db_key (field layer owns
+          key construction, not the recipe)
+       -> run_lua(<client resolved at call time>, TD_UPDATE_LUA, 1, key, ...)
+            -> identical EVALSHA / HGET / HSET sequence
+       -> decode float, sync instance.q_value in memory
+  <- td_error
+```
+
+The independent second reader is untouched and must stay untouched:
+
+```
+PolicyEntry.query.filter(...)  ->  DECAY_SCORE_LUA
+                               ->  HGET <member> q_value   # base_score_field
+```
 
 ## Appetite
 
+**Small.** One recipe, one call site, one new field class that is a thin
+subclass of an existing one, plus a verbatim script move. The whole diff should
+read as relocation, not redesign. If the work starts requiring changes to
+`base_score_field` plumbing, to the serialization layer, or to any test
+expectation, the appetite is blown and the plan is wrong — stop and re-plan.
+
 ## Prerequisites
+
+- PR #634 and PR #644 merged (both are, on `origin/main` at `bb8ff588`) — they
+  define the series conventions this PR follows.
+- No dependency on #646, #648, or #649. This PR touches
+  `src/popoto/recipes/policy_cache.py` and adds one new module under
+  `src/popoto/fields/`; the other lanes in the series touch neither.
 
 ## Solution
 
