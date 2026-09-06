@@ -327,13 +327,14 @@ shapes are checked: a falsy return, and the truthy pipeline-mode return with a
 `_never_record_verdict` stamped on the instance. The check sits between the save
 and the close, so nothing is queued behind a record that was never written, and
 the error carries the content-free `verdict` for callers that need the reason
-code:
+code. `verdict` is itself `None` on a non-firewall decline, so guard the
+attribute access rather than the value:
 
 ```python
 try:
     SupersessionProtocol.save_and_invalidate(new, closes=old, pipeline=pipe)
 except SupersedeDeclinedError as exc:
-    exc.verdict.reason  # e.g. 'payment_card'; None for a non-firewall decline
+    reason = exc.verdict.reason if exc.verdict else None  # e.g. 'payment_card'
 ```
 
 ## Valid-time has one writer
