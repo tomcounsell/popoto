@@ -2166,6 +2166,10 @@ class Query:
 
     model_class: "Model"
     options: "ModelOptions"
+    # Back-compat mirror of the per-call geo carrier; see _PerThreadAttr note
+    # below and _filter_for_keys_set_with_state for where they are written.
+    _geo_distances: "dict[Any, float]"
+    _geo_distance_unit: "Optional[str]"
 
     # Sorted-range bound bookkeeping, reset per query by filter_for_keys_set.
     #
@@ -2228,8 +2232,8 @@ class Query:
         """
         self.model_class = model_class
         self.options = model_class._meta
-        self._geo_distances: "dict[Any, float]" = {}  # {redis_key: distance}
-        self._geo_distance_unit: "Optional[str]" = None  # unit for distance values
+        self._geo_distances = {}  # {redis_key: distance}
+        self._geo_distance_unit = None  # unit for distance values
 
     def get(
         self,
@@ -2824,8 +2828,8 @@ class Query:
         return self._filter_for_keys_set_with_state(_PushdownState(), **kwargs)
 
     def _filter_for_keys_set_with_state(
-        self, state: "_PushdownState", **kwargs: Any
-    ) -> "set[Any]":
+        self, state: _PushdownState, **kwargs: Any
+    ) -> set[Any]:
         """Delegate holding the body of `filter_for_keys_set`, state-taking.
 
         `state` is positional-only by convention (never pass it as a keyword):
