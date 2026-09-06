@@ -3011,16 +3011,13 @@ plus an mkdocs site.</p>
 <code>popoto.pytest_plugin</code> entry point. Concurrent pipelines therefore collide on
 one database and have produced 73–158 phantom failures. When several <code>/do-sdlc</code>
 runs are live at once (routine here), set <code>POPOTO_TEST_DB=&lt;n&gt;</code> per run.</p>
-<p>The catch, and it must be passed to every TEST and REVIEW stage: <strong>six tests
-fail by construction on a non-15 DB.</strong> Five hardcode <code>assert db == 15</code> —
-<code>tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db</code>,
-<code>::test_swap_happens_before_test_modules_are_imported</code>,
-<code>TestAsyncIntegration::test_async_connection_on_test_db</code>,
-<code>TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db</code>,
-<code>::test_canonical_redis_db_on_test_db</code> — and
-<code>tests/test_version.py::test_version_matches_pyproject</code> fails on a stale
-editable install. That exact set is expected noise, not a regression. DB 0 is
-rejected outright.</p>
+<p>The catch, and it must be passed to every TEST and REVIEW stage: <strong>one test
+fails by construction outside a fresh install</strong> —
+<code>tests/test_version.py::test_version_matches_pyproject</code>, on a stale editable
+install. That is expected noise, not a regression. DB 0 is rejected outright.
+<code>tests/test_pytest_plugin.py</code> used to contribute five more here, but #549
+parameterised its DB assertions and the file passes under an override
+(verified 2026-09-06: <code>POPOTO_TEST_DB=6</code> → 43 passed).</p>
 <p>Full reviewer-facing detail, including the five worktree-verification gotchas
 (wrong package under test, <code>.[dev]</code>-only venvs deselecting ~95 tests, the
 redis-py 8.x item fixed in #490/PR #500, DB 15 contention, and

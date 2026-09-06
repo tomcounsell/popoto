@@ -2998,22 +2998,17 @@ canonical module and connection). The plugin is opt-in; this repo opts in
 with <code>popoto_test_db = "15"</code> in <code>pyproject.toml</code>. Override with
 <code>POPOTO_TEST_DB=&lt;n&gt;</code>; DB 0 is rejected outright to prevent production data
 loss.</p>
-<p><strong>Five tests hardcode <code>assert db == 15</code> and therefore fail by construction
-under any non-15 DB.</strong> This is not a regression — it is the expected result of
-running with <code>POPOTO_TEST_DB</code> set to anything else (which reviewers running
-alongside other pipelines routinely do):</p>
-<ul>
-<li><code>tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db</code></li>
-<li><code>tests/test_pytest_plugin.py::TestDatabaseIsolation::test_swap_happens_before_test_modules_are_imported</code></li>
-<li><code>tests/test_pytest_plugin.py::TestAsyncIntegration::test_async_connection_on_test_db</code></li>
-<li><code>tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db</code></li>
-<li><code>tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_canonical_redis_db_on_test_db</code></li>
-</ul>
-<p>Also expected: <code>tests/test_version.py::test_version_matches_pyproject</code> fails on
+<p><strong><code>tests/test_pytest_plugin.py</code> no longer hardcodes DB 15 in the parent
+process</strong> — #549 parameterised it, and the whole file passes under an override
+(verified 2026-09-06: <code>POPOTO_TEST_DB=6</code> → 43 passed). The two surviving
+<code>assert db == 15</code> lines (<code>tests/test_pytest_plugin.py:832</code>, <code>:866</code>) sit inside
+child-process probe scripts whose own pytest config pins DB 15, so the parent's
+override does not reach them. Do not carry forward the old "five tests fail by
+construction on a non-15 DB" caveat; it described the pre-#549 file.</p>
+<p>Still expected: <code>tests/test_version.py::test_version_matches_pyproject</code> fails on
 a stale editable install (reinstall the package, don't file it as a bug).</p>
-<p>Before calling any of these six a blocker, state the DB you ran on. If you ran
-on a non-15 DB and see exactly this set, the correct review note is "expected
-under <code>POPOTO_TEST_DB=&lt;n&gt;</code>", not a finding. Misreading it as a regression has
+<p>Before calling that one a blocker, state the DB you ran on. Misreading an
+environmental failure as a regression has
 already cost real review time.</p>
 <h2 id="reproducing-counts-worktree-verification-gotchas">Reproducing counts: worktree verification gotchas<a class="headerlink" href="#reproducing-counts-worktree-verification-gotchas" title="Permanent link">&para;</a></h2>
 <p>Hard Rule 10 (a number the PR claims is a claim, not evidence) has five

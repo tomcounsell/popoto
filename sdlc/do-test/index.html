@@ -2912,19 +2912,17 @@ warning — if flush-dependent tests start failing in a worktree, check it
 first.</p>
 <p>Because every worktree shares DB 15, concurrent pipelines collide there and
 have produced 73–158 phantom failures. Setting <code>POPOTO_TEST_DB=&lt;n&gt;</code> avoids the
-collision but introduces a fixed, known failure set — <strong>six tests fail by
-construction on any non-15 DB.</strong> Five hardcode <code>assert db == 15</code>:</p>
-<ul>
-<li><code>tests/test_pytest_plugin.py::TestDatabaseIsolation::test_on_test_db</code></li>
-<li><code>tests/test_pytest_plugin.py::TestDatabaseIsolation::test_swap_happens_before_test_modules_are_imported</code></li>
-<li><code>tests/test_pytest_plugin.py::TestAsyncIntegration::test_async_connection_on_test_db</code></li>
-<li><code>tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_src_popoto_redis_db_on_test_db</code></li>
-<li><code>tests/test_pytest_plugin.py::TestSrcPopotoImportPaths::test_canonical_redis_db_on_test_db</code></li>
-</ul>
-<p>plus <code>tests/test_version.py::test_version_matches_pyproject</code>, which fails on a
-stale editable install (reinstall, don't file it).</p>
-<p>Classify that exact set as <strong>environmental, not PR-introduced</strong>, and say in the
-report which DB you ran on. Anything beyond that set on a non-15 DB is a real
+collision. It no longer costs you a known failure set: <code>tests/test_pytest_plugin.py</code>
+used to hardcode <code>assert db == 15</code> in five tests, but #549 parameterised them and
+the file passes under an override (verified 2026-09-06: <code>POPOTO_TEST_DB=6</code> →
+43 passed). The two <code>assert db == 15</code> lines that remain (<code>:832</code>, <code>:866</code>) are
+inside child-process probe scripts that pin DB 15 in their own config, so the
+parent's override does not reach them.</p>
+<p>The one failure still expected outside a fresh install is
+<code>tests/test_version.py::test_version_matches_pyproject</code>, on a stale editable
+install (reinstall, don't file it).</p>
+<p>Classify that one as <strong>environmental, not PR-introduced</strong>, and say in the
+report which DB you ran on. Anything beyond it on a non-15 DB is a real
 signal. Never conclude "regression" without the DB stated.</p>
 <h2 id="before-trusting-any-count">Before trusting any count<a class="headerlink" href="#before-trusting-any-count" title="Permanent link">&para;</a></h2>
 <p>Four ways a worktree run reports a confident, wrong number (<code>scripts/ci-local.sh</code>
