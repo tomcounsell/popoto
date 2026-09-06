@@ -1824,6 +1824,11 @@ for r in results:
     Geo queries are backed by Redis GEORADIUS commands, which run in O(N+log(M))
     time. This is very fast even with millions of locations.
 
+!!! note
+    The distances are attached per call, so two geo queries running at the same
+    time on one model class — on two threads, two coroutines, or both — each get
+    their own. See [Thread Safety](configuration.md#thread-safety).
+
 ## DataFrameField
 
 `DataFrameField` stores [Pandas DataFrame](https://pandas.pydata.org/docs/reference/frame.html)

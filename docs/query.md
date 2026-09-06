@@ -1270,7 +1270,9 @@ for restaurant in results:
 
 Distance information is stored on each instance as `_geo_distance` (a float) and
 `_geo_distance_unit` (a string matching the `radius_unit` you specified). This is useful for
-displaying "2.3 km away" in a delivery app interface.
+displaying "2.3 km away" in a delivery app interface. The values belong to the call that
+produced them, so overlapping geo queries on one model class — across threads, coroutines, or
+both — do not annotate each other's rows (see [Thread Safety](configuration.md#thread-safety)).
 
 ### Finding Nearby Drivers
 
