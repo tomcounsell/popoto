@@ -1,9 +1,11 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 tracking: https://github.com/tomcounsell/popoto/issues/645
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-09-06T11:30:00Z
 ---
 
 # Docs teach a db-less `redis.from_url` in example code
@@ -95,12 +97,15 @@ pin" or "always delete."
 
 ## Solution
 
-Three changes.
+Four changes. (The fourth — a one-line accessor fix — was added after critique
+proved the third's premise false; see Critique Results.)
 
 **A. `docs/features/confidence-field.md` — stop constructing a client.** Replace
 the raw `redis.from_url(...)` with `popoto.get_redis()`. This is not "pin a
 database number here too": it removes the database from the example entirely,
-because the accessor returns whatever connection popoto is currently bound to.
+because the accessor returns the connection popoto is bound to — true for the
+default and pytest-plugin paths today, and true for the
+`set_REDIS_DB_settings()` path once change **D** lands.
 The snippet becomes correct for every reader rather than only for readers on
 DB 0, and there is no number left for a copier to strip back out — which is the
 issue's third acceptance criterion satisfied structurally instead of by a
@@ -117,18 +122,79 @@ shape and explains nothing.
 **C. A regression guard.** `tests/test_docs_redis_url.py` fails if any
 user-facing doc reintroduces a client constructed from a db-less URL.
 
+**D. Make `get_redis()` honest.** One line in `src/popoto/__init__.py` so the
+accessor returns the live global rather than an import-time snapshot. Without
+it, change **A** documents a claim that is false on the exact reconfiguration
+path `docs/configuration.md` teaches.
+
+## Critique Results
+
+FULL depth, 3 independent critics (`risk-robustness`, `scope-value`,
+`history-consistency`). **0 blockers, 3 concerns, 1 nit.** All applied in one
+round.
+
+| # | Severity | Critic | Finding | Disposition |
+|---|---|---|---|---|
+| 1 | CONCERN | risk-robustness | `popoto.get_redis()` is **not** rebind-safe. `src/popoto/__init__.py:114` binds `POPOTO_REDIS_DB` into the package namespace at import; `get_redis()` returns that snapshot, and `set_REDIS_DB_settings()` rebinds only `redis_db`'s own global. The plan's central justification for Task 1 was false. | **Verified true, plan changed.** See "The accessor claim was wrong" below. Adds Task 1b. |
+| 2 | CONCERN | risk-robustness | The guard's matcher, following the sibling guard's line-anchored style, misses variable indirection (`url = "redis://…"; from_url(url)`) and multi-line calls. | Applied — matcher scans whole-file text, and the two residual evasions are named as accepted limits in Task 3. |
+| 3 | CONCERN | history-consistency | Guard scope excludes `docs/plans/` **and** `docs/sdlc/`, but Verification row 1 and Success Criterion 1 exclude only `docs/plans/` — the hand-run "proof" does not match what the guard enforces. | Applied — both aligned. |
+| 4 | NIT | scope-value | Success Criteria silently narrow the issue's literal acceptance criterion 1 with an unstated `docs/plans/` exception; a literal re-run of the issue's own grep still shows hits. | Applied — the PR body and issue-close comment must state the exclusion and its reason. |
+
+Archaeologist and Operator lenses returned clean; `scope-value` returned clean
+on both its lenses. The Prior Art table's characterizations of #635/#637,
+#639/#643, #584/#601 and #577 were independently re-verified against the actual
+issue and PR bodies by `history-consistency`.
+
 ## Technical Approach
 
-### The accessor is the right instrument (verified)
+### The accessor claim was wrong — and fixing it is part of the work
 
-`popoto.get_redis()` (`src/popoto/__init__.py:118`) is public, documented for
-precisely this use ("Use this when you need Redis primitives not exposed by
-Popoto models"), and returns the live global. It is **rebind-safe** in a way
-`from popoto.redis_db import POPOTO_REDIS_DB` is not: `set_REDIS_DB_settings()`
-rebinds the module-level `POPOTO_REDIS_DB` at four sites
-(`src/popoto/redis_db.py:413,425,475,480`), so a name imported once goes stale,
-while the accessor re-reads it on every call. Documenting the import form would
-therefore hand readers a second, subtler bug.
+The plan originally argued that `popoto.get_redis()`
+(`src/popoto/__init__.py:118`) is rebind-safe because it "re-reads the global on
+every call". **That is false**, and it was caught in critique and then
+reproduced directly:
+
+```
+before:                          popoto.get_redis() db = 6   redis_db.get_REDIS_DB() db = 6
+after set_REDIS_DB_settings(db=7):
+                                 popoto.get_redis() db = 6   redis_db.get_REDIS_DB() db = 7
+                                 popoto.POPOTO_REDIS_DB db = 6
+```
+
+(run in the lane venv against DB 6; never binds DB 0.)
+
+The mechanism: `src/popoto/__init__.py:114` does
+`from .redis_db import POPOTO_REDIS_DB`, which copies the *name* into the
+package namespace at import time. `get_redis()` is defined in `__init__.py` and
+returns that copy (`:136`). `set_REDIS_DB_settings()` rebinds `redis_db`'s own
+module global at four sites (`src/popoto/redis_db.py:413,425,475,480`), and
+Python import semantics do not propagate a rebind back to a name already
+imported elsewhere. So `popoto.get_redis()` returns a **stale client** after any
+`set_REDIS_DB_settings()` call — and `docs/configuration.md:68` teaches
+`set_REDIS_DB_settings()` as the supported way to reconfigure, on the very page
+set this plan is editing.
+
+Two things follow.
+
+**The pytest plugin is not affected, and that is not luck.** `_swap_db()`
+(`src/popoto/pytest_plugin.py:288`) deliberately swaps the connection *pool* on
+the existing object rather than rebinding the name — its docstring says so
+explicitly: "so all modules that imported POPOTO_REDIS_DB at load time continue
+to use" it. Mutation-in-place is immune; rebinding is not. Only the
+`set_REDIS_DB_settings()` path goes stale.
+
+**The docs cannot be fixed without fixing the accessor.** Writing "use
+`get_redis()`, it gives you popoto's current connection" while that is untrue
+for the documented reconfiguration path would ship exactly the class of defect
+this three-lane sweep exists to remove. So Task 1b makes `get_redis()` delegate
+to `redis_db.get_REDIS_DB()` — which reads `redis_db`'s live global and is
+already documented for external callers — turning the doc claim into a true one.
+It is a one-line change, no signature change, no API surface change, and it can
+only return a *more* correct client than before.
+
+The residual — the re-exported name `popoto.POPOTO_REDIS_DB` stays stale after a
+rebind, and cannot be fixed without changing what that name is — is **out of
+scope** and gets its own issue (see Open Questions).
 
 ### The db-less URL resolves to DB 0 — but not where you would look
 
@@ -169,6 +235,15 @@ Scope: `docs/**/*.md` and `README.md`, **excluding** `docs/plans/` and
 `redis://…` with no `/<db>` path component. Prose mentions of `localhost:6379`
 as a *server address* are not matched and are not the hazard — the guard keys on
 the call, not the port.
+
+The matcher scans **whole-file text**, not line by line, so a call split across
+lines is still caught. Two evasions remain and are accepted rather than papered
+over (critique finding 2): a URL bound to a variable first
+(`url = "redis://h:6379"; redis.from_url(url)`), and a URL assembled from
+fragments. This guard exists to stop *accidental* reintroduction by an editor
+copying the old shape back in — it is not an adversarial control, and pretending
+otherwise would invite exactly the false confidence that made PR #643's first
+guard vacuous. Task 3 records both limits in a comment beside the pattern.
 
 Stdlib only (`re`, `pathlib`), no `tomllib`, consistent with
 `tests/test_ci_workflow_redis_url.py` and with `requires-python = ">=3.10"`.
@@ -229,6 +304,22 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
 - **Validation:** `grep -n 'from_url' docs/features/confidence-field.md` → no
   output.
 
+### Task 1b — make `get_redis()` actually return the current connection
+**Depends on:** none (but Task 1's doc claim is false without it)
+
+- In `src/popoto/__init__.py`, change `get_redis()` to delegate:
+  `from .redis_db import get_REDIS_DB` at the top of the function body (a local
+  import avoids re-binding a stale name at module scope) and
+  `return get_REDIS_DB()`.
+- Do **not** touch the `from .redis_db import POPOTO_REDIS_DB` re-export on
+  line 114 — other call sites use it and its staleness is a separate issue.
+- Add `tests/test_get_redis_rebind.py`: bind DB 6, call
+  `set_REDIS_DB_settings(db=7)`, assert `popoto.get_redis()` now reports db 7.
+  The test must restore the original settings in a finally block so it does not
+  poison sibling tests.
+- **Never bind DB 0 in this test** — use DB 6/7 only.
+- **Validation:** `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_get_redis_rebind.py -q` → 1 passed.
+
 ### Task 2 — `docs/configuration.md`: state what a missing database means
 **Depends on:** none
 
@@ -242,7 +333,7 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
   hit in the URL-format section.
 
 ### Task 3 — `tests/test_docs_redis_url.py`: regression guard
-**Depends on:** Tasks 1, 2
+**Depends on:** Tasks 1, 1b, 2
 
 - `test_no_user_facing_doc_constructs_a_dbless_client` — scan the doc set,
   assert zero db-less `from_url(` calls.
@@ -252,21 +343,40 @@ the sibling guard and stays untouched; the two do not overlap — that one reads
 - `test_the_matcher_detects_a_dbless_url` — run the matcher over a synthetic
   db-less snippet and assert it fires; run it over `redis://h:6379/15` and
   assert it does not. Kills vacuity mode 2.
+- Record the two accepted evasions (variable indirection, assembled URLs) in a
+  comment beside the pattern, with the reason they are accepted.
 - **Validation:** the three commands in the Verification table.
 
 ### Task 4 — `CLAUDE.md`: record the third remedy
-**Depends on:** Tasks 1-3
+**Depends on:** Tasks 1, 1b, 2, 3
 
 - The file already explains why `tests.yml` and `ci-local.sh` took opposite
   remedies (#639). Add one sentence for the docs case — the accessor removes the
   database rather than naming it — so the three do not later read as
   inconsistent.
-- **Validation:** `grep -n 'get_redis' CLAUDE.md` → one hit.
+- Add one line recording that `get_redis()` is the rebind-safe accessor and
+  `popoto.POPOTO_REDIS_DB` is not, so the next person does not re-derive it.
+- **Validation:** `grep -n 'get_redis' CLAUDE.md` → at least one hit.
+
+### Task 5 — file the residual re-export staleness as its own issue
+**Depends on:** Task 1b
+
+- `popoto.POPOTO_REDIS_DB` (re-exported at `src/popoto/__init__.py:114`) stays
+  stale after `set_REDIS_DB_settings()`. Task 1b fixes the accessor but cannot
+  fix the name.
+- File an issue with the reproduction from Technical Approach. Do **not** fix it
+  here.
+- **Validation:** issue number recorded in the PR body.
 
 ## Success Criteria
 
 - `grep -rn 'from_url("redis://localhost:6379")' docs/` returns nothing outside
-  `docs/plans/` (issue acceptance 1).
+  `docs/plans/` and `docs/sdlc/` (issue acceptance 1, with the exclusion stated
+  explicitly in the PR body and the issue-close comment — a literal re-run of
+  the issue's own command still shows archive hits, and a reader must not have
+  to guess why).
+- `popoto.get_redis()` returns the current connection after a
+  `set_REDIS_DB_settings()` rebind, so the documentation Task 1 writes is true.
 - The rest of the user-facing doc set is swept, with the boundary between
   "hazard" and "prose" written down rather than left to the next reader (issue
   acceptance 2).
@@ -284,8 +394,10 @@ Run from the lane worktree with `POPOTO_TEST_DB=6`.
 
 | Check | Command | Expected |
 |---|---|---|
-| No db-less client in user-facing docs | `grep -rn 'from_url("redis://[^"]*:6379")' docs/ README.md \| grep -v '^docs/plans/'` | exit code 1 |
+| No db-less client in user-facing docs | `grep -rn 'from_url("redis://[^"]*:6379")' docs/ README.md \| grep -vE '^docs/(plans\|sdlc)/'` | exit code 1 |
 | Confidence-field example uses the accessor | `grep -c 'popoto.get_redis()' docs/features/confidence-field.md` | output contains 1 |
+| `get_redis()` survives a rebind | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_get_redis_rebind.py -q` | 1 passed |
+| The edited snippet actually runs | execute the Task 1 snippet end-to-end against DB 6 | prints a non-empty companion hash |
 | Configuration explains the missing database | `grep -ci 'database 0' docs/configuration.md` | non-zero |
 | Guard passes | `POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q` | 3 passed |
 | Guard is not vacuous — it catches a reintroduction | `printf 'r = redis.from_url("redis://localhost:6379")\n' >> docs/features/confidence-field.md; POPOTO_TEST_DB=6 .venv/bin/pytest tests/test_docs_redis_url.py -q; git checkout docs/features/confidence-field.md` | the run **fails** before the checkout restores the file |
@@ -304,6 +416,7 @@ failing has not been observed at all.
 | 3 | The exclusion of `docs/plans/` is read later as an oversight and someone "fixes" the archive. | The exclusion is stated in No-Gos *and* encoded in the guard with a comment giving the reason. |
 | 4 | Scope creep into `docs/configuration.md`'s `/0` recommendation. | Named as a rabbit hole and raised as an Open Question instead of being acted on. |
 | 5 | Lane runs on the shared main checkout for the plan doc while other lanes are active. | Plan committed after each section (already done); code work stays in `.worktrees/sdlc-645`. |
+| 6 | Task 1b changes library behaviour in what was scoped as a docs lane. Someone relying on `get_redis()` returning the *pre-rebind* client would see a change. | The change can only return a more-current connection, never a wrong one; no signature or API-surface change. Called out explicitly in the PR body rather than buried in a docs diff, and covered by `tests/test_get_redis_rebind.py`. |
 
 ## Open Questions
 
@@ -315,3 +428,9 @@ failing has not been observed at all.
    *is* — a maintainer call with release-note consequences, and one that
    `adhoc_db0_guard.md` already declined once. **This plan does not touch it.**
    Flagging for a separate issue if wanted.
+
+2. **`popoto.POPOTO_REDIS_DB` goes stale after `set_REDIS_DB_settings()`** and
+   Task 1b cannot fix it (it is a name binding, not a call). Task 5 files it.
+   Whether the right long-term answer is to drop the re-export, or to make
+   `set_REDIS_DB_settings()` mutate in place the way `_swap_db()` already does,
+   is a maintainer call.
