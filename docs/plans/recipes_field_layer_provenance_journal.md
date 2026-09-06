@@ -86,7 +86,7 @@ API involved.
 - **Assumption**: a `Batch` wrapper object is a viable return type.
 - **Method**: code-read.
 - **Result**: **No.** `isinstance(pipeline, redis.client.Pipeline)` appears at
-  **20+ sites** across `models/base.py` and eight field modules
+  **20 sites** across `models/base.py` and eight field modules
   (`confidence_field.py:399`, `cyclic_decay_field.py:467`,
   `existence_filter.py:424`, `sorted_field_mixin.py:620`, …). Several of them
   are of the shape `pipeline if isinstance(...) else POPOTO_REDIS_DB` — a
@@ -134,14 +134,17 @@ construction.
 
 ### Key Elements
 
-1. **`Model.exists(db_key=None, **kwargs)`** — a classmethod on the base model,
-   signature-mirroring the existing `Model.load` (`models/base.py:1991`), which
-   already takes `db_key=` or KeyField kwargs. Returns `bool`.
+1. **`Model.exists(db_key=None, redis_key=None, **kwargs)`** — a classmethod on
+   the base model, signature-mirroring `Model.load` → `Query.get`
+   (`models/query.py:2269`), **including its `isinstance(db_key, str)`
+   short-circuit**. See the Technical Approach: without that short-circuit the
+   method is wrong at exactly this call site (critique round 1 blocker).
+   Returns `bool`.
 2. **`popoto.batch(transaction=True)`** — a new `src/popoto/batch.py` whose
    `batch()` returns `POPOTO_REDIS_DB.pipeline(transaction=transaction)`: a
-   **real** `redis.client.Pipeline`, for the reason spike-2 gives. It is the one
-   supported way to open a Popoto transaction without importing the client, and
-   it is the single construction point a future `Backend` protocol swaps.
+   **real** `redis.client.Pipeline`, for the reason spike-2 gives. It is the
+   supported way for a recipe or a user to open a Popoto transaction without
+   importing the client.
 3. **Three call-site swaps** in `provenance_journal.py`, after which the module
    no longer imports `POPOTO_REDIS_DB` at all.
 4. **The `pipeline=` parameter stays exactly as it is** — same type, same
@@ -156,17 +159,42 @@ Unchanged. Every swap is a same-command substitution:
 
 | Site | Before | After | Redis commands |
 |---|---|---|---|
-| 1 | `POPOTO_REDIS_DB.exists(target_key)` | `model.exists(db_key=target_key)` | `EXISTS k` → same |
+| 1 | `POPOTO_REDIS_DB.exists(target_key)` | `model.exists(redis_key=target_key)` | `EXISTS k` → same |
 | 2 | `ValidityField.get_interval_keys(...)` + `POPOTO_REDIS_DB.zscore(vf, target_key)` | `ValidityField.get_valid_from(model, VALIDITY_FIELD_NAME, target_key)` | `ZSCORE vf k` → same |
 | 3 | `POPOTO_REDIS_DB.pipeline()` | `batch()` | none (client-side) |
 
 ### Technical Approach
 
-**`Model.exists`.** Body is `DB_key(db_key or cls(**kwargs).db_key).exists()`,
-reusing `DB_key.exists()` rather than re-issuing `EXISTS` — one implementation
-of "does this key exist" for the whole ORM. `DB_key.exists()` already returns
-`POPOTO_REDIS_DB.exists(k) > 0` as a `bool`, which is what site 1's
-`if not POPOTO_REDIS_DB.exists(...)` evaluates today.
+**`Model.exists`.** A naive `DB_key(db_key or cls(**kwargs).db_key).exists()` is
+**wrong**, and wrong in a way that would have shipped: `DB_key.__init__`'s
+`flatten` (`models/db_key.py:112-122`) keeps a `str` argument as ONE opaque
+partial, and `__str__` then runs `clean()` on it (`:191-196`), which replaces
+every literal `:` with `COLON_ESCAPE`. So `str(DB_key("JournalEntry:pk123"))` is
+`JournalEntry{&#58;}pk123` — a key that does not exist. `Model.load` escapes
+this only because it delegates to `Query.get`, which short-circuits a `str`
+`db_key` into `redis_key` before any `DB_key` construction
+(`models/query.py:2269-2271`).
+
+`Model.exists` therefore mirrors that short-circuit:
+
+```python
+@classmethod
+def exists(cls, db_key=None, redis_key=None, **kwargs) -> bool:
+    if isinstance(db_key, str) and not redis_key:
+        redis_key, db_key = db_key, None
+    if not db_key and not redis_key:
+        db_key = cls(**kwargs).db_key
+    key = redis_key if redis_key else db_key.redis_key
+    return POPOTO_REDIS_DB.exists(key) > 0
+```
+
+which is byte-for-byte the expression `DB_key.exists()` (`db_key.py:302-311`)
+already evaluates. Site 1 calls it as `model.exists(redis_key=target_key)` —
+named explicitly, so the string path is not reached by accident.
+
+`tests/test_model_exists.py` must cover a **multi-segment** redis key (the shape
+site 1 passes, e.g. `instance.db_key.redis_key`), not only a single-segment key
+or a `DB_key` instance: a single-segment test passes against the buggy body.
 
 **Name collision.** `exists` becomes a reserved-ish name on `Model`: a subclass
 declaring a field called `exists` would shadow the classmethod. `limit`,
@@ -184,8 +212,17 @@ which is precisely the divergence a deprecation shim must not have.
 
 **Export.** `batch` is a new top-level public name in `popoto.__all__`, so it
 needs a `CHANGELOG.md` `[Unreleased]` entry (the lesson from PR #638's review).
-`src/popoto/batch.py` is a module, not a namespace addition like `counters.py`,
-because the issue names the API `popoto.batch()`.
+It is exported — unlike `counters.py`, which PR #634 deliberately kept out of
+the namespace — because issue #630 names the API `popoto.batch()` literally.
+
+That is the whole justification, and it is deliberately narrower than "the
+single construction point a future `Backend` protocol swaps" (critique round 1
+concern). Spike-2 disproves that stronger claim: the 20 `isinstance(pipeline,
+redis.client.Pipeline)` sites would each have to change before any backend could
+return a non-`Pipeline` batch, so `batch()` is **not** a sufficient swap point.
+What it does buy today is that recipes stop importing the client, which is the
+step #630 actually asks for; the isinstance sites are a separate, known blocker
+for the seam and are out of scope here.
 
 ## Failure Path Test Strategy
 
@@ -318,4 +355,20 @@ recipes; this PR references it without a closing keyword.
 
 ## Critique Results
 
-_(to be filled by /do-plan-critique)_
+### Round 1 (2026-09-06) — verdict: NEEDS REVISION → revised, routed to BUILD
+
+FULL depth, independent roster of 3 critics (Risk & Robustness, Scope & Value,
+History & Consistency). 1 blocker, 1 concern, 1 nit. Per the lane's one-round
+cap, the revision below was applied and the plan routed straight to BUILD
+without a re-critique.
+
+| # | Sev | Critic | Finding | Resolution |
+|---|---|---|---|---|
+| 1 | BLOCKER | Risk & Robustness | `DB_key(db_key or ...)` escapes the `:` in a redis-key string (`db_key.py:112-122`, `:191-196`), so `Model.exists` as drafted would `EXISTS` a key that never exists; `Model.load` only escapes this via `Query.get`'s `isinstance(db_key, str)` short-circuit (`query.py:2269-2271`). | Verified independently against both files. Technical Approach rewritten with the short-circuiting body; site 1 now calls `exists(redis_key=...)`; test requirement for a multi-segment key added. |
+| 2 | CONCERN | Scope & Value | The "single construction point a future `Backend` protocol swaps" rationale for exporting `batch()` is disproved by the plan's own spike-2 (the 20 isinstance sites would also have to change). | Rationale narrowed to "issue #630 names the API literally" + "recipes stop importing the client"; the isinstance sites recorded as a separate known blocker. |
+| 3 | NIT | History & Consistency | "20+ sites" is exactly 20. | Corrected to "20 sites". |
+
+History & Consistency verified every other factual claim in the plan (line
+numbers 984/1014/1026/1075, `get_valid_from` at `validity_field.py:1170`,
+spike-3's ranges, commits `4def49fb` / `bf85ec3b`, the `counters.py` precedent)
+as accurate.
