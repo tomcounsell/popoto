@@ -56,7 +56,16 @@ import threading
 import weakref
 from asyncio import to_thread
 from dataclasses import dataclass, field as dataclass_field
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generic,
+    Optional,
+    TypeVar,
+    Union,
+    overload,
+)
 
 from .canonical_key import canonical_key_str
 from .db_key import DB_key
@@ -96,6 +105,80 @@ class _PushdownState:
     pushdown_requested: int = 0
     pushdown_fetched: int = 0
     pushdown_partition: "dict[str, Any]" = dataclass_field(default_factory=dict)
+
+
+_T = TypeVar("_T")
+
+
+class _PerThreadAttr(Generic[_T]):
+    """Per-thread storage for bookkeeping that lives on a shared ``Query``.
+
+    ``Query`` is instantiated once per model class (``models/base.py``), so an
+    attribute written by ``filter_for_keys_set`` is otherwise visible to every
+    thread that queries that model. Each of these names is written and read
+    within a single call, so per-thread storage preserves every existing read
+    while removing the cross-thread aliasing: two threads running ``filter()``
+    on one model no longer hand each other their key lists or their bounds.
+
+    Storage is a ``threading.local`` parked in ``obj.__dict__`` under
+    ``_pushdown_tls``, so it is per-``Query``-instance *and* per-thread; two
+    model classes never share a cell. Defaults are produced per thread from a
+    factory, never shared, so one thread's mutation of a default ``{}`` cannot
+    reach another's.
+
+    Lifetime is bounded and self-managing. ``threading.local`` storage is owned
+    by the thread and freed when the thread dies; the per-instance object holds
+    no strong reference to any thread. The live footprint is therefore
+    ``models x live threads x 8 small values`` — it does not grow with the
+    number of threads a pool has retired.
+
+    This is a *data* descriptor (it defines ``__set__``), so assignment reaches
+    the per-thread cell rather than shadowing the descriptor in
+    ``obj.__dict__``. White-box callers that assign these names directly
+    (``tests/test_validity_field.py``) depend on that.
+    """
+
+    __slots__ = ("_name", "_default", "_is_factory")
+
+    def __init__(self, name: str, default: "Union[Callable[[], _T], _T]"):
+        self._name = name
+        self._default = default
+        self._is_factory = callable(default)
+
+    def _store(self, obj: Any) -> Any:
+        tls = obj.__dict__.get("_pushdown_tls")
+        if tls is None:
+            tls = threading.local()
+            obj.__dict__["_pushdown_tls"] = tls
+        return tls
+
+    @overload
+    def __get__(self, obj: None, objtype: Any = None) -> "_PerThreadAttr[_T]": ...
+
+    @overload
+    def __get__(self, obj: Any, objtype: Any = None) -> _T: ...
+
+    def __get__(
+        self, obj: Any, objtype: Any = None
+    ) -> "Union[_PerThreadAttr[_T], _T]":
+        if obj is None:
+            return self
+        tls = self._store(obj)
+        try:
+            return getattr(tls, self._name)  # type: ignore[no-any-return]
+        except AttributeError:
+            default = self._default() if self._is_factory else self._default
+            setattr(tls, self._name, default)
+            return default  # type: ignore[return-value]
+
+    def __set__(self, obj: Any, value: _T) -> None:
+        setattr(self._store(obj), self._name, value)
+
+    def __delete__(self, obj: Any) -> None:
+        try:
+            delattr(self._store(obj), self._name)
+        except AttributeError:
+            pass
 
 
 # One lock per running event loop, built lazily. A module-level asyncio.Lock()
@@ -2072,10 +2155,40 @@ class Query:
     options: "ModelOptions"
 
     # Sorted-range bound bookkeeping, reset per query by filter_for_keys_set.
-    _pushdown_limit: Optional[int]
-    _pushdown_requested: int
-    _pushdown_fetched: int
-    _pushdown_partition: "dict[str, Any]"
+    #
+    # One Query instance is shared by every thread that queries a model class
+    # (models/base.py), and filter_for_keys_set resets these mid-flight with
+    # blocking Redis calls in between, so plain instance attributes let one
+    # thread hydrate another thread's key list -- a cross-partition read (#600).
+    # _PerThreadAttr keeps the reads and writes each call already performs, but
+    # gives every thread its own cell. See _PerThreadAttr for the lifetime and
+    # memory bound.
+    _sorted_field_order: "_PerThreadAttr[Optional[list[Any]]]" = _PerThreadAttr(
+        "_sorted_field_order", None
+    )
+    _sorted_field_name: "_PerThreadAttr[Optional[str]]" = _PerThreadAttr(
+        "_sorted_field_name", None
+    )
+    _pending_client_filters: "_PerThreadAttr[dict[str, Any]]" = _PerThreadAttr(
+        "_pending_client_filters", dict
+    )
+    _pushdown_limit: "_PerThreadAttr[Optional[int]]" = _PerThreadAttr(
+        "_pushdown_limit", None
+    )
+    _pushdown_requested: "_PerThreadAttr[int]" = _PerThreadAttr(
+        "_pushdown_requested", 0
+    )
+    _pushdown_fetched: "_PerThreadAttr[int]" = _PerThreadAttr("_pushdown_fetched", 0)
+    _pushdown_partition: "_PerThreadAttr[dict[str, Any]]" = _PerThreadAttr(
+        "_pushdown_partition", dict
+    )
+    # Armed by _execute_filter / _filter_keys_with_pushdown and read by
+    # _sorted_pushdown_args within the same call. Per-thread so a concurrent
+    # `_allow_pushdown=False` retry cannot disarm another thread's in-flight
+    # query.
+    _pushdown_allowed: "_PerThreadAttr[bool]" = _PerThreadAttr(
+        "_pushdown_allowed", False
+    )
 
     def __init__(self, model_class: "Model"):
         """
