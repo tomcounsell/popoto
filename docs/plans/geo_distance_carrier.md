@@ -292,35 +292,153 @@ throughput regression traded for a correctness fix that the carrier gives for fr
 
 ## Test Impact
 
-<!-- skeleton -->
+- [ ] `tests/test_geo_with_distances.py` (all 10 tests) — UPDATE only if they break. They are
+      single-threaded and read `_geo_distance` off returned rows, which is unchanged public surface,
+      so the expectation is **zero edits**. They are the compatibility gate: if any of them needs a
+      change, the wrapper's back-compat mirror is wrong.
+- [ ] `tests/test_query_thread_safety.py` — UPDATE: add the new geo tests to this file rather than
+      creating a parallel one, so the concurrency suite stays in one place. Existing tests in it must
+      not change.
+- [ ] `tests/test_validity_field.py` — no change expected, but it is the one place that assigns to
+      the per-thread bookkeeping white-box (`_pending_client_filters`), so it is the canary if the
+      descriptor is touched by accident. Run it explicitly.
+
+No other existing tests are affected: nothing else in `tests/` references `_geo_distances` (the
+plural, instance-level name) — only `_geo_distance` on returned rows, which is preserved.
 
 ## Rabbit Holes
 
-<!-- skeleton -->
+- **Making the geo path async-native.** `filter_for_keys_set` runs sync Redis inside `to_thread`
+  because field `filter_query` implementations are sync. Rewriting `GeoField.filter_query` for async
+  is a real project and has nothing to do with this race. Leave the `to_thread` hop exactly as is.
+- **Widening `_pushdown_lock_for_running_loop` to cover hydration.** It would fix the async half by
+  serializing concurrent geo queries per model class. That is a throughput regression bought with a
+  correctness fix the carrier already provides for free.
+- **Deprecating or removing `self._geo_distances` / `self._geo_distance_unit`.** They are private by
+  name but they have been on a shared public object since PR #53. #600 faced the identical question
+  for eight names and kept the mirror; do the same and do not relitigate it.
+- **Refactoring the two near-identical geo blocks in `_execute_filter` and `async_filter` into one
+  helper.** Tempting (they differ only in comments) but it widens the diff across the sync/async
+  boundary and makes the base-revert proof harder to read. If it is worth doing, it is worth its own
+  issue.
+- **Chasing every other attribute on `Query`.** After this change the audit is: is any remaining
+  `self._x` written and read across a blocking call? Answer it in the PR body as a claim with a grep
+  behind it, and file anything found. Do not fix it here.
 
 ## Risks
 
-<!-- skeleton -->
+### Risk 1: The back-compat mirror hides a missed read site
+**Impact:** A call site that still reads `self._geo_distances` keeps working in single-threaded tests
+and stays racy under concurrency — the fix looks complete and is not.
+**Mitigation:** After the change, `grep -n "self\._geo_distance" src/popoto/models/query.py` must show
+**only** the mirror writes in the public wrapper (and the `__init__` seed). Encoded as a
+`## Verification` row, not left to review-by-eye.
+
+### Risk 2: A future "simplification" moves the geo names onto `_PerThreadAttr`
+**Impact:** Async geo queries silently return rows with no distances. Nothing today would catch it.
+**Mitigation:** The async geo test (Task 3) asserts the distance is attached on the async path, so
+per-thread cells fail it loudly. Plus a `## Verification` anti-criterion asserting neither geo name is
+bound to `_PerThreadAttr`.
+
+### Risk 3: The regression test is timing-dependent and passes on base by luck
+**Impact:** The whole proof evaporates — this is the failure mode the repo's own rule about worktree
+metrics exists for.
+**Mitigation:** Prove the failure on base `4d9d5419` by reverting **only `src/popoto/models/query.py`**
+in a separate checkout with its own venv (`PYTHONPATH` loses to the editable install — CLAUDE.md
+hazard 1), and paste the verbatim failure output into the PR body. Also ship one deterministic
+barrier-based test alongside the stochastic one, as #600 did, so a green suite does not depend on the
+scheduler.
+
+### Risk 4: Q-object geo queries are missed
+**Impact:** `filter(Q(...), location__latlon=...)` keeps reading distances off the mirror and stays
+racy — a partial fix presented as a complete one.
+**Mitigation:** Thread the carrier through `_evaluate_filter_args` and `q.evaluate_q` (Task 2), and
+cover the Q + geo combination in the test file. If the combination turns out to be unsupported today,
+say so explicitly in the PR body with the evidence rather than leaving it unmentioned.
 
 ## Race Conditions
 
-<!-- skeleton -->
+### Race 1: reset / mutate / read-back on shared instance state (the bug)
+**Location:** `src/popoto/models/query.py` — reset `3299-3300` (sync) and `3845-3846` (async);
+mutation `2831-2832` and `2871-2872`; read-back `3395-3420` (sync) and `3922-3943` (async).
+**Trigger:** Two threads (or two coroutines) run a geo `filter()` on the same model class. Thread B's
+reset or `update()` lands between thread A's key query and A's read-back — a window that spans at
+least two blocking Redis round trips, during which the GIL is released.
+**Data prerequisite:** The distances attached to a result set must be the ones produced by *that
+query's* `filter_query` call.
+**State prerequisite:** No other call may write the store those distances live in between the write
+and the read.
+**Mitigation:** The store becomes a per-call `_PushdownState` created by the caller and passed down
+positionally, so there is no shared store to clobber. Not a lock: nothing is serialized.
+
+### Race 2: snapshot-after-the-fact (the tempting wrong fix)
+**Location:** `_snapshot_pushdown_state` (`2507`).
+**Trigger:** Adding the geo names to the snapshot rather than writing them into the carrier directly.
+The snapshot runs after `filter_for_keys_set` returns, so another thread's `update()` or reset can
+land between the mutation and the snapshot.
+**Data prerequisite:** none — this variant is simply unsound.
+**Mitigation:** `_filter_for_keys_set_with_state` writes the geo members into the carrier at the
+moment the tuple is unpacked. The plan states explicitly that `_snapshot_pushdown_state` must not
+grow geo members, and a `## Verification` row asserts it.
+
+### Race 3: async loop-thread / worker-thread split
+**Location:** `async_filter` (`3845`, `3922`) vs `filter_for_keys_set` (`2831`), across the
+`to_thread` boundary.
+**Trigger:** Any async geo query, if the storage is per-thread.
+**Data prerequisite:** The worker thread's writes must be visible to the loop thread.
+**Mitigation:** The carrier is an ordinary object passed across the hop, so the worker's writes are
+visible by reference. This is precisely why per-thread storage is refused here.
 
 ## No-Gos (Out of Scope)
 
-<!-- skeleton -->
+- `[SEPARATE-SLUG #640]` — n/a: this plan *is* #640. Nothing is deferred to another issue.
+- Making `GeoField.filter_query` async-native — a separate project (see Rabbit Holes); no issue filed
+  because nothing is known to be broken there, and filing a tracking-only issue to satisfy a tag would
+  be exactly the laziness the tag legend forbids. It is a Rabbit Hole, not a No-Go.
+- Removing the `self._geo_distances` / `self._geo_distance_unit` mirror — explicitly rejected in the
+  Technical Approach, on the same reasoning #600 used for its eight names. This is a design decision
+  in scope, not deferred work.
+
+Nothing deferred — every relevant item is in scope for this plan.
 
 ## Update System
 
-<!-- skeleton -->
+No update system changes required — this is a purely internal change to one module. No new
+dependency, config file, or migration; nothing propagates to another environment.
 
 ## Agent Integration
 
-<!-- skeleton -->
+No agent integration required. `Query.filter` and `Query.async_filter` are already the surfaces the
+memory layer and MCP tools call; this change alters neither signature nor return shape. The geo
+annotation (`_geo_distance` on returned rows) is unchanged, so no tool wrapper needs updating.
 
 ## Documentation
 
-<!-- skeleton -->
+### Feature Documentation
+- [ ] `docs/fields.md:1788-1800` documents `_geo_distance` / `_geo_distance_unit` on returned rows.
+      Confirm the text stays true (it should — the annotation is unchanged) and add nothing if so.
+
+### External Documentation Site
+- [ ] `docs/configuration.md` **Thread Safety** — #600 added a "One remaining exception" admonition
+      naming the geo annotation and pointing at #640. When this ships, that admonition must be removed
+      or rewritten, and the surrounding paragraph updated to say concurrent geo queries are safe. This
+      is the highest-value doc edit in the plan: leaving a stale "known broken" note is worse than
+      having no note.
+- [ ] `docs/multi-tenancy.md` — #600 added a concurrency paragraph cross-linking Thread Safety. Check
+      whether it needs the geo case mentioned; likely not.
+- [ ] `CHANGELOG.md` — a **Fixed** entry under Unreleased. Lead with the user-visible symptom (a geo
+      query attaching another query's distances, or losing them entirely), note it completes the
+      residual exposure #600 declared, and do **not** name an unreleased version number in prose.
+- [ ] `mkdocs build --strict` passes.
+
+### Inline Documentation
+- [ ] `filter_for_keys_set`'s docstring already explains the per-thread bookkeeping contract (added by
+      #600). Extend it to say the geo results now travel in the carrier and that the instance
+      attributes are a back-compat mirror.
+- [ ] `_PushdownState`'s docstring covers seven fields; update it for the two new members and say why
+      they must be written directly rather than snapshotted.
+- [ ] A comment at the `_PerThreadAttr` binding block stating why the geo names are deliberately not
+      there — the next reader's obvious "simplification" is the async-breaking one.
 
 ## Success Criteria
 
