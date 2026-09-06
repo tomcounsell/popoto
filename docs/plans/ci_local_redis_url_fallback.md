@@ -298,14 +298,14 @@ the environment the test hands it is corrected.
 
 ## Success Criteria
 
-- [ ] `env -u REDIS_URL scripts/ci-local.sh tests` reports zero failures from
+- [x] `env -u REDIS_URL scripts/ci-local.sh tests` reports zero failures from
       `tests/test_integrations_mcp.py`.
-- [ ] The affected test passes with `REDIS_URL=redis://localhost:6379` set in the
+- [x] The affected test passes with `REDIS_URL=redis://localhost:6379` set in the
       environment (the contract is enforced by the test, not the caller).
-- [ ] `grep -n 'export REDIS_URL' scripts/ci-local.sh` finds nothing.
-- [ ] The "Redis not reachable" preflight still fires and exits 2 when Redis is down.
-- [ ] Every `REDIS_URL`-reading test file passes with the variable unset.
-- [ ] Tests pass (`/do-test`)
+- [x] `grep -n 'export REDIS_URL' scripts/ci-local.sh` finds nothing.
+- [x] The "Redis not reachable" preflight still fires and exits 2 when Redis is down.
+- [x] Every `REDIS_URL`-reading test file passes with the variable unset.
+- [x] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
