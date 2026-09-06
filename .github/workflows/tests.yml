@@ -48,7 +48,9 @@ jobs:
           - 6379:6379
 
     env:
-      REDIS_URL: redis://localhost:6379
+      # The database number must match `popoto_test_db` in pyproject.toml;
+      # tests/test_ci_workflow_redis_url.py fails if the two ever disagree.
+      REDIS_URL: redis://localhost:6379/15
 
     steps:
       - uses: actions/checkout@v7
@@ -118,7 +120,9 @@ jobs:
           - 6379:6379
 
     env:
-      REDIS_URL: redis://localhost:6379
+      # The database number must match `popoto_test_db` in pyproject.toml;
+      # tests/test_ci_workflow_redis_url.py fails if the two ever disagree.
+      REDIS_URL: redis://localhost:6379/15
 
     steps:
       - uses: actions/checkout@v7

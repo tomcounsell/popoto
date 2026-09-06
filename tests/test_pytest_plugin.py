@@ -1035,9 +1035,11 @@ class TestResolutionChain:
     parallel harness. Deliberately NOT a subclass: inheriting would make pytest
     re-collect and re-run every ``TestIsolationWarning`` test under this class.
 
-    Every child below pins ``REDIS_URL`` to an explicit non-zero DB
-    before popoto is imported: CI exports a db-less ``REDIS_URL`` and a child
-    that inherits it unpinned would land wherever that URL points (#603, #577).
+    Every child below pins ``REDIS_URL`` to an explicit non-zero DB before
+    popoto is imported, rather than inheriting whatever the parent environment
+    names (#603, #577). CI used to export a db-less ``REDIS_URL``; since #639
+    it names the test database, but a child that inherits unpinned still lands
+    wherever the ambient URL points, so the pinning stays.
     """
 
     def test_env_var_beats_ini_option(self, tmp_path, pytestconfig):

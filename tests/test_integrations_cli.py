@@ -56,8 +56,10 @@ def test_doctor_reports_evictions_as_data_loss_not_failures(monkeypatch, capsys)
     """
     agent = "test-integrations-cli-evicted"
     # Clear BOTH url vars so the doctor judges the live (pytest-swapped)
-    # connection: CI exports a db-less REDIS_URL=redis://localhost:6379,
-    # which the #584 refusal rejects with "URL names no database" (exit 1).
+    # connection rather than whatever the ambient environment names. CI used to
+    # export a db-less REDIS_URL that the #584 refusal rejected outright ("URL
+    # names no database", exit 1); since #639 it pins the test database
+    # instead, but this test must not depend on either value.
     monkeypatch.delenv("POPOTO_MEMORY_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.setenv("POPOTO_MEMORY_AGENT_ID", agent)
