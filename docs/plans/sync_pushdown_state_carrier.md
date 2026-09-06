@@ -395,12 +395,18 @@ instead of `self`, so `Model.query._pushdown_limit` reads `None` for the query s
 the hydration was bounded (the Redis-side bound at `2576` still writes `self`, because
 `filter_for_keys_set` still populates the instance). `tests/test_validity_field.py:802` asserts
 `== 3` on a query that takes the Redis-side bound (spike-1's harness confirms condition 5
-passes for `score__gte` + `order_by="score"`), so it is expected to keep passing — but the
-builder must **run that file first** and, if it fails, restore the write-back by having
-`_bound_keys_before_hydration` mirror into `self` when `state is not None and state is
-self-produced`. Simplest safe form: keep the existing `write_back` mirror active whenever the
-call came from the sync path. Decide by test result, not by guess; record which branch was taken
-in the PR body.
+passes for `score__gte` + `order_by="score"`), so it is expected to keep passing.
+
+**Revised by critique (Scope & Value, CONCERN-2): do not leave this to a test result.** Make
+`_bound_keys_before_hydration` mirror the bound into `self` **unconditionally**, on both the
+`state is None` and the `state is not None` branches, in addition to writing the carrier. Once
+storage is per-thread the mirror is a per-thread write and costs nothing, and it removes the one
+observable delta this plan would otherwise have — the compatibility contract then holds by
+construction rather than by a passing assertion. Concretely, keep the three existing
+`self._pushdown_limit / _pushdown_requested / _pushdown_fetched` assignments in place and add the
+matching writes to `state` beside them, rather than replacing one with the other. Still run
+`tests/test_validity_field.py` first as the tripwire, and record in the PR body that the
+unconditional-mirror branch was taken.
 
 ## Failure Path Test Strategy
 
@@ -647,8 +653,9 @@ itself an integration requirement and is covered by `tests/test_hybrid_retrieval
       `tests/test_async.py`, `tests/test_client_side_filter.py`, `tests/test_hybrid_retrieval.py`
       and `tests/test_stress.py`.
 - [ ] `ruff check src/` exits 0; `black --check src/ tests/` exits 0.
-- [ ] mypy delta 0 versus `9c04b8c`, measured in the same venv, with the redis-py version
-      recorded beside the number (plan-time environment: redis-py 7.1.1).
+- [ ] `python scripts/mypy_ratchet.py --strict-env` exits 0 (the enforced gate). If the descriptor
+      raises the `models` count, bank it with `--update` and say so in the PR body. Branch
+      environment: redis-py 8.1.0, mypy 2.3.1 — matching `scripts/mypy_baseline.json`.
 - [ ] Docs updated per `## Documentation`; `mkdocs build` clean.
 
 ## Team Orchestration
@@ -827,7 +834,7 @@ itself an integration requirement and is covered by `tests/test_hybrid_retrieval
 | Full suite | `POPOTO_TEST_DB=2 pytest -q` | exit code 0 |
 | Lint clean | `ruff check src/` | exit code 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
-| mypy delta (branch) | `mypy src/ 2>&1 \| tail -1` | output contains `Found` |
+| mypy ratchet (the enforced gate) | `python scripts/mypy_ratchet.py --strict-env` | exit code 0 |
 | Internal path reads the carrier, not `self` | `sed -n '3011,3140p' src/popoto/models/query.py \| grep -c '_pending_client_filters'` | match count == 0 |
 | `async_count` no longer reads `self` | `sed -n '3692,3740p' src/popoto/models/query.py \| grep -c 'getattr(self, "_pending_client_filters"'` | match count == 0 |
 | Anti-criterion: geo state NOT made per-thread | `grep -c '_PerThreadAttr("_geo_distance' src/popoto/models/query.py` | match count == 0 |
@@ -838,13 +845,27 @@ itself an integration requirement and is covered by `tests/test_hybrid_retrieval
 Line ranges in the `sed` rows are against `9c04b8c` and will drift as the branch grows; the
 validator should re-anchor them on the function boundaries rather than trusting the numbers.
 
-**mypy delta procedure** (a bare count is not a delta — CLAUDE.md):
+**mypy gate procedure** (revised by critique — supersedes the plan-time raw-delta recipe):
+
+The enforced gate in this repo is the **ratchet**, not a raw `mypy src/` count. `scripts/mypy_ratchet.py`
+checks a per-package ceiling against `scripts/mypy_baseline.json`, which already records the current
+environment (`redis==8.1.0`, `mypy==2.3.1`, `total: 1044`). Run:
 
 ```bash
-python -c "import redis; print('redis-py', redis.__version__)"   # plan-time: 7.1.1
-mypy src/ 2>&1 | tail -1                                          # branch
-git stash && git checkout 9c04b8c && mypy src/ 2>&1 | tail -1     # base, same venv
+python -c "import redis, mypy.version; print('redis-py', redis.__version__)"  # branch env: 8.1.0
+python scripts/mypy_ratchet.py --strict-env
 ```
+
+If the descriptor raises the `models` package count, regenerate the baseline with `--update` and say so
+in the PR body rather than chasing a raw delta of 0. If a raw base-vs-branch delta is still wanted as
+corroboration, the base is the **fork point**, not `9c04b8c`:
+
+```bash
+git checkout "$(git merge-base HEAD origin/main)"   # 3cf8c2d0, not 9c04b8c
+```
+
+`9c04b8c` is four `query.py`-touching commits behind the fork point (#624, #633, #634, and PR #625 for
+#610); diffing against it folds those commits' typed surface into this plan's delta.
 
 **Repro-script safety** (CLAUDE.md, #577): any ad-hoc script must export
 `REDIS_URL=redis://localhost:6379/2` **before** `import popoto`, and assert the resolved DB:
@@ -857,10 +878,34 @@ assert POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db") == 2
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique. -->
+Run 2026-09-06, FULL depth, independent roster (3 critics: Risk & Robustness, Scope & Value,
+History & Consistency). Verdict: **READY TO BUILD (with concerns)** — 0 blockers, 3 concerns,
+1 nit. Revision pass applied in this same commit; the plan text above already reflects it.
+
+**Rebaselined:** this plan's `## Freshness Check` was written against `9c04b8c`. The branch's
+actual fork point is `3cf8c2d0` (`git merge-base HEAD origin/main`), four `query.py`-touching
+commits later: #624, #633, #634 and PR #625 (for #610). Every line number in the sections above
+is stale by roughly +140; anchor on function names, not numbers. The mechanism survives the drift
+intact — re-verified against the current tree: `class _PushdownState` L80,
+`_pushdown_lock_for_running_loop` L113, `QueryBuilder.fuse` reader L1218, `QueryBuilder.count`
+L1889, `_snapshot_pushdown_state` L2391, `_filter_keys_with_pushdown` L2409,
+`_bound_keys_before_hydration` L2429, `_short_result_action` L2496, `filter_for_keys_set` L2609,
+`_execute_filter` L3149, `Query.count` L3383, `async_filter` L3679, `async_count` L3847. The two
+out-of-file readers moved: `transfer/export.py:305` (plan said 277) and
+`models/base.py:506` (plan said 505); `recipes/context_assembler.py:2368` is unchanged.
+
+**Ordering prerequisite satisfied:** #610 is CLOSED, merged as PR #625. PR #625 reworked
+`QueryBuilder.count()` onto a shared `_execute(apply_limit=False, no_track=True)` seam, which
+touches no pushdown bookkeeping; `Query.count` (L3383) still calls `filter_for_keys_set` and
+reads `self._pending_client_filters` (L3419) exactly as this plan describes, so Solution step 2
+applies unchanged.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | Risk & Robustness | The plan gates on a bare `mypy src/ \| tail -1` delta, but the repo's enforced gate is `scripts/mypy_ratchet.py` against `scripts/mypy_baseline.json`. Following the plan literally bypasses the ratchet's per-package `clean` allowlist and environment guard, risking a false green or a false red. | Revised `## Verification` "mypy gate procedure" and the matching Success Criterion. | The baseline JSON already records `redis==8.1.0`, `mypy==2.3.1`, `total: 1044` — i.e. this branch's environment, not the plan-time 7.1.1. Run `python scripts/mypy_ratchet.py --strict-env`; if the descriptor raises the `models` count, bank it with `--update` and commit the JSON rather than chasing a raw delta of 0. |
+| CONCERN | Scope & Value | Solution step 2 (carrier-threading) is justified as making the invariant visible, not as closing a race step 1 does not already close — yet it is where Risk 3 (the `_pushdown_limit` write-back regression) originates. | Kept step 2, but removed its cost: the write-back is now unconditional rather than decided by test result. See Solution step 3. | Do not replace the `self._pushdown_limit / _pushdown_requested / _pushdown_fetched` assignments in `_bound_keys_before_hydration` with carrier writes — **add** the carrier writes beside them, on both the `state is None` and `state is not None` branches. Under per-thread storage the mirror is a per-thread write, so it is free and preserves `tests/test_validity_field.py:802/810/815` by construction. |
+| CONCERN | History & Consistency | The mypy base-comparison command hardcodes `git checkout 9c04b8c`, now four `query.py`-touching commits behind the real fork point, folding #624/#633/#634/#625 into this plan's delta. | Revised `## Verification`; base is now the fork point. | `git merge-base HEAD origin/main` resolves to `3cf8c2d0`. `git log --oneline 9c04b8c..HEAD -- src/popoto/models/query.py` lists the four commits a `9c04b8c`-based diff would misattribute. |
+| NIT | Scope & Value | Task 9 (file the geo follow-up issue) is pure ticket-filing given its own agent and dependency edge. | Accepted as-is; the task is two minutes and the No-Gos section depends on its issue number. | n/a (NIT) |
 
 ---
 
