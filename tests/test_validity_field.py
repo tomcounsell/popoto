@@ -49,6 +49,7 @@ import msgpack
 import pytest
 from src import popoto
 from src.popoto import (
+    SupersedeDeclinedError,
     SupersedeResult,
     SupersessionProtocol,
     ValidityCloseBeforeStartError,
@@ -2101,6 +2102,40 @@ class TestMembershipGuardInLua:
         assert fwd == new.db_key.redis_key
         assert rev == old.db_key.redis_key
         assert _names(ValidFact.query.filter(validity__current=True)) == ["new"]
+
+    def test_a_declined_save_raises_and_queues_no_close(self, monkeypatch):
+        """#606: a firewall-blocked successor raises before the close is queued.
+
+        The dangerous shape is the *truthy* one. ``Model.save()`` returns the
+        pipeline when the never-record firewall fires in pipeline mode, which is
+        indistinguishable from success, so a ``not saved`` check alone would let
+        the close EVAL be queued behind a record that was never written. The
+        guard reads ``_never_record_verdict`` for exactly that case.
+        """
+        from src.popoto.privacy.never_record import NeverRecordVerdict
+
+        old = _save(ValidFact, name="old")
+        new = ValidFact(name="new")
+
+        def blocked_save(self, *args, **kwargs):
+            self._never_record_verdict = NeverRecordVerdict(
+                blocked=True, reason="secret", detector="test"
+            )
+            return kwargs.get("pipeline") or True
+
+        monkeypatch.setattr(ValidFact, "save", blocked_save)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        with pytest.raises(SupersedeDeclinedError) as excinfo:
+            SupersessionProtocol.save_and_invalidate(new, closes=old, pipeline=pipe)
+
+        assert excinfo.value.verdict is not None
+        assert excinfo.value.verdict.reason == "secret"
+        # Nothing was queued after the declined save, so the incumbent's
+        # interval is untouched and still open.
+        assert pipe.command_stack == []
+        pipe.reset()
+        assert _interval(ValidFact, "validity", old)[1] == float("inf")
 
     # -- 17. The eager indexed-field phase (BLOCKER 1) -------------------
 

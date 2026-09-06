@@ -64,7 +64,11 @@ from .fields.validity_field import (
     ValidityCloseBeforeStartError,
     ValidityValidFromConflictError,
 )
-from .fields.supersession import SupersessionProtocol, SupersedeResult
+from .fields.supersession import (
+    SupersessionProtocol,
+    SupersedeResult,
+    SupersedeDeclinedError,
+)
 from .fields.prediction_ledger import PredictionLedgerMixin
 from .fields.geo_field import GeoField
 
@@ -230,6 +234,7 @@ __all__ = [
     "ValidityValidFromConflictError",
     "SupersessionProtocol",
     "SupersedeResult",
+    "SupersedeDeclinedError",
     "PredictionLedgerMixin",
     "GeoField",
     "DataFrameField",

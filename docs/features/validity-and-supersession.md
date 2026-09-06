@@ -317,6 +317,26 @@ redis-py raises during `pipe.execute()` result parsing — long after
 own their `execute()` and are the supported way to get a typed error in pipeline
 shape.
 
+**`SupersedeDeclinedError`** is the fourth typed error and the one exception to
+the `ValidityError` family above: it is a `RuntimeError` subclass, because it
+reports a broken invariant inside the write path rather than a malformed
+argument or a Lua reply token. `save_and_supersede` / `save_and_invalidate`
+raise it when the successor's `save()` was **declined** — by the never-record
+firewall or the write filter, both of which *return* instead of raising. Two
+shapes are checked: a falsy return, and the truthy pipeline-mode return with a
+`_never_record_verdict` stamped on the instance. The check sits between the save
+and the close, so nothing is queued behind a record that was never written, and
+the error carries the content-free `verdict` for callers that need the reason
+code. `verdict` is itself `None` on a non-firewall decline, so guard the
+attribute access rather than the value:
+
+```python
+try:
+    SupersessionProtocol.save_and_invalidate(new, closes=old, pipeline=pipe)
+except SupersedeDeclinedError as exc:
+    reason = exc.verdict.reason if exc.verdict else None  # e.g. 'payment_card'
+```
+
 ## Valid-time has one writer
 
 The field value at construction is the single authoritative writer of
@@ -537,10 +557,10 @@ including `DefaultMemory`, does.
 
 - [Provenance Journal](provenance-journal.md) — this feature's first real
   consumer: `JournalEntry` composes `ValidityField` for its membership axis,
-  calls `execute_supersede` directly on the annotate-and-close write path
-  (it needs an explicit incumbent and a construction-time valid-from, not the
-  identity pointer), and uses `chain()` for provenance display only, never for
-  membership
+  routes its annotate-and-close write path through `save_and_invalidate` (it
+  needs an explicit incumbent and a construction-time valid-from, not the
+  identity pointer — both of which that entry point expresses), and uses
+  `chain()` for provenance display only, never for membership
 - [Reference Resolution](reference-resolution.md) — the M4 stage that
   produces a caller-supplied `valid_from` for onset references, threaded
   through as the declared value at construction, never through

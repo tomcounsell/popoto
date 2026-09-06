@@ -103,6 +103,34 @@ Hashing (rather than embedding the caller's text) is what keeps arbitrary user
 strings out of the Redis keyspace."""
 
 
+class SupersedeDeclinedError(RuntimeError):
+    """Raised when the successor's ``save()`` was declined, so nothing closed.
+
+    ``Model.save()`` has several early-return gates -- the never-record firewall
+    and the write filter among them -- that *return* instead of raising. In
+    pipeline mode the value they return is the pipeline itself, which is
+    byte-identical to success, so a caller that queued a close on top of it
+    would commit a membership change with no record backing it.
+    :func:`_save_and_close` checks for both shapes (a falsy return and a
+    ``_never_record_verdict`` stamped on the instance) and raises this instead.
+
+    A ``RuntimeError`` subclass, not a ``ValueError``: it reports a broken
+    invariant inside the write path rather than a malformed argument, and
+    ``RuntimeError`` is what this path raised before the error was given a type,
+    so existing handlers keep working.
+
+    Attributes:
+        verdict: The blocking ``NeverRecordVerdict``, or ``None`` when the save
+            was declined by some other early-return gate. Content-free, under
+            the same no-quoting rule as
+            :class:`~popoto.exceptions.NeverRecordException`.
+    """
+
+    def __init__(self, message: str, verdict: Any = None) -> None:
+        super().__init__(message)
+        self.verdict = verdict
+
+
 @dataclass(frozen=True)
 class SupersedeResult:
     """Outcome of :meth:`SupersessionProtocol.save_and_supersede` (plan D6).
@@ -371,11 +399,13 @@ class SupersessionProtocol:
             ValueError: If the model declares no ``ValidityField``, if
                 ``identity_key`` is malformed, or if ``pipeline`` is not a
                 transactional Redis pipeline in a queueing state.
-            RuntimeError: If ``new_instance.save()`` returns falsy — the
-                never-record firewall and the write filter decline a save by
-                returning rather than raising, and queuing a close behind a
-                record that was never written is exactly the failure this
-                guards.
+            SupersedeDeclinedError: If ``new_instance.save()`` was declined —
+                either a falsy return or a ``_never_record_verdict`` stamped on
+                the instance. The never-record firewall and the write filter
+                decline a save by returning rather than raising, and queuing a
+                close behind a record that was never written is exactly the
+                failure this guards. A ``RuntimeError`` subclass, so callers
+                that caught the untyped error keep working.
             ValidityMemberAbsentError: If the incumbent named by the identity
                 pointer was hard-deleted, or the successor's save was declined.
             ValidityCloseBeforeStartError: If ``at`` precedes the incumbent's
@@ -649,12 +679,35 @@ def _save_and_close(
         pipe = POPOTO_REDIS_DB.pipeline()
 
     saved = new_instance.save(pipeline=pipe)
-    if not saved:
-        raise RuntimeError(
+
+    # Defence in depth against the whole class of bug the close path belongs
+    # to. ``Model.save()``'s early-return gates (the never-record firewall, the
+    # write filter) *return* instead of raising, and in pipeline mode what they
+    # return is the pipeline -- indistinguishable from success. Each one is a
+    # way for the successor to not be written while the close below is queued
+    # anyway, closing the incumbent's interval with nothing behind it.
+    #
+    # Two shapes are checked, not one. ``not saved`` catches the immediate-mode
+    # falsy return; ``_never_record_verdict`` catches the pipeline-mode return,
+    # which is truthy. Raised, not asserted -- ``python -O`` strips asserts, and
+    # this must hold in production above all.
+    #
+    # ``ProvenanceJournal._write`` keeps its own copy of this guard for the
+    # branch that does not close a target and so never reaches here; see the
+    # comment there.
+    blocked = getattr(new_instance, "_never_record_verdict", None)
+    if not saved or blocked is not None:
+        cause = (
+            f"the never-record firewall ({blocked.reason})"
+            if blocked is not None
+            else "never-record firewall or write filter"
+        )
+        raise SupersedeDeclinedError(
             f"SupersessionProtocol.{entry_point}: save() of "
-            f"{type(new_instance).__name__} was declined (never-record "
-            "firewall or write filter), so the close would have been queued "
-            "behind a record that was never written."
+            f"{type(new_instance).__name__} was declined ({cause}), so the "
+            "close would have been queued behind a record that was never "
+            "written.",
+            verdict=blocked,
         )
 
     new_member = _member_key(new_instance)
