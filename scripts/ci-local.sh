@@ -50,8 +50,15 @@ PYTEST="${ROOT}/.venv/bin/pytest"
 MKDOCS="${ROOT}/.venv/bin/mkdocs"
 RUFF="${ROOT}/.venv/bin/ruff"
 BLACK="${ROOT}/.venv/bin/black"
-REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
-export REDIS_URL
+# The URL this script uses for its own reachability probe and status banner.
+# Deliberately NOT exported (#635): the default names no database, so exporting
+# it puts a DB-0-resolving URL in front of every gate. That is a second source
+# of truth for the test connection -- the pytest plugin (popoto_test_db /
+# POPOTO_TEST_DB) is the first, and it is the correct one -- and on a machine
+# where DB 0 holds live data it is a safety hazard, not only a test failure.
+# A REDIS_URL the developer actually set is still in their environment and
+# still reaches the gates; this script simply stops inventing one.
+REDIS_PROBE_URL="${REDIS_URL:-redis://localhost:6379}"
 
 # --- colors (no-op if not a tty) ---------------------------------------------
 if [ -t 1 ]; then
@@ -93,8 +100,8 @@ for g in "${GATES[@]}"; do
   [ "$g" = tests ] || [ "$g" = stress ] && needs_redis=true
 done
 if $needs_redis; then
-  if ! redis-cli -u "$REDIS_URL" ping >/dev/null 2>&1; then
-    fail "Redis not reachable at $REDIS_URL (start it, or set REDIS_URL)"
+  if ! redis-cli -u "$REDIS_PROBE_URL" ping >/dev/null 2>&1; then
+    fail "Redis not reachable at $REDIS_PROBE_URL (start it, or set REDIS_URL)"
     exit 2
   fi
 
@@ -330,7 +337,7 @@ gate_guard() {
 }
 
 # --- run ---------------------------------------------------------------------
-printf '%sLocal CI%s  ·  gates: %s  ·  %s\n' "$B" "$X" "${GATES[*]}" "$REDIS_URL"
+printf '%sLocal CI%s  ·  gates: %s  ·  %s\n' "$B" "$X" "${GATES[*]}" "$REDIS_PROBE_URL"
 for g in "${GATES[@]}"; do
   case "$g" in
     lint)   run_gate lint   gate_lint   ;;

@@ -26,6 +26,8 @@ Tests are isolated on Redis DB 15 by the `popoto.pytest_plugin` entry point, whi
 
 **Ad-hoc scripts (outside pytest) default to DB 0, which is a LIVE agent store on this machine.** `POPOTO_TEST_DB` only binds the pytest plugin, and `POPOTO_REDIS_DB` is the Python global client's name, not an environment variable — setting it does nothing. The only env var that binds the connection is `REDIS_URL`, and it is read at import time: run repro scripts with `REDIS_URL=redis://localhost:6379/15` set *before* `import popoto` (see #577 — this mistake has written to the live store twice). Popoto's own client now refuses `FLUSHDB` when bound to database 0 and refuses `FLUSHALL` on any binding, raising `Db0FlushRefusedError` before the command reaches the server; `POPOTO_ALLOW_DB0_FLUSH=1` is the only escape hatch. This guard does not cover `redis-cli`/`valkey-cli` or any other raw client — those remain completely unguarded, so the `REDIS_URL`-before-import discipline above still matters. Copy `scripts/scratch_repro.py` as a safe starting template.
 
+`scripts/ci-local.sh` deliberately does **not** export a `REDIS_URL` for its gates (#635). It keeps one internally for its own reachability probe and banner, but passes your shell's environment through untouched, so the pytest plugin stays the only thing binding the test connection. It used to export a db-less `redis://localhost:6379` default, which resolves to DB 0 and broke any test whose contract is that the variable is unset.
+
 ### Verifying in a worktree (read before trusting a test or mypy number)
 
 A `.worktrees/` checkout can report a confident, wrong number in five ways — each cost a review round on PR #495. `scripts/ci-local.sh` checks four automatically:
