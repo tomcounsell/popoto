@@ -5712,6 +5712,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#popoto.Relationship.sample_related_keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sample_related_keys
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -57321,7 +57332,71 @@ class level and needs to accept any Model subclass.</p>
 <span class="normal"><a href="#__codelineno-0-524">524</a></span>
 <span class="normal"><a href="#__codelineno-0-525">525</a></span>
 <span class="normal"><a href="#__codelineno-0-526">526</a></span>
-<span class="normal"><a href="#__codelineno-0-527">527</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">Relationship</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-527">527</a></span>
+<span class="normal"><a href="#__codelineno-0-528">528</a></span>
+<span class="normal"><a href="#__codelineno-0-529">529</a></span>
+<span class="normal"><a href="#__codelineno-0-530">530</a></span>
+<span class="normal"><a href="#__codelineno-0-531">531</a></span>
+<span class="normal"><a href="#__codelineno-0-532">532</a></span>
+<span class="normal"><a href="#__codelineno-0-533">533</a></span>
+<span class="normal"><a href="#__codelineno-0-534">534</a></span>
+<span class="normal"><a href="#__codelineno-0-535">535</a></span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span>
+<span class="normal"><a href="#__codelineno-0-537">537</a></span>
+<span class="normal"><a href="#__codelineno-0-538">538</a></span>
+<span class="normal"><a href="#__codelineno-0-539">539</a></span>
+<span class="normal"><a href="#__codelineno-0-540">540</a></span>
+<span class="normal"><a href="#__codelineno-0-541">541</a></span>
+<span class="normal"><a href="#__codelineno-0-542">542</a></span>
+<span class="normal"><a href="#__codelineno-0-543">543</a></span>
+<span class="normal"><a href="#__codelineno-0-544">544</a></span>
+<span class="normal"><a href="#__codelineno-0-545">545</a></span>
+<span class="normal"><a href="#__codelineno-0-546">546</a></span>
+<span class="normal"><a href="#__codelineno-0-547">547</a></span>
+<span class="normal"><a href="#__codelineno-0-548">548</a></span>
+<span class="normal"><a href="#__codelineno-0-549">549</a></span>
+<span class="normal"><a href="#__codelineno-0-550">550</a></span>
+<span class="normal"><a href="#__codelineno-0-551">551</a></span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span>
+<span class="normal"><a href="#__codelineno-0-564">564</a></span>
+<span class="normal"><a href="#__codelineno-0-565">565</a></span>
+<span class="normal"><a href="#__codelineno-0-566">566</a></span>
+<span class="normal"><a href="#__codelineno-0-567">567</a></span>
+<span class="normal"><a href="#__codelineno-0-568">568</a></span>
+<span class="normal"><a href="#__codelineno-0-569">569</a></span>
+<span class="normal"><a href="#__codelineno-0-570">570</a></span>
+<span class="normal"><a href="#__codelineno-0-571">571</a></span>
+<span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">Relationship</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
 <a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    A field that stores references to other model instances, analogous to a ForeignKey.</span>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a>
@@ -57793,6 +57868,70 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a>                <span class="o">*</span><span class="p">[</span><span class="nb">set</span><span class="p">(</span><span class="n">key_list</span><span class="p">)</span> <span class="k">for</span> <span class="n">key_list</span> <span class="ow">in</span> <span class="n">keys_lists_to_intersect</span><span class="p">]</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="p">)</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="k">return</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">sample_related_keys</span><span class="p">(</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>        <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>        <span class="n">related_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">],</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="n">count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="w">        </span><span class="sd">"""</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">        Return a bounded random sample of the redis_keys pointing at ``related_key``.</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="sd">        Reads the Relationship reverse index Set — the same</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">        ``$RelationshipF:&lt;Model&gt;:&lt;field_name&gt;:&lt;related_key&gt;`` Set that</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">        :meth:`on_save` populates and :meth:`filter_query` reads in full — and</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">        issues a single ``SRANDMEMBER`` bounded by ``count``.</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">        This is the bounded counterpart to :meth:`filter_query`'s ``SMEMBERS``.</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a><span class="sd">        On a hub node the full Set can be arbitrarily large, so a caller that</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="sd">        walks edges (graph traversal, fan-out-limited expansion) needs a sampled</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">        read rather than an unbounded one. ``filter_query`` cannot serve that</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">        need: it is unbounded, it requires a loaded ``Model`` instance rather</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="sd">        than a key, and it wraps its reads in a pipeline.</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">            model: The Model class owning the Relationship field. Typed</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">                ``"Model"`` rather than ``Type["Model"]`` to match</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">                :meth:`filter_query` and :meth:`on_save`, which are annotated</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">                the same way and are likewise called with the class.</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">            field_name: The name of the Relationship field.</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">            related_key: The key of the related instance being pointed at.</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">                A ``DB_key`` is used as-is; a ``str`` is parsed with</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">                :meth:`DB_key.from_redis_key`, which unescapes the colon</span>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">                separators — constructing ``DB_key(some_redis_key)`` instead</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">                would escape them and silently address a different key. The</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">                ``DB_key`` arm exists for signature symmetry with</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">                :meth:`filter_query` and :meth:`on_delete`, which both hold a</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="sd">                ``DB_key``; the only caller today passes a ``str``.</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a><span class="sd">            count: Maximum number of members to return, passed through to</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a><span class="sd">                ``SRANDMEMBER`` unchanged. A positive count yields distinct</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a><span class="sd">                members with no ordering guarantee; ``0`` yields an empty list.</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a><span class="sd">            A list of member redis_keys decoded to ``str``. Empty if the reverse</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="sd">            index does not exist.</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">        Note:</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">            No exception handling by design — a caller that wants to degrade on</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            a failed read owns that policy and should catch around this call.</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">        """</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>            <span class="n">related_key</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>            <span class="k">else</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">related_key</span><span class="p">)</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>        <span class="p">)</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="n">reverse_index_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>            <span class="n">related_db_key</span><span class="p">,</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>        <span class="n">members</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_index_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>            <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">member</span><span class="p">)</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>            <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>        <span class="p">]</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -59148,6 +59287,297 @@ instances. Results are intersected if multiple filters are applied.</p>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a>            <span class="o">*</span><span class="p">[</span><span class="nb">set</span><span class="p">(</span><span class="n">key_list</span><span class="p">)</span> <span class="k">for</span> <span class="n">key_list</span> <span class="ow">in</span> <span class="n">keys_lists_to_intersect</span><span class="p">]</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="p">)</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a>    <span class="k">return</span> <span class="nb">set</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.Relationship.sample_related_keys" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sample_related_keys</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">related_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#popoto.Relationship.sample_related_keys" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return a bounded random sample of the redis_keys pointing at <code>related_key</code>.</p>
+<p>Reads the Relationship reverse index Set — the same
+<code>$RelationshipF:&lt;Model&gt;:&lt;field_name&gt;:&lt;related_key&gt;</code> Set that
+:meth:<code>on_save</code> populates and :meth:<code>filter_query</code> reads in full — and
+issues a single <code>SRANDMEMBER</code> bounded by <code>count</code>.</p>
+<p>This is the bounded counterpart to :meth:<code>filter_query</code>'s <code>SMEMBERS</code>.
+On a hub node the full Set can be arbitrarily large, so a caller that
+walks edges (graph traversal, fan-out-limited expansion) needs a sampled
+read rather than an unbounded one. <code>filter_query</code> cannot serve that
+need: it is unbounded, it requires a loaded <code>Model</code> instance rather
+than a key, and it wraps its reads in a pipeline.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>model</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="models/base/#popoto.models.base.Model">Model</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The Model class owning the Relationship field. Typed
+<code>"Model"</code> rather than <code>Type["Model"]</code> to match
+:meth:<code>filter_query</code> and :meth:<code>on_save</code>, which are annotated
+the same way and are likewise called with the class.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>field_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The name of the Relationship field.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>related_key</code>
+            </td>
+            <td>
+                  <code><span title="typing.Union">Union</span>[<span title="str">str</span>, <a class="autorefs autorefs-internal" title="DB_key (popoto.models.db_key.DB_key)" href="models/db_key/#popoto.models.db_key.DB_key">DB_key</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The key of the related instance being pointed at.
+A <code>DB_key</code> is used as-is; a <code>str</code> is parsed with
+:meth:<code>DB_key.from_redis_key</code>, which unescapes the colon
+separators — constructing <code>DB_key(some_redis_key)</code> instead
+would escape them and silently address a different key. The
+<code>DB_key</code> arm exists for signature symmetry with
+:meth:<code>filter_query</code> and :meth:<code>on_delete</code>, which both hold a
+<code>DB_key</code>; the only caller today passes a <code>str</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>count</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of members to return, passed through to
+<code>SRANDMEMBER</code> unchanged. A positive count yields distinct
+members with no ordering guarantee; <code>0</code> yields an empty list.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A list of member redis_keys decoded to <code>str</code>. Empty if the reverse</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>index does not exist.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>No exception handling by design — a caller that wants to degrade on
+a failed read owns that policy and should catch around this call.</p>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/fields/relationship.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-529">529</a></span>
+<span class="normal"><a href="#__codelineno-0-530">530</a></span>
+<span class="normal"><a href="#__codelineno-0-531">531</a></span>
+<span class="normal"><a href="#__codelineno-0-532">532</a></span>
+<span class="normal"><a href="#__codelineno-0-533">533</a></span>
+<span class="normal"><a href="#__codelineno-0-534">534</a></span>
+<span class="normal"><a href="#__codelineno-0-535">535</a></span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span>
+<span class="normal"><a href="#__codelineno-0-537">537</a></span>
+<span class="normal"><a href="#__codelineno-0-538">538</a></span>
+<span class="normal"><a href="#__codelineno-0-539">539</a></span>
+<span class="normal"><a href="#__codelineno-0-540">540</a></span>
+<span class="normal"><a href="#__codelineno-0-541">541</a></span>
+<span class="normal"><a href="#__codelineno-0-542">542</a></span>
+<span class="normal"><a href="#__codelineno-0-543">543</a></span>
+<span class="normal"><a href="#__codelineno-0-544">544</a></span>
+<span class="normal"><a href="#__codelineno-0-545">545</a></span>
+<span class="normal"><a href="#__codelineno-0-546">546</a></span>
+<span class="normal"><a href="#__codelineno-0-547">547</a></span>
+<span class="normal"><a href="#__codelineno-0-548">548</a></span>
+<span class="normal"><a href="#__codelineno-0-549">549</a></span>
+<span class="normal"><a href="#__codelineno-0-550">550</a></span>
+<span class="normal"><a href="#__codelineno-0-551">551</a></span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span>
+<span class="normal"><a href="#__codelineno-0-564">564</a></span>
+<span class="normal"><a href="#__codelineno-0-565">565</a></span>
+<span class="normal"><a href="#__codelineno-0-566">566</a></span>
+<span class="normal"><a href="#__codelineno-0-567">567</a></span>
+<span class="normal"><a href="#__codelineno-0-568">568</a></span>
+<span class="normal"><a href="#__codelineno-0-569">569</a></span>
+<span class="normal"><a href="#__codelineno-0-570">570</a></span>
+<span class="normal"><a href="#__codelineno-0-571">571</a></span>
+<span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-529" name="__codelineno-0-529"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a><span class="k">def</span><span class="w"> </span><span class="nf">sample_related_keys</span><span class="p">(</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>    <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>    <span class="n">related_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">],</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>    <span class="n">count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">    Return a bounded random sample of the redis_keys pointing at ``related_key``.</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="sd">    Reads the Relationship reverse index Set — the same</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">    ``$RelationshipF:&lt;Model&gt;:&lt;field_name&gt;:&lt;related_key&gt;`` Set that</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">    :meth:`on_save` populates and :meth:`filter_query` reads in full — and</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">    issues a single ``SRANDMEMBER`` bounded by ``count``.</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">    This is the bounded counterpart to :meth:`filter_query`'s ``SMEMBERS``.</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a><span class="sd">    On a hub node the full Set can be arbitrarily large, so a caller that</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="sd">    walks edges (graph traversal, fan-out-limited expansion) needs a sampled</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">    read rather than an unbounded one. ``filter_query`` cannot serve that</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">    need: it is unbounded, it requires a loaded ``Model`` instance rather</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="sd">    than a key, and it wraps its reads in a pipeline.</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">        model: The Model class owning the Relationship field. Typed</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">            ``"Model"`` rather than ``Type["Model"]`` to match</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">            :meth:`filter_query` and :meth:`on_save`, which are annotated</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">            the same way and are likewise called with the class.</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        field_name: The name of the Relationship field.</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">        related_key: The key of the related instance being pointed at.</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">            A ``DB_key`` is used as-is; a ``str`` is parsed with</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">            :meth:`DB_key.from_redis_key`, which unescapes the colon</span>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">            separators — constructing ``DB_key(some_redis_key)`` instead</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">            would escape them and silently address a different key. The</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">            ``DB_key`` arm exists for signature symmetry with</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">            :meth:`filter_query` and :meth:`on_delete`, which both hold a</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="sd">            ``DB_key``; the only caller today passes a ``str``.</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a><span class="sd">        count: Maximum number of members to return, passed through to</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a><span class="sd">            ``SRANDMEMBER`` unchanged. A positive count yields distinct</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a><span class="sd">            members with no ordering guarantee; ``0`` yields an empty list.</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a><span class="sd">        A list of member redis_keys decoded to ``str``. Empty if the reverse</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="sd">        index does not exist.</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">        No exception handling by design — a caller that wants to degrade on</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">        a failed read owns that policy and should catch around this call.</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">    """</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="n">related_db_key</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>        <span class="n">related_key</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>        <span class="k">else</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">related_key</span><span class="p">)</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="p">)</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>    <span class="n">reverse_index_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>        <span class="n">related_db_key</span><span class="p">,</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>    <span class="n">members</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_index_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">member</span><span class="p">)</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>    <span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

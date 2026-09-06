@@ -17645,6 +17645,52 @@ the instance from the old relationship's index set and adds it to the
 new one. This ensures that `filter(restaurant=old_restaurant)` no longer
 returns the moved item.
 
+### Sampling the Index: `Relationship.sample_related_keys()`
+
+`filter(restaurant=instance)` reads that index set in full (`SMEMBERS`) and
+hydrates every match. On a hub node — a restaurant with 50,000 menu items, a
+memory that half the graph points at — that is exactly the unbounded fan-out
+you do not want in a loop that is walking edges.
+
+`Relationship.sample_related_keys()` is the bounded read of the same set. It
+issues one `SRANDMEMBER` and returns the raw member keys as strings, without
+loading a single instance:
+
+```python
+from popoto import Relationship
+
+# Up to 20 MenuItem keys pointing at this restaurant, sampled at random.
+keys = Relationship.sample_related_keys(
+    MenuItem, "restaurant", burger_palace.db_key, 20
+)
+# => ["MenuItem:classic-burger", "MenuItem:fries", ...]
+```
+
+| Argument | Meaning |
+|---|---|
+| `model` | The model class holding the `Relationship` field (`MenuItem`, not `Restaurant`). |
+| `field_name` | The name of the field on that model. |
+| `related_key` | The key being pointed *at*. A `DB_key` is used as-is; a `str` is treated as a full Redis key and parsed with `DB_key.from_redis_key()`. |
+| `count` | Passed straight to `SRANDMEMBER`. |
+
+Three things to know:
+
+- **The sample is random and unordered.** `SRANDMEMBER` with a positive count
+  returns distinct members with no ordering guarantee, and two calls with the
+  same arguments will generally return different members. It answers "give me
+  some neighbors", not "give me the first N neighbors".
+- **A `str` `related_key` is a *Redis key*, not a value to escape.** Pass
+  `"Restaurant:Burger Palace"`, not `"Burger Palace"`. Constructing
+  `DB_key("Restaurant:Burger Palace")` would escape the colon and address a
+  key that does not exist, so the method parses rather than constructs.
+- **It does not catch anything.** A connection failure propagates. Callers
+  that want to degrade — continue the walk with no neighbors rather than
+  abort — own that policy and catch around the call. `popoto.recipes.graph_traversal`
+  does exactly this.
+
+An unknown or never-saved `related_key` has no index set, so the method returns
+`[]` rather than raising.
+
 ### Circular Reference Protection
 
 Popoto tracks which instances are currently being deserialized. If it
