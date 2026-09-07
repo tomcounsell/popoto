@@ -68,7 +68,7 @@ cross-reference found that this plan now absorbs.
 |---|---|
 | **#201** (`a3a78367`, 2026-03-13) | Created `CyclicDecayField` **and** this write. Its plan explicitly scoped out cycle self-correction: *"do not implement cycle self-correction here. CyclicDecayField stores static cycle parameters as configured."* At that moment "always write field-level defaults" was **correct** — no learned state existed. |
 | **#206** (`4a8a6a33`, 2026-03-14) | Added `strengthen_cycle` / `weaken_cycle` — **the next day**, in `models/base.py`. This commit touched **zero lines** of `cyclic_decay_field.py`. The write was never revisited. |
-| **#554** (PR #558) | Added the class comment at `:256-260` asserting amplitudes diverge, and worked *around* the clobber by restoring after save. Its plan declared fixing it a No-Go: *"It changes in-place save semantics for every existing user of that field. Out of scope."* |
+| **#554** (PR #558) | Added the class comment at `:256-260` asserting amplitudes diverge, and worked *around* the clobber by restoring after save. Its plan deferred the fix in its **Rabbit Holes** section (`docs/plans/generic_export_import_roundtrip.md:722`): *"It changes in-place save semantics for every existing user of that field. Out of scope."* Its No-Gos section paraphrases the same point at `:833-835` rather than repeating that wording. |
 | **#556** (PR #675) | Re-affirmed the same No-Go; repointed the in-code reference to #679. |
 | **#583** | Adjacent, not overlapping: `on_context_used` degradation on *unsaved* instances. Touches `observation.py`, which calls `strengthen_cycle`. Coordination only — no shared edit surface. |
 
@@ -173,17 +173,22 @@ Replace the cycles branch at `:531-547` with a read-then-merge:
 # (strengthen_cycle / weaken_cycle). Mirror the pressure branch below:
 # refresh the declared parameters, preserve the learned one. Read directly
 # from Redis (not the pipeline) because the result is needed immediately.
+#
+# The read is gated on `field.cycles` so a CyclicDecayField declaring no
+# cycles (one used only for pressure_rate) pays no extra round trip — it
+# falls straight through to the unchanged `hdel` branch, exactly as today.
 learned: dict[float, list[float]] = {}
-existing_raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
-if existing_raw:
-    try:
-        stored = msgpack.unpackb(existing_raw, raw=False)
-    except Exception:
-        stored = None
-    if isinstance(stored, list):
-        for entry in stored:
-            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                learned.setdefault(entry[0], []).append(entry[1])
+if field.cycles:
+    existing_raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
+    if existing_raw:
+        try:
+            stored = msgpack.unpackb(existing_raw, raw=False)
+        except Exception:
+            stored = None
+        if isinstance(stored, list):
+            for entry in stored:
+                if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                    learned.setdefault(entry[0], []).append(entry[1])
 
 normalized_cycles = []
 for cycle in field.cycles:
@@ -194,6 +199,10 @@ for cycle in field.cycles:
         amplitude = bucket.pop(0)
     normalized_cycles.append([period, amplitude, phase])
 ```
+
+`if bucket:` tests a **list**, not an amplitude, so a learned `0.0` is
+preserved rather than falling through to the declared default. That is
+deliberate — see the recovery path below.
 
 The write at `:543-547` is then unchanged in shape; only what it writes changes.
 
@@ -243,16 +252,38 @@ pre-pipeline state). Mirroring precedent rather than inventing new semantics.
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| **In-place save semantics change for existing users.** The precise concern #554 and #556 cited when deferring. A deployment relying on save-resets-amplitudes would change behavior. | Low | That reliance would be reliance on a documented bug that erases the field's own advertised feature. No test encodes it (spike-3). Called out in CHANGELOG as a behavior fix. |
-| **Extra `HGET` per save per cyclic field.** | Certain | One additional round trip, only for `CyclicDecayField`s, and only on models that declare cycles. The pressure branch directly below already pays exactly this cost unconditionally. Acceptable and symmetric. |
+| **In-place save semantics change for existing users.** The precise concern #554 and #556 cited when deferring. A deployment relying on save-resets-amplitudes would change behavior. | Low | That reliance would be reliance on a documented bug that erases the field's own advertised feature. No test encodes it (spike-3). Called out in CHANGELOG as a behavior fix. **This is a deliberate behavior change, not a pure defect repair** — see the note below; it needs a named approver on the record before merge, not a self-authorized reversal. |
+| **Extra `HGET` per save per cyclic field.** | Certain | One additional round trip, only for `CyclicDecayField`s **that declare a non-empty `cycles`** — the read is gated on `field.cycles`, so a pressure-only field pays nothing. The pressure branch directly below already pays exactly this cost unconditionally. Acceptable and symmetric. |
+| **Lost update between a concurrent `save()` and `strengthen_cycle` / `weaken_cycle`.** The fix turns the cycles write into a read-modify-write, and `_adjust_cycle_amplitudes` (`models/base.py:2725-2763`) is already an unguarded `HGET`→`HSET` on the *same* key and member. Interleaving `read(save) → read(adjust) → write(adjust) → write(save)` drops the adjustment. | Low | **Accepted, documented limitation** — not closed by this plan. Today's behavior is *deterministic* loss (save always clobbers); after the fix it is *nondeterministic* loss under a narrow concurrent window, which is strictly less data lost overall but less predictable. Closing it properly means moving both call sites into one Lua script or `WATCH`/`MULTI`, which is a larger change than this appetite and would also have to cover the identical pre-existing shape in the pressure branch. Recorded here so the next reader sees it was priced, not missed; filed forward rather than silently inherited. |
 | **Declaration edits behave surprisingly** (learned amplitude survives a changed default). | Medium | Documented explicitly in the fidelity table above and in the feature doc. The alternative — resetting learning whenever a developer edits a default — is strictly worse for the feature's purpose. |
 | **Corrupt hash entry crashes `save()`.** | Low | Explicit try/except falling back to declared defaults. Test TC7 covers it. |
 | **Duplicate declared periods mis-pair.** | Very low | FIFO within a period bucket keeps pairing stable and order-preserving. Test TC5 covers ordering. |
 
+### On overriding the #554 / #556 No-Go
+
+Two prior plans declared fixing this out of scope, both citing the in-place
+save-semantics change. This plan proceeds, and the distinction that makes that
+legitimate is the same one drawn for #557's anti-criteria: those were
+**point-in-time scope guards** — "not in *this* PR" — and #679 was filed
+precisely as the place the work would land. #554's wording lives in that plan's
+**Rabbit Holes** section, which is where a deferral belongs; its No-Gos section
+paraphrases rather than repeating it.
+
+What that reasoning does *not* by itself supply is authorization for the
+observable behavior change. The evidence in spike-3 is stronger than what #554
+and #556 had, but it is re-analysis of the same test suite by the same author,
+not a maintainer decision. **Before merge, the PR must name who accepted the
+semantics change.** Build and review may proceed in the meantime — the risk is
+at merge, not at build.
+
 ## Documentation
 
 - `docs/features/cyclic-decay-field.md` — state that learned amplitudes persist
-  across saves, and that period/phase refresh from the declaration.
+  across saves, and that period/phase refresh from the declaration. **Also
+  document the recovery path** (Decision 2): an amplitude weakened to `0.0`
+  stays there across saves, and the way back to the declared default is to
+  delete the member's field from the cycles hash. Name it next to the
+  persistence note so it is discoverable without reading source.
 - `docs/features/observation-protocol.md` — the outcome hooks that call
   `strengthen_cycle` / `weaken_cycle` now have durable effect; remove any
   wording implying otherwise.
@@ -313,6 +344,12 @@ pre-pipeline state). Mirroring precedent rather than inventing new semantics.
    - TC9 **end-to-end ranking** — strengthen, save, assert `rank_decayed`
      ordering reflects the learned amplitude (proves the consuming path, not
      just hash bytes)
+   - TC10 a `CyclicDecayField` with `cycles=[]` (pressure-only) issues **no**
+     cycles `HGET` on save — assert via a spy on the client, so the Risks
+     table's cost claim is enforced rather than asserted
+   - TC11 an amplitude weakened to `0.0` survives a subsequent save
+     (Decision 2), and deleting the hash member restores declared defaults on
+     the next save (the documented recovery path)
 4. **Update the `import_state` ordering docstring** (`:319-329`) — ordering
    still correct, reason restated.
 5. **Remove the stale bug note** in `tests/test_transfer_fidelity_fields.py:30-38`.
@@ -322,17 +359,34 @@ pre-pipeline state). Mirroring precedent rather than inventing new semantics.
    restore, and put the table in the PR body.
 8. **Run the Verification table** and record results with the environment stated.
 
-## Open Questions
+## Decisions
+
+These were carried as open questions through critique and are now settled.
+Neither blocks build.
 
 1. **Declared-amplitude edits lose to learned values** (fidelity table, row 4).
    The alternative is storing the declared base alongside the learned value so
-   a declaration edit can reset learning. That is strictly more machinery and
-   changes the on-disk format. Recommendation: accept learned-wins for this
-   fix; file a follow-up only if a real consumer needs declaration edits to
-   reset learning.
-2. **Should `weaken_cycle` driving an amplitude to `0.0` be preserved, or read
-   as "no signal" and refreshed from the declaration?** `_adjust_cycle_amplitudes`
-   deliberately snaps `< 0.01` to `0.0`, which reads as intentional suppression,
-   so preserving it is the consistent choice. Recommendation: preserve `0.0`.
-   Flagging because it is the one case where "preserve learned" and "the record
-   looks unconfigured" are indistinguishable on disk.
+   a declaration edit can reset learning — strictly more machinery and an
+   on-disk format change. **Decided: learned wins.** File a follow-up only if a
+   real consumer needs declaration edits to reset learning.
+2. **An amplitude driven to `0.0` by `weaken_cycle` is preserved, not treated
+   as "unconfigured."** `_adjust_cycle_amplitudes` deliberately snaps `< 0.01`
+   to `0.0`, which reads as intentional suppression, so preserving it is the
+   consistent choice. **Decided: preserve `0.0`.**
+
+   This is the one case where "preserve learned" and "the record looks
+   unconfigured" are indistinguishable on disk, and it is durable — every
+   future `save()` keeps the zero. There is no public reset API today
+   (`models/base.py` has `resolve_pressure` for the pressure companion, but no
+   `reset_cycle` / `reset_amplitude`), so the **only** recovery is deleting the
+   member's entry from the cycles hash, after which the next `save()` re-adopts
+   the declared defaults. Adding a `reset_cycle()` method is out of appetite;
+   **documenting the recovery path is not**, and is a task below. Deferring the
+   method rather than the documentation is the whole point — an
+   undiscoverable escape hatch is the trap, not the absence of sugar.
+
+## Open Questions
+
+None blocking. Both prior questions are resolved above; the one item requiring
+someone else's input is the merge-time approver for the semantics change (see
+"On overriding the #554 / #556 No-Go").
