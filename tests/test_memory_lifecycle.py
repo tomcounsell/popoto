@@ -6,6 +6,7 @@ Coverage:
 - tick does not promote ineligible records
 - tick forgets low-importance idle records
 - tick does not forget semantic records
+- tick's corpus filter excludes semantic records from the forget phase
 - tick is idempotent
 - custom should_promote overrides default
 - custom should_forget overrides default
@@ -320,6 +321,7 @@ def test_tick_does_not_forget_semantic():
     ``_default_should_forget`` returns False on tier, and the re-check-tier
     guard re-reads the tier before deleting. Removing any single layer leaves
     this green; removing all three fails it. The per-layer pins live in
+    ``test_tick_corpus_filter_excludes_semantic_records`` (corpus filter),
     ``test_assess_semantic_not_forget_eligible`` (policy) and
     ``test_forget_guard_skips_record_promoted_to_semantic`` (guard).
     """
@@ -344,6 +346,78 @@ def test_tick_does_not_forget_semantic():
     reloaded = TrackedMemory.query.get(key=record_key)
     assert reloaded is not None
     assert reloaded.tier == "semantic"
+
+
+def test_tick_corpus_filter_excludes_semantic_records():
+    """Corpus filter: a semantic record never reaches ``tick()``'s forget phase.
+
+    Pins layer 1 of the three that protect a semantic record — the list
+    comprehension in ``_tick_pass`` that drops semantic records out of the
+    hydrated corpus before either phase runs. The other two have their own pins
+    in ``test_assess_semantic_not_forget_eligible`` (policy) and
+    ``test_forget_guard_skips_record_promoted_to_semantic`` (guard), and the
+    end-to-end outcome lives in ``test_tick_does_not_forget_semantic``.
+
+    **This has to assert the corpus, not the outcome.** Delete the filter and a
+    semantic record does reach the forget phase — but ``_default_should_forget``
+    returns False on tier and the re-check-tier guard would skip the delete
+    anyway, so nothing is deleted and every observable outcome is unchanged.
+    An outcome-level assertion therefore cannot tell "layer 1 works" from
+    "layers 2 and 3 cleaned up after it", which is why the end-to-end test
+    stays green with this layer removed (#674, #684).
+
+    The tap is ``should_forget`` itself: phase 2 calls it once per member of the
+    filtered corpus, so the tiers it is handed *are* that corpus. The recording
+    callable delegates to ``_default_should_forget``, leaving layer 2's real
+    logic — and layer 3, which is never touched — intact.
+    """
+    from src.popoto.recipes.memory_lifecycle import (
+        _default_should_forget,
+        _get_tier,
+    )
+
+    forget_candidate_tiers = []
+
+    def recording_should_forget(record, lc):
+        """Transcribe the corpus phase 2 iterates, then defer to the default."""
+        forget_candidate_tiers.append(_get_tier(record, lc.tier_field))
+        return _default_should_forget(record, lc)
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        should_forget=recording_should_forget,
+    )
+    # Same thresholds, and the same -1.0 reasoning, as
+    # test_tick_does_not_forget_semantic: the condition is
+    # `idle > FORGET_IDLE_SECONDS`, so a freshly-saved record only clears the
+    # idle gate against a negative floor (#674).
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1
+    lifecycle.FORGET_IDLE_SECONDS = -1.0
+
+    # confirm_accesses=0 keeps the episodic record below
+    # PROMOTION_ACCESS_COUNT, so phase 1 does not promote it and phase 2's
+    # `promoted_this_pass` check does not skip it.
+    semantic = _make_record(tier="semantic", confirm_accesses=0)
+    episodic = _make_record(tier="episodic", confirm_accesses=0)
+
+    # Precondition: the *unfiltered* hydration query really does return the
+    # semantic record, so the filter has something to remove. Without this the
+    # test would pass vacuously if `query.all()` ever stopped crossing the tier
+    # partition.
+    hydrated = {r._redis_key for r in TrackedMemory.query.all()}
+    assert semantic._redis_key in hydrated
+    assert episodic._redis_key in hydrated
+
+    lifecycle.tick()
+
+    # Positive control: the forget phase ran at all. Without this the test
+    # passes when tick() no-ops for an unrelated reason.
+    assert "episodic" in forget_candidate_tiers
+
+    # The pin: the semantic record was filtered out of the corpus upstream and
+    # was never offered to the forget policy.
+    assert "semantic" not in forget_candidate_tiers
 
 
 # ---------------------------------------------------------------------------
