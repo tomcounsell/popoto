@@ -162,6 +162,10 @@ enforced by that test, but the obligation is the same: if your field holds state
   what is lost and why — typically citing a tracking issue for future work.
 
 ```python
+import popoto
+from popoto import Field
+
+
 class LearnedScoreField(Field):
     roundtrip_policy = "carry"
 
