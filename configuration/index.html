@@ -3741,12 +3741,17 @@ the guard deliberately.</p>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Redis with username and password (Redis 6+)</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://myuser:mypassword@redis.example.com:6379/0"</span>
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Heroku Redis, Render, Railway, etc.</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Heroku Redis, Render, Railway, etc. (no /database — see below)</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://default:abc123@some-host.cloud:6379"</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># Valkey (same format works)</span>
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/0"</span>
 </code></pre></div>
+<p>The <code>/database</code> component is optional, and leaving it off is not the same as
+leaving the database unset: <strong>a URL with no <code>/database</code> selects database 0.</strong>
+Hosted providers often hand you a URL in exactly that shape. Name the database
+explicitly whenever you care which one you get — particularly if database 0 on
+that server holds anything else.</p>
 <p>When <code>REDIS_URL</code> is set, Popoto calls <code>redis.from_url()</code> to establish the connection. This works with both Redis and Valkey servers.</p>
 <h3 id="default-connection">Default Connection<a class="headerlink" href="#default-connection" title="Permanent link">&para;</a></h3>
 <p>If <code>REDIS_URL</code> is not set, Popoto connects to <code>127.0.0.1:6379</code> using a connection pool:</p>
@@ -3783,15 +3788,21 @@ callers wait for a free connection instead of opening an unbounded number of soc
 <p>Calling <code>set_REDIS_DB_settings()</code> replaces the global connection. Any in-flight operations on the old connection may fail.</p>
 </div>
 <h2 id="accessing-the-connection-directly">Accessing the Connection Directly<a class="headerlink" href="#accessing-the-connection-directly" title="Permanent link">&para;</a></h2>
-<p>If you need to run raw Redis commands, you can access the connection object:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_REDIS_DB</span>
+<p>If you need to run raw Redis commands, use <code>popoto.get_redis()</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">redis_db</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">redis_db</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># Run raw Redis commands</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">redis_db</span><span class="o">.</span><span class="n">ping</span><span class="p">()</span>
 <a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">redis_db</span><span class="o">.</span><span class="n">info</span><span class="p">()</span>
 </code></pre></div>
+<p><code>popoto.get_redis()</code> is the public spelling of <code>popoto.redis_db.get_REDIS_DB()</code>;
+either works. Both re-read the global on every call, so they keep returning the
+current connection after <code>set_REDIS_DB_settings()</code> replaces it.</p>
+<p>Prefer this over building your own client. A hand-built <code>redis.from_url(...)</code>
+opens a <em>different</em> connection, and unless its URL names the same database, reads
+and writes land somewhere Popoto never touched — with no error to say so.</p>
 <h2 id="debugging">Debugging<a class="headerlink" href="#debugging" title="Permanent link">&para;</a></h2>
 <h3 id="print-redis-info">Print Redis Info<a class="headerlink" href="#print-redis-info" title="Permanent link">&para;</a></h3>
 <p>Use <code>print_redis_info()</code> to log memory usage and server info:</p>
@@ -4056,7 +4067,7 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <tr>
 <td><code>REDIS_URL</code></td>
 <td><em>(empty)</em></td>
-<td>Redis connection URL. Falls back to localhost:6379.</td>
+<td>Redis connection URL. Falls back to localhost:6379, database 0. A URL with no <code>/database</code> also selects database 0.</td>
 </tr>
 <tr>
 <td><code>POPOTO_ALLOW_DB0_FLUSH</code></td>

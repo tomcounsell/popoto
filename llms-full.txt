@@ -3637,7 +3637,7 @@ for debugging, monitoring, or direct Redis inspection without reverse-engineerin
 suffix conventions.
 
 ```python
-import redis
+import popoto
 from popoto import Model, UniqueKeyField, StringField
 from popoto.fields.confidence_field import ConfidenceField
 
@@ -3657,11 +3657,17 @@ print(hash_key)
 # => "$ConfidencF:Memory:certainty:data"
 
 # Inspect the raw companion hash in Redis
-r = redis.from_url("redis://localhost:6379")
+r = popoto.get_redis()
 raw_data = r.hgetall(hash_key)
 print(raw_data)
 # Shows all members and their msgpack-encoded confidence metadata
 ```
+
+`popoto.get_redis()` returns the connection Popoto is actually bound to. Building a
+client by hand — `redis.from_url(...)` — opens a *different* connection, and unless its
+URL names the same database, `hgetall` reads a database the write never touched and
+quietly returns `{}` with nothing to indicate why. A URL with no `/database` component
+names database 0, which is rarely where your data is.
 
 When you do not have an instance loaded, use `get_data_hash_key_from_values` to build
 the key from explicit values:
@@ -11613,12 +11619,18 @@ REDIS_URL="redis://:mypassword@redis.example.com:6379/0"
 # Redis with username and password (Redis 6+)
 REDIS_URL="redis://myuser:mypassword@redis.example.com:6379/0"
 
-# Heroku Redis, Render, Railway, etc.
+# Heroku Redis, Render, Railway, etc. (no /database — see below)
 REDIS_URL="redis://default:abc123@some-host.cloud:6379"
 
 # Valkey (same format works)
 REDIS_URL="redis://localhost:6379/0"
 ```
+
+The `/database` component is optional, and leaving it off is not the same as
+leaving the database unset: **a URL with no `/database` selects database 0.**
+Hosted providers often hand you a URL in exactly that shape. Name the database
+explicitly whenever you care which one you get — particularly if database 0 on
+that server holds anything else.
 
 When `REDIS_URL` is set, Popoto calls `redis.from_url()` to establish the connection. This works with both Redis and Valkey servers.
 
@@ -11671,17 +11683,25 @@ set_REDIS_DB_settings("", "localhost", 6379)
 
 ## Accessing the Connection Directly
 
-If you need to run raw Redis commands, you can access the connection object:
+If you need to run raw Redis commands, use `popoto.get_redis()`:
 
 ```python
-from popoto.redis_db import get_REDIS_DB
+import popoto
 
-redis_db = get_REDIS_DB()
+redis_db = popoto.get_redis()
 
 # Run raw Redis commands
 redis_db.ping()
 redis_db.info()
 ```
+
+`popoto.get_redis()` is the public spelling of `popoto.redis_db.get_REDIS_DB()`;
+either works. Both re-read the global on every call, so they keep returning the
+current connection after `set_REDIS_DB_settings()` replaces it.
+
+Prefer this over building your own client. A hand-built `redis.from_url(...)`
+opens a *different* connection, and unless its URL names the same database, reads
+and writes land somewhere Popoto never touched — with no error to say so.
 
 ## Debugging
 
@@ -11971,7 +11991,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
+| `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379, database 0. A URL with no `/database` also selects database 0. |
 | `POPOTO_ALLOW_DB0_FLUSH` | unset (falsy) | Escape hatch for the destructive-flush guard on Popoto's own Redis client. Unset, the client refuses `FLUSHDB` when bound to database 0 and refuses `FLUSHALL` on any binding, raising `popoto.redis_db.Db0FlushRefusedError` before the command reaches the server. A truthy value (`1`/`true`/`yes`/`on`, case-insensitive) restores the previous behavior. Read at call time, not at import, so it can be set without restarting a process. It is the only escape hatch — there is no constructor argument. See [#577](https://github.com/tomcounsell/popoto/issues/577). |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for ContentField filesystem storage and EmbeddingField `.npy` files. |
