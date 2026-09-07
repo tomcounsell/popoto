@@ -1,5 +1,7 @@
 ---
-status: Planning
+status: Ready
+revision_applied: true
+revision_applied_at: 2026-09-07
 type: feature
 appetite: Medium
 owner: valorengels
@@ -263,14 +265,14 @@ the Python side changes.
 **Capture (per turn, after the model answers):**
 
 1. **Entry point**: OpenClaw fires `llm_output(event, ctx)`.
-2. **Plugin**: builds `{hook_event_name: "llm_output", text:
-   event.assistantTexts.join("\n"), session_id: ctx.sessionId, cwd:
-   ctx.workspaceDir, turn_id: ctx.runId}`. **The join is load-bearing** —
-   `assistantTexts` is an array and `_RESPONSE_FIELDS` expects a string.
+2. **Plugin**: builds `{hook_event_name: "llm_output", assistantTexts:
+   event.assistantTexts, session_id: ctx.sessionId, cwd: ctx.workspaceDir,
+   turn_id: ctx.runId}` — the array passed through unflattened.
 3. **Plugin**: same shell-out, fire-and-forget (`llm_output` is an Observe hook;
    its return value is ignored).
-4. **Adapter**: `llm_output` ∈ `WRITE_EVENTS` → kind `"write"`; `text` is in
-   `_RESPONSE_FIELDS`.
+4. **Adapter**: `llm_output` ∈ `WRITE_EVENTS` → kind `"write"`; `assistantTexts`
+   is the first hit in `_RESPONSE_FIELDS`, and `_first_string`'s new list branch
+   reduces it to a single string.
 5. **Service**: pairs the outcome with the pending entry staged under the same
    `turn_id` in step 5 above.
 6. **Output**: nothing on stdout; the hook stays silent.
@@ -360,16 +362,38 @@ environment variable set that makes it tee its stdin to a file, and commit those
 files verbatim. Any other order produces a second generation of hand-authored
 fixtures, which is the defect being fixed.
 
-**The plugin is the only translation layer.** No OpenClaw-specific branch is
-added to `src/popoto/`. `_QUERY_FIELDS` already contains `prompt`,
-`_RESPONSE_FIELDS` already contains `text`, `_TURN_FIELDS` already contains
-`turn_id`, and `render_context()` already emits `appendContext` for
-`before_prompt_build`. Every mapping the plugin needs already exists on the
-Python side; the plugin's job is to produce a payload that hits them. In
-particular the plugin joins `assistantTexts` into a single `text` string rather
-than teaching `_RESPONSE_FIELDS` about an array — the adapter's contract is
-"first non-empty **string**", and an array-aware branch would be a special case
-for one harness in a function whose whole value is that it has none.
+**The array reduction happens in the adapter, not the plugin.** This was
+reversed from an earlier draft of this plan, and the reasoning matters.
+
+The tempting version is to have the plugin `join()` `assistantTexts` into a
+string, because then every mapping already exists on the Python side —
+`_QUERY_FIELDS` has `prompt`, `_RESPONSE_FIELDS` has `text`, `_TURN_FIELDS` has
+`turn_id` — and `src/popoto/` gains nothing OpenClaw-shaped. That argument is
+real but it loses on two counts. It puts the one non-trivial transformation in
+this whole change into untested JavaScript (Risk 4's exposure, applied to the
+part most likely to be wrong). And it makes the committed fixture carry an
+already-flattened `text` field, so the fixture stops documenting what OpenClaw
+actually sends and the mutation proof has nothing meaningful to corrupt — a
+fixture test that passes against the old wrong shape is exactly the vacuous test
+this repo keeps catching.
+
+So: the plugin passes `assistantTexts` through **verbatim, as an array**, and
+`src/popoto/integrations/hooks.py` learns to reduce it:
+
+- `"assistantTexts"` joins `_RESPONSE_FIELDS`.
+- `_first_string()` gains a list branch: a value that is a list of strings
+  reduces to its non-empty members joined with `"\n"`, and anything else is
+  skipped exactly as a non-string scalar is today.
+
+The list branch is written as a **general** rule about payload values, not an
+`if harness == "openclaw"`. `_first_string` is already the one place that
+decides what counts as a usable value, and "a list of strings is the strings"
+is the same kind of rule as its existing "a non-empty string is the string" and
+its one-level `extra`/`context`/`data` descent. The anti-criterion in
+Verification still holds: no harness *name* branches anywhere in `src/`.
+
+Everything else the plugin needs already exists on the Python side, and
+`render_context()` already emits `appendContext` for `before_prompt_build`.
 
 **Fail silent, never fail the turn.** The handlers wrap everything. A failed
 shell-out returns `undefined` from `before_prompt_build` (inject nothing) and
@@ -404,8 +428,14 @@ paths are asserted by the plugin's own behavior rather than by pytest:
   `""`, and `handle_payload` already emits nothing for empty context. A fixture
   round-trip test asserts the empty-prompt envelope normalizes to a read event
   with `text == ""`.
-- `event.assistantTexts` empty array: joins to `""`; the write path stores
-  nothing. Asserted in the adapter tests.
+- `assistantTexts` empty array, or a list whose members are all empty or
+  whitespace: `_first_string`'s list branch yields `""`, `_first_string` moves on
+  to the next candidate field, and the write path stores nothing. Asserted in the
+  adapter tests, together with the mixed case (a list containing one empty
+  string and one real one reduces to the real one, with no stray newline).
+- `assistantTexts` containing a non-string member: the list branch skips
+  non-strings rather than raising, matching how the existing scalar path treats a
+  non-string `prompt_id`.
 - `ctx.runId` absent (a runtime that does not populate it): `_TURN_FIELDS`
   probing yields `None` and the service falls back to the session FIFO — the
   pre-existing behavior. Asserted with a fixture variant that omits `turn_id`.
@@ -437,6 +467,17 @@ model's prompt. Covered by the empty-context path already tested in
       parametrizations — no change needed; they are name-driven and pick up the
       replaced files automatically. This is the reason the fixture swap is
       low-risk.
+- [ ] `tests/test_integrations_hooks.py` — ADD: direct unit tests for
+      `_first_string`'s new list branch (all-empty list, mixed list, list with a
+      non-string member, list absent entirely). These do not go through a fixture
+      and are the only place the reduction rule itself is pinned.
+
+**Mutation proof.** Every new fixture-driven assertion must be shown non-vacuous
+before the PR opens: corrupt one field name in the captured payload (e.g.
+`assistantTexts` → `assistant_texts`), confirm the test **fails**, restore,
+confirm it passes. The table goes in the PR body. A fixture test that still
+passes against the old wrong shape is the specific failure this repo keeps
+catching, and the fixture swap is exactly the change that invites it.
 
 ## Rabbit Holes
 
@@ -449,10 +490,12 @@ model's prompt. Covered by the empty-context path already tested in
   shape is the whole scope. A published package brings versioning, a release
   process, and a compatibility matrix against OpenClaw's own version — a project,
   not a task.
-- **Teaching `_RESPONSE_FIELDS` about arrays.** Tempting because it looks like
-  the "real" fix. It is a one-harness special case in the one function whose
-  design property is that it has no per-harness branches. The join belongs in the
-  plugin.
+- **Generalizing `_first_string` beyond a flat list of strings.** The list branch
+  handles `list[str]`. Nested lists, dicts with a `text` key, or a full
+  content-block walk (OpenClaw's `lastAssistant.content` is an array of typed
+  blocks) all look like the next logical step and none are needed: the plugin
+  sends `assistantTexts`, which the vendor already flattened to plain strings for
+  exactly this purpose.
 - **Chasing the other twenty-odd hooks OpenClaw exposes.** `before_tool_call`,
   `agent_end`, `before_compaction` and friends all look useful. The pre-turn read
   hook plus the post-turn write hook is the contract every other harness uses,
@@ -548,10 +591,12 @@ process per event with no shared mutable state; the Python side is unchanged.
   non-local channel (Telegram, Discord, Slack). Requires standing infrastructure
   and third-party accounts. The embedded local runner is the path popoto's docs
   teach, and it is what was verified.
-- [SEPARATE-SLUG #574] Extending the turn-keyed handoff to Hermes. #574 shipped
+- [SEPARATE-SLUG #688] Extending the turn-keyed handoff to Hermes. #574 shipped
   the mechanism and Hermes genuinely sends no turn id in the payloads popoto has;
   whether its `ctx` equivalent carries one is the same question this plan
   answered for OpenClaw, and it needs its own probe against a Hermes install.
+  Filed as #688 rather than tagged against #574, which is closed — a tag pointing
+  at a closed issue is the tracking-only promise the tag exists to reject.
 - Reimplementing the memory path in TypeScript — rejected in
   `plugins/openclaw/README.md` and reaffirmed here now that the shell-out is
   verified. This is a permanent architectural boundary, not a deferral, so it
@@ -624,6 +669,14 @@ alongside the new automatic half.
       command.
 - [ ] The capability table's verification column names a live capture — **and is
       left alone if the live capture with the shipped plugin does not succeed.**
+- [ ] `_RESPONSE_FIELDS` carries `assistantTexts` and `_first_string()` reduces a
+      list of strings, written as a general rule about payload values — so the
+      plugin passes the array through verbatim and no `join()` happens in
+      JavaScript.
+- [ ] **Mutation proof** for each new fixture-driven test: corrupt one field name
+      in the captured payload, confirm the test **fails**, restore, confirm it
+      passes. The table goes in the PR body. A fixture test that would still pass
+      against the old wrong shape is vacuous and does not count.
 - [ ] No OpenClaw-specific branch is added to `src/popoto/`.
 - [ ] Tests pass (`/do-test`), narrow scope: `tests/test_integrations_hooks.py`.
 - [ ] Documentation updated (`/do-docs`).
@@ -643,8 +696,9 @@ alongside the new automatic half.
 - Create `plugins/openclaw/popoto-memory-plugin/` with `package.json`,
   `openclaw.plugin.json`, and `index.js` (ESM, no npm dependencies).
 - Register `before_prompt_build` and `llm_output` via `definePluginEntry`.
-- Build the stdin envelope from **both** handler arguments; join
-  `assistantTexts` with newlines; carry `turn_id` from `ctx.runId`.
+- Build the stdin envelope from **both** handler arguments; pass
+  `assistantTexts` through as an array (the adapter reduces it); carry `turn_id`
+  from `ctx.runId`.
 - Shell out to `popoto-memory hook` with an explicit timeout below OpenClaw's
   15-second handler budget.
 - Wrap both handlers so any failure injects nothing and never fails the turn.
@@ -667,25 +721,35 @@ alongside the new automatic half.
   binary), confirm the turn completes with no injection, and record the output
   for the PR body.
 
-### 3. Correct the turn-id claims
+### 3. Adapter: list reduction and the turn-id correction
 
-- **Task ID**: build-turnid
+- **Task ID**: build-adapter
 - **Depends On**: capture-fixtures
 - **Validates**: `tests/test_integrations_hooks.py`
-- **Informed By**: spike-5
+- **Informed By**: spike-2 (`assistantTexts` is an array), spike-5 (`ctx.runId`)
 - **Assigned To**: adapter-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Update the `NormalizedEvent.turn_id` docstring in
-  `src/popoto/integrations/hooks.py`.
+- Add `"assistantTexts"` to `_RESPONSE_FIELDS` and the list branch to
+  `_first_string()`, documented as a general value rule rather than a harness
+  case.
+- Add the four direct `_first_string` list-branch unit tests.
+- Correct the `NormalizedEvent.turn_id` docstring in
+  `src/popoto/integrations/hooks.py` (finding (c) is a **docstring correction
+  plus plumbing only** — `ctx.runId` arrives as `turn_id` and the existing
+  pairing machinery consumes it unchanged).
 - Update `TURN_IDS`, its docstring, and `SENDS_A_TURN_ID` in the test.
 - Add a fixture-variant test asserting an absent `turn_id` still falls back to
   the session FIFO.
+- **Stop condition:** if plumbing `turn_id` turns out to change outcome-pairing
+  *semantics* rather than just supplying an identifier the existing path already
+  handles, stop and file an issue. Do not design new handoff behavior inside this
+  PR.
 
 ### 4. Documentation
 
 - **Task ID**: document-feature
-- **Depends On**: build-turnid
+- **Depends On**: build-adapter
 - **Assigned To**: harness-documentarian
 - **Agent Type**: documentarian
 - **Parallel**: false
@@ -697,7 +761,7 @@ alongside the new automatic half.
 ### 5. Final validation
 
 - **Task ID**: validate-all
-- **Depends On**: build-plugin, capture-fixtures, build-turnid, document-feature
+- **Depends On**: build-plugin, capture-fixtures, build-adapter, document-feature
 - **Assigned To**: lane-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -714,6 +778,8 @@ alongside the new automatic half.
 | Docs build | `./.venv/bin/python -m mkdocs build --strict` | exit code 0 |
 | Fixtures are live-captured | `grep -c "captured-from: the OpenClaw plugin hook reference" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json` | match count == 0 |
 | Fixtures name the version | `grep -l "2026.9.2" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json \| wc -l` | output contains 2 |
+| Adapter knows `assistantTexts` | `grep -c '"assistantTexts"' src/popoto/integrations/hooks.py` | output > 0 |
+| Plugin does not flatten the array | `grep -c "join(" plugins/openclaw/popoto-memory-plugin/index.js` | match count == 0 |
 | Turn-id claim corrected | `grep -c "Hermes and OpenClaw send neither" src/popoto/integrations/hooks.py` | match count == 0 |
 | OpenClaw sends a turn id in tests | `grep -c "openclaw" <(sed -n '/^SENDS_A_TURN_ID/,/^"""/p' tests/test_integrations_hooks.py)` | output > 0 |
 | Guide no longer says instructed-only | `grep -c "instructed memory, not subconscious memory" docs/guides/harness-openclaw.md` | match count == 0 |
@@ -728,14 +794,16 @@ alongside the new automatic half.
 
 ## Open Questions
 
-1. **Does the verification column move on a capture from *this* machine?** The
-   Claude Code row's precedent is "a live `claude` 2.1.220 run" on a developer
-   machine, so the precedent says yes. Confirming, because this is the exact
-   claim #552 exists to protect.
-2. **Should `plugins/openclaw/openclaw.json.fragment` (MCP) stay as-is?** The
-   plan assumes yes — the automatic and discretionary halves are complementary,
+All three questions raised at plan time have been answered; they are kept here
+with their answers rather than deleted, because each one constrains the build.
+
+1. ~~**Does the verification column move on a capture from *this* machine?**~~
+   **Answered: yes, but only for the shipped plugin.** OpenClaw moves
+   instructed→subconscious only if the shipped plugin — not the probe — is
+   live-verified end to end. If it cannot be, the table does not move and the PR
+   says why. This is a hard gate on task 2, not a judgment call at review time.
+2. ~~**Should `plugins/openclaw/openclaw.json.fragment` (MCP) stay as-is?**~~
+   **Answered: yes.** The automatic and discretionary halves are complementary,
    not alternatives, and the other three harnesses ship both.
-3. **Is the Hermes turn-id question worth filing now?** It is tagged
-   `[SEPARATE-SLUG #574]` in No-Gos against the mechanism's own issue, but #574
-   is closed. If a fresh issue is wanted, say so and it will be filed rather than
-   pointed at a closed one.
+3. ~~**Is the Hermes turn-id question worth filing now?**~~ **Answered: filed as
+   #688**, and the No-Gos tag now points there instead of at closed #574.
