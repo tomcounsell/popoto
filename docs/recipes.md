@@ -497,6 +497,12 @@ keyspace, so no query, index scan, or key-set walk can surface a tombstoned reco
 the store directly if you want the tombstone keyspace without the policy layer around it;
 `Tombstone` remains importable from `popoto.recipes.memory_lifecycle` as the same object.
 
+Tombstoning also records the death as *negative evidence*, so a future write carrying the
+same content is admitted at a drawn-down score instead of being relearned from scratch.
+This happens automatically for any model whose `ExistenceFilter` has a `fingerprint_fn`,
+and requires no changes to the lifecycle call. See
+[Tombstones as a Negative Prior](features/tombstone-negative-prior.md).
+
 ### Custom policies
 
 Override the default promotion or forget logic at construction time:
