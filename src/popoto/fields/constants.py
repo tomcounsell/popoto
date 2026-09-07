@@ -103,6 +103,26 @@ def _read_m4_resolution_switch() -> bool:
     return value in _TRUTHY
 
 
+def _read_tombstone_prior_switch() -> bool:
+    """Read ``POPOTO_TOMBSTONE_PRIOR_DISABLE`` from the environment (#494).
+
+    Returns True when the tombstone negative prior is ENABLED — i.e. when a
+    write whose content fingerprint matches a previously-tombstoned record
+    should have its write-filter score drawn down. The env var is phrased as a
+    *disable* so the default-on doctrine holds when it is unset: a PyPI adopter
+    who cannot edit model code still gets a deploy-level escape hatch.
+
+    This is a call-time function and deliberately **not** a ``Defaults`` class
+    attribute, for the same reason :func:`_read_decode_quarantine_switch`
+    documents: the class body is evaluated at import, which would bind the
+    value once and make a deploy-time flip (or a ``monkeypatch.setenv``) a
+    no-op. The read only happens on models that carry a content fingerprint, so
+    a model without one never reaches ``os.environ`` at all.
+    """
+    value = os.environ.get("POPOTO_TOMBSTONE_PRIOR_DISABLE", "").strip().lower()
+    return value not in _TRUTHY
+
+
 def _read_default_memory_max_records() -> int | None:
     """Cap on records **per ``agent_id``** kept by ``DefaultMemory``;
     ``0``/``off`` disables eviction.
@@ -388,6 +408,30 @@ class Defaults:
     # fingerprint and death metadata, so retention has to be bounded rather
     # than assumed cheap.
     LIFECYCLE_TOMBSTONE_RETENTION_LIMIT = 1000
+
+    # -- Tombstone negative prior (fields/tombstone_prior.py, issue #494) ------
+    # A tombstone is durable evidence that a kind of memory was learned to be
+    # worthless. These three constants turn that evidence into a downward
+    # adjustment on the write-filter score of a new record whose content
+    # fingerprint matches a buried one. Deploy-level kill switch:
+    # POPOTO_TOMBSTONE_PRIOR_DISABLE (see _read_tombstone_prior_switch above).
+    #
+    # Bound on how many distinct buried fingerprints the prior tracks; oldest
+    # burial ages out past this count. Deliberately equal to
+    # LIFECYCLE_TOMBSTONE_RETENTION_LIMIT: the prior can never usefully track
+    # more fingerprints than there are retained tombstones, so the two bounds
+    # move together.
+    TOMBSTONE_PRIOR_LIMIT = 1000
+    # Multiplicative drawdown per burial: score *= DECAY ** burial_count. 0.5
+    # halves the score on the first burial, which is recoverable (any score
+    # >= 0.2 still clears the 0.1 WF_MIN_THRESHOLD) and is not by the third.
+    TOMBSTONE_PRIOR_DECAY = 0.5
+    # Suppression asymptote — the penalty never goes below this, so a record
+    # buried many times for situational reasons is suppressed but never
+    # mathematically annihilated. Below WF_MIN_THRESHOLD (0.1) so a
+    # heavily-buried pattern is reliably dropped, but non-zero so the adjusted
+    # score stays observable and a raised per-model threshold still decides.
+    TOMBSTONE_PRIOR_FLOOR = 0.05
 
     # -- Sorted-range limit pushdown (models/query.py) -------------------------
     # Extra members requested beyond `limit` when a bound is pushed into a

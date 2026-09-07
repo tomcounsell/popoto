@@ -35,10 +35,21 @@ Example:
 import logging
 
 from ..exceptions import SkipSaveException
-from ..redis_db import POPOTO_REDIS_DB
-from .constants import Defaults
+
+# The accessor, not ``from ..redis_db import POPOTO_REDIS_DB``: that plain
+# import captures a snapshot, and ``set_REDIS_DB_settings()`` rebinds
+# ``redis_db``'s global without updating it, so the importer keeps issuing
+# commands against the pre-reconfiguration client (#655).
+from ..redis_db import get_REDIS_DB
+from .constants import Defaults, _read_tombstone_prior_switch
+from .tombstone_prior import TombstonePriorStore, penalty_for
 
 logger = logging.getLogger("POPOTO.WriteFilter")
+
+#: Sentinel distinguishing "not yet resolved" from a resolved ``None`` in the
+#: per-class fingerprint-field cache. Without it, a model with no
+#: ``ExistenceFilter`` would re-scan its field set on every single save.
+_UNRESOLVED = object()
 
 
 class WriteFilterMixin:
@@ -137,6 +148,16 @@ class WriteFilterMixin:
         except (TypeError, ValueError):
             score = 0.0
 
+        # Negative prior (#494) applied HERE — after the None/non-numeric
+        # normalization above, and before the threshold comparison below. The
+        # order is load-bearing in both directions: normalizing first means a
+        # non-numeric score is already 0.0 when the multiplier hits it (0.0 *
+        # anything is 0.0, so behavior is unchanged), and comparing after means
+        # the drawdown feeds the EXISTING gate rather than introducing a second
+        # rejection path. A drawn-down score that falls under the threshold is
+        # dropped by the same SkipSaveException as any other low score.
+        score = self._apply_tombstone_prior(score)
+
         self._write_filter_score = score
 
         if score < self._wf_min_threshold:
@@ -145,6 +166,99 @@ class WriteFilterMixin:
             )
 
         return score
+
+    @classmethod
+    def _wf_fingerprint_field(cls):
+        """Return this model's content-fingerprint field, or None.
+
+        The auto-detect for the tombstone negative prior (#494). A model with
+        no ``ExistenceFilter``, or one whose ``fingerprint_fn`` is unset, has no
+        content identity — there is nothing a buried record could match against
+        — so the write path skips the consult entirely and issues zero extra
+        Redis commands. That is what makes "a deployment not using tombstones
+        sees byte-identical write behavior" structurally true rather than
+        dependent on a flag, while keeping the capability default-ON and
+        auto-detected rather than opt-in.
+
+        Cached in the class's own ``__dict__`` (never inherited from a parent,
+        so subclasses resolve independently) because a model's field set does
+        not change after definition and the scan should be paid once.
+        """
+        cached = cls.__dict__.get("_wf_fingerprint_field_cache", _UNRESOLVED)
+        if cached is not _UNRESOLVED:
+            return cached
+
+        from .existence_filter import ExistenceFilter
+
+        field = None
+        meta = getattr(cls, "_meta", None)
+        for candidate in getattr(meta, "fields", {}).values():
+            if isinstance(candidate, ExistenceFilter):
+                if getattr(candidate, "fingerprint_fn", None) is not None:
+                    field = candidate
+                break
+
+        cls._wf_fingerprint_field_cache = field
+        return field
+
+    def _apply_tombstone_prior(self, score):
+        """Draw ``score`` down if this record's content has been buried before.
+
+        A tombstone (#491) is durable evidence that a kind of memory was
+        learned to be worthless. This turns that evidence into a multiplicative
+        penalty on the write-filter score, escalating with the number of times
+        the same content fingerprint has been buried.
+
+        Three short-circuits, in cost order, all returning the score untouched:
+        the deploy-level kill switch; a model with no content fingerprint (no
+        Redis command issued at all); and zero recorded burials.
+
+        Never raises: any failure logs a warning and returns the unmodified
+        score. A memory system whose save() dies because a bookkeeping hash is
+        unreachable is worse than one that occasionally misses a drawdown.
+
+        Args:
+            score: The normalized write-filter score.
+
+        Returns:
+            float: The adjusted score, or ``score`` unchanged.
+        """
+        try:
+            if not _read_tombstone_prior_switch():
+                return score
+
+            field = type(self)._wf_fingerprint_field()
+            if field is None:
+                return score
+
+            from .existence_filter import _compute_fingerprint_impl
+
+            fingerprint = _compute_fingerprint_impl(field, self)
+            store = TombstonePriorStore(type(self))
+            burials = store.burial_count(fingerprint)
+            if burials <= 0:
+                return score
+
+            penalty = penalty_for(burials)
+            adjusted = score * penalty
+            store.note_penalty(score, adjusted)
+            logger.debug(
+                "tombstone prior: %s drawn down %.4f -> %.4f "
+                "(burials=%d, penalty=%.4f)",
+                type(self).__name__,
+                score,
+                adjusted,
+                burials,
+                penalty,
+            )
+            return adjusted
+        except Exception as exc:
+            logger.warning(
+                "tombstone prior: consult failed for %s, admitting unchanged: %s",
+                type(self).__name__,
+                exc,
+            )
+            return score
 
     def _tag_priority(self, pipeline=None):
         """Add this instance to the priority sorted set if score >= priority_threshold.
@@ -164,7 +278,7 @@ class WriteFilterMixin:
         if pipeline:
             pipeline.zadd(priority_key, {redis_key: score})
         else:
-            POPOTO_REDIS_DB.zadd(priority_key, {redis_key: score})
+            get_REDIS_DB().zadd(priority_key, {redis_key: score})
 
     def _delete_write_filter_keys(self, pipeline=None):
         """Remove this instance from the priority sorted set.
@@ -180,4 +294,4 @@ class WriteFilterMixin:
         if pipeline:
             pipeline.zrem(priority_key, redis_key)
         else:
-            POPOTO_REDIS_DB.zrem(priority_key, redis_key)
+            get_REDIS_DB().zrem(priority_key, redis_key)
