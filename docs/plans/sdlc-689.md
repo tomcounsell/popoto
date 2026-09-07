@@ -399,10 +399,32 @@ warns future editors against "simplifying away".
 
 ## Prerequisites
 
+**Measured state of this machine, 2026-09-07** (critique BLOCKER; re-measured
+during the revision pass, not taken on trust). `/Users/valorengels/src/popoto/.venv`,
+Python 3.12, macOS 25.6 (APFS):
+
+- `setuptools 81.0.0` — **below the `>=83` floor**, so a `--no-isolation` build
+  is not available here and the isolated branch must be taken.
+- `import build` from `/tmp` → `ModuleNotFoundError`. The `build` frontend is
+  **not installed**.
+- `import build` from the repo root **succeeds vacuously**: the untracked
+  `build/` directory resolves as a namespace package
+  (`build.__file__ is None`, `__path__ = _NamespacePath(['…/popoto/build'])`).
+  A bare `python -c "import build"` run from the repo root is therefore **not a
+  valid probe** — it self-confirms a prerequisite that is unmet.
+- `import pip` → `ModuleNotFoundError`. `.venv` is uv-managed and has no `pip`,
+  so `.venv/bin/pip install build` cannot be the remedy.
+
+Consequence for this plan: nothing may *assume* a working `build`. Every
+sdist-building step resolves the frontend on demand into a throwaway venv, and
+every probe runs from a cwd outside the repo.
+
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
-| `build` frontend available in a venv that is not the repo root's | `python -c "import build"` run from a directory other than the repo root | Reproducing the sdist. The repo root's untracked `build/` directory shadows the module (spike-2). |
-| Network access to PyPI | `curl -sfI https://pypi.org/pypi/popoto/1.9.0/json > /dev/null` | Only needed to re-verify the published-artifact claim; not needed to build or test. |
+| `build` frontend, resolved on demand (do **not** assume it is present) | `python -m venv "$TMP/venv" && "$TMP/venv/bin/python" -m pip install build` — then use `"$TMP/venv/bin/python" -m build`. Never `.venv/bin/pip` (absent). | Reproducing the sdist. Measured: `build` is not installed in `.venv` and `.venv` has no `pip`. |
+| A *non-vacuous* `build` probe, if you probe at all | `cd /tmp && python -c "import build, sys; sys.exit(0 if getattr(build, '__file__', None) else 1)"` | The repo root's untracked `build/` directory shadows the module as a namespace package with `__file__ is None`, so the naive probe passes while the import is useless (spike-2, and the critique BLOCKER). |
+| Isolation branch chosen from a *measured* setuptools version | `python -c "import setuptools; from packaging.version import Version; print(int(Version(setuptools.__version__) >= Version('83')))"` → `--no-isolation` only on `1`, otherwise an isolated build | Measured here: `81.0.0` → `0` → isolated build (needs network). `packaging` is present in `.venv` (26.2); if it is ever absent, fall back to comparing `int(setuptools.__version__.split('.')[0]) >= 83`. |
+| Network access to PyPI | `curl -sfI https://pypi.org/pypi/popoto/1.9.0/json > /dev/null` | Needed to re-verify the published-artifact claim **and**, on this machine, to run the isolated build (setuptools 81 forces it). |
 | Redis/Valkey on `localhost:6379` | `redis-cli ping` | Required by the popoto suite generally, not by any test this plan adds. Use `POPOTO_TEST_DB=9` for this lane. |
 
 
@@ -890,12 +912,55 @@ do not push a decoy ref.
 - Run the Verification table. Run `pytest tests/test_sdist_contents.py` and the
   full suite with `POPOTO_TEST_DB=9`, stating the environment with the counts.
 - Confirm no repository document still claims popoto has no `MANIFEST.in`.
-- Add `scripts/verify/sdist_excludes_tests.sh` (the repo's existing convention —
-  see `scripts/verify/no_new_deps.sh`): clone `HEAD` into a temp dir, build an
-  sdist from a cwd outside the repo, and print the count of members under
-  `tests/`. Prefer `--no-isolation` when the ambient setuptools already
-  satisfies `>=83`, so the check runs without network; fall back to an isolated
-  build otherwise.
+
+#### 5a. `scripts/verify/sdist_excludes_tests.sh` — full specification
+
+The critique's BLOCKER was that this script, as previously described, could not
+run on this machine and its Verification rows would have reported the failure as
+a pass. It is **kept** (the anti-criterion has to live somewhere, and the repo's
+`scripts/verify/` convention is where) but it is now specified rather than
+gestured at. It is heavier than `no_new_deps.sh`'s one-liner; that cost is
+accepted and priced into the Appetite section, because the alternative is
+inlining the same clone-build-count into two Verification rows.
+
+Required behavior, in order:
+
+1. `#!/bin/sh` then `set -eu`. Every failure must abort with a non-zero exit.
+   A silent abort that prints nothing is exactly the false pass the critique
+   found.
+2. `TMP=$(mktemp -d)` and `trap 'rm -rf "$TMP"' EXIT`.
+3. Clone `HEAD` into `$TMP/clone`, then **guard against a stale clone**: assert
+   `git -C "$TMP/clone" rev-parse HEAD` equals `git -C <repo> rev-parse HEAD`,
+   and exit non-zero if not. A clone of the wrong commit is a false oracle in
+   both directions.
+4. Resolve the `build` frontend on demand: `python3 -m venv "$TMP/venv"` then
+   `"$TMP/venv/bin/python" -m pip install --quiet build`. Do **not** use
+   `.venv/bin/pip` (it does not exist) and do **not** assume the ambient
+   interpreter can `import build` (it cannot, and from the repo root the import
+   succeeds vacuously against the untracked `build/` directory).
+5. Choose the isolation branch from the *measured* setuptools version of the
+   venv that will run the build, using the Prerequisites-table command. Pass
+   `--no-isolation` only when it prints `1`; otherwise take the isolated
+   (network) build. Measured on this machine: `81.0.0` → isolated.
+6. Build with cwd **outside** the clone: `"$TMP/venv/bin/python" -m build
+   --sdist --outdir "$TMP/dist" "$TMP/clone"`, invoked from `$TMP`.
+   Exactly one tarball must land in `$TMP/dist`; zero or two is a hard error
+   (the same rule `check_sdist_contents.py` applies to its own argv).
+7. **Default mode** (no flags): print only the count of tar members whose path
+   is under `tests/`, and nothing else, then exit 0. The expected value is `0`.
+8. **`--run-checker` mode**: after the build, run
+   `python scripts/check_sdist_contents.py "$SDIST"` (the checker from the
+   *clone*, not the working tree) and emit its stdout **verbatim** so that
+   `grep -c WARNING` sees it. Propagate the checker's exit status. Do not print
+   the member count in this mode — the two modes must not share an exit-code
+   meaning or a stdout shape.
+9. Any unrecognized flag is a hard error, not a silent fallthrough to default
+   mode.
+
+Every caller — including both Verification rows — must assert the script's
+**exit code as well as** its output. A script that dies before building prints
+nothing, and `grep -c` on nothing is `0`, which is indistinguishable from
+success.
 
 ## Verification
 
