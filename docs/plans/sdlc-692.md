@@ -916,7 +916,94 @@ Additionally:
 
 ## Critique Results
 
-_Pending `/do-plan-critique`._
+**Verdict: READY TO BUILD (with concerns).** FULL depth, independent roster
+(3 critics: Risk & Robustness, Scope & Value, History & Consistency).
+0 blockers, 3 concerns, 2 nits.
+
+### C1 — Task 4 and Technical Approach step 5 give contradictory teardown shapes
+
+*Flagged independently by Risk & Robustness and History & Consistency.*
+
+Technical Approach step 5 gates the validity-keyspace deletion behind
+`if self._supersession_arm != "none":`; Task 4 says to do it "even on the `none`
+arm's error paths — it must be safe to call unconditionally". Both are plan text
+and they cannot both be implemented as written. Followed literally, Task 4 calls
+`ValidityField.get_all_keys(...)` against a model class that never declared the
+field — a path neither spike exercised.
+
+**Resolution for the builder:** `get_all_keys` / `get_prefix_db_key`
+(`src/popoto/fields/validity_field.py:702`, `:782`) only concatenate
+`_meta.db_class_key` + field name into key *strings*; they do not require the
+field to be declared, so an unconditional `get_REDIS_DB().delete(*keys.values())`
+does not raise on the `none` arm. Pick one shape and make both sections say it.
+If unconditional, guard on `"validity" in self._model_class._meta.fields` (or
+wrap in the existing `except Exception: pass` teardown idiom at
+`external_base.py:692-729`) and add a test that teardown on an arm-`none` item
+does not raise — deleting non-existent keys must not become a way to mask a real
+leak that Verification row 1 is meant to catch. Note the file's teardown
+currently uses the module-level `POPOTO_REDIS_DB` import
+(`external_base.py:706`, `:710`, `:721`, `:725`); new code must use
+`get_REDIS_DB()` per CLAUDE.md, and the plan's snippet already does.
+
+### C2 — Task 3's session-date reordering is not scoped to the active arm
+
+Task 3 attaches "when the arm is active" to the `ValidityField` bullet but not to
+"order sessions by `session_date` ascending". Read literally that reorders ingest
+for arm `none` too, which contradicts Success Criterion 5 (arm `none` byte-
+identical) and Verification row 1. Race 1's prose and the Data Flow diagram both
+scope reordering to `content-identity`.
+
+**Resolution for the builder:** the reorder applies **only** when
+`supersession_arm != "none"`. The loop to guard is `for turn in self.item.history:`
+in `ExternalScenario.setup()` (`external_base.py:447`); changing its order on the
+`none` arm changes insertion order into `DecayingSortedField` and the BM25 index
+and will move committed-baseline numbers. Write the task text with the qualifier.
+
+### C3 — Task 8 ships #586's corpus-scale CLI/reporting surface under this issue's Medium appetite
+
+AC2 needs a small-n demonstration; Task 8 builds the full three-arm production
+surface (`--supersession`, `--no-validity-gating`, `_sup-{arm}` / `_nogate`
+artifact labels, new aggregate rows) while the plan explicitly scopes #586's run
+out.
+
+**Resolution for the builder:** this is accepted as an *intended* scope decision —
+say so in the plan rather than leaving it incidental. The minimum AC2 needs is an
+arm toggle and a gate toggle; the artifact-label scheme and aggregate rows exist
+so #586 inherits ready infrastructure and so the three arms cannot overwrite each
+other on disk. Mirror `extraction_axis.py`'s existing `ARM_CHOICES` + filename-
+label precedent (#489) rather than inventing a second convention.
+
+### N1 — Tied `haystack_dates` values are unaddressed
+
+`haystack_dates` is minute-precision (`"%Y/%m/%d (%a) %H:%M"`), so two sessions can
+share a timestamp. Python's stable sort then decides "current" by haystack list
+position, and the plan does not state whether `save_and_supersede(at=<equal>)`
+raises `ValidityCloseBeforeStartError` or silently accepts. The per-unit exception
+handler absorbs it either way; note the tie case in Race 1, and consider a tied-
+timestamp case alongside Task 6's non-monotonic one.
+
+### N2 — The graph-mode re-save at `external_base.py:522` is a second write path
+
+`turn_first_instance.save()` at `:522` (graph mode only) does not go through
+`route_write`. It is very likely benign — `on_save` mode `"open"` uses `ZADD NX`,
+so a re-save cannot reopen a closed interval — but the plan's Task 3 promise to
+"keep graph-edge behavior identical in both arms" should say so explicitly rather
+than leave a reader to derive it.
+
+### Structural check notes
+
+- Two referenced paths do not exist yet and are created by this plan
+  (`tests/benchmarks/supersession_axis.py`, `tests/benchmarks/test_supersession_axis.py`).
+- The plan cites `context_assembler.py:1499-1582` etc. without a path; the file is
+  `src/popoto/recipes/context_assembler.py`, not under `models/`. Cited anchors
+  verified: `_validity_field_name` at `:1401`/`:1437-1438`, `_resolve_excluded_keys`
+  at `:1630`, `_scope_by_validity` at `:1713`.
+- All other line citations re-verified at `4ac805f0`+: `validity_field.py:920-932`
+  (gate), `external_base.py:479` and `:522` (the only two `.save()` sites),
+  `SupersessionProtocol.save_and_supersede` at `supersession.py:363` with
+  `SupersedeResult.closed_key` at `:152`.
+- Tasks are numbered 1-12 with no gaps, no `Depends On` references, and no cycles.
+  Per-task validation lives in the Verification table rather than on each task.
 
 ## Open Questions
 
