@@ -1,6 +1,8 @@
 ---
-status: Planning
+status: Ready
 type: bug
+revision_applied: true
+revision_applied_at: 2026-09-07T12:04:00Z
 appetite: Small
 owner: Valor Engels
 created: 2026-09-07
@@ -332,11 +334,13 @@ learner moved it*).
 **Team:** Solo dev
 
 **Interactions:**
-- PM check-ins: 1 — one decision is a genuine product call (Open Question 1:
-  reset vs. proportional rescale on a detected edit).
-- Review rounds: 1
+- PM check-ins: 1 — **spent**. The reset-vs-rescale product call was answered by
+  the supervisor during the critique-revision pass (see Decisions). No further
+  check-in is budgeted or needed.
+- Review rounds: 1 (critique round 1 complete; this is revision 1)
 
-This is a ~40-line change to one method plus a widened `import_state`, with the
+This is a ~40-line change to one method, a one-line truncation in
+`_adjust_cycle_amplitudes`, and a documented no-op in `import_state`, with the
 read path untouched and no migration. The cost is in the test matrix and in
 getting the semantics named correctly in the docs, not in the code.
 
@@ -383,7 +387,7 @@ getting the semantics named correctly in the docs, not in the code.
   field, period, old declared value, new declared value and the discarded
   learned amplitude. #679 exists because state was destroyed silently; this
   change destroys learned state by design and must say so. **INFO, decided**
-  (supervisor decision, closing critique OQ2/C5): the reset is intentional and
+  (supervisor decision, closing critique C5 / Decision 2): the reset is intentional and
   expected after a deliberate edit, so WARNING would raise a fleet-wide alarm on
   a normal deploy.
   **Volume, accepted explicitly (C5):** one INFO line per reset per record means
@@ -393,7 +397,7 @@ getting the semantics named correctly in the docs, not in the code.
   too, and the burst is bounded by the number of affected records, one-shot per
   edit (the baseline is rewritten by the same save), and only occurs on a
   deliberate declaration change. No sampling, aggregation or rate limit is added,
-  and **no per-process-per-field dedupe** — OQ2 already prices that as more code
+  and **no per-process-per-field dedupe** — Decision 2 already prices that as more code
   than a Small appetite wants. The volume gets one documented sentence next to
   the destructive-edit warning in the docs task.
 - **Legacy-tolerant reads**: an entry with fewer than 4 slots is a first-class
@@ -461,11 +465,16 @@ the whole test class that pins it, stays green).
   by assigning `field.cycles` on the field instance and restoring it in a
   `finally`. New tests follow that established pattern rather than defining new
   model classes per scenario.
-- **Integration point with `_adjust_cycle_amplitudes`**: none required. Spike-2
-  confirmed it mutates slot 1 in place and repacks, so slot 3 survives. Do not
-  "helpfully" teach it about the baseline — if it ever writes slot 3, the
-  baseline stops meaning "the declaration" and the whole mechanism collapses
-  back into the two-value ambiguity this plan exists to remove.
+- **Integration point with `_adjust_cycle_amplitudes`**: exactly one, and it is
+  on the *return* path only (critique B1). Spike-2 confirmed it mutates slot 1 in
+  place and repacks, so slot 3 survives the write untouched — that must stay
+  true. Do not "helpfully" teach it about the baseline on the **write** side: if
+  it ever writes or strips slot 3 before `msgpack.packb`, the baseline stops
+  meaning "the declaration" and the whole mechanism collapses back into the
+  two-value ambiguity this plan exists to remove. The **only** sanctioned change
+  is `return [cycle[:3] for cycle in cycles]` at `base.py:2763`, which keeps the
+  public return of `strengthen_cycle` / `weaken_cycle` at 3 elements. Write side:
+  four slots. Return side: three.
 - **Pipeline caveat unchanged**: `on_save` reads directly from Redis while
   `_adjust_cycle_amplitudes` may write through a pipeline. The existing docstring
   note ("Queue `save()` first when sharing one pipeline") still applies verbatim
@@ -723,14 +732,21 @@ two are always the same vintage.
   read-modify-write shape (`on_save` vs `resolve_pressure`). Named as an open
   question inside #699 rather than answered here.
 
+- [FOLLOW-UP, not filed] Proportional rescale of learned amplitudes on a detected
+  declaration change. Rejected for this plan by supervisor decision (see Solution
+  / Key Elements). If it is ever wanted it is a new issue with its own semantics
+  (including an `old_baseline == 0.0` rule), not a variation inside this one.
+
 **Answered, not deferred** — the issue listed four open questions for the plan;
-three are settled above and one is escalated:
+**all four are now settled**, the last by supervisor decision during this
+revision:
 
 1. *Where the declared baseline lives* → in the cycles entry as an optional 4th
    slot (Solution / spike-1).
-2. *What happens on a detected declaration change* → reset that member's learned
-   amplitude, loudly. Whether it should instead be a proportional rescale is
-   Open Question 1 — a product call, not a deferral.
+2. *What happens on a detected declaration change* → **hard reset**: discard that
+   member's learned amplitude, adopt the declared value, log one INFO line.
+   Decided by the supervisor on 2026-09-07; proportional rescale is a recorded
+   rejected alternative. No longer an open question.
 3. *Whether the same gap exists for `phase`* → **checked, and it does not.**
    `phase` is fully declarative: `on_save` writes it from `field.cycles` on
    every save (`cyclic_decay_field.py:592,599`) and **nothing in the codebase
@@ -861,7 +877,9 @@ are unchanged, so no wiring moves.
 
 ## Team Orchestration
 
-Small appetite, one file of production code plus two test files and one doc
+Small appetite: two files of production code
+(`src/popoto/fields/cyclic_decay_field.py`, plus a one-line return-site change
+and docstrings in `src/popoto/models/base.py`), three test files, and one doc
 page. Two builder/validator pairs plus a documentarian.
 
 ### Team Members
@@ -869,8 +887,9 @@ page. Two builder/validator pairs plus a documentarian.
 - **Builder (merge rule)**
   - Name: `merge-builder`
   - Role: The `on_save` three-way merge, the baseline write, the reset log, and
-    the widened corrupt-payload guard. Owns
-    `src/popoto/fields/cyclic_decay_field.py` only.
+    the widened corrupt-payload guard in
+    `src/popoto/fields/cyclic_decay_field.py`; plus the one-line return-site
+    truncation and docstring updates in `src/popoto/models/base.py` (Task 1b).
   - Agent Type: builder
   - Domain: Redis/Popoto data — paste the matching rules from
     `DOMAIN_FRAMING.md` into the assignment.
@@ -1339,34 +1358,55 @@ usable.
 
 ---
 
-## Open Questions
+## Decisions (formerly Open Questions)
 
-1. **On a detected declaration change: hard reset, or proportional rescale?**
-   This plan assumes **hard reset** — the learned amplitude is discarded and the
-   new declared value takes its place. The alternative is to preserve the
-   learned *ratio*: `new_learned = new_declared * (old_learned / old_baseline)`,
-   so a record that had learned "3x the default" keeps learning 3x the new
-   default. Reset is more predictable and matches what a developer editing a
-   constant probably expects; rescale is less destructive and keeps months of
-   accumulated learning meaningful. Rescale needs an answer for
-   `old_baseline == 0.0` (division by zero → fall back to the declared value)
-   and would make Risk 1 largely disappear. **This is a product call and the one
-   thing the plan cannot settle on its own.**
+**No open questions remain.** All three were answered by the supervisor on
+2026-09-07 during the critique-revision pass. They are recorded here as decided
+and **must not be reopened** by a builder, reviewer or later critique round; a
+new argument against one of them is a new issue, not a re-litigation of this
+plan.
 
-2. **Should the reset log at INFO or WARNING?** The plan says INFO: the reset is
-   intentional and expected after a deliberate edit, so WARNING would cry wolf
-   on every record of a normal deploy. But #679 exists precisely because state
-   was destroyed quietly, and a fleet-wide reset triggered by an accidental edit
-   is exactly the event an operator would want at WARNING. A middle option — one
-   WARNING the first time per process per field, INFO thereafter — is more code
-   than a Small appetite wants.
+1. **On a detected declaration change: hard reset, or proportional rescale?** →
+   **HARD RESET.** The learned amplitude is discarded and the new declared value
+   takes its place. *Rationale (supervisor):* no critic found a technical
+   objection to it; it is predictable and it matches developer intent when
+   someone edits a declaration. **Rejected alternative, documented:** preserving
+   the learned *ratio*
+   (`new_learned = new_declared * (old_learned / old_baseline)`). It is less
+   destructive and keeps accumulated learning meaningful, but it is harder to
+   predict, needs a separate `old_baseline == 0.0` division-by-zero rule, and
+   would rewrite the merge branch, its log line, its docstring and most of the
+   new test class. Consequence: Risk 1 is accepted at full weight rather than
+   mitigated (see Risk 1).
 
-3. **Is the Risk 2 upgrade caveat acceptable as documentation only?** A
-   developer who upgrades popoto and edits `amplitude=` in the same deploy sees
-   the reported symptom once more, because the first save records a baseline
-   rather than detecting a change. The plan accepts this and documents it. The
-   only alternative that closes it is treating "no baseline" as "changed", which
-   resets every learned amplitude in the database on first save after upgrade —
-   materially worse. Confirming the acceptance is worth one sentence from the
-   maintainer, since it means the fix does not fully work for the very first
-   deploy that contains it.
+2. **INFO or WARNING for the reset log?** → **INFO.** *Rationale:* one edit
+   resets every learned record, so WARNING would be a fleet-wide alarm burst on
+   an intentional, expected event. **Volume is accepted explicitly** as a
+   per-record audit trail — one line per reset per record, bounded by the number
+   of affected records and one-shot per edit — and gets a documented sentence
+   (C5, Solution / Key Elements, `document-feature`). No sampling, no
+   aggregation, no per-process dedupe.
+
+3. **Is the Risk 2 upgrade caveat acceptable as documentation only?** →
+   **YES, accepted.** *Rationale:* the only alternative that closes it — treating
+   "no baseline" as "declaration changed" — resets every learned amplitude in the
+   database on the first save after upgrade, which is strictly worse. The
+   two-save requirement is now stated next to the Desired Outcome and qualifies
+   Success Criterion 1 (C4), rather than sitting only in Risks, and the concrete
+   operator remedies are in the docs task.
+
+### Revision log
+
+Revision 1 (2026-09-07), responding to the NEEDS REVISION critique verdict
+recorded above:
+
+| Finding | Disposition |
+|---|---|
+| B1 (blocker) — public return shape widens | **Resolved by decision**: truncate at the return site (`base.py:2763`), keeping the 3-element public contract. New Task 1b, new named test, two new Verification rows, Architectural Impact rewritten. |
+| C1 — hard reset vs rescale left open | **Resolved**: hard reset decided by the supervisor and recorded in Solution / Key Elements and Decisions; rescale recorded as a rejected alternative and moved to No-Gos. No task is gated on a decision any more. |
+| C2 — import carries the exporter's baseline | **Resolved by reversing the approach**: `import_state` deliberately drops slot 3; Task 2 rewritten, Risk 5 added, transfer assertion inverted, Verification row added. |
+| C3 — Race 1 understates the consequence | **Resolved**: Race 1 mitigation rewritten with the four-step interleaving and the spurious-delayed-reset consequence named. Documentation only; still inside the #699 No-Go. |
+| C4 — Success Criterion 1 contradicts Risk 2 | **Resolved**: two-save requirement added next to Desired Outcome; Success Criterion 1 qualified with "for every record that has a recorded baseline"; operator remedies added to the docs task. |
+| C5 — unbounded INFO burst | **Resolved**: accepted explicitly with rationale and bounds in Solution / Key Elements; one volume sentence added to the docs task. No code change. |
+| C6 — vacuous editable-install prerequisite | **Resolved**: row replaced with an `is_relative_to(git rev-parse --show-toplevel)` check, run live and **failing** from `.worktrees/sdlc-698` (resolves to the main checkout). The red state and the disclosure obligation are recorded in the row, in `validate-merge` and in Verification. |
+| N1 (nit) — "four" vs five updates | **Resolved**: Success Criteria now says five and enumerates them. |
