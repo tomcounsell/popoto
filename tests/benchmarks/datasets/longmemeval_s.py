@@ -56,8 +56,11 @@ def _parse_session_date(raw: Optional[str]) -> Optional[float]:
     if not raw or not isinstance(raw, str):
         return None
     try:
+        # time.strptime accepts years time.mktime then rejects (e.g. year
+        # 1000), raising OverflowError rather than ValueError -- both are
+        # "unparseable" from this function's contract (#692 review).
         return time.mktime(time.strptime(raw, HAYSTACK_DATE_FORMAT))
-    except ValueError:
+    except (ValueError, OverflowError):
         logger.debug("Unparseable haystack_dates entry: %r", raw)
         return None
 

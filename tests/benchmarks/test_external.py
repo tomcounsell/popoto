@@ -1078,6 +1078,23 @@ class TestSessionDateParsing:
             for turn in item.history:
                 assert turn.get("session_date") is None
 
+    def test_out_of_range_year_returns_none_not_overflowerror(self):
+        """Regression (#692 review, finding 2): ``time.strptime`` accepts a
+        year ``time.mktime`` then rejects, raising ``OverflowError`` rather
+        than ``ValueError``. The docstring promises this function never
+        raises, so both must be treated as "unparseable" -> ``None``."""
+        from tests.benchmarks.datasets.longmemeval_s import _parse_session_date
+
+        assert _parse_session_date("1000/01/01 (Mon) 00:00") is None
+
+    def test_parse_session_date_handles_valid_and_invalid_inputs(self):
+        from tests.benchmarks.datasets.longmemeval_s import _parse_session_date
+
+        assert _parse_session_date(None) is None
+        assert _parse_session_date("") is None
+        assert _parse_session_date("not a date") is None
+        assert isinstance(_parse_session_date("2023/05/20 (Sat) 02:21"), float)
+
 
 # ---------------------------------------------------------------------------
 # Supersession producer arm, end-to-end (#692)
