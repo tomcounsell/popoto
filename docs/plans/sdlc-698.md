@@ -49,6 +49,18 @@ wins exactly as it does today. Records with no recorded baseline (everything
 written before this change) degrade to today's behavior on the first save and
 acquire a baseline from that save forward.
 
+**Scope of the fix — read this next to the sentence above.** Detection requires
+a recorded baseline, and a baseline is only ever recorded by a save. So a record
+written before this change needs **two saves** to honor an edit: the first save
+records the baseline, and only an edit made *after* that save is detected. A
+developer who upgrades popoto **and** edits `amplitude=` in the same deploy
+therefore sees the reported symptom exactly one more time (Risk 2). This is
+accepted, not overlooked — the only alternative is to treat "no baseline" as
+"declaration changed", which resets every learned amplitude in the database on
+first save after upgrade, and is strictly worse. The documented remedies are:
+upgrade first and let every record save once before editing the declaration, or
+`hdel` the member's cycles entry and re-save.
+
 ## Freshness Check
 
 **Baseline commit:** `c046e1bd` (`origin/main`, `refactor(#655): resolve the
@@ -192,9 +204,17 @@ second was resolvable by code-read and is recorded as such.
     baseline, and the imported record's next save would re-adopt the current
     declaration as its baseline.
 - **Confidence**: high
-- **Impact on plan**: `import_state` must be widened to carry the optional 4th
-  slot. This is the one non-obvious edit in the change and is called out as its
-  own task and its own Verification row rather than left to a builder to notice.
+- **Impact on plan (revised after critique C2)**: the finding stands; the
+  *conclusion drawn from it has been reversed*. The plan originally treated
+  `import_state`'s truncation as a defect to fix by widening. C2 showed that
+  carrying the exporter's baseline into a differently-declared target fires a
+  spurious, destructive reset on the first post-import save. So the truncation is
+  **kept and made deliberate** (documented, docstring'd and tested), and Task 2
+  is a docs-plus-test task rather than a code-widening one.
+  The second half of this spike — `_adjust_cycle_amplitudes` preserving an
+  unknown 4th element — is what makes critique B1 real: it also *returns* what it
+  preserved, so the public return needs an explicit truncation (see
+  Architectural Impact and Task 1b).
 
 ## Data Flow
 
@@ -227,8 +247,15 @@ The change touches one write path and leaves the read path alone.
 7. **Read/output** — `CYCLIC_DECAY_LUA` ranks on slots 1-3 and ignores slot 3's
    neighbor (spike-1). Scores are unchanged for every record whose declaration
    has not moved.
-8. **Transfer** — `export_state` carries all four slots; `import_state` must be
-   widened to write them back (spike-2).
+8. **Transfer** — `export_state` carries all four slots; `import_state`
+   deliberately normalizes back to 3 elements ("baseline unknown"), so an
+   imported record re-baselines against the importing deployment on its next save
+   (spike-2 found the truncation; critique C2 established that it is correct and
+   must be made intentional rather than widened).
+9. **Public return of `strengthen_cycle` / `weaken_cycle`** —
+   `_adjust_cycle_amplitudes` returns the list it read (`base.py:2763`), which
+   would leak slot 3 to callers. It is truncated to 3 elements **at the return
+   site only**; the packed value keeps all four (critique B1).
 
 ## Why Previous Fixes Failed
 
@@ -248,11 +275,42 @@ learner moved it*).
 ## Architectural Impact
 
 - **New dependencies**: none. No new import, key, script, or Redis command.
-- **Interface changes**: none to any public Python API.
-  `CyclicDecayField.__init__`, `strengthen_cycle`, `weaken_cycle`,
-  `get_cycles_hash_key` and friends keep their signatures. The **stored payload
-  shape** changes, from a 3-element to an optional-4-element inner tuple, which
-  is a documented format extension rather than an API change.
+- **Interface changes**: **one, and it is deliberately held at zero by an
+  explicit truncation** (revised per critique B1). Signatures are unchanged
+  (`CyclicDecayField.__init__`, `strengthen_cycle`, `weaken_cycle`,
+  `get_cycles_hash_key`). The **return value** of the public
+  `strengthen_cycle()` / `weaken_cycle()` is not automatically unchanged,
+  though: `_adjust_cycle_amplitudes` unpacks the stored payload
+  (`base.py:2743`), mutates only `cycle[1]`, and **returns the list it read**
+  (`:2763`), which both public methods return verbatim (`:2673`, `:2693`). Once
+  `on_save` writes 4-element entries, those methods would begin returning
+  4-element sublists for any already-saved record, silently widening a
+  documented public return ("The updated cycles list").
+
+  **Decision: option (b) — strip slot 3 at the return site, keeping the public
+  return contract 3-element.** `return cycles` at `base.py:2763` becomes
+  `return [cycle[:3] for cycle in cycles]`. Rationale: the baseline is a
+  deployment-local storage detail whose only legitimate writer is `on_save`
+  (see Rabbit Holes). Letting it out through a public return makes it part of
+  the published surface, invites callers to read or round-trip it, and directly
+  undercuts the invariant that `_adjust_cycle_amplitudes` never participates in
+  slot 3. Option (a) — documenting the widened shape — costs a public-API note
+  in two docstrings, the docs page and the CHANGELOG, and buys nothing a caller
+  wants. The truncation is one line and one test.
+
+  **Constraint on the implementation:** truncate at the **return sites only**.
+  The value packed at `base.py:2756-2762` must keep all four slots; truncating
+  before `msgpack.packb` would make `_adjust_cycle_amplitudes` a slot-3 *writer*
+  (in fact a slot-3 deleter) and destroy the mechanism. The pipeline branch
+  (`:2758-2760`) returns the pipeline and is unaffected; the no-entry branch
+  returns `[]` and is unaffected. `tests/test_observation_protocol.py:690`
+  asserts only `result == []` on the no-entry path, so no existing test pins the
+  arity — a new one must (Task 1b).
+
+  The **stored payload shape** does change, from a 3-element to an
+  optional-4-element inner tuple. That is a documented storage-format extension,
+  not an API change, and after the truncation above it is not observable through
+  any public Python return value.
 - **Coupling**: unchanged. The baseline lives in the entry it describes, so
   nothing new needs to be created, deleted, partitioned or key-derived. The
   rejected alternative — a `:cycle_baselines` companion hash — would have added
@@ -288,7 +346,7 @@ getting the semantics named correctly in the docs, not in the code.
 |-------------|---------------|---------|
 | Redis/Valkey on localhost:6379 | `redis-cli -n 12 ping` | The suite and the spike both need a live server |
 | Lane-scoped test DB | `test "$POPOTO_TEST_DB" = "12"` | DB 15 is shared across worktrees (`docs/sdlc/do-sdlc.md`); DB 0 is the live agent store |
-| Editable install resolves to this checkout | `python -c "import popoto, pathlib, sys; sys.exit(0 if 'popoto' in str(pathlib.Path(popoto.__file__)) else 1)"` | Worktree gotcha 1 — a stale editable install silently tests another tree |
+| Editable install resolves to **this** checkout | `python -c "import popoto,pathlib,sys,subprocess; root=pathlib.Path(subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip()).resolve(); sys.exit(0 if pathlib.Path(popoto.__file__).resolve().is_relative_to(root) else 1)"` run from the worktree root | Worktree gotcha 1 — a stale editable install silently tests another tree. **The previous form of this row (`'popoto' in str(popoto.__file__)`) was vacuous** and passed at critique time while resolving to `/Users/valorengels/src/popoto/src/popoto/` — the **main** checkout, not `.worktrees/sdlc-698`. So this row is **currently RED** and is a real gate, not a formality: before build, either `pip install -e .` from `.worktrees/sdlc-698`, or run the suite from the main checkout and say so in every stage report. Any count reported while this row is red is not usable (`CLAUDE.md`: state the environment alongside any count). |
 | Optional extras installed | `python -c "import numpy, sentence_transformers"` | `.[dev]` alone deselects ~95 tests (worktree gotcha 2) |
 
 ## Solution
@@ -309,15 +367,57 @@ getting the semantics named correctly in the docs, not in the code.
 - **A three-way merge in `on_save`**: baseline absent → preserve learned;
   baseline equals declared → preserve learned; baseline differs from declared →
   **declaration wins**, learned amplitude is reset to the declared value.
+- **Hard reset, decided — not an open question** (supervisor decision, 2026-09-07,
+  closing critique C1). On a detected declaration change the learned amplitude is
+  **discarded outright** and replaced by the new declared value. It is
+  predictable and matches what a developer editing a constant intends. No critic
+  raised a technical objection to it. *Proportional rescale*
+  (`new_learned = new_declared * (old_learned / old_baseline)`) is a **recorded
+  rejected alternative**: it preserves accumulated learning but is harder to
+  predict, needs an extra `old_baseline == 0.0` division-by-zero rule, and would
+  turn the merge branch, its log line, its docstring and most of the new test
+  class into a second design. If it is ever wanted it is a follow-up issue, not a
+  variation of this one. `merge-builder` builds hard reset; nothing in this plan
+  is gated on reopening this.
 - **A loud reset**: the third branch emits one `logger.info` naming the model,
   field, period, old declared value, new declared value and the discarded
   learned amplitude. #679 exists because state was destroyed silently; this
-  change destroys learned state by design and must say so.
+  change destroys learned state by design and must say so. **INFO, decided**
+  (supervisor decision, closing critique OQ2/C5): the reset is intentional and
+  expected after a deliberate edit, so WARNING would raise a fleet-wide alarm on
+  a normal deploy.
+  **Volume, accepted explicitly (C5):** one INFO line per reset per record means
+  a single declaration edit emits up to one line per learned record — at the 20k
+  scale target, a burst of that order — as the records save. This is accepted as
+  a **per-record audit trail**: the reset is per-record, so the evidence must be
+  too, and the burst is bounded by the number of affected records, one-shot per
+  edit (the baseline is rewritten by the same save), and only occurs on a
+  deliberate declaration change. No sampling, aggregation or rate limit is added,
+  and **no per-process-per-field dedupe** — OQ2 already prices that as more code
+  than a Small appetite wants. The volume gets one documented sentence next to
+  the destructive-edit warning in the docs task.
 - **Legacy-tolerant reads**: an entry with fewer than 4 slots is a first-class
   input meaning "baseline unknown", handled by falling through to today's
   behavior. No migration, no backfill, no version byte.
-- **Transfer consistency**: `import_state` carries the optional slot 3 so an
-  export/import round-trip does not silently strip it.
+- **Transfer consistency — reversed by critique C2**: `import_state`
+  **deliberately does not carry slot 3**. An imported entry is normalized to the
+  3-element "baseline unknown" shape and acquires a baseline from the importing
+  deployment on its next ordinary save. Spike-2 found that `import_state`
+  truncates today and the plan originally called that a bug; C2 showed it is the
+  correct behavior, and the fix is to make it *intentional and documented*
+  instead of incidental. Reasoning: a baseline records **the declaration in force
+  in the deployment that wrote the entry**, which is deployment-local by
+  definition. Carrying the *exporter's* baseline into a target whose
+  `field.cycles` declares a different amplitude makes the first post-import
+  `save()` see `baseline != declared` and fire a reset — destroying exactly the
+  learned amplitude that `roundtrip_policy = "carry"` exists to preserve, with no
+  import-time signal. Dropping it preserves the learned amplitude in every case
+  and costs one missed detection window, which is the same, already-accepted
+  trade as Risk 2 and is self-healing on the next save (Risk 5).
+  `export_state` still copies whatever arity is stored (no code change,
+  `[list(cycle) for cycle in cycles]`); the asymmetry is intentional — an export
+  is a faithful snapshot of stored bytes, an import re-establishes
+  deployment-local meaning.
 
 ### Flow
 
@@ -436,8 +536,19 @@ the whole test class that pins it, stays green).
   and are arity-agnostic already; any that assert on the whole list
   (`assert stored == [[...]]`) must be found and widened.
 - [ ] `tests/test_transfer_fidelity_fields.py` (cyclic round-trip, ~line 505)
-  — **UPDATE**: assert the baseline slot survives export→import, which is the
-  regression cover for spike-2's truncation finding.
+  — **UPDATE** (revised per C2): assert that a 4-element stored entry exports
+  faithfully and **imports back as a 3-element "baseline unknown" entry**, and
+  that the learned amplitude survives the round-trip and the first post-import
+  save unchanged. This is the regression cover for the deliberate truncation —
+  it pins the drop as intentional, so a later reader cannot "fix" it back into
+  the spurious-reset behavior C2 identified.
+- [ ] `tests/test_observation_protocol.py` (~line 690) — **ADD a sibling**:
+  nothing currently pins the arity of the `strengthen_cycle` / `weaken_cycle`
+  return (that assertion is `result == []` on the no-entry path). A new test must
+  assert that both public methods return **3-element** sublists for a record
+  whose stored entry has a baseline, so the B1 truncation cannot silently
+  regress. Placement in `tests/test_cyclic_decay_field.py` is acceptable if it
+  keeps the fixtures simpler; what matters is that the assertion exists.
 - [ ] `tests/test_cyclic_subclass_companion_keys.py` — **no change expected**
   (key derivation only, unaffected by payload arity). Listed so the builder
   confirms rather than assumes.
@@ -459,6 +570,9 @@ New tests (all in `tests/test_cyclic_decay_field.py`, a new class
 - The reset emits an INFO log naming both values.
 - Duplicate periods reset independently and in FIFO order.
 - `strengthen_cycle` after a reset learns from the *new* declared value.
+- `strengthen_cycle` / `weaken_cycle` return 3-element sublists even when the
+  stored entry carries a baseline (critique B1), while the stored entry keeps
+  all four slots after the call.
 
 ## Rabbit Holes
 
@@ -496,9 +610,10 @@ wipes every record's accumulated learning for that period, irreversibly.
 `2.00` is the same float and compares equal. The reset logs at INFO with both
 values and the discarded amplitude, so the event is attributable after the fact.
 The docs section gains an explicit warning that editing a declared amplitude is
-a destructive act on learned state. Open Question 1 asks whether proportional
-rescale should replace outright reset; if the answer is yes, this risk mostly
-evaporates.
+a destructive act on learned state. Proportional rescale would have softened this
+risk; it was **considered and rejected** (see Solution / Key Elements, supervisor
+decision closing C1), so this risk is **accepted at full weight** and carried by
+documentation plus the INFO audit trail, not reduced.
 
 ### Risk 2: The first save after upgrade silently swallows a simultaneous edit
 **Impact:** A developer who upgrades popoto *and* edits `amplitude=` in the same
@@ -527,6 +642,20 @@ member.
 **Mitigation:** Negligible at the 20k-record scale target; no mitigation
 planned. Noted so it is not raised as an unexamined objection at review.
 
+### Risk 5: An imported record does not detect an edit until it has saved once
+**Impact:** Because `import_state` normalizes to the "baseline unknown" shape
+(Solution / Transfer consistency, critique C2), a record restored from an export
+behaves like a pre-upgrade record: its first save records a baseline rather than
+detecting a change, so a declaration edit made between the export and the first
+post-import save is swallowed once. Same shape as Risk 2, on the transfer path.
+**Mitigation:** Accepted and documented. The alternative — carrying the
+*exporter's* baseline — trades one swallowed edit for a **spurious destructive
+reset** on every cross-deployment import into a differently-declared target,
+which silently destroys the learned state `roundtrip_policy = "carry"` exists to
+preserve. A missed detection is recoverable (edit again, or save once first); a
+destroyed learned amplitude is not. Documented on the transfer page and in the
+`import_state` docstring, with the same remedy as Risk 2.
+
 ## Race Conditions
 
 ### Race 1: Read-modify-write on the cycles entry is not atomic
@@ -541,11 +670,34 @@ anything to merge.
 **Mitigation:** **Pre-existing and explicitly not addressed here.** This race
 ships today, unchanged by #687 and unchanged by this plan — both operations were
 already non-atomic read-modify-writes on the same hash field. Adding a slot does
-not widen the window, does not add a second key that could tear independently
-(the whole reason the baseline goes *inside* the entry), and does not make a lost
-update worse: a lost baseline update means one missed reset, recovered on the
-next save. Making this atomic means moving the merge into Lua, which is a
-separate, larger change (see No-Gos). The builder must not "fix" it opportunistically.
+not widen the window and does not add a second key that could tear independently
+(the whole reason the baseline goes *inside* the entry). Making this atomic means
+moving the merge into Lua, which is a separate, larger change (see No-Gos). The
+builder must not "fix" it opportunistically.
+
+**Corrected consequence (critique C3).** An earlier draft of this row said a lost
+baseline update means "one missed reset, recovered on the next save." That
+understates it, and the accurate version is recorded here so a maintainer
+investigating an unexplained reset knows where to look. The new failure mode is a
+**spurious, delayed reset that discards real learning**:
+
+1. `_adjust_cycle_amplitudes` `hget`s `[period, learned_old, phase,
+   baseline_old]` (`base.py:2736`).
+2. `on_save` reads, sees `baseline_old != declared`, resets, and writes
+   `[period, declared, phase, declared]`.
+3. `_adjust_cycle_amplitudes` writes `[period, learned_old * factor, phase,
+   baseline_old]` (`:2762`) — it preserves unknown slots (spike-2), so it
+   repacks the **stale** baseline. The reset is clobbered *and* the superseded
+   baseline is restored.
+4. The next, **uncontended** save sees `baseline_old != declared` again and fires
+   a second reset — this time discarding the learning applied in between.
+
+This stays inside Race 1's accepted scope and the #699 No-Go: it is a symptom of
+the pre-existing lost-update race, its blast radius is one member's learned
+amplitude for one period, and it is bounded (the second reset writes the current
+declaration as the baseline, so it does not repeat). Fixing it means the same Lua
+move #699 owns. No code change here; this is documentation of a known
+interaction.
 
 ### Race 2: `on_save` reads directly while an adjustment writes through a pipeline
 **Location:** `cyclic_decay_field.py:533-536` (documented), `:562` (direct read)
@@ -632,7 +784,19 @@ are unchanged, so no wiring moves.
         baseline, so an edit made in the same deploy is not detected;
       - a note that the stored entry is now
         `[period, amplitude, phase, declared_baseline]`, with slot 3
-        optional, updating the storage description around line 160.
+        optional, updating the storage description around line 160;
+      - **the log volume (C5)**: one INFO line per reset per record, so a single
+        edit produces a burst proportional to the number of records that had
+        learned that period — expected, one-shot per edit, and deliberately not
+        sampled or deduplicated;
+      - **the concrete operator remedies (C4)**: upgrade first and let every
+        record save once before editing the declaration, or `hdel` the member's
+        cycles entry and re-save;
+      - **the transfer behavior (C2 / Risk 5)**: an imported record carries no
+        baseline and re-baselines on its next save, so an edit made between
+        export and the first post-import save is not detected. State that the
+        public return of `strengthen_cycle` / `weaken_cycle` stays
+        `[period, amplitude, phase]` (B1) — the baseline is internal.
 - [ ] `docs/features/README.md` index needs no new entry (no new feature page).
 - [ ] Check `docs/fields.md` and `docs/field-authoring.md` for any statement of
       the cycles payload shape; update if present.
@@ -645,7 +809,11 @@ are unchanged, so no wiring moves.
       rule (`:514-536`). Rewrite the cycles paragraph for the three-way rule,
       keeping the pipeline caveat verbatim.
 - [ ] Module docstring companion-hash description (`:17-19`) — note slot 3.
-- [ ] `import_state` docstring — note that it carries the optional baseline.
+- [ ] `import_state` docstring — record that it **deliberately drops** the
+      optional baseline and why (C2 / Risk 5).
+- [ ] `strengthen_cycle` / `weaken_cycle` docstrings (`base.py:2665-2671`,
+      `:2685-2691`) — state the returned shape is `[period, amplitude, phase]`
+      and that an internal slot is not exposed (B1).
 - [ ] A comment at the merge site explaining why the baseline is compared
       against the **declared** value and never against the learned one, and why
       `_adjust_cycle_amplitudes` must never write slot 3.
@@ -654,10 +822,20 @@ are unchanged, so no wiring moves.
 ## Success Criteria
 
 - [ ] An edited declared amplitude resets the learned amplitude on the next
-      `save()`, for every record that had learned one.
+      `save()`, **for every record that has a recorded baseline** — i.e. every
+      record that has saved at least once since this change shipped. A record
+      still carrying a pre-change 3-element entry acquires its baseline on that
+      first save and detects edits from then on (Risk 2; two saves are required
+      across the upgrade boundary, by design).
 - [ ] An unedited declaration still preserves the learned amplitude — the whole
       of `TestLearnedAmplitudePreservedOnSave` stays green, unmodified except
-      for the four clarifying updates named in Test Impact.
+      for the **five** clarifying updates named in Test Impact
+      (`test_cycle_added_to_declaration_uses_declared_amplitude`,
+      `test_phase_refreshes_from_declaration_while_amplitude_persists`,
+      `test_cycle_removed_from_declaration_is_dropped`,
+      `test_corrupt_stored_entry_falls_back_to_declared`,
+      `test_duplicate_periods_pair_fifo_and_keep_order`), plus the module-level
+      `_read_cycles` helper if any whole-list assertion needs widening.
 - [ ] A declared amplitude of `0.0` is compared as a value, not as a falsy
       sentinel.
 - [ ] A record written before this change (3-element entry) preserves its
@@ -665,8 +843,11 @@ are unchanged, so no wiring moves.
 - [ ] A malformed slot 3 does not raise out of `save()`.
 - [ ] Each reset emits exactly one INFO log naming the model, field, period, old
       declared value, new declared value and discarded learned amplitude.
-- [ ] `export_state` → `import_state` round-trips the baseline
-      (`tests/test_transfer_fidelity_fields.py`).
+- [ ] `export_state` → `import_state` round-trips the **learned amplitude**, and
+      the imported entry deliberately carries **no** baseline
+      (`tests/test_transfer_fidelity_fields.py`) — C2 / Risk 5.
+- [ ] `strengthen_cycle()` / `weaken_cycle()` still return 3-element sublists,
+      while the stored entry keeps four slots (B1).
 - [ ] `CYCLIC_DECAY_LUA` is unmodified and `numkeys` stays 4 — the read path is
       untouched.
 - [ ] No new Redis key and no migration script.
@@ -773,22 +954,60 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
   description, and add the "why the comparison is against the declared value"
   comment.
 
-### 2. Widen `import_state` and cover the transfer round-trip
+### 1b. Keep the public return of `strengthen_cycle` / `weaken_cycle` 3-element
+- **Task ID**: build-return-arity
+- **Depends On**: none (independent of `build-merge`; different file)
+- **Validates**: `tests/test_cyclic_decay_field.py`,
+  `tests/test_observation_protocol.py`
+- **Informed By**: critique B1; spike-2 (`_adjust_cycle_amplitudes` preserves —
+  and therefore also *returns* — unknown slots)
+- **Assigned To**: `merge-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- In `src/popoto/models/base.py`, change `_adjust_cycle_amplitudes`'s non-pipeline
+  return (`:2763`) from `return cycles` to `return [cycle[:3] for cycle in cycles]`.
+- **Truncate at the return site only.** The value packed at `:2756-2762` must
+  keep all four slots. Truncating before `msgpack.packb` turns
+  `_adjust_cycle_amplitudes` into a slot-3 writer/deleter and destroys the
+  mechanism (see Rabbit Holes).
+- Leave the pipeline branch (`:2758-2760`, returns the pipeline) and the
+  no-entry branch (returns `[]`) untouched.
+- Add one sentence to the `strengthen_cycle` and `weaken_cycle` docstrings
+  (`:2665-2671`, `:2685-2691`) stating that the returned list is
+  `[period, amplitude, phase]` and that the stored entry may carry an additional
+  internal slot which is deliberately not exposed.
+- Add the arity test named in Test Impact, and name it **exactly**
+  `test_strengthen_cycle_return_omits_baseline_slot` (a Verification row greps
+  for that identifier): both public methods return 3-element sublists for a
+  record whose stored entry has a baseline, and the stored entry still has four
+  slots after the call.
+- Do **not** teach `_adjust_cycle_amplitudes` anything else about slot 3.
+
+### 2. Make `import_state`'s baseline drop deliberate and cover the round-trip
 - **Task ID**: build-transfer
 - **Depends On**: none
 - **Validates**: `tests/test_transfer_fidelity_fields.py`
-- **Informed By**: spike-2 (confirmed: `export_state` preserves arity;
-  `import_state` truncates to 3 slots at `cyclic_decay_field.py:344-349`;
-  `_adjust_cycle_amplitudes` preserves slot 3 with no change)
+- **Informed By**: spike-2 (`export_state` preserves arity; `import_state`
+  truncates to 3 slots at `cyclic_decay_field.py:344-349`;
+  `_adjust_cycle_amplitudes` preserves slot 3 with no change) **as revised by
+  critique C2** — the truncation is correct and is being made intentional, not
+  widened
 - **Assigned To**: `test-builder`
 - **Agent Type**: test-engineer
 - **Parallel**: true
-- In `import_state`, carry an optional slot 3 through the normalization
-  instead of rebuilding a 3-element list. A 3-element imported entry stays
-  3-element (baseline unknown), not padded with a guess.
+- **Do not widen `import_state`.** Keep the existing rebuild to
+  `[period, amplitude, phase]` (`cyclic_decay_field.py:344-349`) and add a
+  comment plus a docstring paragraph recording *why*: a baseline is the
+  declaration in force in the deployment that wrote it, so carrying the
+  exporter's baseline into a differently-declared target would fire a spurious
+  destructive reset on the first post-import save (Risk 5). An imported entry is
+  "baseline unknown" and re-baselines on its next ordinary save.
+- Never fabricate a baseline at import time (no padding from `field.cycles`).
 - Extend the cyclic case in `tests/test_transfer_fidelity_fields.py` (~line 505)
-  to assert the baseline survives export → import, and that a 3-element legacy
-  export imports without a fabricated baseline.
+  to assert: a 4-element stored entry exports faithfully; it imports back as a
+  3-element entry; the learned amplitude is unchanged by the round-trip; and the
+  first post-import save preserves that learned amplitude and records a baseline
+  from the *importing* deployment's declaration.
 - Update the `import_state` docstring.
 
 ### 3. Build the semantics test matrix
@@ -817,7 +1036,7 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
 
 ### 4. Validate the semantics
 - **Task ID**: validate-merge
-- **Depends On**: build-merge, build-transfer, build-tests
+- **Depends On**: build-merge, build-return-arity, build-transfer, build-tests
 - **Assigned To**: `merge-validator`
 - **Agent Type**: validator
 - **Parallel**: false
@@ -829,6 +1048,14 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
 - Confirm no `POPOTO_REDIS_DB` line was removed from
   `src/popoto/fields/cyclic_decay_field.py`.
 - Confirm no new Redis key, no new script under `scripts/`, and no migration.
+- Confirm the B1 truncation is at the **return site only**: `msgpack.packb` in
+  `_adjust_cycle_amplitudes` still receives 4-slot entries, and a record's stored
+  entry still has four slots after `strengthen_cycle()`.
+- Confirm `import_state` still normalizes to 3 elements (C2) and fabricates no
+  baseline.
+- **State whether the editable install resolves to this worktree** (Prerequisites
+  row 3, currently RED). If it resolves to the main checkout, say so explicitly
+  with every count.
 
 ### 5. Documentation
 - **Task ID**: document-feature
@@ -866,6 +1093,18 @@ returned `1`, and `Stale doc claim removed` returned **`1` — i.e. it FAILS
 today**, which is its red-state proof: the sentence it forbids is currently
 `docs/features/cyclic-decay-field.md:122`.
 
+The rows added in this revision were smoke-tested the same way at revision time
+on the unmodified tree at `c046e1bd`: `cycle[:3]` in `base.py` returned **`0`**
+(red, as it must be before the B1 change), the named-test grep returned **`0`**
+(red), the `packb` anti-criterion returned `0` (green on a no-op diff), and the
+C2 row `normalized.append([period, amplitude, phase])` returned **`1`** — green
+today by construction, because that row pins *existing* behavior the plan is
+deliberately preserving rather than changing. The C6 prerequisite row was run
+live from `.worktrees/sdlc-698` and **exited 1**, resolving to
+`/Users/valorengels/src/popoto/src/popoto/__init__.py`; it is genuinely red and
+must be resolved or explicitly disclosed before any count from this lane is
+usable.
+
 | Check | Command | Expected |
 |-------|---------|----------|
 | Touched suites pass | `POPOTO_TEST_DB=12 pytest tests/test_cyclic_decay_field.py tests/test_transfer_fidelity_fields.py tests/test_cyclic_subclass_companion_keys.py tests/test_validity_field.py -q` | exit code 0 |
@@ -883,6 +1122,11 @@ today**, which is its red-state proof: the sentence it forbids is currently
 | Anti-criterion — no new companion Redis key | `git diff origin/main -- src/popoto/ \| grep -c "^+.*:cycle_baselines\|^+.*:baselines"` | match count == 0 |
 | Anti-criterion — no migration script added | `git diff --name-only origin/main -- scripts/ \| grep -c .` | match count == 0 |
 | Anti-criterion — #655 sweep not pre-empted | `git diff origin/main -- src/popoto/fields/cyclic_decay_field.py \| grep -c "^-.*POPOTO_REDIS_DB"` | match count == 0 |
+| B1 — public return truncated to 3 slots | `grep -c "cycle\[:3\]" src/popoto/models/base.py` | output > 0 |
+| B1 anti-criterion — truncation NOT applied before `packb` | `git diff origin/main -- src/popoto/models/base.py \| grep -c "^+.*packb(\[cycle\[:3\]"` | match count == 0 |
+| B1 — return arity is pinned by a named test | `grep -rc "def test_strengthen_cycle_return_omits_baseline_slot" tests/ \| grep -vc ":0$"` | output > 0 |
+| C2 — `import_state` still normalizes to 3 elements | `grep -c "normalized.append(\[period, amplitude, phase\])" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
+| C6 — editable install resolves to the checkout under test | the Prerequisites row-3 command, run from the checkout the suite was run in | exit code 0, **or** the stage report explicitly names the checkout that was tested |
 
 ## Critique Results
 
