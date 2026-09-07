@@ -24,14 +24,17 @@ opposed to its key or its bookkeeping:
 
 ```python
 import popoto
+from popoto.fields.decaying_sorted_field import DecayingSortedField
 from popoto.fields.existence_filter import ExistenceFilter
 from popoto.fields.write_filter import WriteFilterMixin
 
 
 class Memory(WriteFilterMixin, popoto.Model):
     name = popoto.UniqueKeyField()
+    tier = popoto.KeyField(type=str, default="episodic")
     content = popoto.Field(type=str)
     importance = popoto.FloatField(default=0.0)
+    relevance = DecayingSortedField(decay_rate=0.5)
     bloom = ExistenceFilter(
         error_rate=0.01,
         capacity=100_000,
@@ -41,6 +44,10 @@ class Memory(WriteFilterMixin, popoto.Model):
     def compute_filter_score(self):
         return self.importance or 0.0
 ```
+
+`tier` and `relevance` are there for `MemoryLifecycle` further down, not for the
+negative prior — the prior itself needs only the `ExistenceFilter` and its
+`fingerprint_fn`.
 
 A model with no `ExistenceFilter`, or one whose filter has no `fingerprint_fn`,
 has no content identity — there is nothing a buried record could match against.
@@ -70,7 +77,8 @@ each prior burial:
 | 1 | 0.5 | 0.40 |
 | 2 | 0.25 | 0.20 |
 | 3 | 0.125 | 0.10 |
-| 6+ | 0.05 (floor) | 0.04 — below the 0.1 gate, so the write is dropped |
+| 4 | 0.0625 | 0.05 — below the 0.1 gate, so the write is dropped |
+| 5+ | 0.05 (floor) | 0.04 |
 
 The drawn-down score feeds the **existing** `WriteFilterMixin` gate rather than
 a second rejection path: a score that falls under `WF_MIN_THRESHOLD` raises the
