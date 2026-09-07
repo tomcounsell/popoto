@@ -48,7 +48,7 @@ See Also:
 
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 import redis
 
 from ..exceptions import ModelException
@@ -268,7 +268,7 @@ class Field(metaclass=FieldBase):
         field_name: str,
         field_value,
         **kwargs,
-    ) -> dict:
+    ) -> Optional[dict]:
         """
         Return this field's auxiliary state for export, or ``None``.
 

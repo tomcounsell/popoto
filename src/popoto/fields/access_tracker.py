@@ -28,6 +28,7 @@ Example:
 
 import logging
 import time
+from typing import Any
 
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 
@@ -167,7 +168,7 @@ class AccessTrackerMixin:
         if not state:
             return None
 
-        mapping: dict[str, float] = {}
+        mapping: dict[str, Any] = {}
         if state.get("access_count") is not None:
             mapping["access_count"] = int(state["access_count"])
         if state.get("last_accessed") is not None:

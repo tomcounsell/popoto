@@ -32,6 +32,7 @@ Example:
 
 import json
 import logging
+from typing import Any, Optional, cast
 
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
@@ -261,10 +262,15 @@ class CoOccurrenceField(Field):
     # would mean inventing an interaction history that never happened.
     # See #556.
     roundtrip_policy: str = "carry"
-    roundtrip_note: str = None
 
     @classmethod
-    def export_state(cls, model_instance, field_name, field_value, **kwargs):
+    def export_state(
+        cls,
+        model_instance: Any,
+        field_name: str,
+        field_value: Any = None,
+        **kwargs: Any,
+    ) -> Optional[dict[str, Any]]:
         """Export this record's association edges.
 
         Returns:
@@ -281,8 +287,11 @@ class CoOccurrenceField(Field):
         except Exception:
             return None
 
-        raw = POPOTO_REDIS_DB.zrange(
-            field.get_edge_key(model_class, pk), 0, -1, withscores=True
+        raw = cast(
+            "list[tuple[Any, float]]",
+            POPOTO_REDIS_DB.zrange(
+                field.get_edge_key(model_class, pk), 0, -1, withscores=True
+            ),
         )
         if not raw:
             return None
@@ -301,7 +310,13 @@ class CoOccurrenceField(Field):
         return {"edges": edges, "max_edges": int(field.max_edges)}
 
     @classmethod
-    def import_state(cls, model_instance, field_name, state, **kwargs):
+    def import_state(
+        cls,
+        model_instance: Any,
+        field_name: str,
+        state: Any,
+        **kwargs: Any,
+    ) -> None:
         """Restore this record's association edges after import.
 
         Written as a raw ``DELETE`` + ``ZADD``, never through ``link`` or

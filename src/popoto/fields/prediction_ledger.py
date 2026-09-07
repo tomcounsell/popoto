@@ -33,6 +33,8 @@ import time
 
 import msgpack
 
+from typing import Any, Optional
+
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 
@@ -119,10 +121,11 @@ class PredictionLedgerMixin:
     # error sorted set's member for this record is derived deterministically
     # from the carried entry. See #556 for the full six-subsystem analysis.
     roundtrip_policy: str = "carry"
-    roundtrip_note: str = None
 
     @classmethod
-    def export_state(cls, model_instance, **kwargs):
+    def export_state(
+        cls, model_instance: Any, **kwargs: Any
+    ) -> Optional[dict[str, Any]]:
         """Export this record's prediction-ledger entry.
 
         Model-level hook (see ``popoto.transfer.export``'s MRO pass), so the
@@ -160,7 +163,7 @@ class PredictionLedgerMixin:
         }
 
     @classmethod
-    def import_state(cls, model_instance, state, **kwargs):
+    def import_state(cls, model_instance: Any, state: Any, **kwargs: Any) -> None:
         """Restore this record's prediction-ledger entry after import.
 
         Written as a raw ``HSET`` of the re-packed entry, deliberately NOT

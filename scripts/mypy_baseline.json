@@ -14,7 +14,7 @@
     "(root)": 30,
     "embeddings": 2,
     "extraction": 2,
-    "fields": 423,
+    "fields": 421,
     "models": 396,
     "pubsub": 11,
     "recipes": 147,
@@ -27,5 +27,5 @@
     "offset_7_1_1_minus_8_1_0": 52,
     "redis==7.1.1": 1172
   },
-  "total": 1042
+  "total": 1040
 }
