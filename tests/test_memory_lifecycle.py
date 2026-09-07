@@ -312,14 +312,28 @@ def test_tick_forgets_low_importance_idle():
 
 
 def test_tick_does_not_forget_semantic():
-    """Semantic records are never deleted by default policy."""
+    """Semantic records are never deleted by ``tick()``.
+
+    End-to-end, and deliberately so: three independent layers protect a
+    semantic record, and this asserts the outcome rather than any one of them.
+    ``_tick_pass`` drops semantic records from the hydrated corpus,
+    ``_default_should_forget`` returns False on tier, and the re-check-tier
+    guard re-reads the tier before deleting. Removing any single layer leaves
+    this green; removing all three fails it. The per-layer pins live in
+    ``test_assess_semantic_not_forget_eligible`` (policy) and
+    ``test_forget_guard_skips_record_promoted_to_semantic`` (guard).
+    """
     lifecycle = MemoryLifecycle(
         model_class=TrackedMemory,
         importance_field="relevance",
     )
-    # Set thresholds so any non-semantic record would be forgotten
+    # Set thresholds so any non-semantic record would be forgotten.
+    # -1.0, not 0.0: the condition is `idle > FORGET_IDLE_SECONDS`, so a
+    # freshly-saved record (idle 0) only clears the idle gate against a
+    # negative floor. At 0.0 this test asserts its negative for the wrong
+    # reason and stays green even with the semantic guard deleted (#674).
     lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1
-    lifecycle.FORGET_IDLE_SECONDS = 0.0
+    lifecycle.FORGET_IDLE_SECONDS = -1.0
 
     record = _make_record(tier="semantic", confirm_accesses=0)
     record_key = record.key
@@ -442,9 +456,12 @@ def test_custom_should_forget():
         importance_field="relevance",
         should_forget=never_forget,
     )
-    # Would normally forget under extreme thresholds
+    # Would normally forget under extreme thresholds.
+    # -1.0, not 0.0: the condition is `idle > FORGET_IDLE_SECONDS`. At 0.0 the
+    # DEFAULT policy would also decline to forget, so the test could not tell
+    # a honored custom callable from an ignored one (#674).
     lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1
-    lifecycle.FORGET_IDLE_SECONDS = 0.0
+    lifecycle.FORGET_IDLE_SECONDS = -1.0
 
     record = _make_record(tier="episodic", confirm_accesses=0)
 
@@ -502,8 +519,11 @@ def test_assess_semantic_not_forget_eligible():
         model_class=TrackedMemory,
         importance_field="relevance",
     )
+    # -1.0, not 0.0: the condition is `idle > FORGET_IDLE_SECONDS`, so at 0.0
+    # forget_eligible is False on the idle gate alone and the assertion never
+    # depends on the semantic protection it is named for (#674).
     lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1
-    lifecycle.FORGET_IDLE_SECONDS = 0.0
+    lifecycle.FORGET_IDLE_SECONDS = -1.0
 
     record = _make_record(tier="semantic", confirm_accesses=0)
     state = lifecycle.assess(record)
@@ -772,32 +792,38 @@ def test_forget_guard_skips_record_promoted_to_semantic():
     """Re-check-tier guard: a record promoted-to-semantic between snapshot and
     delete is NOT forgotten.
 
-    Simulates a concurrent promotion by flipping the tier directly in Redis
-    (monkeypatching the stale in-memory snapshot), then asserting that the
-    forget pass skips the delete.
+    Simulates a concurrent promotion by flipping the tier directly in Redis,
+    then asserting that the forget pass skips the delete.
+
+    **The flip has to land mid-tick.** It used to be written before ``tick()``
+    was called, which cannot reach the guard: ``_tick_pass`` re-hydrates the
+    corpus from Redis and drops semantic records before the forget phase runs,
+    so an already-flipped record never becomes a forget candidate. Nothing was
+    exercised and the test passed with the guard deleted (#674). Injecting the
+    flip from inside ``should_forget`` places it exactly where the real race
+    lives: after hydration, before the guard re-reads.
     """
     import msgpack
     import popoto as popoto_pkg
 
     redis = popoto_pkg.get_redis()
 
-    lifecycle = MemoryLifecycle(
-        model_class=TrackedMemory,
-        importance_field="relevance",
-    )
-    # Tune so record would normally be forgotten (zero importance, zero idle)
-    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1  # floor above max importance
-    lifecycle.FORGET_IDLE_SECONDS = 0.0
-
     record = TrackedMemory(tier="episodic")
     record.save()
     live_key = record._redis_key
 
-    # Simulate a concurrent promotion: directly set tier to "semantic" in Redis
-    # before tick() runs its forget evaluation.  The stale in-memory snapshot
-    # still says "episodic", but the guard re-reads from Redis and should skip.
     encoded_semantic = msgpack.packb("semantic")
-    redis.hset(live_key, "tier", encoded_semantic)
+
+    def promote_then_forget(rec, lifecycle):
+        """Concurrent promotion, racing the forget decision it just won."""
+        redis.hset(rec._redis_key, "tier", encoded_semantic)
+        return True
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        should_forget=promote_then_forget,
+    )
 
     # Run tick — should NOT delete the record (guard detects tier == semantic)
     lifecycle.tick()
@@ -811,29 +837,38 @@ def test_forget_guard_skips_record_promoted_to_semantic():
 def test_forget_guard_skips_absent_key():
     """Re-check-tier guard: a record already deleted (key absent) is skipped
     without raising an exception.
+
+    **The deletion has to land mid-tick**, for the same reason as the
+    promoted-to-semantic case above: a key removed before ``tick()`` is never
+    hydrated into the corpus, so the forget phase has nothing to skip and the
+    guard is never reached. The test passed with the guard deleted (#674).
+    Deleting from inside ``should_forget`` puts the removal between hydration
+    and the guard's re-read, which is where a concurrent deleter would land.
     """
     import popoto as popoto_pkg
 
     redis = popoto_pkg.get_redis()
 
-    lifecycle = MemoryLifecycle(
-        model_class=TrackedMemory,
-        importance_field="relevance",
-    )
-    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1  # everything would be forgotten
-    lifecycle.FORGET_IDLE_SECONDS = 0.0
-
     record = TrackedMemory(tier="episodic")
     record.save()
     live_key = record._redis_key
 
-    # Simulate concurrent deletion: remove the key before tick() runs forget
-    redis.delete(live_key)
+    def delete_then_forget(rec, lifecycle):
+        """Concurrent deletion, racing the forget decision it just won."""
+        redis.delete(rec._redis_key)
+        return True
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        should_forget=delete_then_forget,
+    )
 
     # tick() should complete without raising and forgotten count should be 0
     # (skip-delete because key is absent — NOT a double-delete error)
     summary = lifecycle.tick()
     assert summary["forgotten"] == 0
+    assert not redis.exists(live_key)
 
 
 def test_forget_guard_forgets_record_with_undecodable_tier(monkeypatch):
