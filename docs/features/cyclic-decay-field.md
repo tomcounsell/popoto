@@ -107,6 +107,44 @@ These methods are used internally by [ObservationProtocol](observation-protocol.
 
 You can also call them directly for custom cycle management outside the ObservationProtocol.
 
+#### Learned amplitudes persist across saves
+
+Adjusted amplitudes are **per-record learned state** and survive ordinary saves. A cycle's `period` and `phase` stay declarative — they are refreshed from the model's `cycles` declaration on every save — but its `amplitude` is carried over from what `strengthen_cycle()` / `weaken_cycle()` accumulated:
+
+```python
+directive.strengthen_cycle("relevance", factor=1.5)
+directive.title = "revised"
+directive.save()          # amplitude stays at 1.5x, not reset to the default
+```
+
+Stored cycles are matched to declared ones **by period**, so reordering or editing your `cycles` declaration keeps each period's learned amplitude with that period. Adding a period to the declaration gives it the declared amplitude (nothing has been learned for it yet); removing one drops it — the declaration is authoritative about *which* cycles exist, and learning is authoritative about how strong each one is.
+
+If you edit a declared amplitude for a period that has already learned a value, the learned value wins. Popoto does not store the declared baseline separately, so it cannot tell "the developer changed the default" from "learning diverged."
+
+!!! warning "A cycle weakened to zero stays at zero"
+
+    `weaken_cycle()` snaps amplitudes below `0.01` to `0.0`, and that zero is preserved like any other learned value — every future save keeps it. This is deliberate: a silenced cycle should stay silenced. There is no reset method; to restore the declared defaults for a record, delete its entry from the cycles companion hash, and the next `save()` will re-adopt them:
+
+    ```python
+    field = MyModel._meta.fields["relevance"]
+    key = field.get_cycles_hash_key(record, "relevance")
+    popoto.get_redis().hdel(key, record.db_key.redis_key)
+    record.save()   # declared amplitudes restored
+    ```
+
+!!! note "Pipeline ordering"
+
+    When a save and an amplitude adjustment share one pipeline, queue the **save first**:
+
+    ```python
+    pipe = popoto.get_redis().pipeline()
+    record.save(pipeline=pipe)
+    record.strengthen_cycle("relevance", factor=1.2, pipeline=pipe)
+    pipe.execute()
+    ```
+
+    Both operations read directly but write through the pipeline, so queuing the adjustment first means the save's read runs before the adjustment's write executes, and the save's write lands last — silently discarding the adjustment.
+
 ### Refreshing the Decay Clock
 
 ```python

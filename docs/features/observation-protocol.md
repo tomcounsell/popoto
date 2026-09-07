@@ -133,7 +133,7 @@ Supporting notes:
 
 - **DecayingSortedField**: `acted` calls `touch()` to refresh the decay clock.
 - **AccessTrackerMixin**: `acted` and `used` call `confirm_access()`; `dismissed`, `deferred`, and `contradicted` call `discard_staged_access()`.
-- **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles (`contradicted` more aggressively).
+- **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles (`contradicted` more aggressively). These adjustments are durable — an ordinary `save()` preserves the learned amplitude rather than resetting it to the model's declared default, so repeated outcomes accumulate. See [Learned amplitudes persist across saves](cyclic-decay-field.md#learned-amplitudes-persist-across-saves). One ordering caveat: if you pass a shared `pipeline` to both `apply_outcome()` and `save()`, queue the `save()` first, or the amplitude adjustment is discarded when the pipeline executes.
 - **ConfidenceField**: `acted` corroborates; `contradicted` contradicts.
 - **PredictionLedgerMixin**: `acted`, `used`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values (`used` maps to moderate error `Defaults.PL_AUTO_RESOLVE_USED`).
 
