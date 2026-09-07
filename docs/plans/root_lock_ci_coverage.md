@@ -382,8 +382,8 @@ is needed there, since this plan changes CI rather than local setup.
 |---|---|---|
 | 1 | `uv sync --locked --all-extras --no-extra benchmark` (uv 0.12.2, py3.12) | exit 0 |
 | 2 | `uv run --no-sync python scripts/check_lock_imports.py` | exit 0, one version line per package |
-| 3 | `uv pip uninstall anthropic && uv run --no-sync python scripts/check_lock_imports.py` | **non-zero**, names `anthropic` |
-| 4 | `pytest tests/test_check_lock_imports.py -q` | 2 passed |
+| 3 | `uv pip uninstall --python $ENV/bin/python anthropic && $ENV/bin/python scripts/check_lock_imports.py` | **non-zero**, names `anthropic`. `--python` is required: `uv pip` does not honour `UV_PROJECT_ENVIRONMENT`, so without it the uninstall silently targets a different environment and the row passes vacuously (observed once during build). |
+| 4 | `pytest tests/test_check_lock_imports.py -q` | 4 passed |
 | 5 | `python -c "import yaml; d=yaml.safe_load(open('.github/workflows/lock-check.yml')); print(list(d['jobs'])); print(d[True]['pull_request']['paths']); print([s.get('name') for s in d['jobs']['lock-check']['steps']])"` | `['lock-check']`; paths include `scripts/check_lock_imports.py`; every added step has a non-null `name` (Success Criterion 4) |
 | 6 | `git diff --stat origin/main...HEAD` | only the five files in Success Criterion 5 |
 | 7 | `git diff origin/main...HEAD -- CLAUDE.md \| grep -c 'anthropic'` | ≥ 1 — anchors on the spike-3 limitation, which is unique to the new paragraph (a bare `grep uv.lock CLAUDE.md` already matches the pre-existing text and would pass vacuously) |

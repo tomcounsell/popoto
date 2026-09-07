@@ -11,27 +11,52 @@ on:
     paths:
       - "pyproject.toml"
       - "uv.lock"
+      - "scripts/check_lock_imports.py"
       - ".github/workflows/lock-check.yml"
   push:
     branches: [main]
     paths:
       - "pyproject.toml"
       - "uv.lock"
+      - "scripts/check_lock_imports.py"
 
 jobs:
   lock-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
       # Pin the uv version rather than tracking latest. An older uv rewrites
       # the lock in an earlier revision format (dropping upload-time metadata)
       # and so reports an up-to-date lock as stale; a newer one can bump the
       # format and fail a lock that is actually fine. Either way the gate would
       # fail for a reason unrelated to the change under review.
-      - uses: astral-sh/setup-uv@v7
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@v7
         with:
           version: "0.12.2"
 
-      - name: Verify uv.lock matches pyproject.toml
+      - name: "Lock is consistent with pyproject.toml (uv lock --check)"
         run: uv lock --check
+
+      # `uv lock --check` above proves the lock is CONSISTENT. It does not
+      # prove it is INSTALLABLE, and no other job installs it -- tests.yml and
+      # lint.yml both `pip install -e` from pyproject floors, so every
+      # lockfile-only Dependabot PR touches a file nothing exercises (#669).
+      # The two steps below are what make a green check on such a PR a
+      # statement about the diff under review.
+      #
+      # `--no-extra benchmark` (which requires `--all-extras`) skips
+      # torch/sentence-transformers: hundreds of MB, uncached here, and already
+      # installed from floors by both tests.yml jobs.
+      - name: "Locked dependency set installs (uv sync --locked)"
+        run: uv sync --locked --python 3.12 --all-extras --no-extra benchmark
+
+      # Imports the third-party packages directly. Seven declared extras --
+      # anthropic, openai, voyage, monitoring, dataframe, ulid, ksuid -- are
+      # installed by no other job, so this is their only coverage. It does NOT
+      # prove a bumped package still works: the anthropic 0.120.2 -> 1.2.0
+      # major imports cleanly on both sides. See CLAUDE.md.
+      - name: "Locked extras import (packages no other job installs)"
+        run: uv run --no-sync python scripts/check_lock_imports.py
