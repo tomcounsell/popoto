@@ -2928,7 +2928,10 @@ no workflow at all: tests.yml runs <code>-m "not slow"</code>, so the stress sui
 local-only gate. Valkey is deliberately not run locally: redis-py talks to
 Redis and Valkey identically and the project forbids Redis modules, so local
 Redis covers the same ground; tests.yml runs the real Valkey job on every PR
-and every push to <code>main</code>.</p>
+and every push to <code>main</code>. <code>examples.yml</code> (the kitchen demo's lockfile check and
+headless TUI smoke test) is likewise not mirrored by <code>ci-local.sh</code> — it is a
+separate uv project on Redis DB 13; run it with
+<code>cd examples &amp;&amp; uv sync --extra dev &amp;&amp; REDIS_URL=redis://localhost:6379/13 uv run --no-sync pytest tests/</code>.</p>
 <h2 id="test-isolation-db-15-and-the-six-expected-failures">Test isolation: DB 15, and the six expected failures<a class="headerlink" href="#test-isolation-db-15-and-the-six-expected-failures" title="Permanent link">&para;</a></h2>
 <p>The suite isolates onto <strong>Redis DB 15</strong> through the <code>popoto.pytest_plugin</code>
 entry point (both <code>import popoto</code> and <code>import src.popoto</code> collapse onto one
