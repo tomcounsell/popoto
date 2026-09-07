@@ -147,27 +147,149 @@ No relevant external findings — proceeding with codebase context and the spike
 
 ## Spike Results
 
-_(placeholder)_
+Appetite is Small, so the spike budget is 2. One was run empirically; the
+second was resolvable by code-read and is recorded as such.
+
+### spike-1: A 4th element in a stored cycle tuple is invisible to `CYCLIC_DECAY_LUA`
+
+- **Assumption**: "Appending a declared-baseline slot to the stored cycle tuple
+  (`[period, amplitude, phase, declared]`) does not change any score the ranking
+  Lua produces, so the read path needs no change and old/new payloads can
+  coexist in one hash."
+- **Method**: prototype (live, against Redis DB 12)
+- **Finding**: **Confirmed.** Two members in one sorted set, identical
+  timestamps, one with `[[86400, 5.0, 0]]` and one with `[[86400, 5.0, 0, 2.0]]`
+  in the cycles hash, evaluated through the real `CYCLIC_DECAY_LUA` via
+  `run_lua`, returned byte-identical scores:
+  `[b'm3', b'-3.9751751056492', b'm4', b'-3.9751751056492']`. The script reads
+  `c[1]`/`c[2]`/`c[3]` from each inner table (`cyclic_decay_field.py:152-159`)
+  and never inspects `#c`, so `cmsgpack.unpack` producing a 4-entry inner table
+  is inert. **Environment:** popoto @ `c046e1bd`, editable install in
+  `/Users/valorengels/src/popoto/.venv`, `REDIS_URL=redis://localhost:6379/12`
+  set before `import popoto`.
+- **Confidence**: high
+- **Impact on plan**: This is what makes the whole approach Small. The baseline
+  can live *inside the existing cycles entry* rather than in a second companion
+  hash, with no Lua change, no new Redis key, no new `on_delete` cleanup, and
+  no numkeys change. A mixed-vintage hash (some members 3-element, some
+  4-element) is a valid steady state, not a migration window to be closed.
+
+### spike-2: `_adjust_cycle_amplitudes` preserves an unknown 4th element; `import_state` truncates it
+
+- **Assumption**: "The learning path and the transfer path both round-trip a
+  4-element tuple without special-casing."
+- **Method**: code-read (`src/popoto/models/base.py:2695-2762`,
+  `src/popoto/fields/cyclic_decay_field.py:263-370`)
+- **Finding**: **Split.**
+  - `_adjust_cycle_amplitudes` **preserves** it: it unpacks, mutates `cycle[1]`
+    in place, and repacks the same list objects
+    (`base.py:2740-2751`). Extra slots survive untouched. No change needed.
+  - `export_state` **preserves** it: `[list(cycle) for cycle in cycles]`
+    (`cyclic_decay_field.py:293`) copies whatever arity is stored.
+  - `import_state` **truncates** it: it rebuilds each entry as
+    `[period, amplitude, phase]` (`cyclic_decay_field.py:344-349`), discarding a
+    4th slot. An export/import round-trip would therefore silently strip the
+    baseline, and the imported record's next save would re-adopt the current
+    declaration as its baseline.
+- **Confidence**: high
+- **Impact on plan**: `import_state` must be widened to carry the optional 4th
+  slot. This is the one non-obvious edit in the change and is called out as its
+  own task and its own Verification row rather than left to a builder to notice.
 
 ## Data Flow
 
-_(placeholder)_
+The change touches one write path and leaves the read path alone.
+
+1. **Entry point**: `instance.save()` on a model with a `CyclicDecayField`.
+2. **`Model.save()`** → field-lifecycle dispatch → `CyclicDecayField.on_save`
+   (`cyclic_decay_field.py:513`).
+3. **`on_save`, read half** — `hget(cycles_hash_key, member_key)`, msgpack
+   decode, build `learned: dict[period, list[amplitude]]`
+   (`:560-586`). **Change:** build a parallel `baselines: dict[period,
+   list[baseline | None]]` from slot 3 of each stored entry, `None` when the
+   entry has fewer than 4 slots.
+4. **`on_save`, merge half** — for each declared cycle, pop the FIFO-matched
+   stored amplitude (`:588-599`). **Change:** also pop the FIFO-matched
+   baseline. Decide:
+   - baseline is `None` (legacy entry) → keep the learned amplitude
+     (today's behavior), and record the declared amplitude as the baseline.
+   - baseline `== declared` → declaration unchanged → keep the learned
+     amplitude, re-record the same baseline.
+   - baseline `!= declared` → **declaration edited** → discard the learned
+     amplitude, adopt the declared one, record it as the new baseline, and emit
+     one `logger.info`.
+5. **`on_save`, write half** — `hset` the normalized list, now
+   `[period, amplitude, phase, baseline]` (`:606-610`). The `hdel`
+   (empty-cycles) branch is untouched.
+6. **Learning** — `strengthen_cycle` / `weaken_cycle` mutate slot 1 only; slot 3
+   is carried through unchanged (spike-2). The baseline therefore keeps
+   recording *the declaration*, never the learned value.
+7. **Read/output** — `CYCLIC_DECAY_LUA` ranks on slots 1-3 and ignores slot 3's
+   neighbor (spike-1). Scores are unchanged for every record whose declaration
+   has not moved.
+8. **Transfer** — `export_state` carries all four slots; `import_state` must be
+   widened to write them back (spike-2).
 
 ## Why Previous Fixes Failed
 
-_(placeholder)_
+| Prior Fix | What It Did | Why It Failed / Was Incomplete |
+|-----------|-------------|-------------------------------|
+| PR #201 (#196) | `on_save` wrote declared amplitudes unconditionally | Correct when written — there was no learning yet. Went stale within 24 hours when #206 landed the learning methods, and stayed stale for six months because no test encoded either intent. |
+| PR #687 (#679) | Inverted to "learned amplitude always wins; period/phase stay declarative" | Not a failed fix — it is the right fix for the case it addressed, and it is what makes this gap *expressible*. It is incomplete only in that a two-input merge (declared, learned) cannot express a three-state question. |
+
+**Root cause pattern:** both attempts computed the merge from two values when
+the decision needs three. With only *declared* and *learned* in hand, "they
+differ" is ambiguous, and each fix resolved the ambiguity by picking a constant
+winner — first declared, then learned. The fix is not a third choice of winner
+but the missing third input: the declaration *as of the last save*, which turns
+"they differ" into two distinguishable facts (*the developer moved it* vs *the
+learner moved it*).
 
 ## Architectural Impact
 
-_(placeholder)_
+- **New dependencies**: none. No new import, key, script, or Redis command.
+- **Interface changes**: none to any public Python API.
+  `CyclicDecayField.__init__`, `strengthen_cycle`, `weaken_cycle`,
+  `get_cycles_hash_key` and friends keep their signatures. The **stored payload
+  shape** changes, from a 3-element to an optional-4-element inner tuple, which
+  is a documented format extension rather than an API change.
+- **Coupling**: unchanged. The baseline lives in the entry it describes, so
+  nothing new needs to be created, deleted, partitioned or key-derived. The
+  rejected alternative — a `:cycle_baselines` companion hash — would have added
+  a third key to `on_save`, `on_delete`, `export_state`, `import_state` and the
+  subclass-companion-key tests.
+- **Data ownership**: unchanged. `CyclicDecayField` already owns the cycles
+  hash end to end.
+- **Reversibility**: high, in both directions. Reverting the code leaves
+  4-element entries in Redis that the reverted `on_save` reads (it takes
+  `entry[0]`/`entry[1]` from anything with `len >= 2`) and rewrites as
+  3-element on the next save. Forward-adoption is equally soft: a legacy
+  3-element entry is a valid input that acquires a baseline on its next save.
+  **No migration script is needed or wanted.**
 
 ## Appetite
 
-_(placeholder)_
+**Size:** Small
+
+**Team:** Solo dev
+
+**Interactions:**
+- PM check-ins: 1 — one decision is a genuine product call (Open Question 1:
+  reset vs. proportional rescale on a detected edit).
+- Review rounds: 1
+
+This is a ~40-line change to one method plus a widened `import_state`, with the
+read path untouched and no migration. The cost is in the test matrix and in
+getting the semantics named correctly in the docs, not in the code.
 
 ## Prerequisites
 
-_(placeholder)_
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis/Valkey on localhost:6379 | `redis-cli -n 12 ping` | The suite and the spike both need a live server |
+| Lane-scoped test DB | `test "$POPOTO_TEST_DB" = "12"` | DB 15 is shared across worktrees (`docs/sdlc/do-sdlc.md`); DB 0 is the live agent store |
+| Editable install resolves to this checkout | `python -c "import popoto, pathlib, sys; sys.exit(0 if 'popoto' in str(pathlib.Path(popoto.__file__)) else 1)"` | Worktree gotcha 1 — a stale editable install silently tests another tree |
+| Optional extras installed | `python -c "import numpy, sentence_transformers"` | `.[dev]` alone deselects ~95 tests (worktree gotcha 2) |
 
 ## Solution
 
