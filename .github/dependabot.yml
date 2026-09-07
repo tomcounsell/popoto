@@ -10,13 +10,11 @@
 # `applies-to: version-updates` groups below, so nothing here slows an advisory
 # response.
 #
-# examples/ is deliberately absent. examples/pyproject.toml declares
-# requires-python ">=3.8" while depending on popoto (">=3.10") as an editable
-# path dependency, so examples/uv.lock cannot be regenerated at all. Fixing that
-# forces a from-scratch relock that jumps popoto 1.0.0b1 -> 1.8.2 and textual
-# 0.73 -> current major, which breaks examples/popoto_kitchen/ -- and nothing in
-# CI exercises that directory, so the migration has no automated signal. Tracked
-# separately in #611.
+# examples/ is covered as of #611. It was excluded because examples/pyproject.toml
+# declared requires-python ">=3.8" while depending on popoto (">=3.10") as an
+# editable path dependency, which made examples/uv.lock unregenerable, and
+# because nothing in CI exercised the directory. Both are fixed: the floor is
+# ">=3.10" and examples.yml runs a lockfile check plus a headless TUI smoke test.
 
 version: 2
 
@@ -59,6 +57,43 @@ updates:
     # Dependabot's own default is 3 days as of July 2026. A week gives the
     # ecosystem longer to flag a bad or malicious release before it reaches a
     # PR here. Security updates are exempt.
+    cooldown:
+      default-days: 7
+
+  # The kitchen demo, a separate uv project with its own lockfile. Unlike the
+  # root entry this one is NOT lockfile-only: examples/popoto-kitchen is not
+  # published, so nothing downstream inherits its floors, and a raised floor is
+  # exactly the signal that matters here — the demo is documentation, and it
+  # should demonstrate the APIs a reader gets on a fresh install. The textual
+  # >=8.2 floor this PR set is the case in point: the source had drifted onto
+  # APIs the declared floor did not have.
+  - package-ecosystem: "uv"
+    directory: "/examples"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+
+    # One PR at a time. The demo is a single small manifest and its failure
+    # mode is a broken TUI, not a broken library; a queue of three would be
+    # noise against the root entry's.
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "chore(deps)"
+
+    # popoto itself is a path dependency (tool.uv.sources), so Dependabot will
+    # not try to version it — this entry only ever moves textual and its
+    # transitive tree.
+    groups:
+      examples-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
     cooldown:
       default-days: 7
 

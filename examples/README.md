@@ -66,6 +66,8 @@ uv run popoto-kitchen --ops
 - `SortedField` - Rating for range queries
 - `GeoField` - Location-based queries with distance
 - `location_radius`, `location_with_distances` - Geo query parameters
+- **`save(migrate_key=True)`** - "Rename" changes `name`, a KeyField. See the
+  Menu Items note below for the contract.
 
 ### Menu Items
 - Browse items across all restaurants
@@ -75,6 +77,15 @@ uv run popoto-kitchen --ops
 **Popoto features demonstrated:**
 - `Relationship` - MenuItem → Restaurant
 - `SortedField` range queries - `price__gte`, `price__lte`
+- **Sorted-field partitioning** - `price` is sorted *within* the `category`
+  KeyField, so Redis holds one sorted set per category
+  (`MenuItem:_price:<category>`). A range query has to name the partition it is
+  scanning. The screen sends the price range to Redis only when a category is
+  selected and falls back to an in-memory filter otherwise, and the status line
+  says which one served the result.
+- **`save(migrate_key=True)`** - "Move Category" changes a KeyField, which is
+  the record's Redis identity. Identity is immutable by default; the flag is
+  the explicit opt-in that writes the new key and deletes the old hash.
 - Lazy relationship loading
 
 ### Orders
@@ -202,3 +213,30 @@ uv run textual run --dev -c python -m popoto_kitchen
 # Take a screenshot
 uv run textual run -c python -m popoto_kitchen --screenshot
 ```
+
+### Tests
+
+`tests/test_kitchen_smoke.py` drives all five tabs headlessly through Textual's
+`App.run_test()`.
+
+```bash
+uv sync --extra dev
+REDIS_URL=redis://localhost:6379/13 uv run --no-sync pytest tests/ -v
+```
+
+`REDIS_URL` must name a database **before pytest starts** — it cannot be set
+from a fixture, because popoto's pytest plugin binds the connection in
+`pytest_configure`, ahead of collection. `tests/conftest.py` asserts the
+variable is set and refuses database 0; the suite seeds a small dataset and
+clears it with model-scoped deletes rather than flushing.
+
+Every screen wraps its popoto calls in a blanket
+`except Exception: self.app.notify(..., severity="error")`, so a broken query
+renders as an empty table rather than a crash. The test subclasses the app and
+overrides the public `App.notify()`, failing on any error-severity
+notification — that assertion is what turns a silent failure into a red test.
+
+CI runs the same suite plus `uv lock --check` in this directory
+(`.github/workflows/examples.yml`), triggered by changes to `examples/**` or
+`src/popoto/**`. Dependabot keeps the lockfile current
+(`.github/dependabot.yml`, `directory: "/examples"`).
