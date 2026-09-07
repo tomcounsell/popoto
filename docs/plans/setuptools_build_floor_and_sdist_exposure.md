@@ -402,6 +402,33 @@ Two tests, both fast and neither building anything:
 - No user-facing docs change. Nothing here alters an API, an install command, or
   anything a consumer of the library can observe.
 
+## Critique Results
+
+War room run 2026-09-07, FULL depth, independent roster (3 critics): Risk &
+Robustness, Scope & Value, History & Consistency. Verdict: **NEEDS REVISION**.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | Scope & Value + History & Consistency (converged) | The top-level allowlist is the weakest element of the design and two independent lenses landed on it. Scope: the plan's own Risks section concedes it "will fail a future release that legitimately adds a top-level file" and calls that intended — converting a nil-exposure check into a recurring release-time failure mode that blocks `publish` under release pressure, for a rule that does not foreclose the advisory (a stray directory is not the normalization exploit). History: the plan quotes CLAUDE.md's criticism of `check_lock_imports.py` — it "hand-lists its packages and nothing enforces the correspondence" — promises to "avoid inheriting that shape where it can", and then proposes exactly that shape with no explanation of why it is unavoidable here. | Solution §2 — rule set and severity | Two things must both land. (1) Split severity: the ASCII rule and the traversal/dotfile rules stay hard-fail; the top-level allowlist becomes a **warning** that prints the unexpected entry and exits 0, so a legitimate packaging addition never blocks a release. (2) State the disanalogy explicitly in Solution §2 after "The allowlist is the six entries the 1.9.0 sdist actually has": unlike `check_lock_imports.py`, which *could* parse `[project.optional-dependencies]` and does not, there is no machine-readable declaration of intended sdist membership to parse against — a `MANIFEST.in` would be that declaration and No-Gos rules one out — so the hand-list is the source of truth by design, not a shortcut around one. |
+| CONCERN | Risk & Robustness | The plan never says how the workflow step locates the sdist. `python -m build` writes a version-stamped filename that changes every release, and a bare `dist/*.tar.gz` glob that expands to zero args (build-layout drift, or a stray leftover file) makes the step a false green rather than a hard failure. | Solution §2, Task 4 | Pin the invocation in the plan as `python scripts/check_sdist_contents.py dist/*.tar.gz`, and in the script's entry point resolve with `sorted(glob.glob(...))` then `raise SystemExit(f"expected exactly one sdist in dist/, found {matches!r}")` when `len(matches) != 1`. Zero matches must fail, not pass vacuously. |
+| CONCERN | Risk & Robustness | The four rules inspect member *path strings* only. A symlink or hardlink member's `linkname` can point outside the extraction root or at an absolute path while the member's own `name` is clean ASCII with no `..` — undetected by every rule as written. | Solution §2 — rule table | Add to the member loop, beside the `..`/absolute check on `member.name`: `if member.issym() or member.islnk(): fail(f"{member.name}: symlink/hardlink members are not permitted in the sdist")`. `tarfile.TarInfo.issym()`/`islnk()` are metadata-only, so this stays inside the "never extract" design. |
+| CONCERN | Scope & Value | Only one of the four rules (ASCII paths) maps to the cited advisory; dotfiles, the allowlist, and the traversal check are general artifact hygiene. A Small-appetite floor bump is carrying a general-purpose packaging scanner for a risk the plan itself measures at nil. | Solution §2, and the PR body | Keeping the extra rules is defensible as defense-in-depth, but the scope decision must be *visible* rather than implicit: the PR body must state which rules are advisory remediation (ASCII) and which are general hygiene shipped alongside it, so a reviewer judges two decisions rather than one bundle. |
+| CONCERN | Structural check | Four of the nine tasks (2, 4, 6, 9) carry no validation command, so "done" is unfalsifiable for the script, the workflow wiring, the drift test, and the documentation. | Step by Step Tasks | Give each task a command whose exit status is the completion test — e.g. task 3 already implies `python scripts/check_sdist_contents.py <path-to-1.9.0.tar.gz>; echo $?`, and task 6 implies `pytest tests/test_sdist_contents.py -q`. A task whose validation is "read it and agree" should say so explicitly rather than leave the column blank. |
+| NIT | Scope & Value | The plan cross-references AC1, AC3, and AC4 by number but never mentions AC2, even though Solution §1 is what AC2 asks for. A reader cannot confirm all four criteria are covered without opening the issue. | Success Criteria | — |
+| NIT | History & Consistency | The `[build-system] requires` exemption from CLAUDE.md's floor-propagation doctrine is a first-of-its-kind change with no repo precedent either way — CLAUDE.md's Dependency Updates section never mentions the build-system table. The mechanics are correct; the argument is simply being made fresh rather than confirmed against past practice, and should say so. | Solution §1 | — |
+
+### Structural Check Results
+
+| Check | Status | Detail |
+|-------|--------|--------|
+| Required sections | PASS | Problem, Freshness Check, Research, Spike Results, Prior Art, Data Flow, Solution, Rabbit Holes, No-Gos, Risks, Success Criteria, Tasks, Documentation, Open Questions all present and non-empty |
+| Task numbering | PASS | 1–9, no gaps |
+| Dependencies valid | PASS | no `Depends On` references declared |
+| File paths exist | PASS | 5 of 7 exist; `scripts/check_sdist_contents.py` and `tests/test_sdist_contents.py` are new by design |
+| Prerequisites met | n/a | none declared |
+| Cross-references | PASS | every Success Criterion maps to a task; no No-Go appears in Solution; no Rabbit Hole appears in the tasks |
+| Task validation commands | **FAIL** | tasks 2, 4, 6, 9 have none — raised as a CONCERN above |
+
 ## Open Questions
 
 None for a human. All four acceptance criteria were resolved by the spikes
