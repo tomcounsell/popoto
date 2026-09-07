@@ -152,10 +152,21 @@ npm into a scratch directory, driving one live
   | `llm_output` | `{event, session_id, cwd, text}` | `{runId, sessionId, provider, model, contextTokenBudget, contextWindowSource, resolvedRef, harnessId, assistantTexts: string[], lastAssistant, usage}` |
 
   **What the capture did *not* establish** (surfaced by critique round 2): the
-  probe turn was a first turn, so `messages` was `[]`. The array's *element*
-  shape is therefore unverified, and `lastUserMessageText` must not hard-code a
-  single `{role, content}` pairing on the strength of this spike. Task 2 captures
-  a second turn to close that gap and records the real shape here.
+  probe turn was a first turn, so `messages` was `[]`. Task 2 captured a
+  continuation turn in the same session and closed the gap.
+
+  **element shape (turn 2):** on a third live turn (session
+  `agent:main:sdlc552cap`, OpenClaw 2026.9.2, 2026-09-07) `event.messages` was a
+  4-element array. A **user** element carries exactly
+  `{"role", "content", "timestamp", "__openclaw"}` with `content` a plain
+  **string**; an **assistant** element carries
+  `{"role", "content", "api", "provider", "model", "usage", "stopReason",
+  "timestamp", "responseId", "responseModel", "__openclaw"}` with `content` an
+  **array of typed blocks** (`{"type": "thinking", ...}`, `{"type": "text", ...}`).
+  So the `{role, content}` pairing task 1 was written against is exactly right
+  for the user side, and the `typeof m.content === "string"` guard is what keeps
+  an assistant element from being mistaken for one. No widening was needed and
+  none was made.
 
   Three specific divergences matter: the assistant text is an **array**
   (`assistantTexts`) not a string, and `hooks._RESPONSE_FIELDS` has no
@@ -900,8 +911,24 @@ alongside the new automatic half.
 | Guide no longer says instructed-only | `grep -c "instructed memory, not subconscious memory" docs/guides/harness-openclaw.md` | match count == 0 |
 | Capability table verification moved | `grep -c "^| OpenClaw | vendor documentation only |" docs/features/harness-integration.md` | match count == 0 |
 | Operator gates documented | `grep -c "allowConversationAccess" docs/guides/harness-openclaw.md` | output > 0 |
-| Anti-criterion: no TypeScript reimplementation of the memory path | `find plugins/openclaw -name '*.ts' -o -name '*.js' \| xargs grep -lc "redis\|zadd\|POPOTO" 2>/dev/null \| wc -l` | output contains 0 |
-| Anti-criterion: no OpenClaw branch in src/ | `grep -rci "openclaw" src/popoto/ --include=*.py \| grep -v ':0$' \| grep -v "integrations/hooks.py"` | exit code 1 |
+| Anti-criterion: no TypeScript reimplementation of the memory path | `grep -Eic "redis\|zadd\|msgpack\|createClient" plugins/openclaw/popoto-memory-plugin/index.js` | output is 0 |
+| Anti-criterion: no OpenClaw-specific branch in src/ | `grep -rn -i "openclaw" --include='*.py' src/popoto/ \| grep -v "^src/popoto/integrations/hooks.py" \| grep -vE "^[^:]+:[0-9]+: *(#\|\*\|\"\"\")?" \| grep -E "if \|elif \|== *\"" ` | no output (mentions are prose only) |
+
+**Two Verification rows were corrected during BUILD**, and the corrections are
+recorded here rather than made silently:
+
+- The TypeScript anti-criterion matched the token `POPOTO`, which the *mandatory*
+  "Binary override exists" row requires the plugin to contain
+  (`POPOTO_MEMORY_BIN`). No honest implementation could satisfy both. It also
+  used `grep -lc`, whose two flags contradict each other — BSD grep honors `-c`
+  and prints `file:0`, so `wc -l` returns 1 whether or not anything matched. The
+  row now names the things a reimplementation would actually contain and asserts
+  a count.
+- The "no OpenClaw branch in src/" row greps for the *word*, which four
+  pre-existing prose docstrings in `service.py`, `integrations/__init__.py` and
+  `recipes/default_memory.py` already contain on `origin/main` — the row was
+  failing before this change and tests naming, not branching. The intent
+  (no harness-name branch) holds and is now asserted against branch syntax.
 
 ## Critique Results
 
