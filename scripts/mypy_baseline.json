@@ -1,5 +1,5 @@
 {
-  "_comment": "Baseline for scripts/mypy_ratchet.py (#506). total is a ceiling, not an equality: the gate fails only when the count is ABOVE it. Packages in clean are pinned at exactly zero. Regenerate with 'python scripts/mypy_ratchet.py --update' and commit this file.",
+  "_comment": "Baseline for scripts/mypy_ratchet.py (#506). The ceiling is the SUM of 'packages', derived at read time; the total is deliberately not stored here (#677) because two PRs improving different packages merge their per-package lines cleanly while a stored total silently keeps one side's number, loosening the gate (#675). The ceiling is not an equality: the gate fails only when the count is ABOVE it. Packages in 'clean' are pinned at exactly zero. Regenerate with 'python scripts/mypy_ratchet.py --update' and commit this file.",
   "clean": [
     "integrations",
     "privacy"
@@ -26,6 +26,5 @@
     "note": "Non-gating. setup.cfg sets ignore_missing_imports=True and redis-py types every command Awaitable[T] | T, so the count moves with the redis-py major. Recorded so a contributor on the uv.lock-resolved 7.1.1 can confirm the offset instead of investigating it.",
     "offset_7_1_1_minus_8_1_0": 52,
     "redis==7.1.1": 1172
-  },
-  "total": 1038
+  }
 }

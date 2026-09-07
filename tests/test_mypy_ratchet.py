@@ -56,8 +56,9 @@ def baseline_file(tmp_path, monkeypatch):
     monkeypatch.setattr(ratchet, "current_environment", lambda: dict(BASE_ENV))
 
     def _write(**overrides):
+        # No "total" key: the ceiling is derived from "packages" (#677). Tests
+        # that need a stored one pass total= explicitly.
         data = {
-            "total": 3,
             "clean": [],
             "environment": dict(BASE_ENV),
             "packages": {"fields": 2, "models": 1},
@@ -182,17 +183,65 @@ def test_unparseable_baseline_fails(tmp_path):
         ratchet.load_baseline(path)
 
 
-@pytest.mark.parametrize("bad", ["12", -1, True, None])
-def test_bad_total_fails(tmp_path, bad):
+# A stored total is optional now, but a present-and-malformed one is still
+# rejected: None means absent, so it is not in this list (see the derive test).
+@pytest.mark.parametrize("bad", ["12", -1, True])
+def test_bad_stored_total_fails(tmp_path, bad):
     path = tmp_path / "b.json"
-    path.write_text(json.dumps({"total": bad}))
-    with pytest.raises(ratchet.RatchetError, match="non-negative integer"):
+    path.write_text(json.dumps({"total": bad, "packages": {"fields": 1}}))
+    with pytest.raises(ratchet.RatchetError, match="'total' must be a non-negative"):
+        ratchet.load_baseline(path)
+
+
+def test_absent_total_is_derived_from_packages(tmp_path):
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps({"packages": {"fields": 2, "models": 1}}))
+    assert ratchet.load_baseline(path)["total"] == 3
+
+
+def test_consistent_stored_total_is_accepted(tmp_path):
+    """A branch that forked before #677 still writes one. Do not hard-fail it."""
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps({"total": 3, "packages": {"fields": 2, "models": 1}}))
+    assert ratchet.load_baseline(path)["total"] == 3
+
+
+def test_inconsistent_stored_total_is_rejected_by_the_script(tmp_path):
+    """Acceptance criterion 3 of #677: the ratchet rejects it, not just a test."""
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps({"total": 1040, "packages": {"fields": 421}}))
+    with pytest.raises(ratchet.RatchetError, match="stores total 1040.*sum to 421"):
+        ratchet.load_baseline(path)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        None,
+        {},
+        [],
+        "fields",
+        {"fields": "12"},
+        {"fields": -1},
+        {"fields": True},
+        {"fields": None},
+    ],
+)
+def test_bad_packages_fails(tmp_path, bad):
+    """The derived ceiling is only as trustworthy as the field it sums."""
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps({"packages": bad}))
+    with pytest.raises(ratchet.RatchetError, match="'packages'"):
         ratchet.load_baseline(path)
 
 
 def test_bad_clean_type_fails(tmp_path):
+    # 'packages' is required and validated first, so the fixture must carry a
+    # valid one or that check shadows the 'clean' error this test is named for.
     path = tmp_path / "b.json"
-    path.write_text(json.dumps({"total": 1, "clean": [1, 2]}))
+    path.write_text(
+        json.dumps({"total": 1, "clean": [1, 2], "packages": {"fields": 1}})
+    )
     with pytest.raises(ratchet.RatchetError, match="'clean' must be a list"):
         ratchet.load_baseline(path)
 
@@ -308,27 +357,53 @@ def test_environment_mismatch_fails_under_strict_env(baseline_file, monkeypatch)
 # --------------------------------------------------------------------------
 
 
-def test_update_rewrites_total_and_packages_and_preserves_clean(
-    baseline_file, monkeypatch
-):
+def test_update_rewrites_packages_and_preserves_clean(baseline_file, monkeypatch):
     monkeypatch.setattr(ratchet, "check_allowlist_names", lambda clean: [])
-    path = baseline_file(clean=["privacy"], total=99)
+    path = baseline_file(clean=["privacy"], packages={"fields": 99})
     stdout = make_output(["src/popoto/fields/a.py", "src/popoto/models/c.py"])
     assert run_gate(stdout, path, "--update", monkeypatch=monkeypatch) == 0
     data = json.loads(path.read_text())
-    assert data["total"] == 2
     assert data["packages"] == {"fields": 1, "models": 1}
     assert data["clean"] == ["privacy"]
     assert data["environment"] == BASE_ENV
 
 
+def test_update_never_writes_a_total(baseline_file, monkeypatch):
+    """#677: --update must not re-introduce the field this issue removed."""
+    monkeypatch.setattr(ratchet, "check_allowlist_names", lambda clean: [])
+    path = baseline_file(packages={"fields": 99})
+    stdout = make_output(["src/popoto/fields/a.py"])
+    assert run_gate(stdout, path, "--update", monkeypatch=monkeypatch) == 0
+    assert "total" not in json.loads(path.read_text())
+
+
+def test_update_repairs_a_baseline_with_an_inconsistent_stored_total(
+    baseline_file, monkeypatch, capsys
+):
+    """The error message tells the reader to run --update; it must work.
+
+    A stored total that disagrees with `packages` makes `load_baseline` raise,
+    so --update has to recover from that failure rather than inherit it — an
+    unrepairable file would leave the recommended remedy unreachable.
+    """
+    monkeypatch.setattr(ratchet, "check_allowlist_names", lambda clean: [])
+    path = baseline_file(total=1040, packages={"fields": 421}, clean=["privacy"])
+    stdout = make_output(["src/popoto/fields/a.py"] * 2)
+    assert run_gate(stdout, path, "--update", monkeypatch=monkeypatch) == 0
+    assert "rewriting an unloadable baseline" in capsys.readouterr().err
+    data = json.loads(path.read_text())
+    assert "total" not in data
+    assert data["packages"] == {"fields": 2}
+    assert data["clean"] == ["privacy"]
+
+
 def test_update_does_not_compare_or_fail_when_over_baseline(baseline_file, monkeypatch):
     """--update must never be gated by the comparison it is meant to reset."""
     monkeypatch.setattr(ratchet, "check_allowlist_names", lambda clean: [])
-    path = baseline_file(total=0, clean=["privacy"])
+    path = baseline_file(packages={"privacy": 0}, clean=["privacy"])
     stdout = make_output(["src/popoto/privacy/x.py"] * 5)
     assert run_gate(stdout, path, "--update", monkeypatch=monkeypatch) == 0
-    assert json.loads(path.read_text())["total"] == 5
+    assert json.loads(path.read_text())["packages"] == {"privacy": 5}
 
 
 # --------------------------------------------------------------------------
@@ -342,3 +417,48 @@ def test_committed_baseline_is_well_formed():
     assert ratchet.check_allowlist_names(data["clean"]) == []
     assert set(data["environment"]) >= {"python", "mypy", "redis"}
     assert sum(data["packages"].values()) == data["total"]
+
+
+def test_committed_baseline_does_not_store_a_total():
+    """#677: the total must stay derived, never re-added as a stored field.
+
+    Asserted against the RAW file, not load_baseline()'s return value — that
+    dict always carries a derived 'total' by design, so checking it there would
+    pass on a file that does store one. A stored copy is what made #675 a
+    silent pass: the per-package counts merged, the total did not, and the gate
+    compared against 1040 when the real ceiling was 1038.
+    """
+    raw = json.loads(ratchet.BASELINE_PATH.read_text())
+    assert "total" not in raw
+    assert isinstance(raw["packages"], dict) and raw["packages"]
+
+
+def test_merged_baseline_without_a_total_gates_on_the_true_sum(
+    tmp_path, monkeypatch, capsys
+):
+    """Replay #675: two branches improving different packages, merged.
+
+    Base was fields 424 / recipes 148 (572). One branch took fields to 421, the
+    other took recipes to 145. Git merges both per-package lines cleanly, so
+    the file says 566 — and with no stored total there is no second, staler
+    number for the gate to prefer. A tree measuring 570 is ABOVE the ceiling
+    and must fail, where the old stored total of 572 would have passed it.
+    """
+    monkeypatch.setattr(ratchet, "current_environment", lambda: dict(BASE_ENV))
+    path = tmp_path / "merged.json"
+    path.write_text(
+        json.dumps(
+            {
+                "clean": [],
+                "environment": dict(BASE_ENV),
+                "packages": {"fields": 421, "recipes": 145},
+            }
+        )
+    )
+    assert ratchet.load_baseline(path)["total"] == 566
+
+    stdout = make_output(
+        ["src/popoto/fields/a.py"] * 424 + ["src/popoto/recipes/b.py"] * 146
+    )
+    assert run_gate(stdout, path, monkeypatch=monkeypatch) == 1
+    assert "570 is ABOVE baseline 566" in capsys.readouterr().err
