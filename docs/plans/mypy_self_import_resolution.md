@@ -6,7 +6,7 @@ owner: Dev (sdlc-663)
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/663
 last_comment_id:
-revision_applied: false
+revision_applied: true
 ---
 
 # Make `mypy src/` resolve popoto's own package imports
@@ -32,6 +32,17 @@ revision_applied: false
 - **#506** — established that the mypy count is redis-py-version-dependent (52-error spread between 7.x and 8.x), which is why `scripts/mypy_ratchet.py` refuses to compare across environments and why every count below names its own.
 
 **Why previous fixes did not cover this:** no failed prior attempt. The configuration has simply never been set, and until #659 there was no reason to set it.
+
+### Which modules the change actually activates
+
+#659's plan asserted that `pytest_plugin.py` is the only `src/` module importing the package absolutely. Re-checked at `8151e8c0`, that is wrong, and the correction is worth recording because it is easy to re-derive incorrectly. `grep -rn '^\s*\(import popoto\|from popoto\)' src/popoto/` returns roughly 75 hits, but the overwhelming majority are **indented inside docstrings** — the `Usage::` blocks in `redis_db.py` and the long migration guides in `models/migrations.py` are the two biggest sources, and mypy never sees any of them. Reading each hit in context leaves five real sites:
+
+- `pytest_plugin.py:62` — `from popoto import redis_db` (module scope)
+- `pytest_plugin.py:112`, `:126` — `import popoto as _popoto` / `as _canonical_popoto`, inside the alias-collapse helper
+- `transfer/cli.py:218` — `from popoto import Model` (function-local)
+- `transfer/cli.py:273` — `from popoto.redis_db import POPOTO_REDIS_DB` (function-local)
+
+All five start being checked for real when resolution turns on. The measured 1042 already absorbs all five: `Model` and `redis_db` are genuine bindings in `popoto/__init__.py` and `POPOTO_REDIS_DB` is a genuine module attribute of `redis_db`, so none of them produces a new error. The two `transfer/cli.py` sites in particular gain real `attr-defined` coverage they did not have before, at zero cost. This does not change the delta — that remains the two sites in the table below — but the inventory above is the accurate map.
 
 ## The measurement that reshapes this plan
 
@@ -117,7 +128,7 @@ Unchanged and must stay passing: `tests/test_pytest_plugin.py` (43), `tests/test
 
 ## Risks
 
-- **`warn_unused_ignores` turns a later config revert into a hard error.** If someone removes `mypy_path`/`explicit_package_bases`, the `method-assign` ignore becomes unused and errors. This is a feature, not a hazard: it makes the coupling self-enforcing rather than a comment nobody reads. Noted at the ignore site.
+- **`warn_unused_ignores` turns a later config revert into a hard error.** If someone removes `mypy_path`/`explicit_package_bases`, the `method-assign` ignore becomes unused and errors. This is a feature, not a hazard: it makes the coupling self-enforcing rather than a comment nobody reads. Noted at the ignore site. Both directions are covered — removing the *ignore* alone re-fires the error and pushes the total to 1043, above the 1042 ceiling, so the ratchet fails there too.
 - **`dict[str, Any]` hides a real defect at that call site.** Accepted, and narrow: the dict is built by a whitelist from a live pool's `connection_kwargs` and splatted into a constructor that validates at runtime. Twenty type errors describing "mypy cannot correlate keys with parameters" are noise, not signal. The regression net is `tests/test_pytest_plugin.py`'s `sibling_client_kwargs` tests (#490), which check the actual key filtering.
 - **A future `src/` module importing `popoto` absolutely inherits real checking and may surface new errors.** That is the point of the change. It raises the ratchet honestly if it happens.
 

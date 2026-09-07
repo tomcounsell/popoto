@@ -14,6 +14,12 @@
 #   docs      deploy-docs.yml         mkdocs build --strict (the deploy gate)
 #   build     release.yml             python -m build (sdist + wheel sanity)
 #   lock      lock-check.yml          uv lock --check (lock matches pyproject)
+#             ^ partial mirror: lock-check.yml also runs `uv sync --locked`
+#               and scripts/check_lock_imports.py (#669). Those are deliberately
+#               NOT mirrored here -- `uv sync` writes to your .venv, and a local
+#               gate that rearranges a developer's environment as a side effect
+#               is worse than the coverage it buys. Run them by hand against a
+#               scratch UV_PROJECT_ENVIRONMENT if you need to reproduce CI.
 #   guard     guard-main-push.yml     warns if a main push isn't docs-only
 #
 # Valkey is skipped locally: redis-py talks to Redis and Valkey identically,

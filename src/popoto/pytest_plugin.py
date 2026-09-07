@@ -184,7 +184,11 @@ def _configure_test_db(config):
             pool = redis_db.POPOTO_REDIS_DB.connection_pool
             original = pool.get_connection  # bound method, captured pre-swap
             wrapper = _make_tripwire(pool, original)
-            pool.get_connection = wrapper
+            # Assigning over a bound method is the point — this arms the
+            # tripwire. The ignore is only valid while setup.cfg resolves
+            # popoto's self-imports (#663); revert that and warn_unused_ignores
+            # turns this line into an error, which is the intended coupling.
+            pool.get_connection = wrapper  # type: ignore[method-assign]
             config._popoto_tripwire = (pool, wrapper)
         except Exception as e:  # never break a downstream collection
             logger.debug("popoto pytest plugin: isolation warning not armed (%s)", e)
@@ -447,7 +451,13 @@ def _popoto_db0_tripwire(request):
         # redis-py 8 pool-internal keys (himport_registry, maint_notifications_*)
         # that redis.Redis(**kwargs) rejects, which would silently disable the
         # tripwire (this branch is except-guarded) on redis-py 8.
-        pool_kwargs = redis_db.sibling_client_kwargs(
+        # dict[str, Any], not the helper's stricter dict[str, object]: these are
+        # opaque connection params that redis-py validates at call time, and
+        # mypy cannot correlate a runtime whitelist's keys with GuardedRedis's
+        # parameters (#663). Annotated here rather than on
+        # sibling_client_kwargs() so the widening stays at the one site that
+        # needs it and a future caller starts from the accurate signature.
+        pool_kwargs: dict[str, Any] = redis_db.sibling_client_kwargs(
             redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
         )
         # GuardedRedis, not a bare _redis.Redis: this client is explicitly bound

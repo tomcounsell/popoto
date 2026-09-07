@@ -490,6 +490,13 @@ Retention is bounded by `TOMBSTONE_RETENTION_LIMIT` (1000); the oldest age out, 
 restore is only available while the tombstone is still retained. Archiving happens before
 removal, so a crash between the two steps loses nothing.
 
+The `$TOMB:{Model}:data` / `$TOMB:{Model}:index` keyspace itself is owned by
+`popoto.fields.tombstone_store.TombstoneStore`, and the eight methods above delegate to
+it. The layout is unchanged and the keys stay deliberately **outside** the model's own
+keyspace, so no query, index scan, or key-set walk can surface a tombstoned record. Use
+the store directly if you want the tombstone keyspace without the policy layer around it;
+`Tombstone` remains importable from `popoto.recipes.memory_lifecycle` as the same object.
+
 ### Custom policies
 
 Override the default promotion or forget logic at construction time:
