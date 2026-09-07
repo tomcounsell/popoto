@@ -322,31 +322,242 @@ or a model provider to run.
 
 ## Solution
 
-_placeholder_
+### Key Elements
+
+- **`plugins/openclaw/popoto-memory-plugin/`** — a shippable OpenClaw plugin
+  (package.json, `openclaw.plugin.json` manifest, one ESM entry file) that
+  registers `before_prompt_build` and `llm_output`, translates each
+  `(event, ctx)` pair into popoto's stdin envelope, shells out to
+  `popoto-memory hook`, and returns the parsed stdout on the read hook.
+- **Captured fixtures** — `tests/fixtures/harness_payloads/openclaw_*.json`
+  replaced with the exact envelopes the shipped plugin emitted during a live
+  turn, with a `_provenance` string that says so and names the OpenClaw version.
+- **Two factual corrections** — the `turn_id` docstring in
+  `src/popoto/integrations/hooks.py` and the `TURN_IDS` table in
+  `tests/test_integrations_hooks.py`, both of which currently assert OpenClaw
+  sends no per-turn identifier.
+- **Operator documentation** — the three gates from spike-6, in
+  `docs/guides/harness-openclaw.md`, plus the capability-table move in
+  `docs/features/harness-integration.md`.
+
+### Flow
+
+Install popoto memory → `openclaw plugins install … --accept-capabilities` →
+`openclaw config set plugins.entries.popoto-memory.hooks.allowConversationAccess
+true` → restart the gateway → every subsequent turn recalls and captures with no
+model participation.
+
+### Technical Approach
+
+**The fixtures are captured from the shipped plugin, not hand-corrected.** This
+is the plan's one significant design decision, and it follows from spike-2. The
+fixtures are consumed by `hooks.normalize()`, so they represent the plugin's
+**stdin envelope**, not OpenClaw's raw event — which is why "the fixture field
+names are wrong" is the wrong framing. A raw OpenClaw event has no event-name
+field at all and could never be normalized. The correct sequence is therefore:
+write the plugin first, run it against a live turn with a `POPOTO_HOOK_CAPTURE`
+environment variable set that makes it tee its stdin to a file, and commit those
+files verbatim. Any other order produces a second generation of hand-authored
+fixtures, which is the defect being fixed.
+
+**The plugin is the only translation layer.** No OpenClaw-specific branch is
+added to `src/popoto/`. `_QUERY_FIELDS` already contains `prompt`,
+`_RESPONSE_FIELDS` already contains `text`, `_TURN_FIELDS` already contains
+`turn_id`, and `render_context()` already emits `appendContext` for
+`before_prompt_build`. Every mapping the plugin needs already exists on the
+Python side; the plugin's job is to produce a payload that hits them. In
+particular the plugin joins `assistantTexts` into a single `text` string rather
+than teaching `_RESPONSE_FIELDS` about an array — the adapter's contract is
+"first non-empty **string**", and an array-aware branch would be a special case
+for one harness in a function whose whole value is that it has none.
+
+**Fail silent, never fail the turn.** The handlers wrap everything. A failed
+shell-out returns `undefined` from `before_prompt_build` (inject nothing) and
+nothing from `llm_output`. This mirrors the adapter's own "always exit 0" rule
+and OpenClaw's documented failure policy for these two hooks ("log and skip the
+failed handler" / "log and continue"), so a memory outage degrades to no memory
+rather than to a broken agent.
+
+**Timeout.** `before_prompt_build` has a 15-second default per-handler budget,
+and a timed-out handler is skipped but **not cancelled**. The plugin therefore
+sets its own tighter `execFile` timeout so the subprocess cannot outlive the
+budget that would ignore it.
 
 ## Failure Path Test Strategy
 
-_placeholder_
+### Exception Handling Coverage
+
+The Python side of this change is two comment/table corrections and adds no
+exception handlers. The new handlers live in JavaScript, where the failure
+paths are asserted by the plugin's own behavior rather than by pytest:
+
+- Both handlers wrap the shell-out in `try`/`catch`. The catch path is exercised
+  during the live capture session by pointing `POPOTO_MEMORY_BIN` at a
+  nonexistent binary and confirming the turn still completes normally with no
+  injection — recorded in the PR body as evidence, since it cannot be a
+  committed pytest.
+- No `except Exception: pass` blocks are introduced in Python.
+
+### Empty/Invalid Input Handling
+
+- `event.prompt` empty or whitespace-only: `_first_string()` already returns
+  `""`, and `handle_payload` already emits nothing for empty context. A fixture
+  round-trip test asserts the empty-prompt envelope normalizes to a read event
+  with `text == ""`.
+- `event.assistantTexts` empty array: joins to `""`; the write path stores
+  nothing. Asserted in the adapter tests.
+- `ctx.runId` absent (a runtime that does not populate it): `_TURN_FIELDS`
+  probing yields `None` and the service falls back to the session FIFO — the
+  pre-existing behavior. Asserted with a fixture variant that omits `turn_id`.
+
+### Error State Rendering
+
+The user-visible output here is injected context. The failure rendering is
+**silence** — the documented, deliberate behavior — and the assertion is that a
+failed hook injects nothing rather than injecting an error string into the
+model's prompt. Covered by the empty-context path already tested in
+`test_integrations_hooks.py`.
 
 ## Test Impact
 
-_placeholder_
+- [ ] `tests/test_integrations_hooks.py:61-62` (`TURN_IDS`) — UPDATE: the two
+      OpenClaw entries change from `None` to the captured `runId`. The
+      surrounding docstring, which names OpenClaw as a harness that sends no
+      turn id, must change with them.
+- [ ] `tests/test_integrations_hooks.py:67` (`SENDS_A_TURN_ID`) — UPDATE: add
+      `"openclaw"`. This is the entry that makes the turn-keyed handoff tests
+      actually exercise OpenClaw rather than skip it.
+- [ ] `tests/test_integrations_hooks.py:230` (`test_openclaw_response_shape`) —
+      UPDATE: unchanged in intent, but it loads the replaced fixture, so it must
+      still pass against the captured envelope. It is the canary that the new
+      fixture still normalizes.
+- [ ] `tests/fixtures/harness_payloads/README.md` — UPDATE: the OpenClaw rows
+      describing the fixtures as docs-derived.
+- [ ] `tests/test_integrations_hooks.py` read/write fixture round-trip
+      parametrizations — no change needed; they are name-driven and pick up the
+      replaced files automatically. This is the reason the fixture swap is
+      low-risk.
 
 ## Rabbit Holes
 
-_placeholder_
+- **Reimplementing the memory path in TypeScript.** Explicitly rejected in
+  `plugins/openclaw/README.md` "at any price," and that judgment stands. The
+  shell-out is now verified; there is no remaining argument for a second
+  implementation of the core.
+- **Publishing the plugin to npm or ClawHub.** The other three harnesses ship
+  config fragments and a handler file for the operator to install. Matching that
+  shape is the whole scope. A published package brings versioning, a release
+  process, and a compatibility matrix against OpenClaw's own version — a project,
+  not a task.
+- **Teaching `_RESPONSE_FIELDS` about arrays.** Tempting because it looks like
+  the "real" fix. It is a one-harness special case in the one function whose
+  design property is that it has no per-harness branches. The join belongs in the
+  plugin.
+- **Chasing the other twenty-odd hooks OpenClaw exposes.** `before_tool_call`,
+  `agent_end`, `before_compaction` and friends all look useful. The pre-turn read
+  hook plus the post-turn write hook is the contract every other harness uses,
+  and turn granularity is what the outcome handoff is paired against.
+- **Making the test suite drive OpenClaw.** Capturing once and committing the
+  payloads is the entire point; a suite that needs Node, an OpenClaw install and
+  a model provider is a suite that does not run in CI.
 
 ## Risks
 
-_placeholder_
+### Risk 1: The captured fixtures encode one OpenClaw version's shape
+
+**Impact:** OpenClaw is on a calendar-version release train (2026.9.2 was
+published two days before this plan). A field rename in a later release would
+make the committed fixtures describe a contract that no longer exists — the same
+defect class as the docs-derived fixtures, arriving more slowly.
+**Mitigation:** the `_provenance` string names the exact version and the exact
+recapture command, so the staleness is legible rather than invisible. The plugin,
+not the fixture, is what would break, and the plugin reads named fields whose
+absence yields empty strings rather than exceptions. Additionally, the fixtures
+assert the **envelope popoto's plugin emits**, which popoto controls — an
+upstream rename changes the plugin, not the envelope, so the fixtures stay valid
+across the class of change most likely to occur.
+
+### Risk 2: The three operator gates are undiscoverable, and two fail silently
+
+**Impact:** a user follows the guide, installs the plugin, sees `status:
+"loaded"`, and gets no memory — with no error anywhere. Support burden, and a
+plausible bug report against popoto for an OpenClaw policy default.
+**Mitigation:** documenting the gates is in scope, but documentation alone is
+weak against a silent failure. The guide gets a copy-pasteable verification
+command (`openclaw plugins inspect popoto-memory --runtime --json`) and states
+what a *working* install looks like (`hookCount: 2`, empty `diagnostics`), so the
+check is positive rather than "look for an error."
+
+### Risk 3: Promoting the capability table on partial evidence
+
+**Impact:** the exact failure the issue was filed to prevent. The capability
+table deliberately separates capability from verification, and moving the
+verification column on anything less than a live capture would repeat the
+mistake #546 avoided.
+**Mitigation:** the verification cell names the OpenClaw version and the date of
+the capture, matching the Claude Code row's existing "captured from a live
+`claude` 2.1.220 run" phrasing. If the live re-capture with the shipped plugin
+fails for any reason, the capability row may move but the verification column
+does **not** — and the plan stops and reports rather than shipping the
+promotion. This is a hard gate, not a preference.
+
+### Risk 4: The plugin is not exercised by CI
+
+**Impact:** the JavaScript ships untested by the repo's own suite and can rot.
+**Mitigation:** accepted, and bounded. The translation the plugin performs is
+asserted from the other side — the committed envelopes are exactly what it
+emitted, and the adapter tests prove those envelopes normalize correctly. What is
+untested is the ten lines of glue between OpenClaw's arguments and that envelope.
+`plugins/hermes/handler.py` carries the same exposure today. Adding a Node test
+job is out of scope (see No-Gos) and would not have caught anything this plan
+found.
 
 ## Race Conditions
 
-_placeholder_
+### Race 1: `llm_output` capture overlapping the next turn's `before_prompt_build`
+
+**Location:** the plugin's two handlers; `MemoryService`'s pending-turn handoff.
+**Trigger:** `llm_output` is an **Observe** hook, and OpenClaw's documented
+contract is that observation handlers "run concurrently" and the emitter "may
+await completion or dispatch fire-and-forget," with the explicit warning that
+"fire-and-forget events can overlap later events, and callbacks are not a durable
+event queue." So turn N's capture can still be in flight when turn N+1's recall
+begins.
+**Data prerequisite:** the pending entry staged by turn N's read must be present
+before turn N's write tries to pair with it. Within one turn this is ordered by
+the harness (prompt build precedes model output), so it holds.
+**State prerequisite:** turn N's outcome must not be paired against turn N+1's
+pending entry.
+**Mitigation:** this is precisely what `turn_id` buys, and it is why spike-5
+matters beyond tidiness. With `turn_id: ctx.runId` on both hooks, the handoff is
+keyed on the turn rather than popped off a session-wide FIFO, so an overlap
+pairs correctly by construction. Had OpenClaw genuinely sent no turn id — as the
+code currently claims — this race would be live and unmitigable from popoto's
+side.
+
+**No other race conditions identified.** The plugin's shell-out is a separate
+process per event with no shared mutable state; the Python side is unchanged.
 
 ## No-Gos (Out of Scope)
 
-_placeholder_
+- [EXTERNAL] Publishing the plugin to npm or ClawHub. Requires a registry
+  account, a release process, and a human decision about a public package name
+  and its compatibility promise. The other three harnesses ship installable
+  source; this one matches them.
+- [EXTERNAL] Verifying against OpenClaw's gateway/daemon deployment or any
+  non-local channel (Telegram, Discord, Slack). Requires standing infrastructure
+  and third-party accounts. The embedded local runner is the path popoto's docs
+  teach, and it is what was verified.
+- [SEPARATE-SLUG #574] Extending the turn-keyed handoff to Hermes. #574 shipped
+  the mechanism and Hermes genuinely sends no turn id in the payloads popoto has;
+  whether its `ctx` equivalent carries one is the same question this plan
+  answered for OpenClaw, and it needs its own probe against a Hermes install.
+- Reimplementing the memory path in TypeScript — rejected in
+  `plugins/openclaw/README.md` and reaffirmed here now that the shell-out is
+  verified. This is a permanent architectural boundary, not a deferral, so it
+  carries no tag and gets an anti-criterion in Verification instead.
+- A Node/CI test job for the plugin — same reasoning as Risk 4. This is a
+  standing decision about test topology, not a deferred task.
 
 ## Update System
 
