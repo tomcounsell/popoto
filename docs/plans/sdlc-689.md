@@ -401,9 +401,6 @@ warns future editors against "simplifying away".
 | Network access to PyPI | `curl -sfI https://pypi.org/pypi/popoto/1.9.0/json > /dev/null` | Only needed to re-verify the published-artifact claim; not needed to build or test. |
 | Redis/Valkey on `localhost:6379` | `redis-cli ping` | Required by the popoto suite generally, not by any test this plan adds. Use `POPOTO_TEST_DB=9` for this lane. |
 
-## Prerequisites
-
-_placeholder_
 
 ## Solution
 
@@ -574,9 +571,6 @@ there is nothing to convert.
   `MANIFEST.in` in the repository at all" and leave the rest of the reasoning
   intact.
 
-## Rabbit Holes
-
-_placeholder_
 
 ## Risks
 
@@ -643,9 +637,6 @@ committed directly on the shared `main` checkout and a sibling lane (`sdlc-698`)
 is writing there at the same time. Commit each plan section as soon as it is
 coherent and never leave `docs/plans/` dirty across an await.
 
-## Race Conditions
-
-_placeholder_
 
 ## No-Gos (Out of Scope)
 
@@ -689,13 +680,7 @@ build; `scripts/check_sdist_contents.py` is invoked by a workflow step. Neither
 is reachable from, or relevant to, popoto's MCP server or `popoto-memory` hook
 surface.
 
-## Update System
 
-_placeholder_
-
-## Agent Integration
-
-_placeholder_
 
 ## Documentation
 
@@ -801,9 +786,6 @@ task; the documentation cascade is genuinely separable and runs in parallel.
   - Agent Type: validator
   - Resume: true
 
-## Team Orchestration
-
-_placeholder_
 
 ## Step by Step Tasks
 
