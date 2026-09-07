@@ -254,11 +254,15 @@ from floors.
 No change to existing tests. This plan adds CI coverage; it does not alter library
 behavior, so no existing unit test can observe it.
 
-One new test file, `tests/test_check_lock_imports.py`, with two cases:
+One new test file, `tests/test_check_lock_imports.py`, with four cases:
 
 - `check()` returns an empty failure list for a package guaranteed present (`json` — a
   stdlib module, so the test does not itself depend on an optional extra being installed).
 - `check()` returns a non-empty failure list for a deliberately bogus import name.
+- `check()` keeps going past a failure, so one broken extra cannot mask the rest.
+- `PACKAGES` names no package from the `benchmark` extra, which the workflow's
+  `--no-extra benchmark` sync never installs — a mismatch there would fail the job on a
+  set that was deliberately skipped.
 
 The second case is the one that matters: it asserts the script *can* fail. A smoke that
 cannot fail is worth nothing, which spike-4 demonstrates concretely, and a non-vacuity
@@ -359,8 +363,9 @@ is needed there, since this plan changes CI rather than local setup.
    are of third-party packages *directly* because popoto's own modules guard them
    (spike-4); the script must not import popoto.
    *Validate:* `python scripts/check_lock_imports.py` exits 0 in the synced env.
-2. **Write `tests/test_check_lock_imports.py`.** Two cases per Test Impact — `check()`
-   clean on `json`, `check()` non-empty on a bogus import name.
+2. **Write `tests/test_check_lock_imports.py`.** Four cases per Test Impact — `check()`
+   clean on `json`, `check()` non-empty on a bogus import name, `check()` continuing past
+   a failure, and `PACKAGES` free of `benchmark` entries.
    *Validate:* `pytest tests/test_check_lock_imports.py` passes, and passes with no Redis
    reachable.
 3. **Extend `.github/workflows/lock-check.yml`.** After the existing `uv lock --check`
