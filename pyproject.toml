@@ -1,5 +1,11 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+# setuptools>=83: first release with the MANIFEST.in exclusion-bypass fix
+# (sdist Unicode NFC/NFD normalization collision on macOS APFS/HFS+, #678).
+# This is a BUILD-environment constraint, not a runtime dependency: it is
+# resolved in the isolated build env and never propagates to consumers of the
+# published wheel or sdist, so CLAUDE.md's "never raise a floor" doctrine for
+# [project.dependencies] does not apply here.
+requires = ["setuptools>=83", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
