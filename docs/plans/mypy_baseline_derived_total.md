@@ -168,9 +168,92 @@ runs between the merge and the gate.
 
 ## Solution
 
+**Answer to acceptance criterion 1 (does `total` remain stored?): no.** Take the issue's option 1 —
+stop storing it, derive it from `packages` at read time — with one element of option 2 folded in for
+migration safety. The defect class is removed rather than detected: with only one representation of
+the number, there is no second line for git to merge into disagreement.
+
+Four changes, all in `scripts/`:
+
+**1. `load_baseline()` derives the total and becomes the single validation point.**
+Compute `total = sum(packages.values())` and place it in the returned dict under the same `"total"`
+key. Every downstream read site (`:259`, `:292`, `:293`, `:326`, `:344`) is then unchanged — the
+derivation is invisible to the gate logic, which keeps the diff small and keeps `total` a *ceiling*
+rather than an equality, exactly as #506 defined it.
+
+**2. `packages` becomes a validated, required field.** It must be a dict of `str` → non-negative
+`int`. This closes the inversion spike-2 found: the plan cannot derive a number from an input the
+schema never checks. A missing or empty `packages` must be a `RatchetError`, not a silent
+`total = 0` — a zero ceiling would fail every subsequent run, which is loud, but it would be loud for
+the wrong reason and would read as a mass regression.
+
+**3. A stored `total` becomes optional, and is rejected when it disagrees.**
+This is the migration bridge and it satisfies acceptance criterion 3. If the key is absent (the new
+shape), derive silently. If present and equal to the sum, accept — an in-flight branch that re-adds a
+consistent total is not wrong. If present and *unequal*, raise `RatchetError` naming both numbers.
+That converts today's silent pass into a hard failure **in the ratchet itself, not just the test
+suite**, and it means any branch still carrying the old field that merges badly fails loudly during
+the transition instead of quietly.
+
+**4. `write_baseline()` stops writing the key**, and deletes it if present, so the first
+`--update` after this lands migrates the file. The committed `scripts/mypy_baseline.json` is migrated
+in the same PR by hand-removing the line (no re-measurement — the current file is consistent at 1038
+and re-banking would conflate a schema change with a count change).
+
+The file's `_comment` is rewritten: it currently says *"total is a ceiling, not an equality"*, which
+describes a field that will no longer exist. It should say that the ceiling is the sum of `packages`,
+and say **why** the total is not stored, so the next person does not helpfully add it back.
+
+### Why not the other three options
+
+- **Option 2 (keep it, validate on load)** — leaves the file unable to *represent* the merge
+  correctly. Every concurrent pair of package-improving PRs would then hard-fail and need a manual
+  re-bank. That converts a silent wrong answer into a loud correct-but-annoying one; option 1 makes
+  the merge simply come out right. Its validation half is still worth having, so it is folded in
+  above as the migration bridge.
+- **Option 3 (`.gitattributes` merge driver)** — heavier, needs per-clone `merge.*.driver`
+  configuration to actually run, and silently degrades to the current behavior on any clone that has
+  not configured it. It forces a manual resolution where option 1 needs none.
+- **Option 4 (document and rely on the test)** — keeps a trap whose only detector is a test someone
+  could reasonably retire as trivial arithmetic. Acceptance criterion 4 exists for exactly this and
+  is satisfied anyway by the comment added in Task 6.
+
+### What is deliberately preserved
+
+- The **parse-time** cross-check between mypy's summary line and `len(error_lines)`
+  (`mypy_ratchet.py:138`) is untouched. Spike-2 established this is a different total from the stored
+  one and is a real guard against a silently-broken parser. Deriving it would be the one change that
+  turns this fix into a regression.
+- `total` remains a **ceiling**: `measured > base_total` fails, `measured < base_total` warns. This
+  plan changes where the ceiling comes from, never what it means.
+- The `reference` block and the `clean` allowlist are untouched.
+
 ## Rabbit Holes
 
+- **Do not switch the gate to per-package comparison.** Failing when *any* package exceeds its own
+  baseline is strictly tighter and even more merge-safe, and it is tempting once `packages` is
+  load-bearing. It is also a different gate: it would fail PRs that trade errors between packages at
+  a flat or improved total, which the ratchet deliberately allows today. Out of scope — note it as a
+  possible follow-up, do not build it.
+- **Do not re-bank the baseline.** No `--update` run belongs in this PR. The count must be identical
+  before and after so the diff is provably schema-only.
+- **Do not touch the `reference` block** to "make it consistent too". It is non-gating, unread by the
+  script, and has no per-package breakdown to derive from.
+- **Do not fix `setup.cfg` or chase mypy counts.** Unrelated; #663 covers that area.
+
 ## Risks
+
+- **A concurrent lane re-banks the baseline mid-flight and conflicts.** The PM held this issue until
+  #674, #662 and #556 merged for exactly this reason. Mitigation: the diff touches the `total` line
+  and the `_comment`; a concurrent `--update` rewrites both. Rebase-and-re-resolve is cheap, and by
+  construction a conflict here is textual and loud.
+- **An in-flight branch forked before this lands still writes `total` on `--update`.** Handled by
+  change 3: a consistent stored total is accepted, an inconsistent one now fails loudly. This is
+  strictly better than today in both cases.
+- **Deriving from an unvalidated `packages` would be a new silent failure.** Mitigated by change 2,
+  which is why it is in scope rather than deferred.
+- **Low blast radius overall**: `scripts/mypy_ratchet.py` and `tests/test_mypy_ratchet.py` are the
+  only code consumers; `lint.yml` and `ci-local.sh` shell out to the script and never parse the JSON.
 
 ## Step by Step Tasks
 
