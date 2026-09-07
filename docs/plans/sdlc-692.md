@@ -580,16 +580,46 @@ and a `None` date disables the producer for that turn (it falls back to a plain
 identity-bearing units **in ascending `session_date` order**; see Race
 Conditions for why the corpus order is not sufficient.
 
-**5. Teardown.** After the per-record delete loop and before the existing SCANs:
+**5. Teardown.** *(Shape settled per critique C1 — this is the single
+authoritative statement; Task 4 restates it and must not diverge.)* After the
+per-record delete loop and before the existing SCANs:
 
 ```python
-if self._supersession_arm != "none":
-    keys = ValidityField.get_all_keys(self._model_class, "validity")
-    get_REDIS_DB().delete(*keys.values())
-    # open-claim pointers are per-digest; SCAN the prefix
-    prefix = ValidityField.get_prefix_db_key(self._model_class, "validity").redis_key
-    # SCAN f"{prefix}:open:*" → DEL in batches
+# Guard on the DECLARED FIELD, not on the arm. Cleaning is driven by what the
+# model class actually has, so a future arm that declares validity is cleaned
+# without editing this branch, and an arm-"none" item takes a real no-op rather
+# than a DEL of names that were never written.
+if self._model_class is not None and "validity" in self._model_class._meta.fields:
+    try:
+        keys = ValidityField.get_all_keys(self._model_class, "validity")
+        get_REDIS_DB().delete(*keys.values())
+        # open-claim pointers are per-digest; SCAN the prefix
+        prefix = ValidityField.get_prefix_db_key(
+            self._model_class, "validity"
+        ).redis_key
+        # SCAN f"{prefix}:open:*" → DEL in batches
+    except Exception:
+        pass  # matches the existing teardown idiom (external_base.py:692-729)
 ```
+
+Three points the builder must not re-litigate:
+
+- **The predicate is `"validity" in self._model_class._meta.fields`, not
+  `self._supersession_arm != "none"`.** Both are correct today (the field is
+  declared iff the arm is active), but the field-presence form is the one that
+  cannot drift if a future arm changes that coupling.
+- **It must not be made unconditional.** `get_all_keys` / `get_prefix_db_key`
+  (`src/popoto/fields/validity_field.py:702`, `:782`) only concatenate
+  `_meta.db_class_key` + field name into key *strings*, so an unconditional
+  `delete()` would not raise — that is exactly the hazard. A `DEL` of six names
+  that arm `none` never created succeeds vacuously, and Verification row 1 ("no
+  `$ValidityF:*` key created during a `none`-arm item") would then be checked
+  against a keyspace the teardown had just swept regardless. Deleting keys that
+  should not exist must never become the mechanism that hides them existing.
+- **New code uses `get_REDIS_DB()`.** The surrounding teardown still holds the
+  module-level `POPOTO_REDIS_DB` import (`external_base.py:706`, `:710`, `:721`,
+  `:725`); do not copy that shape, and do not convert those lines here either —
+  the conversion is a separate concern (see CLAUDE.md).
 
 This is mandatory, not hygiene: per the spike-2 side finding these six keys are
 **shared across every item in a run** (the post-hoc `__name__` rename does not
@@ -856,15 +886,45 @@ Additionally:
    `failures`). Module docstring carries the design decision verbatim.
 3. **Wire the ingest arm** in `tests/benchmarks/scenarios/external_base.py`:
    new `supersession_arm` constructor kwarg (default `"none"`); declare
-   `validity = ValidityField()` on all four model builders when the arm is
-   active; order sessions by `session_date` ascending while preserving intra-
-   session turn order (Race 1); branch the write at `:479` through
-   `route_write`; keep `session_key_map` / `turn_key_map` / graph-edge
-   behavior identical in both arms.
+   `validity = ValidityField()` on all four model builders **when the arm is
+   active**; **when the arm is active**, order sessions by `session_date`
+   ascending while preserving intra-session turn order (Race 1); branch the
+   write at `:479` through `route_write`; keep `session_key_map` /
+   `turn_key_map` / graph-edge behavior identical in both arms.
+
+   **Both "when the arm is active" qualifiers are load-bearing (critique C2).**
+   The loop to guard is `for turn in self.item.history:` in
+   `ExternalScenario.setup()` (`external_base.py:447`). On arm `none` that
+   iteration order must be untouched: it is the insertion order into the
+   `DecayingSortedField` and the BM25 index, so reordering it would move
+   committed-baseline numbers and break Success Criterion 5 and Verification
+   row 1. Implement as `history = self._ordered_history()` where the helper
+   returns `self.item.history` unchanged on arm `none` and the date-sorted
+   sequence otherwise — one branch, at one place, testable directly.
+
+   **The graph-mode re-save is a second write path and stays one (critique
+   N2).** `turn_first_instance.save()` at `external_base.py:522` (graph mode
+   only, to attach `prev_turn`) does **not** route through `route_write`, and
+   deliberately so: it re-saves a record already written, so it is not a new
+   claim and must not open a new interval or close anything. It is safe because
+   `ValidityField.on_save` in mode `"open"` writes `valid_from` / `ingested_at`
+   / `invalid_at` with `ZADD NX` and only when the member's `invalid_at` is
+   absent-or-`+inf` (`validity_field.py:403-410`), so a re-save can neither
+   shift an existing interval nor resurrect a closed one. State this in a code
+   comment at `:522`; it is the content of the "graph-edge behavior identical in
+   both arms" promise, not an omission from it.
 4. **Fix teardown** (spike-2 side finding): delete
    `ValidityField.get_all_keys(cls, "validity")` and `SCAN`/`DEL` the
-   `{prefix}:open:*` pointers. Do this even on the `none` arm's error paths —
-   it must be safe to call unconditionally.
+   `{prefix}:open:*` pointers, **guarded on `"validity" in
+   self._model_class._meta.fields`** and wrapped in the file's existing
+   `except Exception: pass` teardown idiom — exactly the shape in Technical
+   Approach step 5, which is authoritative. Do **not** make the delete
+   unconditional: on arm `none` those key names were never written, and a
+   vacuous `DEL` would mask the very leak Verification row 1 exists to catch.
+   The guard must still be safe on error paths — teardown of a later item must
+   not be aborted by a Redis failure here — which is what the `except` provides.
+   Use `get_REDIS_DB()`, not the module-level `POPOTO_REDIS_DB` the surrounding
+   teardown still imports.
 5. **Emit the observability metadata** in `ExternalScenario.run()`:
    `n_supersessions`, `n_excluded_keys`, `n_excluded_hits` (read at the same
    `as_of` the assembler used — Race 2), plus the stats dataclass fields.
