@@ -1485,6 +1485,55 @@ class TestLearnedAmplitudePreservedOnSave:
 
         assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
 
+    def test_unhashable_period_falls_back_instead_of_raising(self, caplog):
+        """A payload can decode cleanly and still be unusable.
+
+        The period slot here is itself a list, so keying the merge dict by it
+        raises ``TypeError: unhashable type: 'list'``. That is a decode-time
+        failure in every sense that matters, so it must take the same
+        warn-and-fall-back path — not escape ``save()``. Distinguishes a guard
+        around the decode alone from one around decode + normalization.
+        """
+        item = CyclicLearned.create(name="tc7c")
+        _write_cycles_raw(
+            CyclicLearned,
+            item,
+            msgpack.packb([[[TemporalPeriod.DAILY], 9.0, 0]], use_bin_type=True),
+        )
+
+        with caplog.at_level("WARNING", logger="POPOTO.CyclicDecayField"):
+            item.save()  # must not raise
+
+        assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
+        assert any("Could not decode cycles" in r.message for r in caplog.records)
+
+    def test_partial_merge_discarded_when_a_later_entry_is_malformed(self):
+        """A half-read payload contributes nothing, not something.
+
+        The first entry is well-formed and the second is not. Carrying the
+        first while the second raises would apply learned state to some
+        cycles and declared defaults to others — a silently mixed record.
+        Both declared cycles must fall back together.
+        """
+        item = CyclicLearnedMulti.create(name="tc7d")
+        _write_cycles_raw(
+            CyclicLearnedMulti,
+            item,
+            msgpack.packb(
+                [
+                    [TemporalPeriod.DAILY, 7.0, 0],
+                    [[TemporalPeriod.WEEKLY], 8.0, 0],
+                ],
+                use_bin_type=True,
+            ),
+        )
+
+        item.save()  # must not raise
+
+        stored = {c[0]: c[1] for c in _read_cycles(CyclicLearnedMulti, item)}
+        assert stored[TemporalPeriod.DAILY] == 2.0
+        assert stored[TemporalPeriod.WEEKLY] == 3.0
+
     # TC8 — a pipelined save preserves too.
     def test_pipelined_save_preserves_learned_amplitude(self):
         item = CyclicLearned.create(name="tc8")

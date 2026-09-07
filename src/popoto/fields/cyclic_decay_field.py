@@ -561,8 +561,18 @@ class CyclicDecayField(DecayingSortedField):
         if field.cycles:
             stored_raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
             if stored_raw:
+                # The guarded region covers the decode AND the shape
+                # normalization: a payload can decode cleanly and still be
+                # malformed (an entry whose period slot is itself a list is
+                # unhashable, and would raise TypeError out of save()). Both
+                # failures mean the same thing — the stored state is not
+                # usable — so both take the same fallback.
                 try:
                     stored = msgpack.unpackb(stored_raw, raw=False)
+                    if isinstance(stored, (list, tuple)):
+                        for entry in stored:
+                            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                                learned.setdefault(entry[0], []).append(entry[1])
                 except Exception:
                     # Mirror export_state's handler: #679 exists because this
                     # state was destroyed silently. Do not add a second mute
@@ -571,11 +581,9 @@ class CyclicDecayField(DecayingSortedField):
                         f"Could not decode cycles data for {member_key}; "
                         f"falling back to declared amplitudes for {field_name}"
                     )
-                    stored = None
-                if isinstance(stored, (list, tuple)):
-                    for entry in stored:
-                        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                            learned.setdefault(entry[0], []).append(entry[1])
+                    # Discard any partial merge — a half-read payload must not
+                    # contribute amplitudes to some cycles and not others.
+                    learned = {}
 
         # Normalize cycles to 3-tuples for storage
         normalized_cycles = []
