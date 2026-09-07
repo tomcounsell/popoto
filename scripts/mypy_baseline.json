@@ -14,7 +14,7 @@
     "(root)": 30,
     "embeddings": 2,
     "extraction": 2,
-    "fields": 423,
+    "fields": 421,
     "models": 396,
     "pubsub": 11,
     "recipes": 145,

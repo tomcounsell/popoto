@@ -158,8 +158,43 @@ enforced by that test, but the obligation is the same: if your field holds state
   value alone. A field declaring `"carry"` must implement `export_state` and
   `import_state` to serialize and restore that state explicitly.
 - **`"partial"`** — some state is carried or rebuilt, and some is knowingly not
-  preserved. A field declaring `"partial"` must also set `roundtrip_note` explaining
-  what is lost and why — typically citing a tracking issue for future work.
+  preserved. A field declaring `"partial"` must also set `roundtrip_note`.
+
+### Deciding between `"carry"` and `"partial"`
+
+The line is not how hard the carry would be to write. It is what the bytes mean:
+
+> Carry a structure when the exported bytes are a **fact about the record** that the
+> destination can restore verbatim. Do not carry one that is a **property of the
+> source deployment's history**, which the destination never lived through.
+
+Three questions settle it. If the answer to any is no, the structure does not carry:
+
+1. **Is it decomposable to this record?** A Bloom bit or a Count-Min counter is
+   shared by every value that collides onto it, so no record owns a share of it —
+   which is exactly why `on_delete` is a no-op for both.
+2. **Can the destination restore it without replaying anything?** If reaching the
+   exported value means calling the field's own mutators (`strengthen`, `resolve`,
+   `confirm`), you are inventing a sequence of events to arrive at a number. Write
+   the structure raw, or do not write it.
+3. **Is rebuilding actually worse?** Sometimes it is better. A Bloom filter rebuilt
+   from the imported records is *more* accurate than a carried one, which would hold
+   bits for records that were never imported.
+
+A carrier that answers all three must write raw Redis commands, not go through the
+field's public API — the public API stamps fresh timestamps and fires feedback hooks
+that would double-count against state carried independently by other fields.
+
+### Writing the note
+
+`roundtrip_note` is read by someone deciding whether an import is safe for their
+data. State the **destination's contract** — what they end up with ("frequencies
+restart from the import") — not what the code declines to do ("counters not
+carried"). Cite a tracking issue only while the gap is genuinely open work; a
+permanent limitation should say so, because a lingering issue number invites a
+future reader to "finish" a decision that was already made. See
+[Export and import](guides/export-import.md#fidelity-what-crosses-and-what-does-not)
+for how Popoto's own subsystems came down on each side of this.
 
 ```python
 import popoto

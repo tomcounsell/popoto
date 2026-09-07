@@ -189,16 +189,50 @@ if report.errored or report.partial:
     print(report.summary())  # inspect what needs attention
 ```
 
-## What is not carried
+## Fidelity: what crosses, and what does not
 
-A handful of Redis structures are shaped by *history* — an event stream, a
-prediction ledger, an access log, a frequency-sketch counter — rather than by a
-snapshot of current state. Popoto does not attempt to carry these; the affected
-fields declare `roundtrip_policy = "partial"` with a `roundtrip_note` explaining
-what is lost, and that note appears in the import report rather than the loss
-happening silently. See the field-level policy table on the destination model, or
+Popoto's secondary Redis structures fall into two groups, and the line between
+them is not "hard to implement" but *what the bytes mean*:
+
+- A structure that is a **fact about the record** — a prediction that was made,
+  an edge weight, a count of reads that happened — is carried verbatim. The
+  destination can restore it without pretending anything occurred there.
+- A structure that is a **property of the source deployment's history** — a log
+  of every mutation, a hash-collided bit array, a shared counter — is not
+  carried. The destination did not live through that history, and writing it
+  anyway would produce a plausible record of events that never happened.
+
+| Structure | Crosses? | What the destination gets |
+|---|---|---|
+| `ConfidenceField` state | Carried | The source's confidence, verbatim |
+| Prediction ledger entry | Carried | The prediction with its original `recorded_at` / `resolved_at`; no re-resolution runs |
+| `CoOccurrenceField` edges | Carried | The source's edge weights, verbatim (clamped to the destination's cap and `max_edges`) |
+| Access counters + confirmed log | Carried | `access_count`, `last_accessed`, and the confirmed timestamps (trimmed to the destination's `_max_access_log`) |
+| Staged (unconfirmed) reads | Dropped | Nothing — identical to `discard_staged_access()` on an in-flight read |
+| `EventStreamMixin` mutation stream | Not carried | A fresh stream whose first entry is the import itself |
+| `ExistenceFilter` bit array | Not carried | A filter rebuilt from the imported records' own saves — *more* accurate than the source's, which holds bits for records outside the export |
+| `FrequencySketch` counters | Not carried | Counts of the saves the destination observed; frequencies restart from the import |
+
+The three "not carried" rows are **permanent contracts**, not unfinished work.
+Each declares `roundtrip_policy = "partial"` with a `roundtrip_note` saying what
+the destination ends up with, and that note appears in the import report rather
+than the difference passing silently. See
 [Writing Custom Fields](../field-authoring.md) if you are deciding how to declare
 this for your own field.
+
+### Use one `on_conflict` for the whole file
+
+Carried state is restored only for records that actually land. Under
+`on_conflict="skip"` a colliding key is reported as skipped *before* the save,
+so the destination keeps its own confidence, ledger entry, edges, and access log
+for that record — the export's versions are discarded. Under
+`on_conflict="overwrite"` the carried structures are replaced wholesale, not
+merged: an imported edge set becomes the record's complete edge set.
+
+Both are coherent policies; mixing them across re-runs of the same file is not.
+Re-running an interrupted import with a different `on_conflict` than the first
+pass leaves some records carrying source state and others carrying destination
+state, with nothing in the report distinguishing them. Pick one and keep it.
 
 Async twins (`async_export_records` / `async_import_records`) are not part of this
 API; the driver is a synchronous Python function you call from your own script or an
