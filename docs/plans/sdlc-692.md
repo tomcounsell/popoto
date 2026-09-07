@@ -263,7 +263,10 @@ Two spikes, both resolved. Appetite is Medium (cap 4); two sufficed.
      `pre_save_validate` does an eager `ZSCORE` only when the caller passes a
      non-`None` `validity=` value (`:1215-1216`); the harness never does, so it
      returns immediately.
-  2. `ContextAssembler` auto-mode resolution (`context_assembler.py:1499-1582`)
+  2. `ContextAssembler` auto-mode resolution
+     (`src/popoto/recipes/context_assembler.py:1499-1582` — note the path: the
+     assembler lives under `recipes/`, not `models/`; all bare
+     `context_assembler.py` citations in this plan resolve there)
      branches purely on BM25/embedding field presence. `_validity_field_name` is
      detected separately at `:1401`/`:1437-1438` and never enters mode
      resolution. **Mode resolution is unchanged** — lexical stays lexical,
@@ -439,6 +442,31 @@ report. That is #586's job and its cost is hours of wall clock plus an
 embedding provider. This issue's job is to make that run *mean something*, and
 its acceptance criterion 2 is satisfied by a demonstrated non-empty exclusion
 set, not by a corpus-scale publication.
+
+### Scope decision: the CLI/reporting surface is in, deliberately (critique C3)
+
+Task 8 builds more than the bare minimum AC2 needs — the minimum is an arm
+toggle and a gate toggle. It additionally ships the `_sup-{arm}` / `_nogate`
+artifact filename labels and the new aggregate rows. **This is an accepted,
+intended scope decision, not scope creep**, on three grounds:
+
+1. **Correctness, not convenience.** Without an arm label in the filename the
+   three arms *overwrite each other on disk*. A three-arm design whose artifacts
+   collide is not a three-arm design, and the collision would be discovered by
+   #586 under run pressure, after hours of wall clock had already been spent.
+2. **It is a copy, not an invention.** `extraction_axis.py` already established
+   `ARM_CHOICES` + per-arm filename labels + per-arm stats rows (#489). Mirroring
+   it costs a few dozen lines and adds no new convention to the harness; building
+   a smaller ad-hoc toggle now and the real axis later would cost more in total
+   and leave two conventions in the tree meanwhile.
+3. **The aggregate rows are this issue's own deliverable.** `n_excluded_keys`,
+   `n_excluded_hits`, `supersessions` and `producer_failures` are what turn AC2
+   from an assertion into an observation (Success Criterion 2) and what make a
+   silently-failing producer distinguishable from a producer that found nothing.
+   They are not #586 infrastructure that happens to land early.
+
+What remains firmly #586's: the n=500 run itself, the embedding-provider spend,
+the published report, and any conclusion drawn from a corpus-scale delta.
 
 ## Prerequisites
 
@@ -708,6 +736,17 @@ New, in `tests/benchmarks/`:
   - `--no-validity-gating` restores the superseded record.
   - Teardown leaves no `$ValidityF:*` key behind for the model — the direct
     regression test for the key-leak hazard.
+  - **Teardown on an arm-`none` item does not raise** and does not issue the
+    validity `DEL` at all (critique C1). Assert both halves: no exception, and —
+    via a spy on the client, or by pre-seeding a sentinel key under the shared
+    `$ValidityF:ExternalBenchmarkMemory:validity:*` names and asserting it
+    survives — that arm `none` performs no validity deletion. The second half is
+    what keeps the guard honest: a teardown that swept those names
+    unconditionally would make Verification row 1 vacuous.
+  - The history-ordering helper returns `self.item.history` **unchanged** (same
+    object identity or same element order) on arm `none`, and date-sorted on
+    arm `content-identity` (critique C2) — asserted directly on the helper, so
+    the byte-identity claim does not depend on an end-to-end diff.
 
 Existing tests expected unchanged: all of `test_external.py`'s current cases,
 `test_harness.py`, `test_gold_blind_scoring.py`. Arm `none` being the default is
@@ -783,6 +822,29 @@ sample-of-three that should not be generalized from. If a later-dated claim is
 written before an earlier-dated one, the earlier write supersedes the later, the
 *stale* claim ends up open, and `save_and_supersede` may raise
 `ValidityCloseBeforeStartError` on the close.
+
+**Tied dates (critique N1).** `haystack_dates` is minute-precision
+(`"%Y/%m/%d (%a) %H:%M"`), so two sessions in one haystack can carry an
+identical timestamp. Two facts, both verified in source rather than assumed:
+
+- **`save_and_supersede(at=<equal>)` does not raise.** The `SUPERSEDE_LUA`
+  guard is `if start_num ~= nil and close_at < start_num then ... CLOSE_BEFORE_START`
+  (`src/popoto/fields/validity_field.py:368-370`) — a *strict* comparison. An
+  equal `at` passes validation and stores a **zero-length interval**
+  (`invalid_at == valid_from`) on the incumbent.
+- **A zero-length interval is always excluded.** Membership is
+  `valid_from <= t AND invalid_at > t` (`:47`, `:766-767`), which no `t` can
+  satisfy when the two are equal, and the gate excludes on `invalid_at <= now`
+  (`:920-932`). So on a tie the incumbent is dropped from retrieval — the
+  producer's *intended* outcome, reached without an exception.
+
+What a tie therefore does **not** do is fail loudly; what it *does* do is let
+Python's stable sort decide which of the two tied claims is "current", by
+haystack list position. That is arbitrary but harmless-by-construction here: the
+loser is excluded either way, and which of two same-minute claims is called
+current is not a distinction the corpus makes. It is stated rather than
+mitigated, and Task 6 adds a tied-timestamp fixture case so the behavior is
+pinned by a test instead of by this paragraph.
 
 **Prevention:** the ingest loop must not rely on corpus order. Identity-bearing
 writes are ordered by `session_date` ascending before being routed. Because
@@ -934,12 +996,20 @@ Additionally:
    differ and which assert the same slot with different values (e.g. an earlier
    "I work at X" and a later "I work at Y"). Include a deliberately
    **non-monotonic** date ordering relative to haystack order so Race 1 is
-   exercised. Confirm the three existing records' tests still pass.
+   exercised, **and a third session carrying a `haystack_dates` value tied to
+   one of the other two** so the minute-precision tie case (Race 1, N1) is
+   pinned by a test: assert the run completes without
+   `ValidityCloseBeforeStartError` and that the tied loser is excluded (its
+   zero-length interval is never a member). Confirm the three existing records'
+   tests still pass.
 7. **Add tests** per Test Impact, including the label-blindness signature
    assertion, the first-claim-must-supersede regression guard, the arm-`none`
    byte-identity check, the `--no-validity-gating` restore, and the
    no-leaked-`$ValidityF:*`-keys check.
-8. **Add the CLI axis** in `tests/benchmarks/run_external.py`:
+8. **Add the CLI axis** in `tests/benchmarks/run_external.py` (scope explicitly
+   accepted — see "Scope decision" under Appetite; mirror `extraction_axis.py`'s
+   existing `ARM_CHOICES` + filename-label convention rather than inventing a
+   second one):
    `--supersession` and `--no-validity-gating`; set
    `Defaults.VALIDITY_GATING_ENABLED` once in `main()` before any scenario
    construction (Risk 5); add the `_sup-{arm}` / `_nogate` artifact filename
@@ -968,7 +1038,10 @@ Additionally:
 | 5 | **AC2** — non-empty exclusion state | Fixture run, arm C | `n_excluded_keys >= 1` and `n_excluded_hits >= 1` in the emitted artifact; superseded record absent from assembled records, successor present |
 | 6 | Arm B is executable | Same run with `--no-validity-gating` | Superseded record returns; identical stored state to arm C |
 | 7 | Race 1 handled | Non-monotonic fixture item | Run completes; latest-dated claim is the open one; no `ValidityCloseBeforeStartError` |
+| 7b | Tied dates tolerated | Tied-timestamp fixture session (N1) | Run completes, no `ValidityCloseBeforeStartError`; tied loser holds a zero-length interval and is excluded from assembled records |
 | 8 | No key leak | Post-teardown `SCAN "$ValidityF:*"` | Empty |
+| 8b | Arm-`none` teardown is a real no-op | `pytest tests/benchmarks/test_external.py -k teardown_none` | No exception raised, and a pre-seeded sentinel under the shared `$ValidityF:…:validity:*` names **survives** — proving row 1 is not vacuous |
+| 8c | Arm-`none` ingest order untouched | Unit test on the history-ordering helper | Returns `self.item.history` unchanged on `none`; date-sorted on `content-identity` |
 | 9 | Contamination check | First item of the demonstration run | `n_excluded_keys == 0` |
 | 10 | Failure counting is visible | Report header on a run with zero supersessions | `producer_failures` and `supersessions` both printed |
 | 11 | Repo gates | `ruff check src/`; `black --check src/ tests/`; `scripts/mypy_ratchet.py`; `mkdocs build --strict`; full `pytest` | All clean; ratchet count unchanged (no `src/` change) |
