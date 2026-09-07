@@ -56,7 +56,7 @@ import redis
 from ..models.canonical_key import canonical_key_str
 from ..models.db_key import DB_key
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB
+from ..redis_db import get_REDIS_DB
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -502,7 +502,7 @@ class SortedFieldMixin:
             QueryException: Propagated from the partition key builder.
         """
         key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
-        return int(POPOTO_REDIS_DB.zcard(key))
+        return int(get_REDIS_DB().zcard(key))
 
     @classmethod
     def members(
@@ -542,9 +542,9 @@ class SortedFieldMixin:
         return [
             raw.decode() if isinstance(raw, bytes) else str(raw)
             for raw in (
-                POPOTO_REDIS_DB.zrevrange(key, start, stop)
+                get_REDIS_DB().zrevrange(key, start, stop)
                 if reverse
-                else POPOTO_REDIS_DB.zrange(key, start, stop)
+                else get_REDIS_DB().zrange(key, start, stop)
             )
         ]
 
@@ -696,7 +696,7 @@ class SortedFieldMixin:
                     if isinstance(pipeline, redis.client.Pipeline):
                         pipeline.zrem(old_ss_key.redis_key, old_member)
                     else:
-                        POPOTO_REDIS_DB.zrem(old_ss_key.redis_key, old_member)
+                        get_REDIS_DB().zrem(old_ss_key.redis_key, old_member)
 
         sortedset_member = model_instance.db_key.redis_key
         sortedset_score = cls.convert_to_numeric(field, field_value)
@@ -706,7 +706,7 @@ class SortedFieldMixin:
                 sortedset_db_key.redis_key, {sortedset_member: sortedset_score}
             )
         else:
-            return POPOTO_REDIS_DB.zadd(
+            return get_REDIS_DB().zadd(
                 sortedset_db_key.redis_key, {sortedset_member: sortedset_score}
             )
 
@@ -773,7 +773,7 @@ class SortedFieldMixin:
                 if pipeline:
                     return pipeline.zrem(sortedset_db_key.redis_key, saved_redis_key)
                 else:
-                    return POPOTO_REDIS_DB.zrem(
+                    return get_REDIS_DB().zrem(
                         sortedset_db_key.redis_key, saved_redis_key
                     )
 
@@ -785,7 +785,7 @@ class SortedFieldMixin:
         if pipeline:
             return pipeline.zrem(sortedset_db_key.redis_key, sortedset_member)
         else:
-            return POPOTO_REDIS_DB.zrem(sortedset_db_key.redis_key, sortedset_member)
+            return get_REDIS_DB().zrem(sortedset_db_key.redis_key, sortedset_member)
 
     @classmethod
     def filter_query(
@@ -910,7 +910,7 @@ class SortedFieldMixin:
         bounded = isinstance(_limit, int) and _limit > 0
         if bounded and _desc:
             # ZREVRANGEBYSCORE takes the bounds high-then-low.
-            redis_db_keys_list = POPOTO_REDIS_DB.zrevrangebyscore(
+            redis_db_keys_list = get_REDIS_DB().zrevrangebyscore(
                 sortedset_db_key.redis_key,
                 value_range["max"],
                 value_range["min"],
@@ -918,7 +918,7 @@ class SortedFieldMixin:
                 num=_limit,
             )
         elif bounded:
-            redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
+            redis_db_keys_list = get_REDIS_DB().zrangebyscore(
                 sortedset_db_key.redis_key,
                 value_range["min"],
                 value_range["max"],
@@ -926,11 +926,11 @@ class SortedFieldMixin:
                 num=_limit,
             )
         elif _desc:
-            redis_db_keys_list = POPOTO_REDIS_DB.zrevrangebyscore(
+            redis_db_keys_list = get_REDIS_DB().zrevrangebyscore(
                 sortedset_db_key.redis_key, value_range["max"], value_range["min"]
             )
         else:
-            redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
+            redis_db_keys_list = get_REDIS_DB().zrangebyscore(
                 sortedset_db_key.redis_key, value_range["min"], value_range["max"]
             )
         return list(redis_db_keys_list)

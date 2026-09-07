@@ -45,7 +45,7 @@ import logging
 
 from ..models.db_key import DB_key
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -331,7 +331,7 @@ class Relationship(Field):
                 if pipeline:
                     pipeline.srem(old_relationship_set_db_key.redis_key, member_key)
                 else:
-                    POPOTO_REDIS_DB.srem(
+                    get_REDIS_DB().srem(
                         old_relationship_set_db_key.redis_key, member_key
                     )
 
@@ -349,7 +349,7 @@ class Relationship(Field):
                     relationship_set_db_key.redis_key, model_instance.db_key.redis_key
                 )
             else:
-                return POPOTO_REDIS_DB.srem(
+                return get_REDIS_DB().srem(
                     relationship_set_db_key.redis_key, model_instance.db_key.redis_key
                 )
         else:
@@ -358,7 +358,7 @@ class Relationship(Field):
                     relationship_set_db_key.redis_key, model_instance.db_key.redis_key
                 )
             else:
-                return POPOTO_REDIS_DB.sadd(
+                return get_REDIS_DB().sadd(
                     relationship_set_db_key.redis_key, model_instance.db_key.redis_key
                 )
 
@@ -435,7 +435,7 @@ class Relationship(Field):
         if pipeline:
             return pipeline.srem(relationship_set_db_key.redis_key, member_key)
         else:
-            return POPOTO_REDIS_DB.srem(relationship_set_db_key.redis_key, member_key)
+            return get_REDIS_DB().srem(relationship_set_db_key.redis_key, member_key)
 
     @classmethod
     def filter_query(cls, model: "Model", field_name: str, **query_params) -> set:
@@ -479,7 +479,7 @@ class Relationship(Field):
         from ..models.base import Model
 
         keys_lists_to_intersect = list()
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
 
         for query_param, query_value in query_params.items():
             if query_param == f"{field_name}":
@@ -493,7 +493,7 @@ class Relationship(Field):
                     query_value.db_key,
                 )
                 keys_lists_to_intersect.append(
-                    POPOTO_REDIS_DB.smembers(relationship_set_db_key.redis_key)
+                    get_REDIS_DB().smembers(relationship_set_db_key.redis_key)
                 )
 
             elif query_param.startswith(f"{field_name}__"):
@@ -584,7 +584,7 @@ class Relationship(Field):
             cls.get_special_use_field_db_key(model, field_name),
             related_db_key,
         ).redis_key
-        members: Any = POPOTO_REDIS_DB.srandmember(reverse_index_key, count)
+        members: Any = get_REDIS_DB().srandmember(reverse_index_key, count)
         return [
             member.decode("utf-8") if isinstance(member, bytes) else str(member)
             for member in members or []

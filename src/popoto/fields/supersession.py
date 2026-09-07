@@ -73,7 +73,7 @@ from typing import Any, Optional, Sequence, Union
 import redis.client
 import redis.exceptions
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 from .validity_field import (
     ValidityField,
     ValidityMemberAbsentError,
@@ -539,7 +539,7 @@ class SupersessionProtocol:
         # purpose: it is the same rule ``_walk_links`` already applies to a
         # dangling link, so an anchor and a link are judged by one criterion.
         # Read-only path; ``_member_key`` still issues zero commands.
-        if POPOTO_REDIS_DB.zscore(valid_from_key, anchor) is None:
+        if get_REDIS_DB().zscore(valid_from_key, anchor) is None:
             return []
 
         fwd_key = ValidityField.get_chain_fwd_key(model, resolved)
@@ -676,7 +676,7 @@ def _save_and_close(
         _validate_caller_pipeline(pipeline, entry_point)
         pipe = pipeline
     else:
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
 
     saved = new_instance.save(pipeline=pipe)
 
@@ -866,7 +866,7 @@ def _walk_one(instance: Any, field_name: Optional[str], forward: bool) -> Any:
         if forward
         else ValidityField.get_chain_rev_key(model, resolved)
     )
-    linked = POPOTO_REDIS_DB.hget(link_key, member)
+    linked = get_REDIS_DB().hget(link_key, member)
     if not linked:
         return None
     member_key = linked.decode() if isinstance(linked, bytes) else str(linked)
@@ -885,14 +885,14 @@ def _walk_links(
     members: "list[str]" = []
     current = start
     while True:
-        linked = POPOTO_REDIS_DB.hget(link_key, current)
+        linked = get_REDIS_DB().hget(link_key, current)
         if not linked:
             return members
         member = linked.decode() if isinstance(linked, bytes) else str(linked)
         if member in seen:
             logger.debug("chain: cycle detected at %s, terminating walk", member)
             return members
-        if POPOTO_REDIS_DB.zscore(valid_from_key, member) is None:
+        if get_REDIS_DB().zscore(valid_from_key, member) is None:
             logger.debug("chain: dangling link to %s, terminating walk", member)
             return members
         seen.add(member)

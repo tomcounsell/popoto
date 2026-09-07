@@ -44,7 +44,7 @@ import logging
 
 import redis
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 import msgpack
 
 logger = logging.getLogger("POPOTO-publisher")
@@ -211,7 +211,7 @@ class Publisher(ABC):
                 self._channel_name, msgpack.packb(self._publish_data)
             )
         else:
-            subscriber_count = POPOTO_REDIS_DB.publish(
+            subscriber_count = get_REDIS_DB().publish(
                 channel_name, msgpack.packb(self._publish_data)
             )
             logger.debug(

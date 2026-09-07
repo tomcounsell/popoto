@@ -62,7 +62,7 @@ import logging
 from ..models.db_key import DB_key
 from ..exceptions import ModelException
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB, scan_keys
+from ..redis_db import get_REDIS_DB, scan_keys
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -131,7 +131,7 @@ def _scan_hash_keys(pattern: str) -> list:  # type: ignore[type-arg]
     keys = scan_keys(pattern)
     if not keys:
         return keys
-    pipeline = POPOTO_REDIS_DB.pipeline(transaction=False)
+    pipeline = get_REDIS_DB().pipeline(transaction=False)
     for key in keys:
         pipeline.type(key)
     key_types = pipeline.execute()
@@ -308,7 +308,7 @@ class KeyFieldMixin:
             if pipeline:
                 pipeline.srem(old_set_key.redis_key, member_key)
             else:
-                POPOTO_REDIS_DB.srem(old_set_key.redis_key, member_key)
+                get_REDIS_DB().srem(old_set_key.redis_key, member_key)
 
         unique_set_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name), field_value
@@ -318,7 +318,7 @@ class KeyFieldMixin:
                 unique_set_key.redis_key, model_instance.db_key.redis_key
             )
         else:
-            return POPOTO_REDIS_DB.sadd(
+            return get_REDIS_DB().sadd(
                 unique_set_key.redis_key, model_instance.db_key.redis_key
             )
 
@@ -372,7 +372,7 @@ class KeyFieldMixin:
         if pipeline:
             return pipeline.srem(unique_set_key.redis_key, member_key)
         else:
-            return POPOTO_REDIS_DB.srem(unique_set_key.redis_key, member_key)
+            return get_REDIS_DB().srem(unique_set_key.redis_key, member_key)
 
     def get_filter_query_params(self, field_name: str) -> set:
         """
@@ -499,7 +499,7 @@ class KeyFieldMixin:
                     for query_value_elem in query_value
                 ]
                 if set_keys:
-                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.sunion(set_keys))
+                    keys_lists_to_intersect.append(get_REDIS_DB().sunion(set_keys))
                 else:
                     keys_lists_to_intersect.append(set())
 
@@ -512,7 +512,7 @@ class KeyFieldMixin:
                         )
                     else:
                         keys_lists_to_intersect.append(
-                            POPOTO_REDIS_DB.smembers(
+                            get_REDIS_DB().smembers(
                                 DB_key(redis_set_key_prefix, query_value).redis_key
                             )
                         )
@@ -520,7 +520,7 @@ class KeyFieldMixin:
                 elif query_param.endswith("__isnull"):
                     if query_value is True:
                         keys_lists_to_intersect.append(
-                            POPOTO_REDIS_DB.smembers(
+                            get_REDIS_DB().smembers(
                                 DB_key(redis_set_key_prefix, None).redis_key
                             )
                         )

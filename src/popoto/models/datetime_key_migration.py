@@ -38,7 +38,7 @@ from collections.abc import Iterator
 from redis.exceptions import ResponseError
 
 from ..fields.constants import Defaults
-from ..redis_db import POPOTO_REDIS_DB, ENCODING
+from ..redis_db import get_REDIS_DB, ENCODING
 from .canonical_key import canonical_key_str
 from .db_key import DB_key
 
@@ -488,7 +488,7 @@ def _iter_instance_keys(model_class) -> "Iterator[str]":
     """Yield every stored instance key for *model_class*, as ``str``."""
     pattern = model_class._meta.db_class_key.redis_key + ":*"
     expected_length = model_class._meta.db_key_length
-    for raw_key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+    for raw_key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
         redis_key = _as_str(raw_key)
         # Same filter rebuild_indexes uses: side keys and other models' keys
         # can match the glob, real instance keys have an exact segment count.
@@ -532,7 +532,7 @@ def _find_inbound_relationships(model_class) -> "list[InboundRelationship]":
 
         counts = {field_name: 0 for field_name in pointing_fields}
         for redis_key in _iter_instance_keys(other):
-            redis_hash = POPOTO_REDIS_DB.hgetall(redis_key)
+            redis_hash = get_REDIS_DB().hgetall(redis_key)
             if not redis_hash:
                 continue
             fields = decode_popoto_model_hashmap(other, redis_hash, fields_only=True)
@@ -556,7 +556,7 @@ def _decode_contents(model_class, redis_key: str) -> dict:
     """Decode a hash to ``{field_name: value}`` for the collision report."""
     from .encoding import decode_popoto_model_hashmap
 
-    redis_hash = POPOTO_REDIS_DB.hgetall(redis_key)
+    redis_hash = get_REDIS_DB().hgetall(redis_key)
     if not redis_hash:
         return {}
     fields = decode_popoto_model_hashmap(model_class, redis_hash, fields_only=True)
@@ -794,18 +794,18 @@ def _apply_moves(
         # rather than clobber. Redis *raises* on a missing source rather than
         # returning 0, so both non-success paths have to be caught.
         try:
-            renamed = POPOTO_REDIS_DB.renamenx(old_key, new_key)
+            renamed = get_REDIS_DB().renamenx(old_key, new_key)
         except ResponseError:
             renamed = False
 
         if not renamed:
-            if not POPOTO_REDIS_DB.exists(old_key) and POPOTO_REDIS_DB.exists(new_key):
+            if not get_REDIS_DB().exists(old_key) and get_REDIS_DB().exists(new_key):
                 # Race 2: a live process loaded this row and saved it, which
                 # renames it onto the same canonical target we computed. The
                 # loser of that race is a no-op on an already-correct row, so
                 # this is success, not an error.
                 report.moved.append((old_key, new_key))
-            elif not POPOTO_REDIS_DB.exists(old_key):
+            elif not get_REDIS_DB().exists(old_key):
                 report.skipped.append(
                     (old_key, new_key, "source key vanished during migration")
                 )
@@ -815,16 +815,16 @@ def _apply_moves(
                 )
             continue
 
-        POPOTO_REDIS_DB.srem(model_class._meta.db_class_set_key.redis_key, old_key)
-        POPOTO_REDIS_DB.sadd(model_class._meta.db_class_set_key.redis_key, new_key)
+        get_REDIS_DB().srem(model_class._meta.db_class_set_key.redis_key, old_key)
+        get_REDIS_DB().sadd(model_class._meta.db_class_set_key.redis_key, new_key)
 
         # Side keys embed the hash key in their own name, so they orphan on
         # rename. Their names are derivable, so the migration owns them.
         for old_side_key, new_side_key in zip(
             _side_keys(model_class, old_key), _side_keys(model_class, new_key)
         ):
-            if POPOTO_REDIS_DB.exists(old_side_key):
-                POPOTO_REDIS_DB.rename(old_side_key, new_side_key)
+            if get_REDIS_DB().exists(old_side_key):
+                get_REDIS_DB().rename(old_side_key, new_side_key)
 
         report.moved.append((old_key, new_key))
 

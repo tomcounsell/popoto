@@ -54,7 +54,7 @@ from typing import Optional
 
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 
 logger = logging.getLogger("POPOTO.EventStream")
 
@@ -190,7 +190,7 @@ class EventStreamMixin:
                     approximate=True,
                 )
             else:
-                POPOTO_REDIS_DB.xadd(
+                get_REDIS_DB().xadd(
                     stream_key,
                     entry,
                     maxlen=self._stream_max_length,
@@ -233,7 +233,7 @@ class EventStreamMixin:
                     approximate=True,
                 )
             else:
-                POPOTO_REDIS_DB.xadd(
+                get_REDIS_DB().xadd(
                     stream_key,
                     entry,
                     maxlen=self._stream_max_length,

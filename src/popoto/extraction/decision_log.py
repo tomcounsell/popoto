@@ -89,7 +89,7 @@ from ..models.base import Model
 from ..models.db_key import DB_key
 from ..models.encoding import encode_popoto_model_obj
 from ..models.query import Query
-from ..redis_db import ENCODING, POPOTO_REDIS_DB, run_lua
+from ..redis_db import ENCODING, get_REDIS_DB, run_lua
 from ..fields.shortcuts import FloatField, IntField, KeyField, StringField
 from .verdict import TERMINAL_VERDICTS, ReasonCode, Verdict
 
@@ -331,7 +331,7 @@ class DecisionLog:
         """Args:
         redis_client: Redis/Valkey client. Defaults to Popoto's.
         """
-        self._redis = redis_client if redis_client is not None else POPOTO_REDIS_DB
+        self._redis = redis_client if redis_client is not None else get_REDIS_DB()
 
     # -- keys ------------------------------------------------------------
 

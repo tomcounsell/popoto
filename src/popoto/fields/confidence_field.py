@@ -44,7 +44,7 @@ import redis
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
@@ -191,7 +191,7 @@ class ConfidenceField(Field):
 
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
         member_key = model_instance.db_key.redis_key
-        raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
+        raw = get_REDIS_DB().hget(data_hash_key, member_key)
         if not raw:
             return None
 
@@ -242,7 +242,7 @@ class ConfidenceField(Field):
             "corroborations": int(state.get("corroborations", 0) or 0),
             "contradictions": int(state.get("contradictions", 0) or 0),
         }
-        POPOTO_REDIS_DB.hset(data_hash_key, member_key, msgpack.packb(data))
+        get_REDIS_DB().hset(data_hash_key, member_key, msgpack.packb(data))
         return None
 
     def __init__(self, **kwargs):
@@ -395,9 +395,7 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
-        db = (
-            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
-        )
+        db = pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
 
         # Check if on_delete preserved migration data (key migration scenario)
         migration_data = getattr(model_instance, "_confidence_migration_data", {})
@@ -429,7 +427,7 @@ class ConfidenceField(Field):
                     )
                     if old_hash_key and old_hash_key != data_hash_key:
                         # Read old data directly from Redis
-                        old_raw = POPOTO_REDIS_DB.hget(old_hash_key, member_key)
+                        old_raw = get_REDIS_DB().hget(old_hash_key, member_key)
                         if old_raw:
                             db.hset(data_hash_key, member_key, old_raw)
                             db.hdel(old_hash_key, member_key)
@@ -475,7 +473,7 @@ class ConfidenceField(Field):
             # During key migration (saved_redis_key present), preserve confidence
             # data so on_save can restore it in the new partition hash.
             if kwargs.get("saved_redis_key"):
-                old_raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
+                old_raw = get_REDIS_DB().hget(data_hash_key, member_key)
                 if old_raw:
                     if not hasattr(model_instance, "_confidence_migration_data"):
                         model_instance._confidence_migration_data = {}
@@ -484,7 +482,7 @@ class ConfidenceField(Field):
             db = (
                 pipeline
                 if isinstance(pipeline, redis.client.Pipeline)
-                else POPOTO_REDIS_DB
+                else get_REDIS_DB()
             )
             db.hdel(data_hash_key, member_key)
 
@@ -566,11 +564,11 @@ class ConfidenceField(Field):
             )
             return None
 
-        if not POPOTO_REDIS_DB.exists(member_key):
+        if not get_REDIS_DB().exists(member_key):
             raise TypeError("update_confidence() requires a saved model instance")
 
         result = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             CAPPED_BAYESIAN_UPDATE_LUA,
             1,  # number of KEYS
             data_hash_key,
@@ -619,7 +617,7 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
-        raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
+        raw = get_REDIS_DB().hget(data_hash_key, member_key)
         if raw is None:
             return field.initial_confidence
 
@@ -645,7 +643,7 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
-        raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
+        raw = get_REDIS_DB().hget(data_hash_key, member_key)
         if raw is None:
             return {
                 "confidence": field.initial_confidence,
@@ -681,7 +679,7 @@ class ConfidenceField(Field):
         result = {}
         cursor = 0
         while True:
-            cursor, data = POPOTO_REDIS_DB.hscan(
+            cursor, data = get_REDIS_DB().hscan(
                 data_hash_key, cursor=cursor, match=pattern, count=100
             )
             for member_key, raw_value in data.items():
@@ -732,7 +730,7 @@ class ConfidenceField(Field):
         base_key = field.get_special_use_field_db_key(model_class, field_name)
         unpartitioned_key = base_key.redis_key + ":data"
 
-        all_data = POPOTO_REDIS_DB.hgetall(unpartitioned_key)
+        all_data = get_REDIS_DB().hgetall(unpartitioned_key)
         if not all_data:
             return {"total": 0, "migrated": 0, "errors": [], "partitions": {}}
 
@@ -752,7 +750,7 @@ class ConfidenceField(Field):
 
             # Load the model instance from Redis to read partition field values
             try:
-                redis_hash = POPOTO_REDIS_DB.hgetall(member_key)
+                redis_hash = get_REDIS_DB().hgetall(member_key)
                 if not redis_hash:
                     report["errors"].append(
                         {
@@ -786,7 +784,7 @@ class ConfidenceField(Field):
             report["partitions"][partition_label] += 1
 
             if not dry_run:
-                POPOTO_REDIS_DB.hset(partitioned_key, member_key, raw_value)
+                get_REDIS_DB().hset(partitioned_key, member_key, raw_value)
                 report["migrated"] += 1
 
         # Delete the old unpartitioned hash after successful migration
@@ -794,6 +792,6 @@ class ConfidenceField(Field):
             report["errors"]
         ):
             if report["migrated"] > 0:
-                POPOTO_REDIS_DB.delete(unpartitioned_key)
+                get_REDIS_DB().delete(unpartitioned_key)
 
         return report

@@ -96,7 +96,7 @@ nonexistent hash.
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 from ..exceptions import AppendOnlyViolation
-from ..redis_db import POPOTO_REDIS_DB, scan_keys
+from ..redis_db import get_REDIS_DB, scan_keys
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from redis.client import Pipeline
@@ -199,7 +199,7 @@ class AppendOnlyMixin:
         # Read POPOTO_REDIS_DB directly, never `pipeline`: an EXISTS queued on
         # a pipeline returns the Pipeline object, which is always truthy, and
         # would refuse every save including the first.
-        if POPOTO_REDIS_DB.exists(redis_key):
+        if get_REDIS_DB().exists(redis_key):
             raise AppendOnlyViolation(
                 f"{model_name} is append-only: a record already exists at "
                 f"{redis_key}. Append a new record instead of overwriting; "
@@ -321,27 +321,27 @@ class AppendOnlyMixin:
         ]
         for field_name in validity_field_names:
             keys = ValidityField.get_all_keys(instance, field_name)
-            POPOTO_REDIS_DB.zrem(keys["valid_from"], member)
-            POPOTO_REDIS_DB.zrem(keys["invalid_at"], member)
-            POPOTO_REDIS_DB.zrem(keys["ingested_at"], member)
-            POPOTO_REDIS_DB.hdel(keys["chain_fwd"], member)
-            POPOTO_REDIS_DB.hdel(keys["chain_rev"], member)
+            get_REDIS_DB().zrem(keys["valid_from"], member)
+            get_REDIS_DB().zrem(keys["invalid_at"], member)
+            get_REDIS_DB().zrem(keys["ingested_at"], member)
+            get_REDIS_DB().hdel(keys["chain_fwd"], member)
+            get_REDIS_DB().hdel(keys["chain_rev"], member)
 
             for chain_key in (keys["chain_fwd"], keys["chain_rev"]):
-                links = POPOTO_REDIS_DB.hgetall(chain_key) or {}
+                links = get_REDIS_DB().hgetall(chain_key) or {}
                 dangling = [
                     _as_str(link_field)
                     for link_field, link_value in links.items()
                     if _as_str(link_value) == member
                 ]
                 if dangling:
-                    POPOTO_REDIS_DB.hdel(chain_key, *dangling)
+                    get_REDIS_DB().hdel(chain_key, *dangling)
 
             prefix = ValidityField.get_prefix_db_key(instance, field_name).redis_key
             for pointer_key in scan_keys(f"{prefix}:open:*"):
                 pointer_key = _as_str(pointer_key)
-                current = POPOTO_REDIS_DB.get(pointer_key)
+                current = get_REDIS_DB().get(pointer_key)
                 if current is not None and _as_str(current) == member:
-                    POPOTO_REDIS_DB.delete(pointer_key)
+                    get_REDIS_DB().delete(pointer_key)
 
         return existed

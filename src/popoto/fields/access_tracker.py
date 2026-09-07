@@ -30,7 +30,7 @@ import logging
 import time
 from typing import Any
 
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 
 logger = logging.getLogger("POPOTO.AccessTracker")
 
@@ -113,9 +113,9 @@ class AccessTrackerMixin:
             exports exactly the shape #554-era code produced.
         """
         meta_key = model_instance._at_key("meta")
-        raw_count = POPOTO_REDIS_DB.hget(meta_key, "access_count")
-        raw_last = POPOTO_REDIS_DB.hget(meta_key, "last_accessed")
-        raw_log = POPOTO_REDIS_DB.lrange(model_instance._at_key("access_log"), 0, -1)
+        raw_count = get_REDIS_DB().hget(meta_key, "access_count")
+        raw_last = get_REDIS_DB().hget(meta_key, "last_accessed")
+        raw_log = get_REDIS_DB().lrange(model_instance._at_key("access_log"), 0, -1)
         if raw_count is None and raw_last is None and not raw_log:
             return None
 
@@ -174,15 +174,15 @@ class AccessTrackerMixin:
         if state.get("last_accessed") is not None:
             mapping["last_accessed"] = float(state["last_accessed"])
         if mapping:
-            POPOTO_REDIS_DB.hset(model_instance._at_key("meta"), mapping=mapping)
+            get_REDIS_DB().hset(model_instance._at_key("meta"), mapping=mapping)
 
         log = state.get("access_log")
         if isinstance(log, (list, tuple)) and log:
             cap = max(1, int(cls._max_access_log))
             entries = [str(float(ts)) for ts in log][-cap:]
             log_key = model_instance._at_key("access_log")
-            POPOTO_REDIS_DB.delete(log_key)
-            POPOTO_REDIS_DB.rpush(log_key, *entries)
+            get_REDIS_DB().delete(log_key)
+            get_REDIS_DB().rpush(log_key, *entries)
         return None
 
     def _at_key(self, kind):
@@ -226,8 +226,8 @@ class AccessTrackerMixin:
             pipeline.rpush(staged_key, ts)
             pipeline.expire(staged_key, self._staged_ttl_seconds)
         else:
-            POPOTO_REDIS_DB.rpush(staged_key, ts)
-            POPOTO_REDIS_DB.expire(staged_key, self._staged_ttl_seconds)
+            get_REDIS_DB().rpush(staged_key, ts)
+            get_REDIS_DB().expire(staged_key, self._staged_ttl_seconds)
 
     def confirm_access(self, pipeline=None):
         """Atomically promote staged reads to the confirmed access log.
@@ -263,7 +263,7 @@ class AccessTrackerMixin:
             raise TypeError("confirm_access() requires a saved model instance")
 
         # Check if the model has been saved (has a valid redis key in the DB)
-        if not POPOTO_REDIS_DB.exists(redis_key):
+        if not get_REDIS_DB().exists(redis_key):
             raise TypeError("confirm_access() requires a saved model instance")
 
         staged_key = self._at_key("staged")
@@ -271,7 +271,7 @@ class AccessTrackerMixin:
         meta_key = self._at_key("meta")
 
         count = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             CONFIRM_ACCESS_LUA,
             3,  # number of KEYS
             staged_key,
@@ -297,7 +297,7 @@ class AccessTrackerMixin:
         if pipeline:
             pipeline.delete(staged_key)
         else:
-            POPOTO_REDIS_DB.delete(staged_key)
+            get_REDIS_DB().delete(staged_key)
 
     @property
     def access_count(self):
@@ -307,7 +307,7 @@ class AccessTrackerMixin:
             int: The cumulative access count, or 0 if never confirmed.
         """
         meta_key = self._at_key("meta")
-        raw = POPOTO_REDIS_DB.hget(meta_key, "access_count")
+        raw = get_REDIS_DB().hget(meta_key, "access_count")
         if raw is None:
             return 0
         return int(raw)
@@ -320,7 +320,7 @@ class AccessTrackerMixin:
             float or None: Unix timestamp, or None if never confirmed.
         """
         meta_key = self._at_key("meta")
-        raw = POPOTO_REDIS_DB.hget(meta_key, "last_accessed")
+        raw = get_REDIS_DB().hget(meta_key, "last_accessed")
         if raw is None:
             return None
         return float(raw)
@@ -342,4 +342,4 @@ class AccessTrackerMixin:
             for key in keys:
                 pipeline.delete(key)
         else:
-            POPOTO_REDIS_DB.delete(*keys)
+            get_REDIS_DB().delete(*keys)

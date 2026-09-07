@@ -75,7 +75,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union, cast
 import redis.client
 
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB, scan_keys, run_lua
+from ..redis_db import get_REDIS_DB, scan_keys, run_lua
 from .constants import Defaults
 from .field import Field
 
@@ -501,7 +501,7 @@ class ValidityField(Field):
         matched = []
         for pointer_key in scan_keys(f"{prefix}:open:*"):
             pointer_key = _as_str(pointer_key)
-            current = POPOTO_REDIS_DB.get(pointer_key)
+            current = get_REDIS_DB().get(pointer_key)
             if current is not None and _as_str(current) == member_key:
                 matched.append(pointer_key)
         return matched
@@ -559,19 +559,19 @@ class ValidityField(Field):
         keys = cls.get_all_keys(model_instance, field_name)
 
         valid_from = cast(
-            "Optional[float]", POPOTO_REDIS_DB.zscore(keys["valid_from"], member_key)
+            "Optional[float]", get_REDIS_DB().zscore(keys["valid_from"], member_key)
         )
         invalid_at = cast(
-            "Optional[float]", POPOTO_REDIS_DB.zscore(keys["invalid_at"], member_key)
+            "Optional[float]", get_REDIS_DB().zscore(keys["invalid_at"], member_key)
         )
         ingested_at = cast(
-            "Optional[float]", POPOTO_REDIS_DB.zscore(keys["ingested_at"], member_key)
+            "Optional[float]", get_REDIS_DB().zscore(keys["ingested_at"], member_key)
         )
         if valid_from is None and invalid_at is None and ingested_at is None:
             return None
 
-        fwd = POPOTO_REDIS_DB.hget(keys["chain_fwd"], member_key)
-        rev = POPOTO_REDIS_DB.hget(keys["chain_rev"], member_key)
+        fwd = get_REDIS_DB().hget(keys["chain_fwd"], member_key)
+        rev = get_REDIS_DB().hget(keys["chain_rev"], member_key)
 
         invalid_at_out: Union[float, str]
         if invalid_at is None or float(invalid_at) == Defaults.VALIDITY_OPEN_SENTINEL:
@@ -650,7 +650,7 @@ class ValidityField(Field):
 
         valid_from = state.get("valid_from")
         if valid_from is not None:
-            POPOTO_REDIS_DB.zadd(keys["valid_from"], {member_key: float(valid_from)})
+            get_REDIS_DB().zadd(keys["valid_from"], {member_key: float(valid_from)})
 
         invalid_at = state.get("invalid_at")
         if invalid_at is not None:
@@ -659,22 +659,22 @@ class ValidityField(Field):
                 if invalid_at == cls.OPEN_SENTINEL_TOKEN
                 else float(invalid_at)
             )
-            POPOTO_REDIS_DB.zadd(keys["invalid_at"], {member_key: score})
+            get_REDIS_DB().zadd(keys["invalid_at"], {member_key: score})
 
         ingested_at = state.get("ingested_at")
         if ingested_at is not None:
-            POPOTO_REDIS_DB.zadd(keys["ingested_at"], {member_key: float(ingested_at)})
+            get_REDIS_DB().zadd(keys["ingested_at"], {member_key: float(ingested_at)})
 
         chain_fwd = state.get("chain_fwd")
         if chain_fwd:
-            POPOTO_REDIS_DB.hset(keys["chain_fwd"], member_key, chain_fwd)
+            get_REDIS_DB().hset(keys["chain_fwd"], member_key, chain_fwd)
 
         chain_rev = state.get("chain_rev")
         if chain_rev:
-            POPOTO_REDIS_DB.hset(keys["chain_rev"], member_key, chain_rev)
+            get_REDIS_DB().hset(keys["chain_rev"], member_key, chain_rev)
 
         for digest in state.get("open_pointers") or []:
-            POPOTO_REDIS_DB.set(
+            get_REDIS_DB().set(
                 cls.get_open_pointer_key(model_instance, field_name, str(digest)),
                 member_key,
             )
@@ -852,10 +852,10 @@ class ValidityField(Field):
         # ``ContextAssembler._resolve_excluded_keys``; CLAUDE.md notes this error
         # family is redis-py-version-dependent.
         started = cast(
-            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(valid_from_key, "-inf", t)
+            "list[Any]", get_REDIS_DB().zrangebyscore(valid_from_key, "-inf", t)
         )
         still_open = cast(
-            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, f"({t}", "+inf")
+            "list[Any]", get_REDIS_DB().zrangebyscore(invalid_at_key, f"({t}", "+inf")
         )
         return {_as_str(m) for m in started} & {_as_str(m) for m in still_open}
 
@@ -922,11 +922,11 @@ class ValidityField(Field):
         # invalid_at <= t: already closed. The +inf open sentinel never matches.
         # Read before valid_from, the order the assembler established.
         closed = cast(
-            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, "-inf", t)
+            "list[Any]", get_REDIS_DB().zrangebyscore(invalid_at_key, "-inf", t)
         )
         # valid_from > t: not yet started.
         future = cast(
-            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(valid_from_key, f"({t}", "+inf")
+            "list[Any]", get_REDIS_DB().zrangebyscore(valid_from_key, f"({t}", "+inf")
         )
         return {_as_str(m) for m in closed + future}
 
@@ -950,10 +950,10 @@ class ValidityField(Field):
         # the async client; narrow to the sync reply (see the cast note in
         # :meth:`resolve_valid_keys`).
         start = cast(
-            "Optional[float]", POPOTO_REDIS_DB.zscore(valid_from_key, member_key)
+            "Optional[float]", get_REDIS_DB().zscore(valid_from_key, member_key)
         )
         close = cast(
-            "Optional[float]", POPOTO_REDIS_DB.zscore(invalid_at_key, member_key)
+            "Optional[float]", get_REDIS_DB().zscore(invalid_at_key, member_key)
         )
         if start is None or close is None:
             return False
@@ -1086,7 +1086,7 @@ class ValidityField(Field):
             run_lua(pipeline, SUPERSEDE_LUA, 6, *args)
             return pipeline
         try:
-            result = run_lua(POPOTO_REDIS_DB, SUPERSEDE_LUA, 6, *args)
+            result = run_lua(get_REDIS_DB(), SUPERSEDE_LUA, 6, *args)
         except redis.exceptions.ResponseError as e:
             raise map_lua_error(e) from e
         closed = _as_str(result) if result else ""
@@ -1224,7 +1224,7 @@ class ValidityField(Field):
             return
         if not member_key:
             return
-        stored = POPOTO_REDIS_DB.zscore(
+        stored = get_REDIS_DB().zscore(
             cls.get_valid_from_key(model_instance, field_name), member_key
         )
         if stored is not None and float(stored) != declared:
@@ -1271,7 +1271,7 @@ class ValidityField(Field):
                     "ValidityField.get_valid_from: pass member_key when the "
                     "first argument is a model class rather than an instance"
                 ) from e
-        score = POPOTO_REDIS_DB.zscore(
+        score = get_REDIS_DB().zscore(
             cls.get_valid_from_key(model, field_name), member_key
         )
         return None if score is None else float(score)
@@ -1327,14 +1327,14 @@ class ValidityField(Field):
                 pipeline.delete(pointer_key)
             return pipeline
 
-        POPOTO_REDIS_DB.zrem(keys["valid_from"], member)
-        POPOTO_REDIS_DB.zrem(keys["invalid_at"], member)
-        POPOTO_REDIS_DB.zrem(keys["ingested_at"], member)
-        POPOTO_REDIS_DB.hdel(keys["chain_fwd"], member)
-        POPOTO_REDIS_DB.hdel(keys["chain_rev"], member)
+        get_REDIS_DB().zrem(keys["valid_from"], member)
+        get_REDIS_DB().zrem(keys["invalid_at"], member)
+        get_REDIS_DB().zrem(keys["ingested_at"], member)
+        get_REDIS_DB().hdel(keys["chain_fwd"], member)
+        get_REDIS_DB().hdel(keys["chain_rev"], member)
         result: Any = 0
         for pointer_key in stale_pointers:
-            result = POPOTO_REDIS_DB.delete(pointer_key)
+            result = get_REDIS_DB().delete(pointer_key)
         return result
 
     # ------------------------------------------------------------------
@@ -1403,9 +1403,9 @@ class ValidityField(Field):
                     # Narrow the sync ZRANGE replies (see the cast note in
                     # :meth:`resolve_valid_keys`).
                     everything = set(
-                        cast("list[Any]", POPOTO_REDIS_DB.zrange(invalid_at_key, 0, -1))
+                        cast("list[Any]", get_REDIS_DB().zrange(invalid_at_key, 0, -1))
                     ) | set(
-                        cast("list[Any]", POPOTO_REDIS_DB.zrange(valid_from_key, 0, -1))
+                        cast("list[Any]", get_REDIS_DB().zrange(valid_from_key, 0, -1))
                     )
                     results.append(everything - valid)
 
@@ -1440,9 +1440,9 @@ class ValidityField(Field):
         # Narrow the sync ZRANGEBYSCORE replies (see the cast note in
         # :meth:`resolve_valid_keys`).
         started = cast(
-            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(valid_from_key, "-inf", t)
+            "list[Any]", get_REDIS_DB().zrangebyscore(valid_from_key, "-inf", t)
         )
         still_open = cast(
-            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, f"({t}", "+inf")
+            "list[Any]", get_REDIS_DB().zrangebyscore(invalid_at_key, f"({t}", "+inf")
         )
         return set(started) & set(still_open)

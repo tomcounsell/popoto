@@ -56,7 +56,7 @@ See Also:
 
 from abc import ABC
 import logging
-from ..redis_db import POPOTO_REDIS_DB, ENCODING
+from ..redis_db import get_REDIS_DB, ENCODING
 import msgpack
 
 logger = logging.getLogger("POPOTO-subscriber")
@@ -137,7 +137,7 @@ class Subscriber(ABC):
             overhead is acceptable or if a shared subscription model would be
             more appropriate.
         """
-        self.pubsub = POPOTO_REDIS_DB.pubsub()
+        self.pubsub = get_REDIS_DB().pubsub()
         logger.info(f"New pubsub for {self.__class__.__name__}")
         for channel_name in self.sub_channel_names:
             self.pubsub.subscribe(channel_name)

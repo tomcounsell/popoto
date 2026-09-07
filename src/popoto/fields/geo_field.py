@@ -49,7 +49,7 @@ import redis
 from .field import Field
 import logging
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -343,14 +343,14 @@ class GeoField(Field):
             if pipeline:
                 return pipeline.zrem(geo_db_key.redis_key, geo_member)
             else:
-                return POPOTO_REDIS_DB.zrem(geo_db_key.redis_key, geo_member)
+                return get_REDIS_DB().zrem(geo_db_key.redis_key, geo_member)
         if pipeline:
             return pipeline.geoadd(
                 name=geo_db_key.redis_key,
                 values=[field_value.longitude, field_value.latitude, geo_member],
             )
         else:
-            return POPOTO_REDIS_DB.geoadd(
+            return get_REDIS_DB().geoadd(
                 name=geo_db_key.redis_key,
                 values=[field_value.longitude, field_value.latitude, geo_member],
             )
@@ -392,7 +392,7 @@ class GeoField(Field):
         if pipeline:
             return pipeline.zrem(geo_db_key.redis_key, geo_member)
         else:
-            return POPOTO_REDIS_DB.zrem(geo_db_key.redis_key, geo_member)
+            return get_REDIS_DB().zrem(geo_db_key.redis_key, geo_member)
 
     @classmethod
     def filter_query(cls, model: "Model", field_name: str, **query_params):
@@ -482,7 +482,7 @@ class GeoField(Field):
                 with_distances = bool(query_value)
 
         if member:
-            redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
+            redis_db_keys_list = get_REDIS_DB().georadiusbymember(
                 geo_db_key.redis_key,
                 member=member.db_key.redis_key,
                 radius=radius,
@@ -492,7 +492,7 @@ class GeoField(Field):
             )
 
         elif coordinates.latitude is not None and coordinates.longitude is not None:
-            redis_db_keys_list = POPOTO_REDIS_DB.georadius(
+            redis_db_keys_list = get_REDIS_DB().georadius(
                 geo_db_key.redis_key,
                 longitude=coordinates.longitude,
                 latitude=coordinates.latitude,

@@ -34,7 +34,7 @@ import json
 import logging
 from typing import Any, Optional, cast
 
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
@@ -289,7 +289,7 @@ class CoOccurrenceField(Field):
 
         raw = cast(
             "list[tuple[Any, float]]",
-            POPOTO_REDIS_DB.zrange(
+            get_REDIS_DB().zrange(
                 field.get_edge_key(model_class, pk), 0, -1, withscores=True
             ),
         )
@@ -377,8 +377,8 @@ class CoOccurrenceField(Field):
         )[: max(1, int(field.max_edges))]
 
         edge_key = field.get_edge_key(model_class, pk)
-        POPOTO_REDIS_DB.delete(edge_key)
-        POPOTO_REDIS_DB.zadd(edge_key, dict(ranked))
+        get_REDIS_DB().delete(edge_key)
+        get_REDIS_DB().zadd(edge_key, dict(ranked))
         return None
 
     def __init__(self, **kwargs):
@@ -492,7 +492,7 @@ class CoOccurrenceField(Field):
 
         source_key = self.get_edge_key(model_class, source_pk)
         result = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             LINK_WITH_PRUNE_LUA,
             1,
             source_key,
@@ -504,7 +504,7 @@ class CoOccurrenceField(Field):
         if self.symmetric:
             target_key = self.get_edge_key(model_class, target_pk)
             run_lua(
-                POPOTO_REDIS_DB,
+                get_REDIS_DB(),
                 LINK_WITH_PRUNE_LUA,
                 1,
                 target_key,
@@ -554,7 +554,7 @@ class CoOccurrenceField(Field):
 
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
         source_key = self.get_edge_key(model_class, source_pk)
-        db = pipeline if pipeline else POPOTO_REDIS_DB
+        db = pipeline if pipeline else get_REDIS_DB()
         new_weight = run_lua(
             db,
             STRENGTHEN_CLAMP_LUA,
@@ -606,7 +606,7 @@ class CoOccurrenceField(Field):
                     "target_pk": str(target_pk),
                     "delta": str(delta),
                 }
-                POPOTO_REDIS_DB.xadd(
+                get_REDIS_DB().xadd(
                     stream_key, entry, maxlen=max_length, approximate=True
                 )
             except Exception:
@@ -631,7 +631,7 @@ class CoOccurrenceField(Field):
         target_pk = str(target_pk)
 
         source_key = self.get_edge_key(model_class, source_pk)
-        db = pipeline if pipeline else POPOTO_REDIS_DB
+        db = pipeline if pipeline else get_REDIS_DB()
         db.zrem(source_key, target_pk)
 
         if self.symmetric:
@@ -668,14 +668,14 @@ class CoOccurrenceField(Field):
 
         if factor == 0:
             # Special case: remove all edges
-            count = POPOTO_REDIS_DB.zcard(edge_key)
-            POPOTO_REDIS_DB.delete(edge_key)
+            count = get_REDIS_DB().zcard(edge_key)
+            get_REDIS_DB().delete(edge_key)
             return int(count)
 
         # Use threshold of 0.001 for pruning
         threshold = 0.001
         result = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             WEAKEN_ALL_LUA,
             1,
             edge_key,
@@ -701,7 +701,7 @@ class CoOccurrenceField(Field):
         edge_key = self.get_edge_key(model_class, pk)
 
         # ZREVRANGEBYSCORE: highest to lowest, with score filter
-        results = POPOTO_REDIS_DB.zrevrangebyscore(
+        results = get_REDIS_DB().zrevrangebyscore(
             edge_key,
             "+inf",
             str(min_weight),
@@ -779,7 +779,7 @@ class CoOccurrenceField(Field):
         key_prefix = self.get_edge_key_prefix(model_class)
 
         result = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             PROPAGATE_BFS_LUA,
             1,
             key_prefix,
@@ -838,7 +838,7 @@ class CoOccurrenceField(Field):
 
         if field.symmetric:
             # Get all linked PKs so we can remove reverse edges
-            linked = POPOTO_REDIS_DB.zrange(edge_key, 0, -1)
+            linked = get_REDIS_DB().zrange(edge_key, 0, -1)
             for target_pk in linked:
                 if isinstance(target_pk, bytes):
                     target_pk = target_pk.decode("utf-8")
@@ -846,13 +846,13 @@ class CoOccurrenceField(Field):
                 if pipeline:
                     pipeline.zrem(target_edge_key, member_key)
                 else:
-                    POPOTO_REDIS_DB.zrem(target_edge_key, member_key)
+                    get_REDIS_DB().zrem(target_edge_key, member_key)
 
         # Delete this instance's edge sorted set
         if pipeline:
             pipeline.delete(edge_key)
         else:
-            POPOTO_REDIS_DB.delete(edge_key)
+            get_REDIS_DB().delete(edge_key)
 
         return super().on_delete(
             model_instance, field_name, field_value, pipeline=pipeline, **kwargs
