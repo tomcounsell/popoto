@@ -2923,7 +2923,14 @@
 <p>Primary source dir is <code>src/</code>; tests live in <code>tests/</code>. <code>scripts/ci-local.sh</code>
 mirrors the GitHub workflows locally (<code>lint</code> ← lint.yml, <code>tests</code> ← tests.yml,
 <code>docs</code> ← deploy-docs.yml, <code>build</code> ← release.yml, <code>lock</code> ← lock-check.yml,
-<code>guard</code> ← guard-main-push.yml) and is the preferred full run. <code>stress</code> mirrors
+<code>guard</code> ← guard-main-push.yml) and is the preferred full run. The <code>lock</code> gate is
+a <em>partial</em> mirror: since #669, lock-check.yml also runs <code>uv sync --locked
+--all-extras --no-extra benchmark</code> and <code>scripts/check_lock_imports.py</code>, proving
+the lock installs and that the extras no other job installs still import.
+<code>ci-local.sh</code> deliberately stops at <code>uv lock --check</code>, because <code>uv sync</code> writes
+to your <code>.venv</code> and a local gate should not rearrange your environment as a side
+effect; reproduce the other two by hand against a scratch
+<code>UV_PROJECT_ENVIRONMENT</code>. <code>stress</code> mirrors
 no workflow at all: tests.yml runs <code>-m "not slow"</code>, so the stress suite is a
 local-only gate. Valkey is deliberately not run locally: redis-py talks to
 Redis and Valkey identically and the project forbids Redis modules, so local
