@@ -2,6 +2,7 @@
 status: Ready
 revision_applied: true
 revision_applied_at: 2026-09-07
+critique_round: 1
 type: feature
 appetite: Medium
 owner: valorengels
@@ -248,9 +249,20 @@ the Python side changes.
 
 1. **Entry point**: OpenClaw fires `before_prompt_build(event, ctx)` in-process.
 2. **Plugin**: builds the stdin envelope —
-   `{hook_event_name: "before_prompt_build", prompt: event.prompt,
+   `{hook_event_name: "before_prompt_build", prompt: <query>,
    session_id: ctx.sessionId, cwd: ctx.workspaceDir, turn_id: ctx.runId}`.
-3. **Plugin**: `execFile("popoto-memory", ["hook"])`, writing that JSON to stdin.
+   `<query>` is `event.prompt` when it is a non-empty string, otherwise the text
+   of the last user-role entry in `event.messages` (**critique C2**): the live
+   capture showed `{prompt, messages}` on one turn, and a continuation or
+   tool-result-driven turn may populate only the array. No `_QUERY_FIELDS` name
+   matches the plural `messages`, so without this fallback recall would emit
+   nothing and say nothing —
+   `const prompt = event.prompt || lastUserMessageText(event.messages) || "";`
+   with the envelope key omitted entirely when the result is empty, so the
+   adapter sees an absent field rather than an empty one.
+3. **Plugin**: `execFile(bin, ["hook"])`, writing that JSON to stdin, where
+   `bin` is `process.env.POPOTO_MEMORY_BIN || "popoto-memory"` (**critique C1** —
+   the failure-path test depends on that override existing).
 4. **Adapter** (`hooks.normalize`): `before_prompt_build` ∈ `READ_EVENTS` → kind
    `"read"`; `prompt` is the first hit in `_QUERY_FIELDS`; `turn_id` is the first
    hit in `_TURN_FIELDS`.
@@ -428,6 +440,12 @@ paths are asserted by the plugin's own behavior rather than by pytest:
   `""`, and `handle_payload` already emits nothing for empty context. A fixture
   round-trip test asserts the empty-prompt envelope normalizes to a read event
   with `text == ""`.
+- `event.prompt` absent **and** `event.messages` yielding no user text
+  (**critique C2**): the plugin omits the `prompt` key entirely rather than
+  sending `""`, so the adapter's `_QUERY_FIELDS` probe misses it and falls
+  through to the same empty-context path above. The distinction matters only for
+  the fixture: an omitted key documents "OpenClaw sent nothing", an empty string
+  documents "the plugin flattened something to nothing".
 - `assistantTexts` empty array, or a list whose members are all empty or
   whitespace: `_first_string`'s list branch yields `""`, `_first_string` moves on
   to the next candidate field, and the write path stores nothing. Asserted in the
@@ -635,7 +653,13 @@ alongside the new automatic half.
 
 - [ ] `docs/guides/harness-openclaw.md` — replace the instructed-memory lead,
       add the plugin install path, and add a troubleshooting section covering the
-      three operator gates from spike-6 with a positive verification command.
+      three operator gates from spike-6 with a positive verification command, and
+      an **uninstall / rollback** step (**critique C3**). Reversibility in
+      Architectural Impact is stated for the repo; an operator who installed the
+      plugin and set `allowConversationAccess=true` needs
+      `openclaw plugins uninstall popoto-memory` plus the config key to unset,
+      written next to the `plugins inspect --runtime --json` check so the same
+      section answers "is it working?" and "how do I turn it off?".
 - [ ] `mkdocs build --strict` passes (any new page must be reachable from the
       nav).
 
@@ -649,8 +673,12 @@ alongside the new automatic half.
       missing. Rewrite: it is no longer missing, and the "should be reachable"
       caveat is resolved by a named, dated capture.
 - [ ] `tests/fixtures/harness_payloads/README.md` — the OpenClaw provenance rows.
-- [ ] The new plugin's entry file — comment the two non-obvious lines: the
-      `assistantTexts` join, and why `turn_id` comes from `ctx` and not `event`.
+- [ ] The new plugin's entry file — comment the two non-obvious lines: that
+      `assistantTexts` is passed through **unjoined** (the adapter, not the
+      plugin, reduces it — a `join()` here would fail the Verification
+      anti-criterion), and why `turn_id` comes from `ctx` and not `event`.
+      (**critique C4** — this bullet previously said "the `assistantTexts` join",
+      wording left over from the design the plan reversed.)
 
 ## Success Criteria
 
@@ -699,6 +727,13 @@ alongside the new automatic half.
 - Build the stdin envelope from **both** handler arguments; pass
   `assistantTexts` through as an array (the adapter reduces it); carry `turn_id`
   from `ctx.runId`.
+- Resolve the query as `event.prompt || lastUserMessageText(event.messages) || ""`
+  and omit the `prompt` key when the result is empty (**critique C2**). A helper
+  reading the last user-role entry of `event.messages` is the whole of it — no
+  transcript walking, no tool-result rendering.
+- Resolve the executable as `process.env.POPOTO_MEMORY_BIN || "popoto-memory"`
+  (**critique C1**). This is a build requirement, not an incidental convenience:
+  it is the seam the failure-path test in task 2 uses.
 - Shell out to `popoto-memory hook` with an explicit timeout below OpenClaw's
   15-second handler budget.
 - Wrap both handlers so any failure injects nothing and never fails the turn.
@@ -753,7 +788,8 @@ alongside the new automatic half.
 - **Assigned To**: harness-documentarian
 - **Agent Type**: documentarian
 - **Parallel**: false
-- Rewrite `docs/guides/harness-openclaw.md` and `plugins/openclaw/README.md`.
+- Rewrite `docs/guides/harness-openclaw.md` and `plugins/openclaw/README.md`,
+  including the uninstall/rollback step (**critique C3**).
 - Move both rows in `docs/features/harness-integration.md`, treating the
   verification row as gated on task 2 succeeding.
 - Update `tests/fixtures/harness_payloads/README.md`.
@@ -776,7 +812,11 @@ alongside the new automatic half.
 | Lint clean | `./.venv/bin/python -m ruff check src/` | exit code 0 |
 | Format clean | `./.venv/bin/python -m black --check src/ tests/` | exit code 0 |
 | Docs build | `./.venv/bin/python -m mkdocs build --strict` | exit code 0 |
-| Fixtures are live-captured | `grep -c "captured-from: the OpenClaw plugin hook reference" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json` | match count == 0 |
+| Old docs-derived provenance is gone | `grep -c "captured-from: the OpenClaw plugin hook reference" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json` | match count == 0 |
+| Fixtures are live-captured (positive) | `grep -l "captured-from: a live turn through the shipped popoto OpenClaw plugin" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json \| wc -l` | output contains 2 |
+| Operator rollback documented | `grep -c "plugins uninstall" docs/guides/harness-openclaw.md` | output > 0 |
+| Query fallback exists | `grep -c "event.messages" plugins/openclaw/popoto-memory-plugin/index.js` | output > 0 |
+| Binary override exists | `grep -c "POPOTO_MEMORY_BIN" plugins/openclaw/popoto-memory-plugin/index.js` | output > 0 |
 | Fixtures name the version | `grep -l "2026.9.2" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json \| wc -l` | output contains 2 |
 | Adapter knows `assistantTexts` | `grep -c '"assistantTexts"' src/popoto/integrations/hooks.py` | output > 0 |
 | Plugin does not flatten the array | `grep -c "join(" plugins/openclaw/popoto-memory-plugin/index.js` | match count == 0 |
@@ -855,6 +895,27 @@ Robustness, Scope & Value, History & Consistency). Verdict: **READY TO BUILD
   expecting a count of 2.
 
 **Scope & Value returned `No findings.`**
+
+### Resolution (revision pass, 2026-09-07)
+
+All four concerns applied to the plan text; the nit applied too, since it was a
+one-line table change. Nothing was deferred or accepted-as-is.
+
+- **C1** — Data Flow recall step 3 and task 1 now require
+  `process.env.POPOTO_MEMORY_BIN || "popoto-memory"`, stated as a build
+  requirement rather than a convenience. New Verification row.
+- **C2** — Data Flow recall step 2 and task 1 now specify the
+  `event.prompt || lastUserMessageText(event.messages) || ""` fallback, with the
+  `prompt` key omitted when empty so the adapter sees an absent field. New
+  Verification row and a new Failure Path case.
+- **C3** — the guide's troubleshooting section and task 4 now carry an
+  uninstall/rollback step next to the positive verification command. New
+  Verification row.
+- **C4** — the Inline Documentation bullet no longer instructs commenting a
+  `join()` the plan forbids.
+- **N1** — the "Fixtures are live-captured" Verification row split into a
+  negative row (old provenance gone) and a positive one (new provenance names the
+  shipped plugin, count == 2).
 
 ## Open Questions
 
