@@ -222,6 +222,31 @@ def test_kwargs_accepting_client_is_allowed():
     assert_messages_create_supported(_KwargsClient())
 
 
+def test_partial_signature_plus_kwargs_wrapper_is_allowed():
+    """A wrapper forwarding **kwargs around a too-old SDK is NOT caught.
+
+    Pins the documented cost of the ``**kwargs`` exemption rather than
+    leaving it as prose. The real SDK declares no ``**kwargs`` on either
+    side of the 0.77.0 boundary, so a directly-constructed too-old client
+    is rejected -- but an instrumentation/retry wrapper that forwards
+    through will pass here and fail at request time instead. Tightening
+    this would reject every test fake in the suite; see
+    ``assert_messages_create_supported``'s docstring for the trade.
+    """
+
+    class _WrapperMessages:
+        def create(
+            self, *, model, max_tokens, system, messages, **kwargs
+        ):  # pragma: no cover
+            return None
+
+    class _WrapperClient:
+        messages = _WrapperMessages()
+
+    # No exception: the exemption is checked before the parameter set is.
+    assert_messages_create_supported(_WrapperClient())
+
+
 def test_uninspectable_client_is_allowed():
     """A signature inspect cannot read passes rather than failing closed."""
 

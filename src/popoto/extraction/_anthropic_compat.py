@@ -106,6 +106,24 @@ def assert_messages_create_supported(client: Any) -> None:
       ``inspect.signature`` raise. This check exists to catch one
       specific known incompatibility, not to police client objects, so
       an unreadable signature is not evidence of anything.
+
+    What that first exemption costs
+    -------------------------------
+    The real SDK is caught: ``messages.create`` declares no ``**kwargs``
+    on either side of the boundary (verified on 0.76.0 and 0.77.0), so a
+    directly-constructed too-old client is rejected. A **wrapper** around
+    one need not be. A client that forwards through
+    ``create(self, *, model, max_tokens, system, messages, **kwargs)``
+    -- a plausible instrumentation, retry, or proxy shape -- is accepted
+    here and will still fail at request time inside the too-old SDK it
+    wraps, which for ``ClaudeExtractionProvider`` means the empty list
+    again.
+
+    That is a deliberate trade, not an oversight: a stricter rule would
+    have to reject every ``**kwargs`` callable, which is the shape of
+    every test fake in this package. The guard closes the case that
+    actually occurs -- someone installs ``popoto[anthropic]`` against an
+    old pin -- and does not claim to close the general one.
     """
     try:
         create = client.messages.create
