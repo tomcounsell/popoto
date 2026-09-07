@@ -72,7 +72,7 @@ from src.popoto.fields.decaying_sorted_field import (
 from src.popoto.fields.observation import ObservationProtocol
 from src.popoto.models.query import Query, QueryBuilder
 from src.popoto.recipes.context_assembler import ContextAssembler
-from src.popoto.redis_db import POPOTO_REDIS_DB, run_lua
+from src.popoto.redis_db import get_REDIS_DB, run_lua
 from src.popoto.transfer import export_records, import_records
 
 # --- Test Models ---
@@ -242,10 +242,10 @@ def _wipe_validity_keys():
         prefix = ValidityField.get_prefix_db_key(model, field_name).redis_key
         keys.extend(
             k.decode() if isinstance(k, bytes) else k
-            for k in POPOTO_REDIS_DB.keys(f"{prefix}:open:*")
+            for k in get_REDIS_DB().keys(f"{prefix}:open:*")
         )
         if keys:
-            POPOTO_REDIS_DB.delete(*keys)
+            get_REDIS_DB().delete(*keys)
 
 
 #: Models whose companion hashes (cycle amplitudes, pressure clocks,
@@ -256,9 +256,9 @@ COMPANION_STATE_MODELS = ["ObservedFact", "PlainObservedFact", "ObservedMemory"]
 
 def _wipe_companion_state():
     for name in COMPANION_STATE_MODELS:
-        keys = list(POPOTO_REDIS_DB.keys(f"*{name}*"))
+        keys = list(get_REDIS_DB().keys(f"*{name}*"))
         if keys:
-            POPOTO_REDIS_DB.delete(*keys)
+            get_REDIS_DB().delete(*keys)
 
 
 def _reset():
@@ -297,7 +297,7 @@ def _names(records):
 
 
 def _zscore(key, member):
-    return POPOTO_REDIS_DB.zscore(key, member)
+    return get_REDIS_DB().zscore(key, member)
 
 
 def _interval(model, field_name, instance):
@@ -318,7 +318,7 @@ def _cycle_amplitudes(instance, field_name="relevance"):
     pre-#580 ``contradicted`` effect.
     """
     field = instance._meta.fields[field_name]
-    raw = POPOTO_REDIS_DB.hget(
+    raw = get_REDIS_DB().hget(
         field.get_cycles_hash_key(instance, field_name),
         instance.db_key.redis_key,
     )
@@ -409,24 +409,24 @@ class TestOpenSentinel:
     KEY = "$test:validity:sentinel"
 
     def teardown_method(self):
-        POPOTO_REDIS_DB.delete(self.KEY)
+        get_REDIS_DB().delete(self.KEY)
 
     def test_zadd_zscore_round_trip(self):
-        POPOTO_REDIS_DB.zadd(self.KEY, {"open": "+inf", "closed": 100.0})
-        assert POPOTO_REDIS_DB.zscore(self.KEY, "open") == float("inf")
-        assert POPOTO_REDIS_DB.zscore(self.KEY, "closed") == 100.0
+        get_REDIS_DB().zadd(self.KEY, {"open": "+inf", "closed": 100.0})
+        assert get_REDIS_DB().zscore(self.KEY, "open") == float("inf")
+        assert get_REDIS_DB().zscore(self.KEY, "closed") == 100.0
 
     def test_zrangebyscore_treats_inf_as_still_open(self):
-        POPOTO_REDIS_DB.zadd(self.KEY, {"open": "+inf", "closed": 100.0})
+        get_REDIS_DB().zadd(self.KEY, {"open": "+inf", "closed": 100.0})
         now = 200.0
-        still_open = POPOTO_REDIS_DB.zrangebyscore(self.KEY, f"({now}", "+inf")
-        already_closed = POPOTO_REDIS_DB.zrangebyscore(self.KEY, "-inf", now)
+        still_open = get_REDIS_DB().zrangebyscore(self.KEY, f"({now}", "+inf")
+        already_closed = get_REDIS_DB().zrangebyscore(self.KEY, "-inf", now)
         assert {m.decode() for m in still_open} == {"open"}
         assert {m.decode() for m in already_closed} == {"closed"}
 
     def test_lua_tonumber_parses_the_sentinel_as_infinite(self):
         """The exact comparison ``DECAY_SCORE_LUA``'s gate makes, isolated."""
-        POPOTO_REDIS_DB.zadd(self.KEY, {"open": "+inf", "closed": 100.0})
+        get_REDIS_DB().zadd(self.KEY, {"open": "+inf", "closed": 100.0})
         script = """
         local raw_open = redis.call('ZSCORE', KEYS[1], 'open')
         local raw_closed = redis.call('ZSCORE', KEYS[1], 'closed')
@@ -440,7 +440,7 @@ class TestOpenSentinel:
         results[4] = (open_n == math.huge) and 'inf' or 'finite'
         return results
         """
-        raw, open_verdict, closed_verdict, huge = POPOTO_REDIS_DB.eval(
+        raw, open_verdict, closed_verdict, huge = get_REDIS_DB().eval(
             script, 1, self.KEY, "200"
         )
         assert open_verdict.decode() == "open", f"sentinel rendered as {raw!r}"
@@ -496,7 +496,7 @@ class TestQueryAPI:
         old, new, _ = self._two_step()
         future = _save(ValidFact, name="future")
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        POPOTO_REDIS_DB.zadd(
+        get_REDIS_DB().zadd(
             keys["valid_from"], {future.db_key.redis_key: time.time() + 3600}
         )
 
@@ -584,7 +584,7 @@ class TestSupersessionChains:
     def test_superseded_records_are_closed_never_deleted(self):
         v1, v2 = self._chain_of("v1", "v2")
         member = v1.db_key.redis_key
-        assert POPOTO_REDIS_DB.exists(member) == 1
+        assert get_REDIS_DB().exists(member) == 1
         fetched = ValidFact.query.get(name="v1")
         assert fetched is not None and fetched.name == "v1"
         _, closed_at, _ = _interval(ValidFact, "validity", v1)
@@ -594,14 +594,14 @@ class TestSupersessionChains:
         v1, v2 = self._chain_of("v1", "v2")
         fwd = ValidityField.get_chain_fwd_key(ValidFact, "validity")
         # Forge a cycle: v2 -> v1, which already links forward to v2.
-        POPOTO_REDIS_DB.hset(fwd, v2.db_key.redis_key, v1.db_key.redis_key)
+        get_REDIS_DB().hset(fwd, v2.db_key.redis_key, v1.db_key.redis_key)
         chain = SupersessionProtocol.chain(v1)
         assert [r.name for r in chain] == ["v1", "v2"]
 
     def test_dangling_link_is_treated_as_a_chain_end(self):
         v1, v2 = self._chain_of("v1", "v2")
         fwd = ValidityField.get_chain_fwd_key(ValidFact, "validity")
-        POPOTO_REDIS_DB.hset(fwd, v2.db_key.redis_key, "ValidFact:ghost")
+        get_REDIS_DB().hset(fwd, v2.db_key.redis_key, "ValidFact:ghost")
         assert [r.name for r in SupersessionProtocol.chain(v1)] == ["v1", "v2"]
         assert SupersessionProtocol.superseded_by(v2) is None
 
@@ -649,10 +649,10 @@ class _CallCounter:
     def __init__(self, monkeypatch, names):
         self.counts = {name: 0 for name in names}
         for name in names:
-            monkeypatch.setattr(POPOTO_REDIS_DB, name, self._wrap(name), raising=True)
+            monkeypatch.setattr(get_REDIS_DB(), name, self._wrap(name), raising=True)
 
     def _wrap(self, name):
-        original = getattr(POPOTO_REDIS_DB, name)
+        original = getattr(get_REDIS_DB(), name)
 
         def wrapper(*args, **kwargs):
             self.counts[name] += 1
@@ -707,13 +707,13 @@ class TestAtomicity:
         SupersessionProtocol.supersede(old, identity_key=identity)
         new = _save(ValidFact, name="enterprise")
 
-        real_eval = POPOTO_REDIS_DB.evalsha
+        real_eval = get_REDIS_DB().evalsha
 
         def exploding_eval(*args, **kwargs):
             real_eval(*args, **kwargs)
             raise RuntimeError("injected fault immediately after EVAL")
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "evalsha", exploding_eval)
+        monkeypatch.setattr(get_REDIS_DB(), "evalsha", exploding_eval)
         with pytest.raises(RuntimeError, match="injected fault"):
             SupersessionProtocol.supersede(new, identity_key=identity)
         monkeypatch.undo()
@@ -889,7 +889,9 @@ def _decay_eval_numkeys(source):
     the check reads the actual argument rather than whatever text follows.
     """
     found = []
-    pattern = r"(?:\beval\(|run_lua\(\s*[\w.]+\s*,)\s*DECAY_SCORE_LUA\s*,"
+    # ``[\w.()]+`` not ``[\w.]+``: since #655 the client argument is the
+    # call expression ``get_REDIS_DB()``, not a bare name.
+    pattern = r"(?:\beval\(|run_lua\(\s*[\w.()]+\s*,)\s*DECAY_SCORE_LUA\s*,"
     for match in re.finditer(pattern, source):
         for line in source[match.end() :].splitlines():
             stripped = line.strip()
@@ -1072,7 +1074,7 @@ class TestGateDisabledParity:
         zkey = self._decay_zset_key(PlainFact)
         now = time.time()
 
-        old_shape = POPOTO_REDIS_DB.eval(
+        old_shape = get_REDIS_DB().eval(
             DECAY_SCORE_LUA,
             2,
             zkey,
@@ -1084,7 +1086,7 @@ class TestGateDisabledParity:
             "0",
             "0.5",
         )
-        new_shape = POPOTO_REDIS_DB.eval(
+        new_shape = get_REDIS_DB().eval(
             DECAY_SCORE_LUA,
             4,
             zkey,
@@ -1110,7 +1112,7 @@ class TestGateDisabledParity:
         valid_from, invalid_at = ValidityField.get_interval_keys(ValidFact, "validity")
         now = time.time()
 
-        baseline = POPOTO_REDIS_DB.eval(
+        baseline = get_REDIS_DB().eval(
             DECAY_SCORE_LUA,
             2,
             zkey,
@@ -1122,7 +1124,7 @@ class TestGateDisabledParity:
             "0",
             "0.5",
         )
-        no_as_of = POPOTO_REDIS_DB.eval(
+        no_as_of = get_REDIS_DB().eval(
             DECAY_SCORE_LUA,
             4,
             zkey,
@@ -1137,7 +1139,7 @@ class TestGateDisabledParity:
             "0.5",
             "",  # ARGV[7] empty -> gate off
         )
-        gated = POPOTO_REDIS_DB.eval(
+        gated = get_REDIS_DB().eval(
             DECAY_SCORE_LUA,
             4,
             zkey,
@@ -1299,7 +1301,7 @@ class TestUnmanagedRecords:
         legacy = _save(ValidFact, name="legacy")
         keys = ValidityField.get_all_keys(ValidFact, "validity")
         for name in ("valid_from", "invalid_at", "ingested_at"):
-            POPOTO_REDIS_DB.zrem(keys[name], legacy.db_key.redis_key)
+            get_REDIS_DB().zrem(keys[name], legacy.db_key.redis_key)
         assert _interval(ValidFact, "validity", legacy) == (None, None, None)
         return managed, legacy
 
@@ -1329,7 +1331,7 @@ class TestUnmanagedRecords:
         )  # decoy: keeps the partition multi-record
         legacy = _save(ValidMemory, agent_id="a1", content="legacy")
         for key in ValidityField.get_all_keys(ValidMemory, "validity").values():
-            POPOTO_REDIS_DB.zrem(key, legacy.db_key.redis_key)
+            get_REDIS_DB().zrem(key, legacy.db_key.redis_key)
 
         assembler = ContextAssembler(
             model_class=ValidMemory, score_weights={"relevance": 1.0}, max_items=10
@@ -1513,10 +1515,10 @@ class TestFailurePaths:
         assert invalid_at == float("inf")
         fwd = ValidityField.get_chain_fwd_key(ValidFact, "validity")
         rev = ValidityField.get_chain_rev_key(ValidFact, "validity")
-        assert POPOTO_REDIS_DB.hlen(fwd) == 0
-        assert POPOTO_REDIS_DB.hlen(rev) == 0
+        assert get_REDIS_DB().hlen(fwd) == 0
+        assert get_REDIS_DB().hlen(rev) == 0
         pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
-        assert POPOTO_REDIS_DB.get(pointer).decode() == first.db_key.redis_key
+        assert get_REDIS_DB().get(pointer).decode() == first.db_key.redis_key
 
     def test_invalidate_before_valid_from_raises(self):
         record = _save(ValidFact, name="a")
@@ -1552,13 +1554,13 @@ class TestFailurePaths:
         assert SupersessionProtocol.superseded_by(unsaved) is None
 
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        assert POPOTO_REDIS_DB.zcard(keys["valid_from"]) == 0
-        assert POPOTO_REDIS_DB.zcard(keys["invalid_at"]) == 0
-        assert POPOTO_REDIS_DB.zcard(keys["ingested_at"]) == 0
-        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
-        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert get_REDIS_DB().zcard(keys["valid_from"]) == 0
+        assert get_REDIS_DB().zcard(keys["invalid_at"]) == 0
+        assert get_REDIS_DB().zcard(keys["ingested_at"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_fwd"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
-        assert POPOTO_REDIS_DB.get(pointer) is None
+        assert get_REDIS_DB().get(pointer) is None
 
     def test_invalidate_with_an_unsaved_successor_raises(self):
         """#588: the incumbent must still be untouched, but the caller is told."""
@@ -1632,7 +1634,7 @@ def _validity_keyspace():
     """Every live key under the ``$ValidityF`` prefix, as a set of strings."""
     return {
         k.decode() if isinstance(k, bytes) else k
-        for k in POPOTO_REDIS_DB.keys("$ValidityF*")
+        for k in get_REDIS_DB().keys("$ValidityF*")
     }
 
 
@@ -1641,7 +1643,7 @@ def _chain_links(model, field_name, old, new):
     keys = ValidityField.get_all_keys(model, field_name)
 
     def _get(key, field):
-        raw = POPOTO_REDIS_DB.hget(key, field)
+        raw = get_REDIS_DB().hget(key, field)
         return raw.decode() if isinstance(raw, bytes) else raw
 
     return (
@@ -1683,7 +1685,7 @@ def _keyspace_snapshot(model, field_name):
     for name in ("valid_from", "invalid_at", "ingested_at"):
         snapshot[name] = sorted(
             (m.decode() if isinstance(m, bytes) else m, s)
-            for m, s in POPOTO_REDIS_DB.zrange(keys[name], 0, -1, withscores=True)
+            for m, s in get_REDIS_DB().zrange(keys[name], 0, -1, withscores=True)
         )
     for name in ("chain_fwd", "chain_rev"):
         snapshot[name] = sorted(
@@ -1691,12 +1693,12 @@ def _keyspace_snapshot(model, field_name):
                 k.decode() if isinstance(k, bytes) else k,
                 v.decode() if isinstance(v, bytes) else v,
             )
-            for k, v in POPOTO_REDIS_DB.hgetall(keys[name]).items()
+            for k, v in get_REDIS_DB().hgetall(keys[name]).items()
         )
     pointers = {}
-    for raw in POPOTO_REDIS_DB.keys(f"{prefix}:open:*"):
+    for raw in get_REDIS_DB().keys(f"{prefix}:open:*"):
         key = raw.decode() if isinstance(raw, bytes) else raw
-        value = POPOTO_REDIS_DB.get(key)
+        value = get_REDIS_DB().get(key)
         pointers[key] = value.decode() if isinstance(value, bytes) else value
     snapshot["pointers"] = sorted(pointers.items())
     return snapshot
@@ -1726,7 +1728,7 @@ class TestMembershipGuardInLua:
         e1 = _save(ValidFact, name="e1")
         e2 = ValidFact(name="e2")
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         e2.save(pipeline=pipe)
         SupersessionProtocol.invalidate(e1, superseded_by=e2, pipeline=pipe)
         pipe.execute()
@@ -1757,7 +1759,7 @@ class TestMembershipGuardInLua:
 
         old = _save(ValidFact, name="old")
         new = _save(ValidFact, name="new")
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         SupersessionProtocol.invalidate(old, at=at, superseded_by=new, pipeline=pipe)
         pipe.execute()
         pipelined = _keyspace_snapshot(ValidFact, "validity")
@@ -1781,7 +1783,7 @@ class TestMembershipGuardInLua:
         assert _interval(ValidFact, "validity", old)[1] == float("inf")
         immediate = _keyspace_snapshot(ValidFact, "validity")
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         SupersessionProtocol.invalidate(old, superseded_by=ghost, pipeline=pipe)
         with pytest.raises(redis.exceptions.ResponseError):
             pipe.execute()
@@ -1839,11 +1841,11 @@ class TestMembershipGuardInLua:
         """
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
-        POPOTO_REDIS_DB.set(pointer, "ValidFact:never-imported")
+        get_REDIS_DB().set(pointer, "ValidFact:never-imported")
 
         new = _save(ValidFact, name="new")
         assert SupersessionProtocol.supersede(new, identity_key=identity) is None
-        raw = POPOTO_REDIS_DB.get(pointer)
+        raw = get_REDIS_DB().get(pointer)
         assert (raw.decode() if isinstance(raw, bytes) else raw) == (
             new.db_key.redis_key
         )
@@ -1912,7 +1914,7 @@ class TestMembershipGuardInLua:
         )
         keys = ValidityField.get_all_keys(IndexedValidFact, "validity")
         assert (
-            POPOTO_REDIS_DB.zscore(keys["valid_from"], "IndexedValidFact:not-a-record")
+            get_REDIS_DB().zscore(keys["valid_from"], "IndexedValidFact:not-a-record")
             is not None
         )
 
@@ -1923,10 +1925,10 @@ class TestMembershipGuardInLua:
         record = _save(ValidFact, name="a")
         member = record.db_key.redis_key
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], member)
+        stored = get_REDIS_DB().zscore(keys["valid_from"], member)
 
         run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             validity_module.SUPERSEDE_LUA,
             6,
             keys["valid_from"],
@@ -1945,14 +1947,14 @@ class TestMembershipGuardInLua:
             # ARGV[8] deliberately absent -- seven ARGV, as a pre-#588 caller
         )
         # No error, and NX kept the original start: identical to ARGV[8] == ''.
-        assert POPOTO_REDIS_DB.zscore(keys["valid_from"], member) == stored
+        assert get_REDIS_DB().zscore(keys["valid_from"], member) == stored
 
     # -- 11/12/13/14. Valid-time has one writer --------------------------
 
     def test_asserted_valid_from_disagreement_raises(self):
         record = _save(ValidFact, name="a")
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key)
+        stored = get_REDIS_DB().zscore(keys["valid_from"], record.db_key.redis_key)
         with pytest.raises(ValidityValidFromConflictError):
             ValidityField.execute_supersede(
                 ValidFact,
@@ -1971,7 +1973,7 @@ class TestMembershipGuardInLua:
         """
         record = _save(ValidFact, name="a")
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key)
+        stored = get_REDIS_DB().zscore(keys["valid_from"], record.db_key.redis_key)
         ValidityField.execute_supersede(
             ValidFact,
             "validity",
@@ -1980,7 +1982,7 @@ class TestMembershipGuardInLua:
             valid_from=stored,
             assert_valid_from=True,
         )
-        assert POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key) == (
+        assert get_REDIS_DB().zscore(keys["valid_from"], record.db_key.redis_key) == (
             stored
         )
 
@@ -2023,7 +2025,7 @@ class TestMembershipGuardInLua:
         """
         record = _save(ValidFact, name="a")
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        stored = POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key)
+        stored = get_REDIS_DB().zscore(keys["valid_from"], record.db_key.redis_key)
         ValidityField.execute_supersede(
             ValidFact,
             "validity",
@@ -2032,7 +2034,7 @@ class TestMembershipGuardInLua:
             valid_from=stored - 30 * 86400.0,
             assert_valid_from=False,
         )
-        assert POPOTO_REDIS_DB.zscore(keys["valid_from"], record.db_key.redis_key) == (
+        assert get_REDIS_DB().zscore(keys["valid_from"], record.db_key.redis_key) == (
             stored
         )
 
@@ -2094,7 +2096,7 @@ class TestMembershipGuardInLua:
         old = _save(ValidFact, name="free")
         SupersessionProtocol.supersede(old, identity_key=identity)
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         result = SupersessionProtocol.save_and_supersede(
             ValidFact(name="enterprise"), identity_key=identity, pipeline=pipe
         )
@@ -2111,7 +2113,7 @@ class TestMembershipGuardInLua:
 
     def test_save_and_supersede_refuses_a_non_transactional_pipeline(self):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
-        pipe = POPOTO_REDIS_DB.pipeline(transaction=False)
+        pipe = get_REDIS_DB().pipeline(transaction=False)
         with pytest.raises(ValueError, match="transaction=False"):
             SupersessionProtocol.save_and_supersede(
                 ValidFact(name="x"), identity_key=identity, pipeline=pipe
@@ -2158,7 +2160,7 @@ class TestMembershipGuardInLua:
 
         monkeypatch.setattr(ValidFact, "save", blocked_save)
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         with pytest.raises(SupersedeDeclinedError) as excinfo:
             SupersessionProtocol.save_and_invalidate(new, closes=old, pipeline=pipe)
 
@@ -2197,8 +2199,8 @@ class TestMembershipGuardInLua:
             record.save()
 
         assert IndexedValidFact.query.get(name="r").label == "a"
-        assert POPOTO_REDIS_DB.exists("$IndexF:IndexedValidFact:label:a")
-        assert not POPOTO_REDIS_DB.exists("$IndexF:IndexedValidFact:label:b")
+        assert get_REDIS_DB().exists("$IndexF:IndexedValidFact:label:a")
+        assert not get_REDIS_DB().exists("$IndexF:IndexedValidFact:label:b")
         assert _keyspace_snapshot(IndexedValidFact, "validity") == before
 
     def test_a_rejected_declared_resave_queues_nothing_onto_a_caller_pipeline(self):
@@ -2214,7 +2216,7 @@ class TestMembershipGuardInLua:
         record.save()
         before = _keyspace_snapshot(IndexedValidFact, "validity")
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         record.label = "b"
         record.validity = t0 - 30 * 86400.0
         with pytest.raises(ValidityValidFromConflictError):
@@ -2223,7 +2225,7 @@ class TestMembershipGuardInLua:
 
         pipe.reset()
         assert IndexedValidFact.query.get(name="r").label == "a"
-        assert not POPOTO_REDIS_DB.exists("$IndexF:IndexedValidFact:label:b")
+        assert not get_REDIS_DB().exists("$IndexF:IndexedValidFact:label:b")
         assert _keyspace_snapshot(IndexedValidFact, "validity") == before
 
     # -- 19. chain(unsaved) == [] (BLOCKER B2) ---------------------------
@@ -2257,7 +2259,7 @@ class TestMembershipGuardInLua:
         member = record.db_key.redis_key
         vf_key, _ = ValidityField.get_interval_keys(IndexedValidFact, "validity")
         diverged = float(record.validity) - 30 * 86400.0
-        POPOTO_REDIS_DB.zadd(vf_key, {member: diverged})  # no NX: overwrite
+        get_REDIS_DB().zadd(vf_key, {member: diverged})  # no NX: overwrite
 
         # (a) a partial save of an unrelated column still succeeds -- the
         #     dispatch is scoped to update_fields.
@@ -2287,13 +2289,13 @@ class TestMembershipGuardInLua:
         member = record.db_key.redis_key
         vf_key, _ = ValidityField.get_interval_keys(IndexedValidFact, "validity")
         declared = float(record.validity) - 30 * 86400.0
-        POPOTO_REDIS_DB.zadd(vf_key, {member: float(record.validity) + 1.0})
+        get_REDIS_DB().zadd(vf_key, {member: float(record.validity) + 1.0})
 
         record.validity = declared
         with pytest.raises(ValidityValidFromConflictError):
             record.save()
 
-        POPOTO_REDIS_DB.zadd(vf_key, {member: declared})
+        get_REDIS_DB().zadd(vf_key, {member: declared})
         record.save()  # must not raise
         assert (
             ValidityField.get_valid_from(
@@ -2379,8 +2381,8 @@ class TestContradictedSupersessionWiring:
 
         assert _interval(ObservedFact, "validity", old)[1] == float("inf")
         keys = ValidityField.get_all_keys(ObservedFact, "validity")
-        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
-        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_fwd"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         assert SupersessionProtocol.superseded_by(old) is None
         # The scalar effects still ran.
         assert ConfidenceField.get_confidence(old, "certainty") < 0.5
@@ -2395,8 +2397,8 @@ class TestContradictedSupersessionWiring:
 
         assert _interval(ObservedFact, "validity", old)[1] == float("inf")
         keys = ValidityField.get_all_keys(ObservedFact, "validity")
-        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
-        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_fwd"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         assert _names(ObservedFact.query.filter(validity__current=True)) == ["old"]
 
     def test_the_degradation_is_logged_rather_than_merely_silent(self, caplog):
@@ -2439,14 +2441,14 @@ class TestContradictedSupersessionWiring:
         _report_contradicted(unsaved, superseded_by=new)
 
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
-        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_fwd"]) == 0
+        assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         # `new`'s own opening interval is the only membership state present.
-        assert POPOTO_REDIS_DB.zcard(keys["valid_from"]) == 1
-        assert POPOTO_REDIS_DB.zcard(keys["invalid_at"]) == 1
-        assert POPOTO_REDIS_DB.zscore(
-            keys["invalid_at"], new.db_key.redis_key
-        ) == float("inf")
+        assert get_REDIS_DB().zcard(keys["valid_from"]) == 1
+        assert get_REDIS_DB().zcard(keys["invalid_at"]) == 1
+        assert get_REDIS_DB().zscore(keys["invalid_at"], new.db_key.redis_key) == float(
+            "inf"
+        )
         assert _validity_keyspace() == before_keys
         assert SupersessionProtocol.chain(unsaved) == []
 
@@ -2571,7 +2573,7 @@ def _seed_bench_partition(closed_every=10):
     ).redis_key
     valid_from, invalid_at = ValidityField.get_interval_keys(BenchFact, "validity")
     now = time.time()
-    pipe = POPOTO_REDIS_DB.pipeline()
+    pipe = get_REDIS_DB().pipeline()
     for i in range(BENCH_N):
         member = f"BenchFact:bench{i}"
         pipe.zadd(zkey, {member: now - (i % 4096)})
@@ -2579,7 +2581,7 @@ def _seed_bench_partition(closed_every=10):
         pipe.zadd(invalid_at, {member: now - 5 if i % closed_every == 0 else "+inf"})
         if i % 2000 == 0:
             pipe.execute()
-            pipe = POPOTO_REDIS_DB.pipeline()
+            pipe = get_REDIS_DB().pipeline()
     pipe.execute()
     return zkey, valid_from, invalid_at
 
@@ -2725,8 +2727,8 @@ class TestTransferRoundTrip:
         new_after = ValidFact.query.filter(name="rt-chain-new").first()
         keys = ValidityField.get_all_keys(ValidFact, "validity")
 
-        fwd = POPOTO_REDIS_DB.hget(keys["chain_fwd"], old_after.db_key.redis_key)
-        rev = POPOTO_REDIS_DB.hget(keys["chain_rev"], new_after.db_key.redis_key)
+        fwd = get_REDIS_DB().hget(keys["chain_fwd"], old_after.db_key.redis_key)
+        rev = get_REDIS_DB().hget(keys["chain_rev"], new_after.db_key.redis_key)
         assert fwd is not None
         assert rev is not None
         fwd_str = fwd.decode() if isinstance(fwd, bytes) else fwd
@@ -2755,7 +2757,7 @@ class TestTransferRoundTrip:
         v1 = _save(ValidFact, name="rt-ptr-v1")
         # First claim on the identity: nothing to close, pointer now names v1.
         assert SupersessionProtocol.supersede(v1, identity_key=identity) is None
-        assert POPOTO_REDIS_DB.get(pointer_key) is not None
+        assert get_REDIS_DB().get(pointer_key) is not None
 
         self._round_trip(ValidFact)
 
@@ -2763,7 +2765,7 @@ class TestTransferRoundTrip:
         assert v1_after is not None
 
         # 1. The pointer is restored and names the incumbent.
-        pointed = POPOTO_REDIS_DB.get(pointer_key)
+        pointed = get_REDIS_DB().get(pointer_key)
         assert pointed is not None, (
             "open-claim pointer dropped across export/import: the next "
             "supersede on this identity will silently close nothing"
@@ -2785,15 +2787,15 @@ class TestTransferRoundTrip:
 
         # 3. Both chain links written, pointer repointed at the newcomer.
         keys = ValidityField.get_all_keys(ValidFact, "validity")
-        fwd = POPOTO_REDIS_DB.hget(keys["chain_fwd"], v1_after.db_key.redis_key)
-        rev = POPOTO_REDIS_DB.hget(keys["chain_rev"], v2.db_key.redis_key)
+        fwd = get_REDIS_DB().hget(keys["chain_fwd"], v1_after.db_key.redis_key)
+        rev = get_REDIS_DB().hget(keys["chain_rev"], v2.db_key.redis_key)
         assert fwd is not None and rev is not None
         fwd_str = fwd.decode() if isinstance(fwd, bytes) else fwd
         rev_str = rev.decode() if isinstance(rev, bytes) else rev
         assert fwd_str == v2.db_key.redis_key
         assert rev_str == v1_after.db_key.redis_key
 
-        repointed = POPOTO_REDIS_DB.get(pointer_key)
+        repointed = get_REDIS_DB().get(pointer_key)
         repointed_str = (
             repointed.decode() if isinstance(repointed, bytes) else repointed
         )

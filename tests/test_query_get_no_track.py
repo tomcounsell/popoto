@@ -24,7 +24,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest
 from src import popoto
 from src.popoto.fields.access_tracker import AccessTrackerMixin
-from src.popoto.redis_db import POPOTO_REDIS_DB
+from src.popoto.redis_db import get_REDIS_DB
 import src.popoto.redis_db as redis_db_module
 
 
@@ -42,12 +42,12 @@ def _access_log_key(record):
 
 
 def _staged_len(record):
-    return POPOTO_REDIS_DB.llen(_staged_key(record))
+    return get_REDIS_DB().llen(_staged_key(record))
 
 
 def _wipe_tracker_keys():
-    for key in POPOTO_REDIS_DB.scan_iter("$AT:NoTrackItem:*"):
-        POPOTO_REDIS_DB.delete(key)
+    for key in get_REDIS_DB().scan_iter("$AT:NoTrackItem:*"):
+        get_REDIS_DB().delete(key)
 
 
 @pytest.fixture(autouse=True)
@@ -76,13 +76,13 @@ class TestSyncGet:
         loaded = NoTrackItem.query.get(redis_key=saved.db_key.redis_key, _no_track=True)
         assert loaded is not None
         assert loaded.name == "alpha"
-        assert not POPOTO_REDIS_DB.exists(_staged_key(saved))
-        assert not POPOTO_REDIS_DB.exists(_access_log_key(saved))
+        assert not get_REDIS_DB().exists(_staged_key(saved))
+        assert not get_REDIS_DB().exists(_access_log_key(saved))
 
     def test_no_track_by_key_fields_stages_nothing(self, saved):
         loaded = NoTrackItem.query.get(name="alpha", _no_track=True)
         assert loaded is not None
-        assert not POPOTO_REDIS_DB.exists(_staged_key(saved))
+        assert not get_REDIS_DB().exists(_staged_key(saved))
 
     def test_default_direct_key_still_stages_one_read(self, saved):
         loaded = NoTrackItem.query.get(redis_key=saved.db_key.redis_key)
@@ -96,13 +96,13 @@ class TestSyncGet:
             NoTrackItem.query.get(redis_key=ghost.db_key.redis_key, _no_track=True)
             is None
         )
-        assert not POPOTO_REDIS_DB.exists(_staged_key(ghost))
+        assert not get_REDIS_DB().exists(_staged_key(ghost))
 
     def test_no_track_on_filter_fallback(self, saved):
         loaded = NoTrackItem.query.get(tag="t1", _no_track=True)
         assert loaded is not None
         assert loaded.name == "alpha"
-        assert not POPOTO_REDIS_DB.exists(_staged_key(saved))
+        assert not get_REDIS_DB().exists(_staged_key(saved))
         # The default fallback stages, proving the flag made the difference.
         # The plain-field filter path hydrates twice on main today (each
         # hydration stages a read), so pin "at least one" rather than the
@@ -113,13 +113,13 @@ class TestSyncGet:
     def test_exactly_one_hgetall_on_direct_key(self, saved, monkeypatch):
         """The untracked load must not add a probe or re-read."""
         calls = []
-        real = POPOTO_REDIS_DB.hgetall
+        real = get_REDIS_DB().hgetall
 
         def spy(key, *args, **kwargs):
             calls.append(key)
             return real(key, *args, **kwargs)
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "hgetall", spy)
+        monkeypatch.setattr(get_REDIS_DB(), "hgetall", spy)
         NoTrackItem.query.get(redis_key=saved.db_key.redis_key, _no_track=True)
         assert calls == [saved.db_key.redis_key]
 
@@ -132,8 +132,8 @@ class TestAsyncGet:
         )
         assert loaded is not None
         assert loaded.name == "alpha"
-        assert not POPOTO_REDIS_DB.exists(_staged_key(saved))
-        assert not POPOTO_REDIS_DB.exists(_access_log_key(saved))
+        assert not get_REDIS_DB().exists(_staged_key(saved))
+        assert not get_REDIS_DB().exists(_access_log_key(saved))
 
     @pytest.mark.asyncio
     async def test_default_direct_key_still_stages_one_read(self, saved):
@@ -150,12 +150,12 @@ class TestAsyncGet:
             )
             is None
         )
-        assert not POPOTO_REDIS_DB.exists(_staged_key(ghost))
+        assert not get_REDIS_DB().exists(_staged_key(ghost))
 
     @pytest.mark.asyncio
     async def test_no_track_on_filter_fallback(self, saved):
         loaded = await NoTrackItem.query.async_get(tag="t1", _no_track=True)
         assert loaded is not None
-        assert not POPOTO_REDIS_DB.exists(_staged_key(saved))
+        assert not get_REDIS_DB().exists(_staged_key(saved))
         assert await NoTrackItem.query.async_get(tag="t1") is not None
         assert _staged_len(saved) == 1

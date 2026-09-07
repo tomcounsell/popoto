@@ -35,7 +35,7 @@ import msgpack
 
 from typing import Any, Optional
 
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.PredictionLedger")
@@ -142,7 +142,7 @@ class PredictionLedgerMixin:
             return None
 
         meta_key = cls._meta_key(model_instance)
-        raw = POPOTO_REDIS_DB.hget(meta_key, member_key)
+        raw = get_REDIS_DB().hget(meta_key, member_key)
         if not raw:
             return None
 
@@ -190,14 +190,14 @@ class PredictionLedgerMixin:
         except Exception:
             return None
 
-        POPOTO_REDIS_DB.hset(
+        get_REDIS_DB().hset(
             cls._meta_key(model_instance), member_key, msgpack.packb(entry)
         )
 
         error = entry.get("prediction_error")
         if entry.get("resolved") and error is not None:
             partition = state.get("partition") or "default"
-            POPOTO_REDIS_DB.zadd(
+            get_REDIS_DB().zadd(
                 cls._error_key(model_instance, partition),
                 {member_key: abs(float(error))},
             )
@@ -329,7 +329,7 @@ class PredictionLedgerMixin:
         except Exception:
             raise TypeError("record_prediction() requires a saved model instance")
 
-        if not POPOTO_REDIS_DB.exists(member_key):
+        if not get_REDIS_DB().exists(member_key):
             raise TypeError("record_prediction() requires a saved model instance")
 
         meta_key = cls._meta_key(instance)
@@ -342,7 +342,7 @@ class PredictionLedgerMixin:
             "recorded_at": time.time(),
         }
 
-        db = pipeline if pipeline is not None else POPOTO_REDIS_DB
+        db = pipeline if pipeline is not None else get_REDIS_DB()
         db.hset(meta_key, member_key, msgpack.packb(data))
 
     @classmethod
@@ -373,12 +373,12 @@ class PredictionLedgerMixin:
         except Exception:
             raise TypeError("resolve_prediction() requires a saved model instance")
 
-        if not POPOTO_REDIS_DB.exists(member_key):
+        if not get_REDIS_DB().exists(member_key):
             raise TypeError("resolve_prediction() requires a saved model instance")
 
         # Read current prediction to compute error
         meta_key = cls._meta_key(instance)
-        raw = POPOTO_REDIS_DB.hget(meta_key, member_key)
+        raw = get_REDIS_DB().hget(meta_key, member_key)
         if raw is None:
             return None
 
@@ -396,7 +396,7 @@ class PredictionLedgerMixin:
 
         # Atomic resolution via Lua
         result = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             RESOLVE_PREDICTION_LUA,
             2,  # number of KEYS
             meta_key,
@@ -453,12 +453,12 @@ class PredictionLedgerMixin:
         except Exception:
             return None
 
-        if not POPOTO_REDIS_DB.exists(member_key):
+        if not get_REDIS_DB().exists(member_key):
             return None
 
         # Check if prediction exists and is unresolved
         meta_key = cls._meta_key(instance)
-        raw = POPOTO_REDIS_DB.hget(meta_key, member_key)
+        raw = get_REDIS_DB().hget(meta_key, member_key)
         if raw is None:
             return None
 
@@ -473,7 +473,7 @@ class PredictionLedgerMixin:
 
         # Atomic resolution via Lua
         result = run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             RESOLVE_PREDICTION_LUA,
             2,  # number of KEYS
             meta_key,
@@ -511,7 +511,7 @@ class PredictionLedgerMixin:
             return None
 
         meta_key = cls._meta_key(instance)
-        raw = POPOTO_REDIS_DB.hget(meta_key, member_key)
+        raw = get_REDIS_DB().hget(meta_key, member_key)
         if raw is None:
             return None
 
@@ -531,7 +531,7 @@ class PredictionLedgerMixin:
                 descending error.
         """
         error_key = cls._error_key(model_class, partition)
-        results = POPOTO_REDIS_DB.zrevrange(error_key, 0, limit - 1, withscores=True)
+        results = get_REDIS_DB().zrevrange(error_key, 0, limit - 1, withscores=True)
         return [
             (m.decode() if isinstance(m, bytes) else m, score) for m, score in results
         ]
@@ -677,7 +677,7 @@ class PredictionLedgerMixin:
 
         # Optional large-set warning per plan Risk 4.
         try:
-            cardinality = POPOTO_REDIS_DB.zcard(error_key)
+            cardinality = get_REDIS_DB().zcard(error_key)
             if cardinality > 10_000 and limit < 0:
                 logger.warning(
                     "error_summary over %d errors with unbounded limit — "
@@ -691,7 +691,7 @@ class PredictionLedgerMixin:
         if limit <= 0:
             raw_results = []
         else:
-            raw_results = POPOTO_REDIS_DB.zrevrange(
+            raw_results = get_REDIS_DB().zrevrange(
                 error_key, 0, limit - 1, withscores=True
             )
 
@@ -722,7 +722,7 @@ class PredictionLedgerMixin:
         # Pipelined HGETs. Each PL instance has its own meta hash keyed by
         # $PL:{ClassName}:meta:{pk}, so we do one HGET per member — NOT a
         # single HMGET over one hash (there is no such shared hash).
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         for member_key, _ in decoded:
             meta_key = f"$PL:{class_name}:meta:{member_key}"
             pipe.hget(meta_key, member_key)

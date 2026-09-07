@@ -211,6 +211,11 @@ class TDValueField(DecimalField):
 
         # Client resolved at call time (module attribute, not an import-time
         # binding) so a rebound connection or a test spy still intercepts.
+        # This is already immune to the #655 staleness bug by the same
+        # mechanism ``pytest_plugin`` relies on: the attribute is read on each
+        # call, so ``set_REDIS_DB_settings()``'s rebind is observed. It reads
+        # like a missed site only if you grep for the *import statement*
+        # rather than the access — do not "convert" it.
         client = pipeline if pipeline is not None else redis_db.POPOTO_REDIS_DB
 
         td_error = run_lua(

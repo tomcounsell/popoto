@@ -34,7 +34,7 @@ import logging
 from typing import Any, Optional
 
 from ..exceptions import ModelException
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 from .sorted_field_mixin import SortedFieldMixin
@@ -356,7 +356,7 @@ class DecayingSortedField(SortedFieldMixin, Field):
             VALIDITY_GATE_DISABLED if validity is None else validity
         )
         if n is None:
-            n = int(POPOTO_REDIS_DB.zcard(zset_key))
+            n = int(get_REDIS_DB().zcard(zset_key))
             if not n:
                 return []
         effective_rate = self.decay_rate if decay_rate is None else decay_rate
@@ -364,7 +364,7 @@ class DecayingSortedField(SortedFieldMixin, Field):
             base_score_field = self.base_score_field or ""
 
         return run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             DECAY_SCORE_LUA,
             # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
             # valid_from (KEYS[4]). Passing the validity keys without bumping

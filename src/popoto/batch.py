@@ -31,7 +31,7 @@ twenty ``isinstance`` sites above would have to change first.
 
 from typing import TYPE_CHECKING
 
-from .redis_db import POPOTO_REDIS_DB
+from .redis_db import get_REDIS_DB
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from redis.client import Pipeline
@@ -51,4 +51,4 @@ def batch(transaction: bool = True) -> "Pipeline":
         passing it as ``pipeline=`` to Popoto model and recipe calls), then
         call ``execute()``.
     """
-    return POPOTO_REDIS_DB.pipeline(transaction=transaction)
+    return get_REDIS_DB().pipeline(transaction=transaction)

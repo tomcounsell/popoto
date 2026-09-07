@@ -39,7 +39,7 @@ from typing import Any
 
 from ._tokenizer import tokenize
 from .field import Field
-from ..redis_db import POPOTO_REDIS_DB, normalize_redis_keys, run_lua
+from ..redis_db import get_REDIS_DB, normalize_redis_keys, run_lua
 
 logger = logging.getLogger("POPOTO.BM25Field")
 
@@ -461,7 +461,7 @@ class BM25Field(Field):
         keys = [tf_key, df_key, dl_key, n_key, avgdl_key]
         argv = [doc_key, inv_prefix] + tokens
 
-        run_lua(POPOTO_REDIS_DB, BM25_SAVE_LUA, len(keys), *keys, *argv)
+        run_lua(get_REDIS_DB(), BM25_SAVE_LUA, len(keys), *keys, *argv)
 
         return pipeline if pipeline else None
 
@@ -508,7 +508,7 @@ class BM25Field(Field):
         keys = [tf_key, df_key, dl_key, n_key, avgdl_key]
         argv = [doc_key, inv_prefix]
 
-        run_lua(POPOTO_REDIS_DB, BM25_DELETE_LUA, len(keys), *keys, *argv)
+        run_lua(get_REDIS_DB(), BM25_DELETE_LUA, len(keys), *keys, *argv)
 
         return pipeline if pipeline else None
 
@@ -583,7 +583,7 @@ class BM25Field(Field):
                 field.BM25_K1,
                 field.BM25_B,
             ] + query_tokens
-            result = run_lua(POPOTO_REDIS_DB, BM25_SEARCH_LUA, len(keys), *keys, *argv)
+            result = run_lua(get_REDIS_DB(), BM25_SEARCH_LUA, len(keys), *keys, *argv)
             if not result:
                 return []
             # Parse flat array: [key1, score1, key2, score2, ...]
@@ -612,7 +612,7 @@ class BM25Field(Field):
         # SCOPED_SEARCH_WIDEN_FACTOR=4 that is 10 -> 40 -> 160 -> 640 -> 2560
         # -> 4096 (SCOPED_SEARCH_FETCH_CAP), i.e. 6 scoring passes. Raising the
         # widen factor trades passes for wasted scoring width.
-        raw_n: Any = POPOTO_REDIS_DB.get(n_key)
+        raw_n: Any = get_REDIS_DB().get(n_key)
         try:
             corpus_n = int(raw_n)
         except (TypeError, ValueError):
@@ -652,16 +652,16 @@ class BM25Field(Field):
         avgdl_key = f"{prefix}:avgdl"
 
         # Get all document lengths
-        all_dl = POPOTO_REDIS_DB.zrangebyscore(dl_key, "-inf", "+inf", withscores=True)
+        all_dl = get_REDIS_DB().zrangebyscore(dl_key, "-inf", "+inf", withscores=True)
 
         actual_n = len(all_dl)
         total_dl = sum(score for _, score in all_dl)
 
-        POPOTO_REDIS_DB.set(n_key, str(actual_n))
+        get_REDIS_DB().set(n_key, str(actual_n))
         if actual_n > 0:
-            POPOTO_REDIS_DB.set(avgdl_key, str(total_dl / actual_n))
+            get_REDIS_DB().set(avgdl_key, str(total_dl / actual_n))
         else:
-            POPOTO_REDIS_DB.set(avgdl_key, "0")
+            get_REDIS_DB().set(avgdl_key, "0")
 
     @classmethod
     def get_idf(cls, model_class, field_name, tokens):
@@ -706,7 +706,7 @@ class BM25Field(Field):
         df_key = f"{prefix}:df"
 
         # Read total doc count
-        n_raw = POPOTO_REDIS_DB.get(n_key)
+        n_raw = get_REDIS_DB().get(n_key)
         N = int(n_raw) if n_raw else 0
 
         if N == 0:
@@ -739,10 +739,10 @@ class BM25Field(Field):
             list: Scores for each member (None if member not in set).
         """
         try:
-            return POPOTO_REDIS_DB.zmscore(key, members)
+            return get_REDIS_DB().zmscore(key, members)
         except (AttributeError, Exception):
             # ZMSCORE not available -- fall back to individual ZSCORE
-            return [POPOTO_REDIS_DB.zscore(key, m) for m in members]
+            return [get_REDIS_DB().zscore(key, m) for m in members]
 
     @classmethod
     def filter_selective_tokens(cls, model_class, field_name, tokens, min_idf=1.0):

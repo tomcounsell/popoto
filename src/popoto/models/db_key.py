@@ -35,7 +35,7 @@ Integration:
 
 from collections.abc import Iterable
 
-from ..redis_db import POPOTO_REDIS_DB, ENCODING
+from ..redis_db import get_REDIS_DB, ENCODING
 from .canonical_key import canonical_key_str
 
 #: What a literal ":" encodes to. Kept as a module-level constant so
@@ -309,7 +309,7 @@ class DB_key(list):
         Returns:
             True if a Redis key with this value exists, False otherwise.
         """
-        return True if POPOTO_REDIS_DB.exists(self.redis_key) > 0 else False
+        return True if get_REDIS_DB().exists(self.redis_key) > 0 else False
 
     def get_instance(self, model_class):
         """Load and return a model instance from Redis for this key.
@@ -329,7 +329,7 @@ class DB_key(list):
             A model instance populated with data from Redis, or None
             if the key does not exist.
         """
-        redis_hash = POPOTO_REDIS_DB.hgetall(self.redis_key)
+        redis_hash = get_REDIS_DB().hgetall(self.redis_key)
         from .encoding import decode_popoto_model_hashmap
 
         return decode_popoto_model_hashmap(

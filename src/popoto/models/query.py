@@ -75,7 +75,7 @@ if TYPE_CHECKING:
     from ..fields.sorted_field_mixin import SortedFieldMixin
 
 from ..redis_db import (
-    POPOTO_REDIS_DB,
+    get_REDIS_DB,
     get_async_redis_db,
     normalize_redis_keys,
 )
@@ -253,7 +253,7 @@ def _fire_on_read(model_class, instances):
     ]
     if not valid:
         return
-    pipe = POPOTO_REDIS_DB.pipeline()
+    pipe = get_REDIS_DB().pipeline()
     for inst in valid:
         inst.on_read(pipeline=pipe)
     pipe.execute()
@@ -655,7 +655,7 @@ class QueryBuilder:
             return []
 
         # Fetch model instances via pipeline
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         for key in redis_keys:
             pipe.hgetall(key)
         raw_results = pipe.execute()
@@ -788,22 +788,22 @@ class QueryBuilder:
         # --- Handle co_occurrence_boost ---
         if co_occurrence_boost:
             co_key = f"$CSQ:{model_name}:co_occurrence:{uid}"
-            POPOTO_REDIS_DB.zadd(
+            get_REDIS_DB().zadd(
                 co_key,
                 {str(k): float(v) for k, v in co_occurrence_boost.items()},
             )
-            POPOTO_REDIS_DB.expire(co_key, 5)
+            get_REDIS_DB().expire(co_key, 5)
             temp_keys.append(co_key)
             resolved_keys[co_key] = 1.0  # weight already in the scores
 
         # --- Handle similarity_boost ---
         if similarity_boost:
             sim_key = f"$CSQ:{model_name}:similarity:{uid}"
-            POPOTO_REDIS_DB.zadd(
+            get_REDIS_DB().zadd(
                 sim_key,
                 {str(k): float(v) for k, v in similarity_boost.items()},
             )
-            POPOTO_REDIS_DB.expire(sim_key, 5)
+            get_REDIS_DB().expire(sim_key, 5)
             temp_keys.append(sim_key)
             resolved_keys[sim_key] = 1.0  # weight already in the scores
 
@@ -816,12 +816,12 @@ class QueryBuilder:
         temp_keys.append(composite_key)
 
         try:
-            POPOTO_REDIS_DB.zunionstore(
+            get_REDIS_DB().zunionstore(
                 composite_key,
                 resolved_keys,
                 aggregate=aggregate,
             )
-            POPOTO_REDIS_DB.expire(composite_key, 5)
+            get_REDIS_DB().expire(composite_key, 5)
 
             # --- Validity mask (#580, plan D5b) ---
             # Must run BEFORE the top-K read: the decay-Lua gate only makes a
@@ -837,7 +837,7 @@ class QueryBuilder:
 
             # --- ZREVRANGE top-K ---
             if min_score is not None:
-                raw_results = POPOTO_REDIS_DB.zrevrangebyscore(
+                raw_results = get_REDIS_DB().zrevrangebyscore(
                     composite_key,
                     "+inf",
                     str(min_score),
@@ -846,7 +846,7 @@ class QueryBuilder:
                     withscores=True,
                 )
             else:
-                raw_results = POPOTO_REDIS_DB.zrevrange(
+                raw_results = get_REDIS_DB().zrevrange(
                     composite_key, 0, limit - 1, withscores=True
                 )
 
@@ -872,7 +872,7 @@ class QueryBuilder:
                 return []
 
             # --- Hydrate models ---
-            pipe = POPOTO_REDIS_DB.pipeline()
+            pipe = get_REDIS_DB().pipeline()
             for key in pks:
                 pipe.hgetall(key)
             hashes = pipe.execute()
@@ -1033,13 +1033,13 @@ class QueryBuilder:
         sim_key = f"$CSQ:{model_name}:sim_only:{uid}"
 
         try:
-            POPOTO_REDIS_DB.zadd(
+            get_REDIS_DB().zadd(
                 sim_key,
                 {str(k): float(v) for k, v in similarity_boost.items()},
             )
-            POPOTO_REDIS_DB.expire(sim_key, 5)
+            get_REDIS_DB().expire(sim_key, 5)
 
-            raw_results = POPOTO_REDIS_DB.zrevrange(
+            raw_results = get_REDIS_DB().zrevrange(
                 sim_key, 0, limit - 1, withscores=True
             )
 
@@ -1065,7 +1065,7 @@ class QueryBuilder:
                 return []
 
             # Hydrate
-            pipe = POPOTO_REDIS_DB.pipeline()
+            pipe = get_REDIS_DB().pipeline()
             for key in pks:
                 pipe.hgetall(key)
             hashes = pipe.execute()
@@ -1080,7 +1080,7 @@ class QueryBuilder:
 
             return instances
         finally:
-            POPOTO_REDIS_DB.delete(sim_key)
+            get_REDIS_DB().delete(sim_key)
 
     def keyword_search(
         self,
@@ -1136,7 +1136,7 @@ class QueryBuilder:
             return []
 
         # Hydrate model instances
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         for key, _score in scored:
             pipe.hgetall(key)
         hashes = pipe.execute()
@@ -1281,7 +1281,7 @@ class QueryBuilder:
             # backfills with in-scope candidates.
             client_filters = getattr(self._query, "_pending_client_filters", None) or {}
             if client_filters and sorted_results:
-                pipe = POPOTO_REDIS_DB.pipeline()
+                pipe = get_REDIS_DB().pipeline()
                 for key, _score in sorted_results:
                     pipe.hgetall(key)
                 in_scope = []
@@ -1316,7 +1316,7 @@ class QueryBuilder:
         # Hydrate model instances
         missing = [(key, s) for key, s in sorted_results if key not in prefetched]
         if missing:
-            pipe = POPOTO_REDIS_DB.pipeline()
+            pipe = get_REDIS_DB().pipeline()
             for key, _score in missing:
                 pipe.hgetall(key)
             for (key, _score), data in zip(missing, pipe.execute()):
@@ -1589,8 +1589,8 @@ class QueryBuilder:
                 zadd_mapping[member] = score
 
             if zadd_mapping:
-                POPOTO_REDIS_DB.zadd(temp_key, zadd_mapping)
-                POPOTO_REDIS_DB.expire(temp_key, 5)
+                get_REDIS_DB().zadd(temp_key, zadd_mapping)
+                get_REDIS_DB().expire(temp_key, 5)
 
         return temp_key
 
@@ -1643,7 +1643,7 @@ class QueryBuilder:
             data_hash_key = field.get_data_hash_key_from_values(model_class, field_name)
 
         # Read all entries from companion hash
-        all_data = POPOTO_REDIS_DB.hgetall(data_hash_key)
+        all_data = get_REDIS_DB().hgetall(data_hash_key)
 
         temp_key = f"$CSQ:{model_name}:confidence:{field_name}:{uid}"
         temp_keys.append(temp_key)
@@ -1664,8 +1664,8 @@ class QueryBuilder:
                 zadd_mapping[member_key] = float(confidence)
 
             if zadd_mapping:
-                POPOTO_REDIS_DB.zadd(temp_key, zadd_mapping)
-                POPOTO_REDIS_DB.expire(temp_key, 5)
+                get_REDIS_DB().zadd(temp_key, zadd_mapping)
+                get_REDIS_DB().expire(temp_key, 5)
 
         return temp_key
 
@@ -1695,13 +1695,11 @@ class QueryBuilder:
         temp_keys.append(temp_key)
 
         # Get all instance keys
-        all_keys = POPOTO_REDIS_DB.smembers(
-            model_class._meta.db_class_set_key.redis_key
-        )
+        all_keys = get_REDIS_DB().smembers(model_class._meta.db_class_set_key.redis_key)
 
         if all_keys:
             zadd_mapping = {}
-            pipe = POPOTO_REDIS_DB.pipeline()
+            pipe = get_REDIS_DB().pipeline()
             decoded_keys = []
             for key in all_keys:
                 if isinstance(key, bytes):
@@ -1718,8 +1716,8 @@ class QueryBuilder:
                     zadd_mapping[key] = float(count)
 
             if zadd_mapping:
-                POPOTO_REDIS_DB.zadd(temp_key, zadd_mapping)
-                POPOTO_REDIS_DB.expire(temp_key, 5)
+                get_REDIS_DB().zadd(temp_key, zadd_mapping)
+                get_REDIS_DB().expire(temp_key, 5)
 
         return temp_key
 
@@ -1799,7 +1797,7 @@ class QueryBuilder:
         # default index-range form. Under BYSCORE they are score bounds and must
         # be str/float -- "(", "-inf" and "+inf" have no int spelling -- so the
         # upstream annotation is simply too narrow.
-        POPOTO_REDIS_DB.zrangestore(
+        get_REDIS_DB().zrangestore(
             closed_key,
             invalid_at_key,
             "-inf",  # type: ignore[arg-type]
@@ -1807,27 +1805,27 @@ class QueryBuilder:
             byscore=True,
         )
         # valid_from > t -- not yet started at t (exclusive lower bound).
-        POPOTO_REDIS_DB.zrangestore(
+        get_REDIS_DB().zrangestore(
             future_key,
             valid_from_key,
             f"({t}",  # type: ignore[arg-type]
             "+inf",  # type: ignore[arg-type]
             byscore=True,
         )
-        POPOTO_REDIS_DB.expire(closed_key, 5)
-        POPOTO_REDIS_DB.expire(future_key, 5)
+        get_REDIS_DB().expire(closed_key, 5)
+        get_REDIS_DB().expire(future_key, 5)
 
         # Union, not intersect: a member is excluded if it fails EITHER end of
         # the interval test. Weights are 0 only for tidiness -- ZDIFFSTORE
         # ignores the right-hand scores entirely.
-        POPOTO_REDIS_DB.zunionstore(excluded_key, {closed_key: 0, future_key: 0})
-        POPOTO_REDIS_DB.expire(excluded_key, 5)
+        get_REDIS_DB().zunionstore(excluded_key, {closed_key: 0, future_key: 0})
+        get_REDIS_DB().expire(excluded_key, 5)
 
         # Set difference. Members with no interval entry appear in neither
         # exclusion set, so they survive -- see the docstring for why that is
         # the required behavior and not an oversight.
-        POPOTO_REDIS_DB.zdiffstore(composite_key, [composite_key, excluded_key])
-        POPOTO_REDIS_DB.expire(composite_key, 5)
+        get_REDIS_DB().zdiffstore(composite_key, [composite_key, excluded_key])
+        get_REDIS_DB().expire(composite_key, 5)
 
     @staticmethod
     def _cleanup_temp_keys(temp_keys):
@@ -1837,7 +1835,7 @@ class QueryBuilder:
             temp_keys: List of Redis key strings to delete.
         """
         if temp_keys:
-            POPOTO_REDIS_DB.delete(*temp_keys)
+            get_REDIS_DB().delete(*temp_keys)
 
     def all(self) -> list:
         """Execute the query and return all matching results.
@@ -2246,7 +2244,7 @@ class Query:
         if redis_key:
             from ..models.encoding import decode_popoto_model_hashmap
 
-            hashmap = POPOTO_REDIS_DB.hgetall(redis_key)
+            hashmap = get_REDIS_DB().hgetall(redis_key)
             if not hashmap:
                 return None
             instance = decode_popoto_model_hashmap(
@@ -2317,7 +2315,7 @@ class Query:
 
         from ..models.encoding import decode_popoto_model_hashmap
 
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         for key in redis_keys:
             pipeline.hgetall(key)
         hashes_list = pipeline.execute()
@@ -2379,16 +2377,16 @@ class Query:
             logger.warning(
                 "Query.keys(clean=True) is deprecated. Use Model.clean_indexes() for production-safe orphan cleanup."
             )
-            pipeline = POPOTO_REDIS_DB.pipeline()
+            pipeline = get_REDIS_DB().pipeline()
             from ..fields.key_field_mixin import KeyFieldMixin
             from ..fields.relationship import Relationship
 
             for db_key in list(
-                POPOTO_REDIS_DB.smembers(
+                get_REDIS_DB().smembers(
                     self.model_class._meta.db_class_set_key.redis_key
                 )
             ):
-                hash = POPOTO_REDIS_DB.hgetall(db_key)
+                hash = get_REDIS_DB().hgetall(db_key)
                 if not len(hash):
                     pipeline = pipeline.srem(
                         self.model_class._meta.db_class_set_key.redis_key, db_key
@@ -2401,9 +2399,9 @@ class Query:
                 field_key_prefix = field.get_special_use_field_db_key(
                     self.model_class, field_name
                 )
-                for field_key in POPOTO_REDIS_DB.keys(f"{field_key_prefix}:*"):
-                    for object_key in POPOTO_REDIS_DB.smembers(field_key):
-                        hash = POPOTO_REDIS_DB.hgetall(object_key)
+                for field_key in get_REDIS_DB().keys(f"{field_key_prefix}:*"):
+                    for object_key in get_REDIS_DB().smembers(field_key):
+                        hash = get_REDIS_DB().hgetall(object_key)
                         if not len(hash):
                             pipeline = pipeline.srem(field_key, object_key)
 
@@ -2413,10 +2411,10 @@ class Query:
             logger.warning(
                 "{catchall} is for debugging purposes only. Not for use in production environment"
             )
-            return list(POPOTO_REDIS_DB.keys(f"*{self.model_class.__name__}*"))
+            return list(get_REDIS_DB().keys(f"*{self.model_class.__name__}*"))
         else:
             return list(
-                POPOTO_REDIS_DB.smembers(
+                get_REDIS_DB().smembers(
                     self.model_class._meta.db_class_set_key.redis_key
                 )
             )
@@ -3603,7 +3601,7 @@ class Query:
         """
         if not len(kwargs):
             return int(
-                POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key.redis_key)
+                get_REDIS_DB().scard(self.model_class._meta.db_class_set_key.redis_key)
                 or 0
             )
         # allow_pushdown=False preserves today's behavior exactly: count() never
@@ -3686,7 +3684,7 @@ class Query:
         """
         from .encoding import decode_popoto_model_hashmap
 
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         reverse_order = False
         # order the hashes list or objects before applying limit
         if order_by_attr_name and order_by_attr_name.startswith("-"):

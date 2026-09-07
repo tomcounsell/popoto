@@ -82,7 +82,7 @@ from src.popoto.recipes.provenance_journal import (
     JournalEntry,
     ProvenanceJournal,
 )
-from src.popoto.redis_db import POPOTO_REDIS_DB, scan_keys
+from src.popoto.redis_db import get_REDIS_DB, scan_keys
 
 AGENT = "agent-under-test"
 OTHER_AGENT = "agent-next-door"
@@ -178,9 +178,9 @@ def _interval(instance):
     keys = _keys()
     member = instance.db_key.redis_key
     return (
-        POPOTO_REDIS_DB.zscore(keys["valid_from"], member),
-        POPOTO_REDIS_DB.zscore(keys["invalid_at"], member),
-        POPOTO_REDIS_DB.zscore(keys["ingested_at"], member),
+        get_REDIS_DB().zscore(keys["valid_from"], member),
+        get_REDIS_DB().zscore(keys["invalid_at"], member),
+        get_REDIS_DB().zscore(keys["ingested_at"], member),
     )
 
 
@@ -218,10 +218,10 @@ class _CallCounter:
     def __init__(self, monkeypatch, names):
         self.counts = {name: 0 for name in names}
         for name in names:
-            monkeypatch.setattr(POPOTO_REDIS_DB, name, self._wrap(name), raising=True)
+            monkeypatch.setattr(get_REDIS_DB(), name, self._wrap(name), raising=True)
 
     def _wrap(self, name):
-        original = getattr(POPOTO_REDIS_DB, name)
+        original = getattr(get_REDIS_DB(), name)
 
         def wrapper(*args, **kwargs):
             self.counts[name] += 1
@@ -245,7 +245,7 @@ class _PipelineSpy:
     def __init__(self, monkeypatch):
         self.pipelines = []
         self.stacks = []
-        real_pipeline = POPOTO_REDIS_DB.pipeline
+        real_pipeline = get_REDIS_DB().pipeline
         spy = self
 
         def make_pipeline(*args, **kwargs):
@@ -260,7 +260,7 @@ class _PipelineSpy:
             pipe.execute = execute
             return pipe
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "pipeline", make_pipeline)
+        monkeypatch.setattr(get_REDIS_DB(), "pipeline", make_pipeline)
 
     def snapshot(self, pipe):
         """Record an unexecuted pipeline's stack explicitly."""
@@ -355,7 +355,7 @@ def _numkeys(args):
 class TestAppendOnlyContract:
     def test_a_fresh_append_is_allowed_and_persists(self):
         entry = _append()
-        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert get_REDIS_DB().exists(entry.db_key.redis_key)
         assert JournalEntry.query.get(redis_key=entry.db_key.redis_key) is not None
 
     def test_re_saving_the_same_instance_raises_append_only_violation(self):
@@ -393,21 +393,21 @@ class TestAppendOnlyContract:
         entry = _append()
         with pytest.raises(AppendOnlyViolation):
             entry.delete()
-        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert get_REDIS_DB().exists(entry.db_key.redis_key)
 
     def test_delete_all_raises_append_only_violation_and_keeps_the_records(self):
         """``delete_all()`` routes through ``instance.delete()``, so the guard fires."""
         entry = _append()
         with pytest.raises(AppendOnlyViolation):
             JournalEntry.delete_all()
-        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert get_REDIS_DB().exists(entry.db_key.redis_key)
 
     def test_save_with_migrate_key_raises_even_though_the_new_key_is_free(self):
         """The destroy-through-a-public-kwarg shape ``EXISTS`` cannot express."""
         entry = _append()
         with pytest.raises(AppendOnlyViolation, match="migrate_key"):
             entry.save(migrate_key=True)
-        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert get_REDIS_DB().exists(entry.db_key.redis_key)
 
     def test_mutating_a_key_field_closes_both_routes_to_a_key_migration(self):
         """The rename route is shut whichever way it is taken.
@@ -426,7 +426,7 @@ class TestAppendOnlyContract:
         with pytest.raises(AppendOnlyViolation, match="migrate_key"):
             entry.save(migrate_key=True)
 
-        assert POPOTO_REDIS_DB.exists(original_key)
+        assert get_REDIS_DB().exists(original_key)
 
     def test_two_saves_of_one_key_on_one_pipeline_are_not_caught(self):
         """Race 2's deterministic shape — a documented boundary, not a guarantee.
@@ -436,7 +436,7 @@ class TestAppendOnlyContract:
         saves pass. Asserted as a known state so the boundary cannot drift into
         an unnoticed regression in either direction.
         """
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         first = JournalEntry(agent_id=AGENT, statement="first", kind="assert")
         first.save(pipeline=pipe)
         second = JournalEntry(
@@ -628,7 +628,7 @@ class TestAnnotationsAndMembership:
 
         as_of = _redis_keys(JournalEntry.query.filter(validity__as_of=t0 + 10.0))
         assert target.db_key.redis_key in as_of
-        assert POPOTO_REDIS_DB.exists(target.db_key.redis_key)
+        assert get_REDIS_DB().exists(target.db_key.redis_key)
 
     def test_membership_queries_never_read_the_chain_hashes(self, monkeypatch):
         """Membership comes from the interval ZSETs, with no chain walk."""
@@ -650,7 +650,7 @@ class TestAnnotationsAndMembership:
 
         for name in ("hget", "hgetall", "hkeys", "hvals", "hmget"):
             monkeypatch.setattr(
-                POPOTO_REDIS_DB, name, record(name, getattr(POPOTO_REDIS_DB, name))
+                get_REDIS_DB(), name, record(name, getattr(get_REDIS_DB(), name))
             )
 
         current = _redis_keys(JournalEntry.query.filter(validity__current=True))
@@ -712,24 +712,24 @@ def _keyspace_contains(needle):
         key = _lossy(key)
         if needle in key:
             return True
-        key_type = _lossy(POPOTO_REDIS_DB.type(key))
+        key_type = _lossy(get_REDIS_DB().type(key))
         if key_type == "hash":
-            blob = POPOTO_REDIS_DB.hgetall(key)
+            blob = get_REDIS_DB().hgetall(key)
             for field, value in blob.items():
                 if needle in _lossy(field) or needle in _lossy(value):
                     return True
         elif key_type == "set":
-            if any(needle in _lossy(m) for m in POPOTO_REDIS_DB.smembers(key)):
+            if any(needle in _lossy(m) for m in get_REDIS_DB().smembers(key)):
                 return True
         elif key_type == "zset":
-            members = POPOTO_REDIS_DB.zrange(key, 0, -1)
+            members = get_REDIS_DB().zrange(key, 0, -1)
             if any(needle in _lossy(m) for m in members):
                 return True
         elif key_type == "string":
-            if needle in _lossy(POPOTO_REDIS_DB.get(key)):
+            if needle in _lossy(get_REDIS_DB().get(key)):
                 return True
         elif key_type == "stream":
-            entries = POPOTO_REDIS_DB.xrange(key)
+            entries = get_REDIS_DB().xrange(key)
             if needle in _lossy(repr(entries)):
                 return True
     return False
@@ -815,8 +815,8 @@ class TestNeverRecordComposition:
         )
         assert ProvenanceJournal.annotations_for(target) == []
         keys = _keys()
-        assert POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key) is None
-        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert get_REDIS_DB().hget(keys["chain_fwd"], target.db_key.redis_key) is None
+        assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         assert not _keyspace_contains(SECRET)
 
     def test_a_blocked_retract_closes_nothing(self):
@@ -1038,8 +1038,8 @@ class TestPreFlightScansExactlyWhatTheMixinScans:
         assert _interval(target)[1] == float("inf")
         assert ProvenanceJournal.annotations_for(target) == []
         keys = _keys()
-        assert POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key) is None
-        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert get_REDIS_DB().hget(keys["chain_fwd"], target.db_key.redis_key) is None
+        assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         assert not _keyspace_contains(SECRET)
 
     def test_the_preflight_scans_a_superset_of_the_mixin_surface(self, monkeypatch):
@@ -1228,7 +1228,7 @@ class TestPreFlightValidation:
         """``pipeline(transaction=False)`` is legal and would silently void the
         annotate-and-close atomicity guarantee."""
         target = _append()
-        pipe = POPOTO_REDIS_DB.pipeline(transaction=False)
+        pipe = get_REDIS_DB().pipeline(transaction=False)
         counter = self._counted(monkeypatch)
         with pytest.raises(ValueError, match="transaction=False"):
             ProvenanceJournal.supersede(
@@ -1249,7 +1249,7 @@ class TestPreFlightValidation:
         """
         target = _append()
         before = set(scan_keys("*"))
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         pipe.watch("some:key")
         assert pipe.watching is True
         counter = self._counted(monkeypatch)
@@ -1282,7 +1282,7 @@ class TestPreFlightValidation:
         """
         t0 = time.time() - 100.0
         target = _append(at=t0)
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         try:
             pipe.watch(target.db_key.redis_key)
             pipe.multi()
@@ -1314,7 +1314,7 @@ class TestPreFlightValidation:
         """UNWATCH would silently discard the caller's optimistic lock, so the
         remediation must not suggest it."""
         target = _append()
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         try:
             pipe.watch("some:key")
             with pytest.raises(ValueError) as excinfo:
@@ -1380,7 +1380,7 @@ class TestAnnotationAtomicity:
             # The pre-flight has returned and the entry is queued; delete the
             # target now, before the pipeline executes.
             entry_keys.append(kwargs.get("new_member"))
-            POPOTO_REDIS_DB.delete(target_key)
+            get_REDIS_DB().delete(target_key)
             return real_execute_supersede(*args, **kwargs)
 
         monkeypatch.setattr(
@@ -1394,7 +1394,7 @@ class TestAnnotationAtomicity:
 
         monkeypatch.undo()
         assert entry_keys and entry_keys[0]
-        assert POPOTO_REDIS_DB.exists(
+        assert get_REDIS_DB().exists(
             entry_keys[0]
         ), "the annotation is real provenance and must survive a failed close"
 
@@ -1443,7 +1443,7 @@ class TestAnnotationAtomicity:
         t0 = time.time() - 100.0
         target = _append(at=t0)
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
         result = ProvenanceJournal.supersede(
             target,
@@ -1458,7 +1458,7 @@ class TestAnnotationAtomicity:
         assert counter.nonzero == {}, counter.nonzero
 
         # Nothing applied: the annotation is absent and the target is open.
-        assert not POPOTO_REDIS_DB.exists(result.entry.db_key.redis_key)
+        assert not get_REDIS_DB().exists(result.entry.db_key.redis_key)
         assert _interval(target)[1] == float("inf")
 
         spy_stack = list(pipe.command_stack)
@@ -1480,7 +1480,7 @@ class TestAnnotationAtomicity:
         t0 = time.time()
         target = _append(at=t0)
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         annotation = JournalEntry(
             agent_id=AGENT,
             statement="a backdated correction",
@@ -1503,7 +1503,7 @@ class TestAnnotationAtomicity:
             pipe.execute()
 
         # The annotation landed; the target did not close. Not a rollback.
-        assert POPOTO_REDIS_DB.exists(annotation.db_key.redis_key)
+        assert get_REDIS_DB().exists(annotation.db_key.redis_key)
         assert _interval(target)[1] == float("inf")
 
     def test_bypassing_the_pre_flight_surfaces_a_raw_response_error(self):
@@ -1521,7 +1521,7 @@ class TestAnnotationAtomicity:
         target = _append(at=t0)
         backdated = t0 - 60.0
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         annotation = JournalEntry(
             agent_id=AGENT,
             statement="a backdated correction",
@@ -1546,7 +1546,7 @@ class TestAnnotationAtomicity:
         )
         with pytest.raises(redis.exceptions.ResponseError):
             pipe.execute()
-        assert POPOTO_REDIS_DB.exists(annotation.db_key.redis_key)
+        assert get_REDIS_DB().exists(annotation.db_key.redis_key)
 
         # And M1's own path refuses the same call before writing anything.
         with pytest.raises(ValueError, match="precedes"):
@@ -1566,7 +1566,7 @@ class TestAnnotationAtomicity:
         t0 = time.time() - 100.0
         target = _append(at=t0)
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         successor = JournalEntry(
             agent_id=AGENT, statement="a correction", kind="assert", validity=t0 + 50.0
         )
@@ -1580,7 +1580,7 @@ class TestAnnotationAtomicity:
         assert _interval(target)[1] != float("inf")
         keys = _keys()
         assert (
-            _as_str(POPOTO_REDIS_DB.hget(keys["chain_fwd"], target.db_key.redis_key))
+            _as_str(get_REDIS_DB().hget(keys["chain_fwd"], target.db_key.redis_key))
             == successor.db_key.redis_key
         )
 
@@ -1590,7 +1590,7 @@ class TestAnnotationAtomicity:
         assert _interval(second_target)[1] == pytest.approx(t0 + 50.0)
         assert (
             _as_str(
-                POPOTO_REDIS_DB.hget(keys["chain_fwd"], second_target.db_key.redis_key)
+                get_REDIS_DB().hget(keys["chain_fwd"], second_target.db_key.redis_key)
             )
             != "None"
         )
@@ -1615,7 +1615,7 @@ class TestAnnotationAtomicity:
 
         # The raw shape M1 routes around: pass the instant ONLY to the script.
         raw_target = _append(at=t0)
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         raw_successor = JournalEntry(
             agent_id=AGENT, statement="raw correction", kind="assert"
         )
@@ -1662,7 +1662,7 @@ class TestAnnotationAtomicity:
         t0 = time.time() - 100.0
         target = _append(at=t0)
 
-        real_pipeline = POPOTO_REDIS_DB.pipeline
+        real_pipeline = get_REDIS_DB().pipeline
 
         def make_pipeline(*args, **kwargs):
             pipe = real_pipeline(*args, **kwargs)
@@ -1673,7 +1673,7 @@ class TestAnnotationAtomicity:
             pipe.xadd = exploding_xadd
             return pipe
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "pipeline", make_pipeline)
+        monkeypatch.setattr(get_REDIS_DB(), "pipeline", make_pipeline)
         with pytest.raises(RuntimeError, match="injected XADD failure"):
             ProvenanceJournal.supersede(
                 target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
@@ -1769,16 +1769,16 @@ def _derived_keys_naming(member):
     holders = []
     for key in scan_keys("$*"):
         key = _as_str(key)
-        key_type = _as_str(POPOTO_REDIS_DB.type(key))
+        key_type = _as_str(get_REDIS_DB().type(key))
         if key_type == "set":
-            values = [_as_str(m) for m in POPOTO_REDIS_DB.smembers(key)]
+            values = [_as_str(m) for m in get_REDIS_DB().smembers(key)]
         elif key_type == "zset":
-            values = [_as_str(m) for m in POPOTO_REDIS_DB.zrange(key, 0, -1)]
+            values = [_as_str(m) for m in get_REDIS_DB().zrange(key, 0, -1)]
         elif key_type == "hash":
-            blob = POPOTO_REDIS_DB.hgetall(key)
+            blob = get_REDIS_DB().hgetall(key)
             values = [_as_str(f) for f in blob] + [_as_str(v) for v in blob.values()]
         elif key_type == "string":
-            values = [_as_str(POPOTO_REDIS_DB.get(key))]
+            values = [_as_str(get_REDIS_DB().get(key))]
         else:
             values = []
         if any(member in value for value in values) or member in key:
@@ -1799,13 +1799,13 @@ class TestHardDelete:
 
         assert JournalEntry.hard_delete(target) is True
 
-        assert not POPOTO_REDIS_DB.exists(member)
+        assert not get_REDIS_DB().exists(member)
         assert JournalEntry.query.filter(agent_id=AGENT, speaker="tom") == []
         assert JournalEntry.query.filter(turn_id="t-41") == []
         assert JournalEntry.query.filter(subjects__contains="launch") == []
         assert _derived_keys_naming(member) == []
         # The annotation itself survives -- only the erased record is swept.
-        assert POPOTO_REDIS_DB.exists(annotation.db_key.redis_key)
+        assert get_REDIS_DB().exists(annotation.db_key.redis_key)
 
     def test_hard_delete_clears_the_value_side_of_the_chain_hashes(self):
         t0 = time.time() - 100.0
@@ -1817,7 +1817,7 @@ class TestHardDelete:
 
         JournalEntry.hard_delete(second)
         keys = _keys()
-        fwd = POPOTO_REDIS_DB.hgetall(keys["chain_fwd"])
+        fwd = get_REDIS_DB().hgetall(keys["chain_fwd"])
         assert all(_as_str(v) != member for v in fwd.values())
         assert _derived_keys_naming(member) == []
 
@@ -1836,7 +1836,7 @@ class TestOrphanIndexRead:
         index_field = JournalEntry._meta.fields["target"]
         prefix = index_field.get_special_use_field_db_key(JournalEntry, "target")
         index_key = popoto.models.db_key.DB_key(prefix, target_key).redis_key
-        POPOTO_REDIS_DB.sadd(index_key, "JournalEntry:ghost-entry-that-never-existed")
+        get_REDIS_DB().sadd(index_key, "JournalEntry:ghost-entry-that-never-existed")
 
         found = _redis_keys(JournalEntry.query.filter(target=target_key))
         assert found == [annotation.db_key.redis_key]
@@ -1847,10 +1847,10 @@ class TestOrphanIndexRead:
         index_field = JournalEntry._meta.fields["target"]
         prefix = index_field.get_special_use_field_db_key(JournalEntry, "target")
         index_key = popoto.models.db_key.DB_key(prefix, ghost_target).redis_key
-        POPOTO_REDIS_DB.sadd(index_key, "JournalEntry:ghost-annotation")
+        get_REDIS_DB().sadd(index_key, "JournalEntry:ghost-annotation")
 
         assert JournalEntry.query.filter(target=ghost_target) == []
-        assert POPOTO_REDIS_DB.exists(target.db_key.redis_key)
+        assert get_REDIS_DB().exists(target.db_key.redis_key)
 
 
 class TestConcurrentDoubleClose:
@@ -1898,7 +1898,7 @@ class TestConcurrentDoubleClose:
         )
         assert first.target_closed is True
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         second = ProvenanceJournal.supersede(
             target,
             agent_id=AGENT,
@@ -1912,13 +1912,13 @@ class TestConcurrentDoubleClose:
         results = pipe.execute()
         assert not results[second.close_index]
         # The entry itself is real provenance and did land.
-        assert POPOTO_REDIS_DB.exists(second.entry.db_key.redis_key)
+        assert get_REDIS_DB().exists(second.entry.db_key.redis_key)
         # And the close it reported nothing about genuinely applied nothing.
         assert _interval(target)[1] == pytest.approx(t0 + 50.0)
 
     def test_a_caller_pipeline_append_queues_no_close_at_all(self):
         """``close_index is None`` is the "nothing was queued to close" signal."""
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         result = ProvenanceJournal.append(
             agent_id=AGENT, statement="a capture", pipeline=pipe
         )
@@ -2082,10 +2082,10 @@ class TestKindRegistry:
             # A fresh key, exactly as a restore into an empty destination
             # keyspace would be, so the append-only gate is not what refuses.
             restored = JournalEntry(**values)
-            assert not POPOTO_REDIS_DB.exists(restored.db_key.redis_key)
+            assert not get_REDIS_DB().exists(restored.db_key.redis_key)
             with pytest.raises(ValueError, match="kind must be one of"):
                 restored.save()
-            assert not POPOTO_REDIS_DB.exists(restored.db_key.redis_key)
+            assert not get_REDIS_DB().exists(restored.db_key.redis_key)
         finally:
             journal_module._REGISTERED_KINDS.update(registered)
 
@@ -2192,7 +2192,7 @@ class TestEntryModelGuard:
         journal_module._require_journal_shape(JournalEntry)
 
         entry = _append(statement="the reference model still writes")
-        assert POPOTO_REDIS_DB.exists(entry.db_key.redis_key)
+        assert get_REDIS_DB().exists(entry.db_key.redis_key)
         assert entry.db_key.redis_key in _redis_keys(
             JournalEntry.query.filter(validity__current=True)
         )

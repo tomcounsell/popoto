@@ -55,7 +55,7 @@ from .sorted_field_mixin import SortedFieldMixin
 from .indexed_field_mixin import IndexedFieldMixin
 from .tag_field import TagFieldMixin
 from ..exceptions import ModelException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 
 
 class IntField(Field):
@@ -284,7 +284,7 @@ class CappedListProxy:
         # Snapshot local state before mutation so we can roll back
         previous_data = list(self._data)
 
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         pipe.lpush(list_key, encoded_value)
         pipe.ltrim(list_key, 0, self._max_length - 1)
         pipe.execute()
@@ -497,7 +497,7 @@ class ListField(Field):
             _wrap_capped_field(model_instance, field_name, data, field.max_length)
             return pipeline
         else:
-            internal_pipe = POPOTO_REDIS_DB.pipeline()
+            internal_pipe = get_REDIS_DB().pipeline()
             internal_pipe.delete(list_key)
             if encoded_values:
                 internal_pipe.rpush(list_key, *encoded_values)
@@ -533,7 +533,7 @@ class ListField(Field):
         if pipeline:
             return pipeline.delete(list_key)
         else:
-            POPOTO_REDIS_DB.delete(list_key)
+            get_REDIS_DB().delete(list_key)
             return None
 
 

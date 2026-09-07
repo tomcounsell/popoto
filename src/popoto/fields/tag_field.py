@@ -83,7 +83,7 @@ import redis.client
 
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .indexed_field_mixin import IndexedFieldMixin
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
@@ -320,7 +320,7 @@ class TagFieldMixin(IndexedFieldMixin):
         if isinstance(pipeline, redis.client.Pipeline):
             run_lua(pipeline, TAG_SWAP_LUA, numkeys, *args)
             return pipeline
-        return run_lua(POPOTO_REDIS_DB, TAG_SWAP_LUA, numkeys, *args)
+        return run_lua(get_REDIS_DB(), TAG_SWAP_LUA, numkeys, *args)
 
     @classmethod
     def on_delete(
@@ -341,10 +341,10 @@ class TagFieldMixin(IndexedFieldMixin):
         ptr_key = cls._tag_pointer_side_key(member_key, field_name)
         old_ptr_key = cls._pre_540_tag_pointer_side_key(member_key, field_name)
 
-        raw_sets = POPOTO_REDIS_DB.smembers(ptr_key)
+        raw_sets = get_REDIS_DB().smembers(ptr_key)
         if not raw_sets:
             # Migration fallback: pre-#540 pointer written by 1.8.1/1.8.2.
-            raw_sets = POPOTO_REDIS_DB.smembers(old_ptr_key)
+            raw_sets = get_REDIS_DB().smembers(old_ptr_key)
         set_keys = [s.decode() if isinstance(s, bytes) else s for s in raw_sets]
 
         if not set_keys and field_value:
@@ -359,8 +359,8 @@ class TagFieldMixin(IndexedFieldMixin):
                 pipeline.srem(set_key, member_key)
             return pipeline.delete(ptr_key, old_ptr_key)
         for set_key in set_keys:
-            POPOTO_REDIS_DB.srem(set_key, member_key)
-        return POPOTO_REDIS_DB.delete(ptr_key, old_ptr_key)
+            get_REDIS_DB().srem(set_key, member_key)
+        return get_REDIS_DB().delete(ptr_key, old_ptr_key)
 
     def get_filter_query_params(self, field_name: str) -> set:
         """Valid tag lookups: membership / any-of / all-of.
@@ -405,17 +405,17 @@ class TagFieldMixin(IndexedFieldMixin):
                 )
             if query_param.endswith("__contains"):
                 keys_lists_to_intersect.append(
-                    POPOTO_REDIS_DB.smembers(DB_key(prefix, query_value).redis_key)
+                    get_REDIS_DB().smembers(DB_key(prefix, query_value).redis_key)
                 )
             elif query_param.endswith("__any"):
                 set_keys = [DB_key(prefix, v).redis_key for v in query_value]
                 keys_lists_to_intersect.append(
-                    POPOTO_REDIS_DB.sunion(set_keys) if set_keys else set()
+                    get_REDIS_DB().sunion(set_keys) if set_keys else set()
                 )
             elif query_param.endswith("__all"):
                 set_keys = [DB_key(prefix, v).redis_key for v in query_value]
                 keys_lists_to_intersect.append(
-                    POPOTO_REDIS_DB.sinter(set_keys) if set_keys else set()
+                    get_REDIS_DB().sinter(set_keys) if set_keys else set()
                 )
 
         if keys_lists_to_intersect:

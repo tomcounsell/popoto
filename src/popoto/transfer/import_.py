@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Protocol, TextIO, cast
 
 from ..exceptions import ModelException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 from .export import collect_embedding_provenance
 from .format import (
     FORMAT_VERSION,
@@ -200,7 +200,7 @@ def _exists_many(keys: "list[str]") -> "dict[str, bool]":
     """Pipelined EXISTS over a batch of redis keys."""
     if not keys:
         return {}
-    pipeline = POPOTO_REDIS_DB.pipeline()
+    pipeline = get_REDIS_DB().pipeline()
     for key in keys:
         pipeline.exists(key)
     return {key: bool(value) for key, value in zip(keys, pipeline.execute())}

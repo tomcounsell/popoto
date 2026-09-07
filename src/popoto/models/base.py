@@ -61,7 +61,7 @@ from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
-from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from ..exceptions import (
     CorruptFieldError,
     ModelException,
@@ -1153,7 +1153,7 @@ class Model(metaclass=ModelBase):
                 continue
 
             # Check if hash exists in Redis HASH
-            existing_key = POPOTO_REDIS_DB.hget(index_key, index_hash)
+            existing_key = get_REDIS_DB().hget(index_key, index_hash)
             if existing_key:
                 existing_key_str = (
                     existing_key.decode()
@@ -1188,12 +1188,12 @@ class Model(metaclass=ModelBase):
             unique_set_key = DB_key(
                 field.get_special_use_field_db_key(self, field_name), field_value
             )
-            set_size = POPOTO_REDIS_DB.scard(unique_set_key.redis_key)
+            set_size = get_REDIS_DB().scard(unique_set_key.redis_key)
             if set_size == 0:
                 continue
             own_key = self.db_key.redis_key
             own_key_bytes = own_key.encode() if isinstance(own_key, str) else own_key
-            is_self = POPOTO_REDIS_DB.sismember(unique_set_key.redis_key, own_key_bytes)
+            is_self = get_REDIS_DB().sismember(unique_set_key.redis_key, own_key_bytes)
             if set_size > 1 or (set_size == 1 and not is_self):
                 error_message = (
                     f"Unique constraint violated: {field_name}={field_value} "
@@ -1578,7 +1578,7 @@ class Model(metaclass=ModelBase):
                     )
 
                 # Use internal pipeline for atomic execution
-                internal_pipeline = POPOTO_REDIS_DB.pipeline()
+                internal_pipeline = get_REDIS_DB().pipeline()
                 if hset_mapping:
                     internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
                 # else: EVAL-only path — indexed field EVALs write the hash fields
@@ -1786,7 +1786,7 @@ class Model(metaclass=ModelBase):
                 )
 
             # Use internal pipeline for atomic execution of everything else
-            internal_pipeline = POPOTO_REDIS_DB.pipeline()
+            internal_pipeline = get_REDIS_DB().pipeline()
 
             if hset_mapping:
                 internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
@@ -2063,7 +2063,7 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
-        return bool(POPOTO_REDIS_DB.exists(key))
+        return bool(get_REDIS_DB().exists(key))
 
     @classmethod
     def idle_seconds(
@@ -2264,8 +2264,8 @@ class Model(metaclass=ModelBase):
             # legacy in-hash pointer, silently falling back to a possibly
             # stale _saved_field_values snapshot and risking an orphaned
             # index member pointing at an already-deleted hash.
-            existed = bool(POPOTO_REDIS_DB.exists(delete_redis_key))
-            result_pipeline = POPOTO_REDIS_DB.pipeline()
+            existed = bool(get_REDIS_DB().exists(delete_redis_key))
+            result_pipeline = get_REDIS_DB().pipeline()
 
         for field_name, field in self._meta.fields.items():  # 3
             # Use saved field values if available, otherwise fall back to current values
@@ -2454,7 +2454,7 @@ class Model(metaclass=ModelBase):
 
         if isinstance(pipeline, redis.client.Pipeline):
             # When using a pipeline, register the script and call it
-            script = POPOTO_REDIS_DB.register_script(lua_script)
+            script = get_REDIS_DB().register_script(lua_script)
             pipeline = script(
                 keys=[redis_key],
                 args=[field_name_bytes, delta_str, is_decimal],
@@ -2489,7 +2489,7 @@ class Model(metaclass=ModelBase):
         else:
             # Execute the Lua script directly
             result_str = run_lua(
-                POPOTO_REDIS_DB,
+                get_REDIS_DB(),
                 lua_script,
                 1,
                 redis_key,
@@ -2522,7 +2522,7 @@ class Model(metaclass=ModelBase):
                     self, field_name
                 )
                 score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                POPOTO_REDIS_DB.zincrby(
+                get_REDIS_DB().zincrby(
                     sortedset_db_key.redis_key, score_delta, redis_key
                 )
 
@@ -2581,7 +2581,7 @@ class Model(metaclass=ModelBase):
                 self._saved_field_values[field_name] = now
             return pipeline
         else:
-            POPOTO_REDIS_DB.zadd(sortedset_db_key.redis_key, {redis_key: now})
+            get_REDIS_DB().zadd(sortedset_db_key.redis_key, {redis_key: now})
             setattr(self, field_name, now)
             if self._saved_field_values is not None:
                 self._saved_field_values[field_name] = now
@@ -2649,7 +2649,7 @@ class Model(metaclass=ModelBase):
             pipeline.hset(pressure_hash_key, member_key, packed)
             return pipeline
         else:
-            POPOTO_REDIS_DB.hset(pressure_hash_key, member_key, packed)
+            get_REDIS_DB().hset(pressure_hash_key, member_key, packed)
             return now
 
     def strengthen_cycle(self, field_name, factor=1.2, pipeline=None):
@@ -2733,7 +2733,7 @@ class Model(metaclass=ModelBase):
         cycles_hash_key = field.get_cycles_hash_key(self, field_name)
 
         # Read current cycles
-        raw = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
+        raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
         if not raw:
             # No cycles stored — nothing to adjust
             if isinstance(pipeline, redis.client.Pipeline):
@@ -2759,7 +2759,7 @@ class Model(metaclass=ModelBase):
             pipeline.hset(cycles_hash_key, member_key, packed)
             return pipeline
         else:
-            POPOTO_REDIS_DB.hset(cycles_hash_key, member_key, packed)
+            get_REDIS_DB().hset(cycles_hash_key, member_key, packed)
             return cycles
 
     @classmethod
@@ -3110,7 +3110,7 @@ class Model(metaclass=ModelBase):
             return []
 
         created = []
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         count = 0
 
         for instance in instances:
@@ -3120,7 +3120,7 @@ class Model(metaclass=ModelBase):
 
             if count >= batch_size:
                 pipeline.execute()
-                pipeline = POPOTO_REDIS_DB.pipeline()
+                pipeline = get_REDIS_DB().pipeline()
                 count = 0
 
         if count > 0:
@@ -3249,7 +3249,7 @@ class Model(metaclass=ModelBase):
         if not instances:
             return 0
 
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         count = 0
         updated_count = 0
 
@@ -3264,7 +3264,7 @@ class Model(metaclass=ModelBase):
 
             if count >= batch_size:
                 pipeline.execute()
-                pipeline = POPOTO_REDIS_DB.pipeline()
+                pipeline = get_REDIS_DB().pipeline()
                 count = 0
 
         if count > 0:
@@ -3311,7 +3311,7 @@ class Model(metaclass=ModelBase):
         if not instances:
             return 0
 
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         count = 0
         deleted_count = 0
 
@@ -3322,7 +3322,7 @@ class Model(metaclass=ModelBase):
 
             if count >= batch_size:
                 pipeline.execute()
-                pipeline = POPOTO_REDIS_DB.pipeline()
+                pipeline = get_REDIS_DB().pipeline()
                 count = 0
 
         if count > 0:
@@ -3545,7 +3545,7 @@ class Model(metaclass=ModelBase):
         # Step 1: Delete all secondary index keys
 
         # Delete class set
-        POPOTO_REDIS_DB.delete(cls._meta.db_class_set_key.redis_key)
+        get_REDIS_DB().delete(cls._meta.db_class_set_key.redis_key)
 
         # Delete sorted field indexes
         for field_name in cls._meta.sorted_field_names:
@@ -3554,8 +3554,8 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             # Use SCAN to find all keys matching this pattern (handles partitioned fields)
             pattern = base_key.redis_key + "*"
-            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
-                POPOTO_REDIS_DB.delete(key)
+            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
+                get_REDIS_DB().delete(key)
 
         # Delete key field index sets
         for field_name in cls._meta.key_field_names:
@@ -3565,28 +3565,28 @@ class Model(metaclass=ModelBase):
                 continue
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
-            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
-                POPOTO_REDIS_DB.delete(key)
+            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
+                get_REDIS_DB().delete(key)
 
         # Delete geo field indexes
         for field_name in cls._meta.geo_field_names:
             field = cls._meta.fields[field_name]
             geo_key = GeoField.get_geo_db_key(cls, field_name)
-            POPOTO_REDIS_DB.delete(geo_key.redis_key)
+            get_REDIS_DB().delete(geo_key.redis_key)
 
         # Delete composite indexes
         for field_names, is_unique in cls._meta.indexes:
             index_key = cls._meta.get_index_key(tuple(field_names))
-            POPOTO_REDIS_DB.delete(index_key)
+            get_REDIS_DB().delete(index_key)
 
         # Step 2: SCAN all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
         diverged_keys = []
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         batch_count = 0
 
-        for redis_key in POPOTO_REDIS_DB.scan_iter(match=instance_pattern, count=1000):
+        for redis_key in get_REDIS_DB().scan_iter(match=instance_pattern, count=1000):
             # Decode the key to a string
             if isinstance(redis_key, bytes):
                 redis_key_str = redis_key.decode("utf-8")
@@ -3601,7 +3601,7 @@ class Model(metaclass=ModelBase):
                 continue
 
             # Load the raw hash from Redis
-            redis_hash = POPOTO_REDIS_DB.hgetall(redis_key)
+            redis_hash = get_REDIS_DB().hgetall(redis_key)
             if not redis_hash:
                 continue
 
@@ -3650,7 +3650,7 @@ class Model(metaclass=ModelBase):
 
             if batch_count >= batch_size:
                 pipeline.execute()
-                pipeline = POPOTO_REDIS_DB.pipeline()
+                pipeline = get_REDIS_DB().pipeline()
                 batch_count = 0
 
         # Execute any remaining commands in the pipeline
@@ -3765,7 +3765,7 @@ class Model(metaclass=ModelBase):
 
         for i in range(0, len(members), batch_size):
             batch = members[i : i + batch_size]
-            pipe = POPOTO_REDIS_DB.pipeline()
+            pipe = get_REDIS_DB().pipeline()
             for key in batch:
                 pipe.exists(key)
                 if eligible_for_partial:
@@ -3850,7 +3850,7 @@ class Model(metaclass=ModelBase):
             orphan_count = 0
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                pipe = POPOTO_REDIS_DB.pipeline()
+                pipe = get_REDIS_DB().pipeline()
                 for key in batch:
                     pipe.exists(key)
                 results = pipe.execute()
@@ -3862,7 +3862,7 @@ class Model(metaclass=ModelBase):
             members = []
             cursor = 0
             while True:
-                cursor, batch = POPOTO_REDIS_DB.sscan(set_key, cursor, count=1000)
+                cursor, batch = get_REDIS_DB().sscan(set_key, cursor, count=1000)
                 members.extend(batch)
                 if cursor == 0:
                     break
@@ -3873,7 +3873,7 @@ class Model(metaclass=ModelBase):
             members = []
             cursor = 0
             while True:
-                cursor, batch = POPOTO_REDIS_DB.zscan(zset_key, cursor, count=1000)
+                cursor, batch = get_REDIS_DB().zscan(zset_key, cursor, count=1000)
                 members.extend(member for member, _score in batch)
                 if cursor == 0:
                     break
@@ -3884,7 +3884,7 @@ class Model(metaclass=ModelBase):
             values = []
             cursor = 0
             while True:
-                cursor, batch = POPOTO_REDIS_DB.hscan(hash_key, cursor, count=1000)
+                cursor, batch = get_REDIS_DB().hscan(hash_key, cursor, count=1000)
                 values.extend(batch.values())
                 if cursor == 0:
                     break
@@ -3921,7 +3921,7 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
             field_orphans = 0
-            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
                 members = _scan_set_members(key)
@@ -3935,7 +3935,7 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + "*"
             field_orphans = 0
-            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
                 members = _scan_sorted_set_members(key)
@@ -4002,7 +4002,7 @@ class Model(metaclass=ModelBase):
         if not keys:
             return 0
         meta = cls._meta  # type: ignore[attr-defined]
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         class_set_key = meta.db_class_set_key.redis_key
         for key in keys:
             index_keys: list[str] = [class_set_key]
@@ -4108,7 +4108,7 @@ class Model(metaclass=ModelBase):
             orphans = []
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                pipe = POPOTO_REDIS_DB.pipeline()
+                pipe = get_REDIS_DB().pipeline()
                 for key in batch:
                     pipe.exists(key)
                 results = pipe.execute()
@@ -4122,7 +4122,7 @@ class Model(metaclass=ModelBase):
             members = []
             cursor = 0
             while True:
-                cursor, batch = POPOTO_REDIS_DB.sscan(set_key, cursor, count=1000)
+                cursor, batch = get_REDIS_DB().sscan(set_key, cursor, count=1000)
                 members.extend(batch)
                 if cursor == 0:
                     break
@@ -4133,7 +4133,7 @@ class Model(metaclass=ModelBase):
             members = []
             cursor = 0
             while True:
-                cursor, batch = POPOTO_REDIS_DB.zscan(zset_key, cursor, count=1000)
+                cursor, batch = get_REDIS_DB().zscan(zset_key, cursor, count=1000)
                 members.extend(member for member, _score in batch)
                 if cursor == 0:
                     break
@@ -4144,7 +4144,7 @@ class Model(metaclass=ModelBase):
             entries = []
             cursor = 0
             while True:
-                cursor, batch = POPOTO_REDIS_DB.hscan(hash_key, cursor, count=1000)
+                cursor, batch = get_REDIS_DB().hscan(hash_key, cursor, count=1000)
                 entries.extend(batch.items())
                 if cursor == 0:
                     break
@@ -4162,7 +4162,7 @@ class Model(metaclass=ModelBase):
                 members, batch_size, auto_key_field_name
             )
             if absent or partial_writes:
-                pipe = POPOTO_REDIS_DB.pipeline()
+                pipe = get_REDIS_DB().pipeline()
                 # Absent orphans: SREM the stale class-set membership
                 # (hash is already gone — nothing to DEL).
                 for orphan in absent:
@@ -4183,14 +4183,14 @@ class Model(metaclass=ModelBase):
                 continue
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
-            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
                 members = _scan_set_members(key)
                 if members:
                     orphans = _collect_orphans(members)
                     if orphans:
-                        pipe = POPOTO_REDIS_DB.pipeline()
+                        pipe = get_REDIS_DB().pipeline()
                         for orphan in orphans:
                             pipe.srem(key, orphan)
                         pipe.execute()
@@ -4201,14 +4201,14 @@ class Model(metaclass=ModelBase):
             field = cls._meta.fields[field_name]
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + "*"
-            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
                 members = _scan_sorted_set_members(key)
                 if members:
                     orphans = _collect_orphans(members)
                     if orphans:
-                        pipe = POPOTO_REDIS_DB.pipeline()
+                        pipe = get_REDIS_DB().pipeline()
                         for orphan in orphans:
                             pipe.zrem(key, orphan)
                         pipe.execute()
@@ -4221,7 +4221,7 @@ class Model(metaclass=ModelBase):
             if members:
                 orphans = _collect_orphans(members)
                 if orphans:
-                    pipe = POPOTO_REDIS_DB.pipeline()
+                    pipe = get_REDIS_DB().pipeline()
                     for orphan in orphans:
                         pipe.zrem(geo_key.redis_key, orphan)
                     pipe.execute()
@@ -4237,7 +4237,7 @@ class Model(metaclass=ModelBase):
                 orphans = _collect_orphans(values_to_check)
                 if orphans:
                     orphan_set = set(orphans)
-                    pipe = POPOTO_REDIS_DB.pipeline()
+                    pipe = get_REDIS_DB().pipeline()
                     for hash_field, value in entries:
                         if value in orphan_set:
                             pipe.hdel(index_key, hash_field)
@@ -4368,14 +4368,14 @@ class Model(metaclass=ModelBase):
 
         # Pipeline HSET commands in batches
         count = 0
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
         for i, redis_key in enumerate(redis_keys, start=1):
             pipeline.hset(redis_key, mapping=encoded_mapping)
             count += 1
 
             if i % batch_size == 0:
                 pipeline.execute()
-                pipeline = POPOTO_REDIS_DB.pipeline()
+                pipeline = get_REDIS_DB().pipeline()
 
         # Execute any remaining commands in the pipeline
         if count % batch_size != 0:

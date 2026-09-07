@@ -50,7 +50,7 @@ import redis.client
 
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB, scan_keys, run_lua
+from ..redis_db import get_REDIS_DB, scan_keys, run_lua
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -377,7 +377,7 @@ class IndexedFieldMixin:
         if isinstance(pipeline, redis.client.Pipeline):
             # External pipeline path: best-effort pre-check for fast early raise
             if field_value is not None and getattr(field, "unique", False):
-                existing_members = POPOTO_REDIS_DB.smembers(new_set_key)
+                existing_members = get_REDIS_DB().smembers(new_set_key)
                 other_members = {
                     m
                     for m in existing_members
@@ -411,7 +411,7 @@ class IndexedFieldMixin:
             # This runs atomically on the Redis server; no client-side race.
             try:
                 result = run_lua(
-                    POPOTO_REDIS_DB,
+                    get_REDIS_DB(),
                     INDEX_SWAP_LUA,
                     4,
                     member_key,  # KEYS[1]: the model hash key (same as record redis_key)
@@ -475,18 +475,18 @@ class IndexedFieldMixin:
         # 1. Server-authoritative pointer side key (current scheme, #476/#540).
         ptr_key = cls._pointer_side_key(model_hash_key, field_name)
         old_ptr_key = cls._pre_540_pointer_side_key(model_hash_key, field_name)
-        ptr_value = POPOTO_REDIS_DB.get(ptr_key)
+        ptr_value = get_REDIS_DB().get(ptr_key)
 
         if not ptr_value:
             # 2. Migration fallback: pre-#540 side key written by 1.8.1/1.8.2.
-            ptr_value = POPOTO_REDIS_DB.get(old_ptr_key)
+            ptr_value = get_REDIS_DB().get(old_ptr_key)
 
         if not ptr_value:
             # 3. Migration fallback: legacy in-hash pointer field written by
             # pre-#476 code. Only useful if this HGET runs before the model
             # hash is deleted (see docstring note above).
             legacy_ptr_field = cls._legacy_pointer_field(field_name)
-            ptr_value = POPOTO_REDIS_DB.hget(model_hash_key, legacy_ptr_field)
+            ptr_value = get_REDIS_DB().hget(model_hash_key, legacy_ptr_field)
 
         if ptr_value:
             # Pointer present: SREM from the set it names
@@ -504,8 +504,8 @@ class IndexedFieldMixin:
             pipeline = pipeline.srem(index_set_key, member_key)
             return pipeline.delete(ptr_key, old_ptr_key)
         else:
-            result = POPOTO_REDIS_DB.srem(index_set_key, member_key)
-            POPOTO_REDIS_DB.delete(ptr_key, old_ptr_key)
+            result = get_REDIS_DB().srem(index_set_key, member_key)
+            get_REDIS_DB().delete(ptr_key, old_ptr_key)
             return result
 
     def get_filter_query_params(self, field_name: str) -> set:
@@ -572,13 +572,13 @@ class IndexedFieldMixin:
                     for query_value_elem in query_value
                 ]
                 if set_keys:
-                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.sunion(set_keys))
+                    keys_lists_to_intersect.append(get_REDIS_DB().sunion(set_keys))
                 else:
                     keys_lists_to_intersect.append(set())
 
             elif query_param == f"{field_name}":
                 keys_lists_to_intersect.append(
-                    POPOTO_REDIS_DB.smembers(
+                    get_REDIS_DB().smembers(
                         DB_key(redis_set_key_prefix, query_value).redis_key
                     )
                 )
@@ -586,7 +586,7 @@ class IndexedFieldMixin:
             elif query_param.endswith("__isnull"):
                 if query_value is True:
                     keys_lists_to_intersect.append(
-                        POPOTO_REDIS_DB.smembers(
+                        get_REDIS_DB().smembers(
                             DB_key(redis_set_key_prefix, None).redis_key
                         )
                     )
@@ -600,7 +600,7 @@ class IndexedFieldMixin:
                     for key in all_keys:
                         key_str = key.decode() if isinstance(key, bytes) else key
                         if key_str != none_key:
-                            non_null_keys.update(POPOTO_REDIS_DB.smembers(key_str))
+                            non_null_keys.update(get_REDIS_DB().smembers(key_str))
                     keys_lists_to_intersect.append(non_null_keys)
                 else:
                     raise QueryException(f"{query_param} filter must be True or False")
@@ -613,7 +613,7 @@ class IndexedFieldMixin:
                 matching_index_keys = scan_keys(pattern)
                 members = set()
                 for idx_key in matching_index_keys:
-                    members.update(POPOTO_REDIS_DB.smembers(idx_key))
+                    members.update(get_REDIS_DB().smembers(idx_key))
                 keys_lists_to_intersect.append(members)
 
             elif query_param.endswith("__endswith"):
@@ -624,7 +624,7 @@ class IndexedFieldMixin:
                 matching_index_keys = scan_keys(pattern)
                 members = set()
                 for idx_key in matching_index_keys:
-                    members.update(POPOTO_REDIS_DB.smembers(idx_key))
+                    members.update(get_REDIS_DB().smembers(idx_key))
                 keys_lists_to_intersect.append(members)
 
         logger.debug(keys_lists_to_intersect)

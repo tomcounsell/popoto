@@ -68,7 +68,7 @@ import math
 
 import redis
 
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .field import Field
 
 logger = logging.getLogger("POPOTO.ExistenceFilter")
@@ -427,7 +427,7 @@ class ExistenceFilter(Field):
         key = field._bloom_key(model_instance)
         m, k = field._compute_params()
         client = (
-            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+            pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
         )
         tokens = tokenize(fingerprint)
         if not tokens:
@@ -484,12 +484,12 @@ class ExistenceFilter(Field):
         if not tokens:
             # Fallback: check the raw lowercased query (matches on_save fallback)
             result = run_lua(
-                POPOTO_REDIS_DB, BLOOM_EXISTS_LUA, 1, key, query_str.lower(), m, k
+                get_REDIS_DB(), BLOOM_EXISTS_LUA, 1, key, query_str.lower(), m, k
             )
             return bool(result)
         # Check if ANY token is in the bloom filter
         for token in tokens:
-            result = run_lua(POPOTO_REDIS_DB, BLOOM_EXISTS_LUA, 1, key, token, m, k)
+            result = run_lua(get_REDIS_DB(), BLOOM_EXISTS_LUA, 1, key, token, m, k)
             if bool(result):
                 return True
         return False
@@ -524,7 +524,7 @@ class ExistenceFilter(Field):
         """
         key = f"$EF:{model_class.__name__}:{self.name}"
         m, _ = self._compute_params()
-        set_bits = POPOTO_REDIS_DB.bitcount(key)
+        set_bits = get_REDIS_DB().bitcount(key)
         return set_bits / m if m > 0 else 0.0
 
     def might_exist_batch(self, model_class, fingerprints):
@@ -578,7 +578,7 @@ class ExistenceFilter(Field):
 
         # Single Lua EVAL for all tokens
         raw_results = run_lua(
-            POPOTO_REDIS_DB, BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
+            get_REDIS_DB(), BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
         )
 
         # Map token results back to fingerprints (ANY token hit = fingerprint hit)
@@ -722,7 +722,7 @@ class FrequencySketch(Field):
         fingerprint = field._compute_fingerprint(model_instance)
         key = field._cms_key(model_instance)
         client = (
-            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+            pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
         )
         tokens = tokenize(fingerprint)
         if not tokens:
@@ -786,7 +786,7 @@ class FrequencySketch(Field):
         if not tokens:
             # Fallback: query the raw lowercased fingerprint
             result = run_lua(
-                POPOTO_REDIS_DB,
+                get_REDIS_DB(),
                 CMS_QUERY_LUA,
                 1,
                 key,
@@ -799,7 +799,7 @@ class FrequencySketch(Field):
         min_freq = None
         for token in tokens:
             result = run_lua(
-                POPOTO_REDIS_DB, CMS_QUERY_LUA, 1, key, token, self.width, self.depth
+                get_REDIS_DB(), CMS_QUERY_LUA, 1, key, token, self.width, self.depth
             )
             freq = int(result) if result else 0
             if min_freq is None or freq < min_freq:

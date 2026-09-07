@@ -16,7 +16,7 @@ Import by path (``from popoto import counters``); it is deliberately absent
 from the ``popoto`` package namespace.
 """
 
-from .redis_db import POPOTO_REDIS_DB
+from .redis_db import get_REDIS_DB
 
 
 def increment(key: str, delta: int = 1) -> int:
@@ -25,10 +25,10 @@ def increment(key: str, delta: int = 1) -> int:
     Creates the key at ``delta`` when it does not exist (``INCRBY``
     semantics). ``delta`` may be ``0`` to read-through atomically.
     """
-    return int(POPOTO_REDIS_DB.incrby(key, delta))
+    return int(get_REDIS_DB().incrby(key, delta))
 
 
 def read(key: str) -> int:
     """Current value of the counter at ``key``, or ``0`` when absent."""
-    raw = POPOTO_REDIS_DB.get(key)
+    raw = get_REDIS_DB().get(key)
     return int(raw) if raw is not None else 0

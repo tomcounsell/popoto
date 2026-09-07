@@ -49,7 +49,7 @@ import logging
 import time
 from typing import Any
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import get_REDIS_DB
 from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.ObservationProtocol")
@@ -245,7 +245,7 @@ def _apply_outcome(instance, outcome, pipeline=None, superseded_by=None):
     # Use internal pipeline for atomicity if none provided
     use_internal_pipeline = pipeline is None
     if use_internal_pipeline:
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = get_REDIS_DB().pipeline()
 
     if outcome == "acted":
         _apply_acted(instance, pipeline)
@@ -520,7 +520,7 @@ def _apply_supersession(
     # general case does not exist here.
     for role, obj in (("instance", instance), ("successor", successor)):
         key = getattr(getattr(obj, "db_key", None), "redis_key", None)
-        if not key or not POPOTO_REDIS_DB.exists(key):
+        if not key or not get_REDIS_DB().exists(key):
             logger.debug("supersession: %s %r not persisted, degrading", role, key)
             return
 
@@ -624,7 +624,7 @@ class RecallProposal:
         model_class = type(instances[0])
         key = cls._pending_key(model_class, partition)
 
-        db = pipeline if pipeline is not None else POPOTO_REDIS_DB
+        db = pipeline if pipeline is not None else get_REDIS_DB()
 
         # ZADD each instance with score=now
         members = {}
@@ -659,7 +659,7 @@ class RecallProposal:
             pipeline.zrem(key, member_key)
             return pipeline
         else:
-            return POPOTO_REDIS_DB.zrem(key, member_key)
+            return get_REDIS_DB().zrem(key, member_key)
 
     @classmethod
     def expire_stale(cls, model_class, partition=None, ttl=None, pipeline=None):
@@ -681,13 +681,13 @@ class RecallProposal:
         cutoff = time.time() - ttl
 
         # Get members with scores below cutoff (older than TTL)
-        expired = POPOTO_REDIS_DB.zrangebyscore(key, "-inf", cutoff)
+        expired = get_REDIS_DB().zrangebyscore(key, "-inf", cutoff)
 
         if expired:
             if pipeline is not None:
                 pipeline.zremrangebyscore(key, "-inf", cutoff)
             else:
-                POPOTO_REDIS_DB.zremrangebyscore(key, "-inf", cutoff)
+                get_REDIS_DB().zremrangebyscore(key, "-inf", cutoff)
 
         # Decode bytes to strings
         return [m.decode() if isinstance(m, bytes) else m for m in expired]
@@ -704,7 +704,7 @@ class RecallProposal:
             list: List of (member_key_str, surfaced_at_float) tuples.
         """
         key = cls._pending_key(model_class, partition)
-        results = POPOTO_REDIS_DB.zrange(key, 0, -1, withscores=True)
+        results = get_REDIS_DB().zrange(key, 0, -1, withscores=True)
         return [
             (m.decode() if isinstance(m, bytes) else m, score) for m, score in results
         ]

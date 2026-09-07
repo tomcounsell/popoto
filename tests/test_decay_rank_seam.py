@@ -101,15 +101,11 @@ def _capture(monkeypatch):
 
         monkeypatch.setattr(client, "execute_command", spy)
 
-    seen = []
-    for client in (
-        decaying_sorted_field.POPOTO_REDIS_DB,
-        validity_field.POPOTO_REDIS_DB,
-        redis_db.POPOTO_REDIS_DB,
-    ):
-        if not any(client is s for s in seen):
-            seen.append(client)
-            spy_on(client)
+    # One client, not three. Before #655 each module held its own import-time
+    # snapshot and the three could be distinct objects, so the spy had to go on
+    # every one of them. Now every module resolves through get_REDIS_DB(), so
+    # the live global is the only object any of them can reach.
+    spy_on(redis_db.get_REDIS_DB())
     return commands
 
 
