@@ -1,12 +1,12 @@
 ---
-status: Planning
+status: Ready to Build
 type: chore
 appetite: Small
 owner: Dev (sdlc-669)
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/669
 last_comment_id: none
-revision_applied: false
+revision_applied: true
 ---
 
 # Root uv.lock: decide the support contract, then make a green lockfile-only PR mean something
@@ -210,27 +210,40 @@ the appetite has been exceeded and the extra scope should be dropped rather than
 ### Flow
 
 ```
-PR touches pyproject.toml or uv.lock
+PR touches pyproject.toml, uv.lock, scripts/check_lock_imports.py, or the workflow
   └─ lock-check job (uv 0.12.2, python 3.12)
        ├─ uv lock --check                                  [existing: consistency]
        ├─ uv sync --locked --all-extras --no-extra benchmark [new: installability]
-       └─ python scripts/check_lock_imports.py              [new: import surface]
+       └─ uv run --no-sync python scripts/check_lock_imports.py [new: import surface]
 ```
 
-No Redis service is needed: the script imports only, never connects. It nonetheless sets
-`REDIS_URL` to an explicit non-zero database before importing popoto, per the repo's
-standing DB-0 discipline — `popoto` binds `DEFAULT_URL` (database 0) at import time, and
-while importing opens no socket, the script must not be the place that normalizes an
-unbound import.
+`scripts/check_lock_imports.py` is added to the job's `paths:` filters. Without it, a PR
+that edits only the script never triggers the job that runs it — the script could be
+broken on main and nothing would say so. The job id stays `lock-check` and `on:` is
+otherwise untouched, so no required-check registration moves.
+
+**No Redis service, and no `popoto` import.** The script imports third-party packages
+only; it never imports popoto and therefore never binds a Redis client. This resolves what
+would otherwise be a contradiction with spike-4 — importing popoto's own modules proves
+nothing about the extras, so there is no reason to import it, and consequently no
+`REDIS_URL` discipline to apply here.
 
 ### Technical Approach
 
 `scripts/check_lock_imports.py` imports each third-party package that a locked extra
-provides and reports its resolved version, exiting non-zero on the first failure. It
-enumerates the packages explicitly rather than parsing `pyproject.toml`, so that adding an
-extra without adding it here is a visible omission rather than a silent one — and a
-comment in the script says so, naming `[project.optional-dependencies]` as the list to
-keep it in step with.
+provides and reports its resolved version, collecting every failure rather than stopping at
+the first, and exiting non-zero if any failed. It enumerates the packages explicitly rather
+than parsing `pyproject.toml`, so that adding an extra without adding it here is a visible
+omission rather than a silent one. Nothing in CI can catch that omission, so the script's
+header comment says so directly: it names `[project.optional-dependencies]` as the list to
+keep in step, and states that a mismatch is review-blocking.
+
+The import loop lives behind a callable `check(specs: list[tuple[str, str]]) -> list[str]`
+(import name, owning extra → list of failure messages), with `main()` a thin wrapper over
+it and the package list a module-level constant. That shape exists for one reason: it lets
+a unit test pass a deliberately bogus import name and assert the failure list is non-empty,
+so the script's ability to fail is asserted by the suite rather than by a one-time manual
+check recorded in a PR body.
 
 `benchmark` is excluded from the sync (spike-1) and its packages are therefore excluded
 from the import list, with the reason stated inline: `tests.yml` already installs them
@@ -238,12 +251,19 @@ from floors.
 
 ## Test Impact
 
-No change to `tests/`. This plan adds CI coverage; it does not alter library behavior, so
-no unit test can observe it.
+No change to existing tests. This plan adds CI coverage; it does not alter library
+behavior, so no existing unit test can observe it.
 
-The new script is itself the assertion, and its non-vacuity is verified by hand during
-build (see Verification): with a required package uninstalled it must exit non-zero. A
-smoke that cannot fail is worth nothing, which spike-4 demonstrates concretely.
+One new test file, `tests/test_check_lock_imports.py`, with two cases:
+
+- `check()` returns an empty failure list for a package guaranteed present (`json` — a
+  stdlib module, so the test does not itself depend on an optional extra being installed).
+- `check()` returns a non-empty failure list for a deliberately bogus import name.
+
+The second case is the one that matters: it asserts the script *can* fail. A smoke that
+cannot fail is worth nothing, which spike-4 demonstrates concretely, and a non-vacuity
+proof that lives only in a PR body decays the moment someone edits the script. Both cases
+run under the ordinary `pytest` invocation and need no Redis.
 
 ## Rabbit Holes
 
@@ -313,41 +333,47 @@ is needed there, since this plan changes CI rather than local setup.
 ## Success Criteria
 
 1. `.github/workflows/lock-check.yml` installs the locked environment and exercises its
-   import surface, and its path filters are unchanged (still `pyproject.toml`, `uv.lock`,
-   the workflow itself).
-2. `scripts/check_lock_imports.py` exits 0 on the current lock and exits **non-zero** when
-   a required package is absent — demonstrated, not asserted.
+   import surface. Its `paths:` filters gain `scripts/check_lock_imports.py` and are
+   otherwise unchanged; the job id stays `lock-check`.
+2. `scripts/check_lock_imports.py` exits 0 on the current lock, and its ability to fail is
+   asserted by `tests/test_check_lock_imports.py` — not by a one-time manual demonstration.
 3. `CLAUDE.md`'s Dependency Updates section states the support contract, what green proves,
    and what it does not (including the spike-3 limitation).
 4. A reader looking at a lockfile-only PR's checks can tell from the `lock-check` job alone
    whether the lock was installed. No cross-referencing of `tests.yml` or `lint.yml`
-   required (acceptance criterion 4).
+   required (acceptance criterion 4). Concretely: every step in the job has a `name:` that
+   states what it proves, so the check's step list is self-describing in the GitHub UI.
 5. No file outside `.github/workflows/lock-check.yml`, `scripts/check_lock_imports.py`,
-   `CLAUDE.md`, and this plan is modified.
+   `tests/test_check_lock_imports.py`, `CLAUDE.md`, and this plan is modified.
 
 ## Step by Step Tasks
 
-1. **Write `scripts/check_lock_imports.py`.** Explicit list of (import name, extra) pairs
-   covering `dataframe`, `ulid`, `ksuid`, `embeddings`, `voyage`, `openai`, `anthropic`,
-   `monitoring`, `mcp`. Import each, print its resolved version, collect failures, exit
-   non-zero on any. Header comment states: keep in step with
-   `[project.optional-dependencies]`; `benchmark` is intentionally absent and why; the
-   imports are of third-party packages *directly* because popoto's own modules guard them
-   (spike-4). Set `REDIS_URL` to a non-zero database before importing popoto, per the
-   repo's DB-0 discipline.
+1. **Write `scripts/check_lock_imports.py`.** Module-level constant listing (import name,
+   owning extra) pairs covering `dataframe`, `ulid`, `ksuid`, `embeddings`, `voyage`,
+   `openai`, `anthropic`, `monitoring`, `mcp` — note the dist-name/import-name splits
+   (`ulid-py` → `ulid`, `sentry-sdk` → `sentry_sdk`, `msgpack-numpy` → `msgpack_numpy`).
+   Expose `check(specs) -> list[str]`; `main()` prints each resolved version, prints the
+   failures, and exits non-zero if the list is non-empty. Header comment states: keep in
+   step with `[project.optional-dependencies]` and treat a mismatch as review-blocking
+   (nothing in CI enforces it); `benchmark` is intentionally absent and why; the imports
+   are of third-party packages *directly* because popoto's own modules guard them
+   (spike-4); the script must not import popoto.
    *Validate:* `python scripts/check_lock_imports.py` exits 0 in the synced env.
-2. **Prove the script is not vacuous.** Uninstall one required package in a scratch
-   environment, re-run, confirm non-zero exit and a named failure; reinstall.
-   *Validate:* the observed exit code and message are recorded in the PR body.
-3. **Extend `.github/workflows/lock-check.yml`.** Add a `uv python install 3.12` /
-   `actions/setup-python` step as needed, then `uv sync --locked --all-extras --no-extra
-   benchmark`, then `uv run --no-sync python scripts/check_lock_imports.py`. Comment each
-   new step with what it proves. Do not rename the job or touch `on:`/`paths:`.
-   *Validate:* `yq`/`python -c 'import yaml'` parses the file; job id still `lock-check`.
+2. **Write `tests/test_check_lock_imports.py`.** Two cases per Test Impact — `check()`
+   clean on `json`, `check()` non-empty on a bogus import name.
+   *Validate:* `pytest tests/test_check_lock_imports.py` passes, and passes with no Redis
+   reachable.
+3. **Extend `.github/workflows/lock-check.yml`.** After the existing `uv lock --check`
+   step, add `uv sync --locked --all-extras --no-extra benchmark`, then `uv run --no-sync
+   python scripts/check_lock_imports.py`. Give each step a `name:` that states what it
+   proves (Success Criterion 4) and a comment explaining the `--no-extra benchmark`
+   exclusion. Add `scripts/check_lock_imports.py` to both `paths:` lists. Do not rename the
+   job.
+   *Validate:* `python -c 'import yaml'` parses the file; job id still `lock-check`; both
+   `paths:` lists contain the script.
 4. **Update `CLAUDE.md`.** Add the Dependency Updates paragraph per the Documentation
-   section above.
-   *Validate:* `black --check`-irrelevant (markdown); re-read for accuracy against the
-   final workflow.
+   section above, naming spike-3's `anthropic` 1.2.0 result explicitly.
+   *Validate:* re-read for accuracy against the final workflow.
 5. **Run the Verification table.** Then open the PR with `Closes #669` at line 1.
 
 ## Verification
@@ -356,13 +382,31 @@ is needed there, since this plan changes CI rather than local setup.
 |---|---|---|
 | 1 | `uv sync --locked --all-extras --no-extra benchmark` (uv 0.12.2, py3.12) | exit 0 |
 | 2 | `uv run --no-sync python scripts/check_lock_imports.py` | exit 0, one version line per package |
-| 3 | `uv pip uninstall anthropic && python scripts/check_lock_imports.py` | **non-zero**, names `anthropic` |
-| 4 | `python -c "import yaml,sys; d=yaml.safe_load(open('.github/workflows/lock-check.yml')); print(list(d['jobs']))"` | `['lock-check']` |
-| 5 | `git diff --stat origin/main...HEAD` | only the four files in Success Criterion 5 |
-| 6 | `grep -c 'uv.lock' CLAUDE.md` | > 0, and the new paragraph reads correctly |
+| 3 | `uv pip uninstall anthropic && uv run --no-sync python scripts/check_lock_imports.py` | **non-zero**, names `anthropic` |
+| 4 | `pytest tests/test_check_lock_imports.py -q` | 2 passed |
+| 5 | `python -c "import yaml; d=yaml.safe_load(open('.github/workflows/lock-check.yml')); print(list(d['jobs'])); print(d[True]['pull_request']['paths']); print([s.get('name') for s in d['jobs']['lock-check']['steps']])"` | `['lock-check']`; paths include `scripts/check_lock_imports.py`; every added step has a non-null `name` (Success Criterion 4) |
+| 6 | `git diff --stat origin/main...HEAD` | only the five files in Success Criterion 5 |
+| 7 | `git diff origin/main...HEAD -- CLAUDE.md \| grep -c 'anthropic'` | ≥ 1 — anchors on the spike-3 limitation, which is unique to the new paragraph (a bare `grep uv.lock CLAUDE.md` already matches the pre-existing text and would pass vacuously) |
 
-Commands 1–3 run in a scratch `UV_PROJECT_ENVIRONMENT` outside the checkout so the lane's
-`.venv` is untouched. No Redis is required for any of them.
+Rows 1–3 run in a scratch `UV_PROJECT_ENVIRONMENT` outside the checkout so the lane's
+`.venv` is untouched, and row 3 restores `anthropic` afterwards. Row 4 runs in the lane's
+`.venv`. No Redis is required for any row.
+
+## Critique Findings (round 1, applied)
+
+`/do-plan-critique` FULL roster, 2026-09-07 — verdict **READY TO BUILD (with concerns)**:
+0 blockers, 4 concerns, 3 nits. All are folded into the sections above; the run is capped
+at one round by the supervisor, so build proceeds from this revision.
+
+| Critic | Finding | Resolution |
+|---|---|---|
+| Risk & Robustness | `paths:` never lists the new script, so a PR editing only it skips the job | Path filter added — Solution, Task 3, Success Criterion 1 |
+| Risk & Robustness | Non-vacuity proven once by hand, recorded only in a PR body | Replaced by `tests/test_check_lock_imports.py` and a `check()` seam — Test Impact, Task 2 |
+| Risk & Robustness (nit) | A new extra can land with no matching import line, unenforced | Script header states the mismatch is review-blocking — Task 1 |
+| Scope & Value | Flow/Task 1 set `REDIS_URL` "before importing popoto" while Technical Approach says the script never imports popoto | Contradiction removed: the script imports no popoto and needs no `REDIS_URL` |
+| Scope & Value (nit) | Criterion 4 had no mechanical check | Verification row 5 asserts every added step carries a `name:` |
+| History & Consistency | `grep -c 'uv.lock' CLAUDE.md` passes on pre-existing text — vacuous | Replaced by a diff-scoped grep anchored on `anthropic` — Verification row 7 |
+| History & Consistency (nit) | Row 3 used a bare `python`, inconsistent with row 2's interpreter | Row 3 now uses `uv run --no-sync` |
 
 ## Open Questions
 
