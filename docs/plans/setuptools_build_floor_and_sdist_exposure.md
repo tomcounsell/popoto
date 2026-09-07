@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: Dev (SDLC lane sdlc-678)
@@ -304,13 +304,27 @@ advisory's precondition 1). The hand-list is the source of truth by design, not
 a shortcut around one, which is also why it warns rather than fails.
 
 **Invocation, pinned here so it is not re-derived during the build.** The step
-runs `python scripts/check_sdist_contents.py dist/*.tar.gz`. The script resolves
-its argument list itself and **must fail on anything other than exactly one
-match** — zero matches (a build-layout change, a renamed output directory) must
-be a hard error, never a vacuous pass, and multiple matches (a stale artifact
-from a prior run) must not be silently narrowed to one. `python -m build` writes
-a version-stamped filename that changes every release, so this is the one part
-of the wiring with no stable literal to check against.
+runs `python scripts/check_sdist_contents.py dist/*.tar.gz`. `python -m build`
+writes a version-stamped filename that changes every release, so this is the one
+part of the wiring with no stable literal to check against — hence the glob.
+
+The glob is expanded by the **shell**, not by the script, and the script must be
+written to match that fact. `sys.argv[1:]` is the authoritative, already-resolved
+list; the script **must not call `glob.glob()` on any argv element**. Re-globbing
+an already-resolved filename is what silently narrows two stale artifacts to one:
+each literal path glob-matches only itself, so a naive `glob.glob(sys.argv[1])`
+finds exactly one match and ignores the second file entirely.
+
+Two argument-resolution failures, both hard errors, never a vacuous pass:
+
+- `len(sys.argv[1:]) != 1` → `SystemExit(f"expected exactly one sdist, found {len(paths)}: {paths!r}")`.
+  This is the two-stale-artifacts case (bash expanded the glob to several names).
+- the sole argument does not exist as a file → `SystemExit(f"no sdist found matching {paths[0]!r} (dist/ may be empty or misnamed)")`,
+  checked with `pathlib.Path(paths[0]).is_file()` **before** `tarfile.open()`.
+  This is the zero-match case: bash leaves an unmatched glob unexpanded, so the
+  script receives the literal string `dist/*.tar.gz`. Without the explicit check
+  it dies in `tarfile.open()` with a stack trace naming a path containing `*`,
+  instead of the remedy-naming message the step is supposed to print.
 
 Wire it into `release.yml` as one step between `python -m build` and the publish
 action. This is the only place in the pipeline where a real sdist exists, and
@@ -480,12 +494,23 @@ Robustness, Scope & Value, History & Consistency. Verdict: **NEEDS REVISION**.
 | Check | Status | Detail |
 |-------|--------|--------|
 | Required sections | PASS | Problem, Freshness Check, Research, Spike Results, Prior Art, Data Flow, Solution, Rabbit Holes, No-Gos, Risks, Success Criteria, Tasks, Documentation, Open Questions all present and non-empty |
-| Task numbering | PASS | 1–9, no gaps |
+| Task numbering | PASS | 1–10, no gaps (re-checked after the revision added task 10) |
 | Dependencies valid | PASS | no `Depends On` references declared |
 | File paths exist | PASS | 5 of 7 exist; `scripts/check_sdist_contents.py` and `tests/test_sdist_contents.py` are new by design |
 | Prerequisites met | n/a | none declared |
 | Cross-references | PASS | every Success Criterion maps to a task; no No-Go appears in Solution; no Rabbit Hole appears in the tasks |
-| Task validation commands | **FAIL** | tasks 2, 4, 6, 9 have none — raised as a CONCERN above |
+| Task validation commands | PASS (was FAIL) | tasks 2, 4, 6, 9 had none at round 1; the revision gave every one of the ten tasks a validation command |
+
+### Round 2 (re-critique of the revised plan)
+
+Re-critique 2026-09-07, Consolidated Critic against the round-1 findings table.
+All seven round-1 findings verified **APPLIED**. Two new findings, both applied
+below; no blocker. Verdict: **READY TO BUILD**.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | Consolidated (round 2) | The round-1 implementation note for the sdist-locating CONCERN was itself wrong: it prescribed `glob.glob()` *inside* the script, but `dist/*.tar.gz` is expanded by the **shell** before the script starts. `glob.glob(sys.argv[1])` on an already-resolved filename matches exactly that one file, so the two-stale-artifacts case is silently narrowed to one — precisely the failure the rule exists to prevent. Symmetrically, the zero-match case reaches the script as the literal unexpanded string and dies in `tarfile.open()` with a stack trace rather than the remedy-naming message. | Solution §2 — "Invocation" | Treat `sys.argv[1:]` as authoritative and never call `glob.glob()` in the script. `paths = sys.argv[1:]`; `if len(paths) != 1: raise SystemExit(f"expected exactly one sdist, found {len(paths)}: {paths!r}")`; then `if not pathlib.Path(paths[0]).is_file(): raise SystemExit(f"no sdist found matching {paths[0]!r} (dist/ may be empty or misnamed)")` **before** `tarfile.open()`. |
+| NIT | Consolidated (round 2) | The Structural Check Results table was captured before the revision and still asserted `Task numbering PASS \| 1–9` and `Task validation commands FAIL`, both false of the revised document. | Structural Check Results | — |
 
 ## Open Questions
 
