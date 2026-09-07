@@ -602,7 +602,18 @@ class SortedFieldMixin:
             # calling that helper directly keeps the mixin's own declared
             # surface as the only thing this method depends on.
             key = cls.get_sortedset_db_key(type(model_instance), field_name).redis_key
-        member = model_instance.db_key.redis_key
+        # ``pk`` -- not ``db_key.redis_key`` -- because ``pk`` is exactly
+        # ``_redis_key or db_key.redis_key``, the expression the recipe call
+        # site this method replaces used. The two agree for any record whose
+        # KeyFields have not been mutated since it was loaded, which is why
+        # the parity capture cannot tell them apart; they diverge for a record
+        # mutated in memory without an intervening save, where ``pk`` names
+        # the member actually in the Sorted Set and the recomputed key does
+        # not. ``on_save``/``on_delete`` below use ``db_key.redis_key``
+        # deliberately -- they are writing the NEW member during a save, and
+        # pair it with ``obsolete_redis_key`` for the old one. A read has no
+        # such pairing, so it must ask for where the member is now.
+        member = model_instance.pk
         # Resolve the client attribute at call time so test spies and fault
         # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
         reply = POPOTO_REDIS_DB.zscore(key, member)

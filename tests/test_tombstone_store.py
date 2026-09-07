@@ -295,3 +295,82 @@ def test_unpack_complete_entry_returns_dict():
     entry = _unpack_tombstone_entry(packed)
     assert entry is not None
     assert entry["redis_key"] == "Widget:1"
+
+
+# ---------------------------------------------------------------------------
+# Re-export identity (#649 Risk 5)
+# ---------------------------------------------------------------------------
+
+
+def test_relocated_names_are_the_same_objects_via_the_recipe_module():
+    """Every name moved to the field layer is still importable from the recipe.
+
+    The relocation kept ``popoto.recipes.memory_lifecycle`` as a public import
+    path -- ``from popoto.recipes.memory_lifecycle import Tombstone`` must keep
+    working for code written before #649, and the existing lifecycle tests
+    reach for several of the underscore-prefixed helpers directly. Identity
+    (``is``), not mere importability, is what matters: a *copy* of the
+    ``Tombstone`` dataclass would satisfy an import while failing every
+    ``isinstance`` check a caller makes against the other one.
+    """
+    from src.popoto.fields import tombstone_store
+    from src.popoto.recipes import memory_lifecycle
+
+    for name in (
+        "TOMBSTONE_KEY_PREFIX",
+        "Tombstone",
+        "TombstoneStore",
+        "_TOMBSTONE_FIELDS",
+        "_TOMBSTONE_REQUIRED_FIELDS",
+        "_decoded_members",
+        "_sync",
+        "_tombstone_from_entry",
+        "_unpack_tombstone_entry",
+    ):
+        assert hasattr(memory_lifecycle, name), (
+            f"{name} is no longer importable from popoto.recipes."
+            "memory_lifecycle -- the re-export was dropped"
+        )
+        assert getattr(memory_lifecycle, name) is getattr(tombstone_store, name), (
+            f"{name} resolves to a DIFFERENT object through the recipe module "
+            "than through the field layer -- it was copied, not re-exported"
+        )
+
+
+def test_recipe_logger_name_is_unchanged_by_the_relocation():
+    """The relocated module logs under ``POPOTO.MemoryLifecycle``, as before.
+
+    Deriving the logger from the new module's ``__name__`` would be the
+    natural thing to write and would silently break the ``caplog`` assertions
+    that filter on this exact name -- with no failure message pointing at the
+    rename.
+    """
+    from src.popoto.fields import tombstone_store
+
+    assert tombstone_store.logger.name == "POPOTO.MemoryLifecycle"
+
+
+def test_purge_all_deletes_even_when_the_count_read_fails(monkeypatch):
+    """A failed count must not leave the tombstones in place.
+
+    The recipe code this replaced read the count through an error-swallowing
+    helper and issued the DEL regardless: the return value is a report, the
+    delete is the job. Letting a ZCARD failure propagate would be a quiet
+    behavior change that no wire diff catches on the happy path -- the DEL
+    simply never happens, and the caller sees an exception where it used to
+    see a zero.
+    """
+    store = _store()
+    store.archive("Widget:1", _pack(), 100.0)
+    data_key, index_key = store.keys()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated ZCARD failure")
+
+    monkeypatch.setattr(popoto.get_redis(), "zcard", boom)
+
+    assert store.purge_all() == 0
+
+    redis_client = popoto.get_redis()
+    assert redis_client.exists(data_key) == 0
+    assert redis_client.exists(index_key) == 0

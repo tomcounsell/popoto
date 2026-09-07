@@ -120,3 +120,25 @@ def test_idle_seconds_live_key_returns_float(widget):
 def test_idle_seconds_missing_key_returns_none():
     result = Widget.idle_seconds("Widget:nobody:nothing")
     assert result is None
+
+
+def test_idle_seconds_sends_the_lowercase_idletime_subcommand(widget, monkeypatch):
+    """``OBJECT idletime`` -- lowercase, exactly as the recipe sent it.
+
+    The subcommand string goes on the wire verbatim, so its case is a real
+    byte difference, not cosmetic. Upper-casing it is the natural thing to
+    write (Redis docs render subcommands in caps) and would break #649's
+    byte-identical-command-sequence contract while every behavioral test
+    still passed, because the server accepts either spelling.
+    """
+    seen = []
+    original = popoto.POPOTO_REDIS_DB.object
+
+    def spy(subcommand, *args, **kwargs):
+        seen.append(subcommand)
+        return original(subcommand, *args, **kwargs)
+
+    monkeypatch.setattr(popoto.POPOTO_REDIS_DB, "object", spy)
+    Widget.idle_seconds(redis_key=widget.db_key.redis_key)
+
+    assert seen == ["idletime"], f"expected lowercase 'idletime', got {seen}"

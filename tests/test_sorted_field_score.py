@@ -118,3 +118,27 @@ class TestScore:
             == field.score(record, "score", partitioned=False)
             == 7.0
         )
+
+
+def test_score_uses_pk_not_a_recomputed_key_for_a_mutated_instance():
+    """The ZSCORE member is ``pk``, so an in-memory KeyField edit cannot lose it.
+
+    ``pk`` is ``_redis_key or db_key.redis_key`` -- the expression the recipe
+    call site this method replaced used. The two agree for any record that has
+    not been mutated since it was loaded, so a wire capture cannot tell them
+    apart; they diverge exactly here, for a record whose KeyField was changed
+    in memory with no intervening save. ``pk`` still names the member that is
+    actually in the Sorted Set; a recomputed ``db_key.redis_key`` names one
+    that was never added, and would silently read ``None``.
+    """
+    record = ScorePlainSorted(name="mutated-in-memory", score=7.5)
+    record.save()
+
+    assert popoto.SortedField.score(record, "score") == 7.5
+
+    # Mutate the KeyField in memory only -- no save(). db_key.redis_key now
+    # recomputes to a key that was never written; pk still holds the saved one.
+    record.name = "a-different-name"
+    assert record.pk != record.db_key.redis_key
+
+    assert popoto.SortedField.score(record, "score") == 7.5

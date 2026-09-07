@@ -2109,9 +2109,12 @@ class Model(metaclass=ModelBase):
             in the same object-header bits IDLETIME reads.
 
         Raises:
-            Whatever the underlying client call raises (e.g. on an LFU
-            policy, a ``redis.ResponseError``) -- exceptions are not
-            swallowed here; the caller decides how to handle them.
+            redis.ResponseError: Propagated from the server, notably under an
+                LFU ``maxmemory-policy``, where ``OBJECT IDLETIME`` is not
+                available. Nothing is swallowed here -- returning a
+                fabricated ``0.0`` would read as "just accessed" and quietly
+                exempt every record from any idleness-based policy, so the
+                caller decides how to handle it.
         """
         key: Optional[str] = redis_key or None
         if key is None:
@@ -2141,12 +2144,12 @@ class Model(metaclass=ModelBase):
             A dict mapping field name to decoded value, with a three-way
             outcome per requested name:
 
-            - the raw value is ``None`` (key or field absent) -> the field
-              is **omitted** from the returned dict entirely.
-            - the raw value is present but decoding it raises -> the field
-              is **present**, mapped to ``None``.
-            - a Redis-level error (connection, protocol, etc.) -> propagates,
-              it is not caught here.
+            - the raw value is ``None`` (key or field absent) -> the
+                field is **omitted** from the returned dict entirely.
+            - the raw value is present but decoding it raises -> the
+                field is **present**, mapped to ``None``.
+            - a Redis-level error (connection, protocol, etc.) ->
+                propagates, it is not caught here.
 
             This distinction matters to callers that need to tell "key gone"
             (skip -- nothing was ever there) apart from "tier unreadable"
