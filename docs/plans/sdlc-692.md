@@ -839,8 +839,99 @@ Additionally:
 
 ## Step by Step Tasks
 
+1. **Parse `haystack_dates`.** In
+   `tests/benchmarks/datasets/longmemeval_s.py::_parse_record`, read
+   `haystack_dates` (format `"%Y/%m/%d (%a) %H:%M"`), parse to an epoch float,
+   and attach as `session_date` on every turn dict of the corresponding session.
+   Missing / short / unparseable → `None`, never an exception, never a
+   substituted timestamp. Update the docstring's schema block to say the field
+   is now parsed.
+2. **Create `tests/benchmarks/supersession_axis.py`.** `ARM_CHOICES =
+   ("none", "content-identity")`; the pinned state-verb and preposition sets
+   (with the CLAUDE.md magic-number rationale in a comment, and an explicit note
+   that they do **not** belong in `Defaults`); `identity_of(unit_text)` with the
+   one-positional-parameter signature; `route_write(...)`; a
+   `SupersessionStats` dataclass (`units_seen`, `units_with_identity`,
+   `identity_groups`, `plain_writes`, `identity_writes`, `supersessions`,
+   `failures`). Module docstring carries the design decision verbatim.
+3. **Wire the ingest arm** in `tests/benchmarks/scenarios/external_base.py`:
+   new `supersession_arm` constructor kwarg (default `"none"`); declare
+   `validity = ValidityField()` on all four model builders when the arm is
+   active; order sessions by `session_date` ascending while preserving intra-
+   session turn order (Race 1); branch the write at `:479` through
+   `route_write`; keep `session_key_map` / `turn_key_map` / graph-edge
+   behavior identical in both arms.
+4. **Fix teardown** (spike-2 side finding): delete
+   `ValidityField.get_all_keys(cls, "validity")` and `SCAN`/`DEL` the
+   `{prefix}:open:*` pointers. Do this even on the `none` arm's error paths —
+   it must be safe to call unconditionally.
+5. **Emit the observability metadata** in `ExternalScenario.run()`:
+   `n_supersessions`, `n_excluded_keys`, `n_excluded_hits` (read at the same
+   `as_of` the assembler used — Race 2), plus the stats dataclass fields.
+6. **Extend the LongMemEval-S fixture.** Add one record to
+   `tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json` with
+   `question_type: "knowledge-update"` and two sessions whose `haystack_dates`
+   differ and which assert the same slot with different values (e.g. an earlier
+   "I work at X" and a later "I work at Y"). Include a deliberately
+   **non-monotonic** date ordering relative to haystack order so Race 1 is
+   exercised. Confirm the three existing records' tests still pass.
+7. **Add tests** per Test Impact, including the label-blindness signature
+   assertion, the first-claim-must-supersede regression guard, the arm-`none`
+   byte-identity check, the `--no-validity-gating` restore, and the
+   no-leaked-`$ValidityF:*`-keys check.
+8. **Add the CLI axis** in `tests/benchmarks/run_external.py`:
+   `--supersession` and `--no-validity-gating`; set
+   `Defaults.VALIDITY_GATING_ENABLED` once in `main()` before any scenario
+   construction (Risk 5); add the `_sup-{arm}` / `_nogate` artifact filename
+   labels; add the new aggregate rows, including `producer_failures` printed
+   even when zero.
+9. **Run the demonstration** (AC2): a small-n run on the extended fixture across
+   arms A/B/C. Capture `n_excluded_keys`, `n_excluded_hits`, `supersessions`,
+   the identity firing rate, and the full environment. Verify the first item's
+   `n_excluded_keys` is 0 (contamination check, Risk 3).
+10. **Document**: `tests/benchmarks/README.md` `--supersession` section with the
+    three-arm table and the verbatim does/does-not-establish paragraph.
+11. **File the follow-up investigation issue** for the per-item key-isolation
+    defect (spike-2 side finding), referencing this plan. Do not fix it here.
+12. **Comment on #586** with the demonstration numbers and a pointer to the
+    does/does-not-establish text, so the unblocking is explicit rather than
+    implied by this issue closing.
+
 ## Verification
+
+| # | Check | Command / method | Expected |
+|---|---|---|---|
+| 1 | Arm `none` is byte-identical | `pytest tests/benchmarks/test_external.py` | All existing cases green; no `$ValidityF:*` key created during a `none`-arm item |
+| 2 | Dates parsed, LoCoMo untouched | `pytest tests/benchmarks/test_external.py -k "parse or dataset"` | `session_date` present on LME turns, absent-and-tolerated on LoCoMo |
+| 3 | Producer is label-blind | `pytest tests/benchmarks/test_supersession_axis.py -k signature` | `inspect.signature(identity_of)` has one positional param; neither `relevant_ids` nor `question_type` in either function's signature |
+| 4 | First claim registers an incumbent | `pytest tests/benchmarks/test_supersession_axis.py -k first_claim` | Exclusion set ≥ 1 after two identity-bearing writes |
+| 5 | **AC2** — non-empty exclusion state | Fixture run, arm C | `n_excluded_keys >= 1` and `n_excluded_hits >= 1` in the emitted artifact; superseded record absent from assembled records, successor present |
+| 6 | Arm B is executable | Same run with `--no-validity-gating` | Superseded record returns; identical stored state to arm C |
+| 7 | Race 1 handled | Non-monotonic fixture item | Run completes; latest-dated claim is the open one; no `ValidityCloseBeforeStartError` |
+| 8 | No key leak | Post-teardown `SCAN "$ValidityF:*"` | Empty |
+| 9 | Contamination check | First item of the demonstration run | `n_excluded_keys == 0` |
+| 10 | Failure counting is visible | Report header on a run with zero supersessions | `producer_failures` and `supersessions` both printed |
+| 11 | Repo gates | `ruff check src/`; `black --check src/ tests/`; `scripts/mypy_ratchet.py`; `mkdocs build --strict`; full `pytest` | All clean; ratchet count unchanged (no `src/` change) |
+| 12 | Environment stated | PR body and report artifacts | Python, redis-py, platform, Redis DB, baseline SHA on every number |
 
 ## Critique Results
 
+_Pending `/do-plan-critique`._
+
 ## Open Questions
+
+1. **Is a Medium appetite that stops short of the n=500 run acceptable to the
+   PM?** This plan draws the line at "the gate demonstrably has state and the
+   attribution language exists"; #586 keeps the corpus-scale publication. The
+   alternative is folding #586 into this issue and paying hours of wall clock
+   plus an embedding provider here.
+2. **Which extraction arm should the eventual #586 run use?** If the producer's
+   firing rate on `--extraction raw` turns out near zero (Risk 1), the
+   meaningful before/after lives on `heuristic` or `claude`, which changes
+   #586's baseline comparability — the committed n=500 artifact was produced
+   under `raw`. Flagging now because it affects #586's framing, not this
+   issue's deliverable.
+3. **Should the follow-up key-isolation issue (Task 11) block #586?** The
+   defect is contained here by explicit teardown, but the underlying claim in
+   `external_base.py`'s docstring is false for every non-BM25 field, which may
+   matter for other axes. Filed either way; the question is priority.
