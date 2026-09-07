@@ -259,7 +259,10 @@ and say **why** the total is not stored, so the next person does not helpfully a
 
 1. **Validate `packages` in `load_baseline()`** (`scripts/mypy_ratchet.py:146-164`). Require a
    non-empty dict of `str` → non-negative `int`; raise `RatchetError` naming the offending key
-   otherwise. Mirror the existing message style of the `total` and `clean` validators.
+   otherwise. Mirror the existing message style of the `total` and `clean` validators — and mirror
+   its **bool exclusion** too: `:155` guards with `isinstance(total, bool)` because `isinstance(True,
+   int)` is `True` in Python, so a per-value check must be `not isinstance(v, int) or isinstance(v,
+   bool) or v < 0`. Without it, `"fields": true` validates and sums as `1`.
 2. **Derive the total in `load_baseline()`.** Compute `sum(packages.values())` and set it on the
    returned dict's `"total"` key so all five downstream read sites stay unchanged.
 3. **Make a stored `total` optional and cross-checked.** Absent → derive. Present and equal → accept.
@@ -271,24 +274,45 @@ and say **why** the total is not stored, so the next person does not helpfully a
 5. **Migrate the committed `scripts/mypy_baseline.json`**: remove the `"total": 1038` line by hand.
    No re-measurement, no other value changes. Rewrite `_comment` to state that the ceiling is the sum
    of `packages` and that the total is deliberately not stored because a stored copy merges wrong.
+   **In the same commit**, fix the script's own module docstring, which is the second copy of this
+   doctrine and becomes false: `scripts/mypy_ratchet.py:6` reads "must be at or below the baseline
+   **recorded** in ``scripts/mypy_baseline.json``". Reword to say the ceiling is *derived* from
+   `packages` rather than recorded, so both doctrine copies move together instead of drifting.
 6. **Rework `tests/test_mypy_ratchet.py:344`** (`test_committed_baseline_is_well_formed`). The
    `sum(...) == data["total"]` assertion becomes tautological once the total is derived, so replace
    it with an assertion that the committed file does **not** store a `total` key, plus a comment
    naming #677 and #675 and stating what the absence is guarding against — satisfying acceptance
    criterion 4 for whichever detector survives.
+   **The absence must be asserted against the raw file, not against `load_baseline()`'s return
+   value.** Task 2 puts a derived `"total"` into that dict by design, so `"total" not in data` on
+   the existing `data = ratchet.load_baseline(ratchet.BASELINE_PATH)` handle is false by
+   construction and can never pass. Keep `data` for the `clean` / `environment` / `total > 0`
+   assertions and add a second, separate read — `raw = json.loads(ratchet.BASELINE_PATH.read_text())`
+   — and assert `"total" not in raw` on that.
 7. **Add regression tests** for the three new paths (see Success Criteria): derived total, rejected
    inconsistent stored total, rejected malformed `packages`.
 8. **Add the merge-scenario test** — the one that would have caught #675. Construct a baseline with
    the post-merge package counts and no total, assert the gate compares against 1038 and not 1040.
 9. **Audit the existing tests** that construct `{"total": N, "packages": {...}}` fixtures
-   (`:60`, `:93`, `:106`, `:118`, `:186-190`, `:205-345`). Most stay meaningful unchanged; `:186-190`
+   (`:60`, `:93`, `:106`, `:118`, `:186-190`, `:193-197`, `:205-345`). Most stay meaningful
+   unchanged; `:186-190`
    (`test_bad_total_fails`) tests validation of a field that is becoming optional and must be
-   rewritten against the new contract. Do **not** weaken `:137`
+   rewritten against the new contract. `:193-197` (`test_bad_clean_type_fails`) writes
+   `{"total": 1, "clean": [1, 2]}` with **no `packages` key at all** and asserts
+   `match="'clean' must be a list"`; once Task 1's required-`packages` check runs — and it runs
+   *first*, since Task 1 precedes Task 3 in `load_baseline()` — it shadows the clean-type error and
+   breaks the `match=`. Fix by giving the fixture a `packages` key
+   (`{"total": 1, "clean": [1, 2], "packages": {"fields": 1}}`) so the test still isolates what it
+   is named for. Do **not** weaken `:137`
    (`test_parse_disagreement_between_parser_and_summary_is_a_failure`) — it pins the parse-time
    cross-check that must survive.
 10. **Update `CLAUDE.md`.** Its ratchet paragraph describes the baseline file and says the gate
-    "fails only when the total rises above the baseline in `scripts/mypy_baseline.json`". Add that
-    the total is derived from `packages` and why, so the next contributor does not re-add it.
+    "fails only when the total rises above the baseline in `scripts/mypy_baseline.json`". That
+    clause must be **revised in place**, not merely appended to — post-change the file holds no
+    baseline value, only `packages`, so a reader diffing the doc against the file would go looking
+    for a `total` key that is deliberately gone. Reword to name the derived ceiling (e.g. "the
+    ceiling derived from the per-package counts in `scripts/mypy_baseline.json`") and state why the
+    total is not stored, so the next contributor does not re-add it.
 11. **Add a CHANGELOG entry** under `[Unreleased]`.
 12. **Run the gates**: `scripts/mypy_ratchet.py` (must report the same count as before the change),
     `ruff check src/`, `black --check src/ tests/`, and the ratchet test file.
@@ -309,6 +333,11 @@ and say **why** the total is not stored, so the next person does not helpfully a
       mypy's summary and `len(error_lines)` is intact.
 - [ ] The detector that remains at `test_committed_baseline_is_well_formed` carries a comment naming
       #677 and what it guards (acceptance criterion 4).
+- [ ] Both doctrine copies are true after the change: `scripts/mypy_ratchet.py:6` and the
+      `_comment` in `scripts/mypy_baseline.json` describe a *derived* ceiling, and CLAUDE.md's
+      ratchet clause is revised in place rather than contradicted by an appended caveat.
+- [ ] `tests/test_mypy_ratchet.py:193-197` (`test_bad_clean_type_fails`) still fails for the
+      `clean` reason it is named for, not for a shadowing `packages` error.
 - [ ] `ruff check src/` exits 0; `black --check src/ tests/` passes.
 - [ ] Full `tests/test_mypy_ratchet.py` passes; environment stated alongside any count.
 
