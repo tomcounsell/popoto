@@ -2850,6 +2850,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The round-trip obligation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deciding-between-carry-and-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deciding between "carry" and "partial"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing-the-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing the note
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3051,6 +3079,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The round-trip obligation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deciding-between-carry-and-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deciding between "carry" and "partial"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing-the-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing the note
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3227,9 +3283,40 @@ enforced by that test, but the obligation is the same: if your field holds state
   value alone. A field declaring <code>"carry"</code> must implement <code>export_state</code> and
   <code>import_state</code> to serialize and restore that state explicitly.</li>
 <li><strong><code>"partial"</code></strong> — some state is carried or rebuilt, and some is knowingly not
-  preserved. A field declaring <code>"partial"</code> must also set <code>roundtrip_note</code> explaining
-  what is lost and why — typically citing a tracking issue for future work.</li>
+  preserved. A field declaring <code>"partial"</code> must also set <code>roundtrip_note</code>.</li>
 </ul>
+<h3 id="deciding-between-carry-and-partial">Deciding between <code>"carry"</code> and <code>"partial"</code><a class="headerlink" href="#deciding-between-carry-and-partial" title="Permanent link">&para;</a></h3>
+<p>The line is not how hard the carry would be to write. It is what the bytes mean:</p>
+<blockquote>
+<p>Carry a structure when the exported bytes are a <strong>fact about the record</strong> that the
+destination can restore verbatim. Do not carry one that is a <strong>property of the
+source deployment's history</strong>, which the destination never lived through.</p>
+</blockquote>
+<p>Three questions settle it. If the answer to any is no, the structure does not carry:</p>
+<ol>
+<li><strong>Is it decomposable to this record?</strong> A Bloom bit or a Count-Min counter is
+   shared by every value that collides onto it, so no record owns a share of it —
+   which is exactly why <code>on_delete</code> is a no-op for both.</li>
+<li><strong>Can the destination restore it without replaying anything?</strong> If reaching the
+   exported value means calling the field's own mutators (<code>strengthen</code>, <code>resolve</code>,
+   <code>confirm</code>), you are inventing a sequence of events to arrive at a number. Write
+   the structure raw, or do not write it.</li>
+<li><strong>Is rebuilding actually worse?</strong> Sometimes it is better. A Bloom filter rebuilt
+   from the imported records is <em>more</em> accurate than a carried one, which would hold
+   bits for records that were never imported.</li>
+</ol>
+<p>A carrier that answers all three must write raw Redis commands, not go through the
+field's public API — the public API stamps fresh timestamps and fires feedback hooks
+that would double-count against state carried independently by other fields.</p>
+<h3 id="writing-the-note">Writing the note<a class="headerlink" href="#writing-the-note" title="Permanent link">&para;</a></h3>
+<p><code>roundtrip_note</code> is read by someone deciding whether an import is safe for their
+data. State the <strong>destination's contract</strong> — what they end up with ("frequencies
+restart from the import") — not what the code declines to do ("counters not
+carried"). Cite a tracking issue only while the gap is genuinely open work; a
+permanent limitation should say so, because a lingering issue number invites a
+future reader to "finish" a decision that was already made. See
+<a href="../guides/export-import/#fidelity-what-crosses-and-what-does-not">Export and import</a>
+for how Popoto's own subsystems came down on each side of this.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>

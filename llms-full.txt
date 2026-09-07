@@ -4121,6 +4121,35 @@ When a model instance is deleted, the `on_delete` hook:
 1. Removes the instance's own edge sorted set
 2. If symmetric, removes reverse edges from all connected PKs
 
+## Export and Import
+
+`CoOccurrenceField` declares `roundtrip_policy = "carry"`: edges are stored
+per-record (the edge key ends in the source PK) and a ZSET score *is* the stored
+weight, so `export_records` writes the weights out verbatim and `import_records`
+writes them back with a raw `ZADD`.
+
+Replay is not merely a worse option here, it is impossible: `link`, `strengthen`,
+and `weaken_all` take a delta or a factor, never an absolute target weight, so
+reaching an exported weight through them would mean inventing an interaction
+history that never happened.
+
+Two things to know before importing:
+
+- **Import replaces the edge set wholesale — it does not merge.** The destination
+  record's existing edges are deleted and replaced by the exported set. If both
+  sides have been accumulating associations independently, the destination's are
+  lost. Export both and reconcile yourself if you need a union.
+- **The destination's limits win.** Weights are clamped to
+  `Defaults.CO_OCCURRENCE_WEIGHT_CAP` and the set is truncated to the destination
+  field's `max_edges`, keeping the heaviest edges — the same rule the pruning Lua
+  applies. Importing into a model with a smaller `max_edges` than the source will
+  silently drop the lightest edges, which is the correct behavior but worth
+  knowing.
+
+Symmetric mirroring is *not* re-run on import. Each record carries its own edge
+set, so a full export of the model restores both directions naturally; a filtered
+export that includes one endpoint but not the other yields a one-directional edge.
+
 ## Synergy with Other Fields
 
 ### With DecayingSortedField
@@ -6619,6 +6648,31 @@ For numeric values: `|predicted - actual| / max(|predicted|, |actual|, 1)`
 For string values: `0.0` if equal, `1.0` if different.
 
 Missing keys contribute `1.0` error per key.
+
+## Export and Import
+
+`PredictionLedgerMixin` declares `roundtrip_policy = "carry"`. The meta hash holds
+exactly one field per record, keyed by that record's own PK, so a prediction is a
+per-record fact and `export_records` writes it out verbatim.
+
+`import_records` restores it with a raw `HSET` of the re-packed entry — deliberately
+not through `resolve_prediction` or `auto_resolve`. Going through
+`RESOLVE_PREDICTION_LUA` would recompute `prediction_error` against the
+*destination's* data, stamp a fresh `resolved_at`, and fire the ConfidenceField
+feedback described above a second time, double-counting against confidence state
+that is already carried independently. The raw write reproduces the source's
+`recorded_at` and `resolved_at` exactly and fires nothing.
+
+For a resolved prediction, the record's member in the error sorted set is then
+re-derived rather than carried: its score is `abs(prediction_error)`, a pure
+function of the entry that just landed. An unresolved prediction writes no member,
+because the source has none either.
+
+A record that never had a prediction exports no ledger state and imports without
+one being invented.
+
+See [Export and import](../guides/export-import.md#fidelity-what-crosses-and-what-does-not)
+for how this compares with the other history-shaped subsystems.
 
 ## Architecture
 
@@ -14264,6 +14318,18 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 | `$AT:{ClassName}:access_log:{pk}` | List | Confirmed access timestamps (capped) |
 | `$AT:{ClassName}:meta:{pk}` | Hash | `access_count` (int) and `last_accessed` (float) |
 
+### Export and import
+
+`export_records` carries `access_count`, `last_accessed`, and the confirmed access
+log; the destination's `import_records` restores the log trimmed to *its* own
+`_max_access_log`, keeping the most recent timestamps.
+
+Staged reads are deliberately not carried. A staged entry is an unconfirmed,
+TTL-bounded read awaiting `confirm_access()`, so dropping it in transit is
+observably identical to calling `discard_staged_access()` — a first-class
+operation, not a gap. This is why the mixin declares `roundtrip_policy =
+"partial"`. See [Export and import](guides/export-import.md#fidelity-what-crosses-and-what-does-not).
+
 ## EventStreamMixin
 
 Automatically appends to a Redis Stream on every `save()`, `update()`, or `delete()`. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.
@@ -19117,8 +19183,10 @@ Every exported record ends up in exactly one of five categories:
 absence, so `report.summary()` surfaces it first. `report.fidelity` carries the
 per-field `roundtrip_policy` roll-up from the manifest, so the report can tell you
 which fields were fully restored and which were only ever declared `"partial"` on
-the source side (for example, `CoOccurrenceField` or `EventStreamMixin` — see
-[Writing Custom Fields](../field-authoring.md) for the full policy taxonomy).
+the source side (for example, `AccessTrackerMixin` or `EventStreamMixin` — see
+[Writing Custom Fields](../field-authoring.md) for the full policy taxonomy, and
+the [fidelity matrix](#fidelity-what-crosses-and-what-does-not) below for where
+each of Popoto's own subsystems lands).
 
 Rejection is never detected by truthiness. `Model.save()` returns the `HSET` reply
 count on success, and `HSET` returns `0` when every field already existed — so a
@@ -19146,16 +19214,50 @@ if report.errored or report.partial:
     print(report.summary())  # inspect what needs attention
 ```
 
-## What is not carried
+## Fidelity: what crosses, and what does not
 
-A handful of Redis structures are shaped by *history* — an event stream, a
-prediction ledger, an access log, a frequency-sketch counter — rather than by a
-snapshot of current state. Popoto does not attempt to carry these; the affected
-fields declare `roundtrip_policy = "partial"` with a `roundtrip_note` explaining
-what is lost, and that note appears in the import report rather than the loss
-happening silently. See the field-level policy table on the destination model, or
+Popoto's secondary Redis structures fall into two groups, and the line between
+them is not "hard to implement" but *what the bytes mean*:
+
+- A structure that is a **fact about the record** — a prediction that was made,
+  an edge weight, a count of reads that happened — is carried verbatim. The
+  destination can restore it without pretending anything occurred there.
+- A structure that is a **property of the source deployment's history** — a log
+  of every mutation, a hash-collided bit array, a shared counter — is not
+  carried. The destination did not live through that history, and writing it
+  anyway would produce a plausible record of events that never happened.
+
+| Structure | Crosses? | What the destination gets |
+|---|---|---|
+| `ConfidenceField` state | Carried | The source's confidence, verbatim |
+| Prediction ledger entry | Carried | The prediction with its original `recorded_at` / `resolved_at`; no re-resolution runs |
+| `CoOccurrenceField` edges | Carried | The source's edge weights, verbatim (clamped to the destination's cap and `max_edges`) |
+| Access counters + confirmed log | Carried | `access_count`, `last_accessed`, and the confirmed timestamps (trimmed to the destination's `_max_access_log`) |
+| Staged (unconfirmed) reads | Dropped | Nothing — identical to `discard_staged_access()` on an in-flight read |
+| `EventStreamMixin` mutation stream | Not carried | A fresh stream whose first entry is the import itself |
+| `ExistenceFilter` bit array | Not carried | A filter rebuilt from the imported records' own saves — *more* accurate than the source's, which holds bits for records outside the export |
+| `FrequencySketch` counters | Not carried | Counts of the saves the destination observed; frequencies restart from the import |
+
+The three "not carried" rows are **permanent contracts**, not unfinished work.
+Each declares `roundtrip_policy = "partial"` with a `roundtrip_note` saying what
+the destination ends up with, and that note appears in the import report rather
+than the difference passing silently. See
 [Writing Custom Fields](../field-authoring.md) if you are deciding how to declare
 this for your own field.
+
+### Use one `on_conflict` for the whole file
+
+Carried state is restored only for records that actually land. Under
+`on_conflict="skip"` a colliding key is reported as skipped *before* the save,
+so the destination keeps its own confidence, ledger entry, edges, and access log
+for that record — the export's versions are discarded. Under
+`on_conflict="overwrite"` the carried structures are replaced wholesale, not
+merged: an imported edge set becomes the record's complete edge set.
+
+Both are coherent policies; mixing them across re-runs of the same file is not.
+Re-running an interrupted import with a different `on_conflict` than the first
+pass leaves some records carrying source state and others carrying destination
+state, with nothing in the report distinguishing them. Pick one and keep it.
 
 Async twins (`async_export_records` / `async_import_records`) are not part of this
 API; the driver is a synchronous Python function you call from your own script or an
@@ -19427,8 +19529,43 @@ enforced by that test, but the obligation is the same: if your field holds state
   value alone. A field declaring `"carry"` must implement `export_state` and
   `import_state` to serialize and restore that state explicitly.
 - **`"partial"`** — some state is carried or rebuilt, and some is knowingly not
-  preserved. A field declaring `"partial"` must also set `roundtrip_note` explaining
-  what is lost and why — typically citing a tracking issue for future work.
+  preserved. A field declaring `"partial"` must also set `roundtrip_note`.
+
+### Deciding between `"carry"` and `"partial"`
+
+The line is not how hard the carry would be to write. It is what the bytes mean:
+
+> Carry a structure when the exported bytes are a **fact about the record** that the
+> destination can restore verbatim. Do not carry one that is a **property of the
+> source deployment's history**, which the destination never lived through.
+
+Three questions settle it. If the answer to any is no, the structure does not carry:
+
+1. **Is it decomposable to this record?** A Bloom bit or a Count-Min counter is
+   shared by every value that collides onto it, so no record owns a share of it —
+   which is exactly why `on_delete` is a no-op for both.
+2. **Can the destination restore it without replaying anything?** If reaching the
+   exported value means calling the field's own mutators (`strengthen`, `resolve`,
+   `confirm`), you are inventing a sequence of events to arrive at a number. Write
+   the structure raw, or do not write it.
+3. **Is rebuilding actually worse?** Sometimes it is better. A Bloom filter rebuilt
+   from the imported records is *more* accurate than a carried one, which would hold
+   bits for records that were never imported.
+
+A carrier that answers all three must write raw Redis commands, not go through the
+field's public API — the public API stamps fresh timestamps and fires feedback hooks
+that would double-count against state carried independently by other fields.
+
+### Writing the note
+
+`roundtrip_note` is read by someone deciding whether an import is safe for their
+data. State the **destination's contract** — what they end up with ("frequencies
+restart from the import") — not what the code declines to do ("counters not
+carried"). Cite a tracking issue only while the gap is genuinely open work; a
+permanent limitation should say so, because a lingering issue number invites a
+future reader to "finish" a decision that was already made. See
+[Export and import](guides/export-import.md#fidelity-what-crosses-and-what-does-not)
+for how Popoto's own subsystems came down on each side of this.
 
 ```python
 import popoto

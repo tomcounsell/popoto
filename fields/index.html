@@ -3023,6 +3023,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#export-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export and import
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4466,6 +4477,17 @@
     <span class="md-ellipsis">
       
         Redis key patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export and import
       
     </span>
   </a>
@@ -6858,6 +6880,15 @@ should not count as a user-originated read.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="export-and-import">Export and import<a class="headerlink" href="#export-and-import" title="Permanent link">&para;</a></h3>
+<p><code>export_records</code> carries <code>access_count</code>, <code>last_accessed</code>, and the confirmed access
+log; the destination's <code>import_records</code> restores the log trimmed to <em>its</em> own
+<code>_max_access_log</code>, keeping the most recent timestamps.</p>
+<p>Staged reads are deliberately not carried. A staged entry is an unconfirmed,
+TTL-bounded read awaiting <code>confirm_access()</code>, so dropping it in transit is
+observably identical to calling <code>discard_staged_access()</code> — a first-class
+operation, not a gap. This is why the mixin declares <code>roundtrip_policy =
+"partial"</code>. See <a href="../guides/export-import/#fidelity-what-crosses-and-what-does-not">Export and import</a>.</p>
 <h2 id="eventstreammixin">EventStreamMixin<a class="headerlink" href="#eventstreammixin" title="Permanent link">&para;</a></h2>
 <p>Automatically appends to a Redis Stream on every <code>save()</code>, <code>update()</code>, or <code>delete()</code>. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.</p>
 <h3 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h3>

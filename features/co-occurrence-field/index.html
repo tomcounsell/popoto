@@ -1364,6 +1364,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#export-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export and Import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#synergy-with-other-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3317,6 +3328,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#export-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export and Import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#synergy-with-other-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3537,6 +3559,31 @@
 <p>When a model instance is deleted, the <code>on_delete</code> hook:
 1. Removes the instance's own edge sorted set
 2. If symmetric, removes reverse edges from all connected PKs</p>
+<h2 id="export-and-import">Export and Import<a class="headerlink" href="#export-and-import" title="Permanent link">&para;</a></h2>
+<p><code>CoOccurrenceField</code> declares <code>roundtrip_policy = "carry"</code>: edges are stored
+per-record (the edge key ends in the source PK) and a ZSET score <em>is</em> the stored
+weight, so <code>export_records</code> writes the weights out verbatim and <code>import_records</code>
+writes them back with a raw <code>ZADD</code>.</p>
+<p>Replay is not merely a worse option here, it is impossible: <code>link</code>, <code>strengthen</code>,
+and <code>weaken_all</code> take a delta or a factor, never an absolute target weight, so
+reaching an exported weight through them would mean inventing an interaction
+history that never happened.</p>
+<p>Two things to know before importing:</p>
+<ul>
+<li><strong>Import replaces the edge set wholesale — it does not merge.</strong> The destination
+  record's existing edges are deleted and replaced by the exported set. If both
+  sides have been accumulating associations independently, the destination's are
+  lost. Export both and reconcile yourself if you need a union.</li>
+<li><strong>The destination's limits win.</strong> Weights are clamped to
+  <code>Defaults.CO_OCCURRENCE_WEIGHT_CAP</code> and the set is truncated to the destination
+  field's <code>max_edges</code>, keeping the heaviest edges — the same rule the pruning Lua
+  applies. Importing into a model with a smaller <code>max_edges</code> than the source will
+  silently drop the lightest edges, which is the correct behavior but worth
+  knowing.</li>
+</ul>
+<p>Symmetric mirroring is <em>not</em> re-run on import. Each record carries its own edge
+set, so a full export of the model restores both directions naturally; a filtered
+export that includes one endpoint but not the other yields a one-directional edge.</p>
 <h2 id="synergy-with-other-fields">Synergy with Other Fields<a class="headerlink" href="#synergy-with-other-fields" title="Permanent link">&para;</a></h2>
 <h3 id="with-decayingsortedfield">With DecayingSortedField<a class="headerlink" href="#with-decayingsortedfield" title="Permanent link">&para;</a></h3>
 <p>Propagated weights can identify related records for boosting retrieval scores:</p>

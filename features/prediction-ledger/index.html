@@ -1494,6 +1494,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#export-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export and Import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3157,6 +3168,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#export-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export and Import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3315,6 +3337,25 @@
 <p>For numeric values: <code>|predicted - actual| / max(|predicted|, |actual|, 1)</code></p>
 <p>For string values: <code>0.0</code> if equal, <code>1.0</code> if different.</p>
 <p>Missing keys contribute <code>1.0</code> error per key.</p>
+<h2 id="export-and-import">Export and Import<a class="headerlink" href="#export-and-import" title="Permanent link">&para;</a></h2>
+<p><code>PredictionLedgerMixin</code> declares <code>roundtrip_policy = "carry"</code>. The meta hash holds
+exactly one field per record, keyed by that record's own PK, so a prediction is a
+per-record fact and <code>export_records</code> writes it out verbatim.</p>
+<p><code>import_records</code> restores it with a raw <code>HSET</code> of the re-packed entry — deliberately
+not through <code>resolve_prediction</code> or <code>auto_resolve</code>. Going through
+<code>RESOLVE_PREDICTION_LUA</code> would recompute <code>prediction_error</code> against the
+<em>destination's</em> data, stamp a fresh <code>resolved_at</code>, and fire the ConfidenceField
+feedback described above a second time, double-counting against confidence state
+that is already carried independently. The raw write reproduces the source's
+<code>recorded_at</code> and <code>resolved_at</code> exactly and fires nothing.</p>
+<p>For a resolved prediction, the record's member in the error sorted set is then
+re-derived rather than carried: its score is <code>abs(prediction_error)</code>, a pure
+function of the entry that just landed. An unresolved prediction writes no member,
+because the source has none either.</p>
+<p>A record that never had a prediction exports no ledger state and imports without
+one being invented.</p>
+<p>See <a href="../../guides/export-import/#fidelity-what-crosses-and-what-does-not">Export and import</a>
+for how this compares with the other history-shaped subsystems.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Meta hash</strong>: <code>$PL:{ClassName}:meta:{pk}</code> — msgpack prediction metadata per instance</li>

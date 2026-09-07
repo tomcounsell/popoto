@@ -2842,13 +2842,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-is-not-carried" class="md-nav__link">
+  <a href="#fidelity-what-crosses-and-what-does-not" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What is not carried
+        Fidelity: what crosses, and what does not
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Fidelity: what crosses, and what does not">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-one-on_conflict-for-the-whole-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use one on_conflict for the whole file
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3163,13 +3180,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-is-not-carried" class="md-nav__link">
+  <a href="#fidelity-what-crosses-and-what-does-not" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What is not carried
+        Fidelity: what crosses, and what does not
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Fidelity: what crosses, and what does not">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-one-on_conflict-for-the-whole-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use one on_conflict for the whole file
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3450,8 +3484,10 @@ destination's configured provider.</p>
 absence, so <code>report.summary()</code> surfaces it first. <code>report.fidelity</code> carries the
 per-field <code>roundtrip_policy</code> roll-up from the manifest, so the report can tell you
 which fields were fully restored and which were only ever declared <code>"partial"</code> on
-the source side (for example, <code>CoOccurrenceField</code> or <code>EventStreamMixin</code> — see
-<a href="../../field-authoring/">Writing Custom Fields</a> for the full policy taxonomy).</p>
+the source side (for example, <code>AccessTrackerMixin</code> or <code>EventStreamMixin</code> — see
+<a href="../../field-authoring/">Writing Custom Fields</a> for the full policy taxonomy, and
+the <a href="#fidelity-what-crosses-and-what-does-not">fidelity matrix</a> below for where
+each of Popoto's own subsystems lands).</p>
 <p>Rejection is never detected by truthiness. <code>Model.save()</code> returns the <code>HSET</code> reply
 count on success, and <code>HSET</code> returns <code>0</code> when every field already existed — so a
 successful overwrite would look identical to a rejection under a truthiness check.
@@ -3473,15 +3509,86 @@ Because keys are always preserved, this converges rather than producing duplicat
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">errored</span> <span class="ow">or</span> <span class="n">report</span><span class="o">.</span><span class="n">partial</span><span class="p">:</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>  <span class="c1"># inspect what needs attention</span>
 </code></pre></div>
-<h2 id="what-is-not-carried">What is not carried<a class="headerlink" href="#what-is-not-carried" title="Permanent link">&para;</a></h2>
-<p>A handful of Redis structures are shaped by <em>history</em> — an event stream, a
-prediction ledger, an access log, a frequency-sketch counter — rather than by a
-snapshot of current state. Popoto does not attempt to carry these; the affected
-fields declare <code>roundtrip_policy = "partial"</code> with a <code>roundtrip_note</code> explaining
-what is lost, and that note appears in the import report rather than the loss
-happening silently. See the field-level policy table on the destination model, or
+<h2 id="fidelity-what-crosses-and-what-does-not">Fidelity: what crosses, and what does not<a class="headerlink" href="#fidelity-what-crosses-and-what-does-not" title="Permanent link">&para;</a></h2>
+<p>Popoto's secondary Redis structures fall into two groups, and the line between
+them is not "hard to implement" but <em>what the bytes mean</em>:</p>
+<ul>
+<li>A structure that is a <strong>fact about the record</strong> — a prediction that was made,
+  an edge weight, a count of reads that happened — is carried verbatim. The
+  destination can restore it without pretending anything occurred there.</li>
+<li>A structure that is a <strong>property of the source deployment's history</strong> — a log
+  of every mutation, a hash-collided bit array, a shared counter — is not
+  carried. The destination did not live through that history, and writing it
+  anyway would produce a plausible record of events that never happened.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Structure</th>
+<th>Crosses?</th>
+<th>What the destination gets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ConfidenceField</code> state</td>
+<td>Carried</td>
+<td>The source's confidence, verbatim</td>
+</tr>
+<tr>
+<td>Prediction ledger entry</td>
+<td>Carried</td>
+<td>The prediction with its original <code>recorded_at</code> / <code>resolved_at</code>; no re-resolution runs</td>
+</tr>
+<tr>
+<td><code>CoOccurrenceField</code> edges</td>
+<td>Carried</td>
+<td>The source's edge weights, verbatim (clamped to the destination's cap and <code>max_edges</code>)</td>
+</tr>
+<tr>
+<td>Access counters + confirmed log</td>
+<td>Carried</td>
+<td><code>access_count</code>, <code>last_accessed</code>, and the confirmed timestamps (trimmed to the destination's <code>_max_access_log</code>)</td>
+</tr>
+<tr>
+<td>Staged (unconfirmed) reads</td>
+<td>Dropped</td>
+<td>Nothing — identical to <code>discard_staged_access()</code> on an in-flight read</td>
+</tr>
+<tr>
+<td><code>EventStreamMixin</code> mutation stream</td>
+<td>Not carried</td>
+<td>A fresh stream whose first entry is the import itself</td>
+</tr>
+<tr>
+<td><code>ExistenceFilter</code> bit array</td>
+<td>Not carried</td>
+<td>A filter rebuilt from the imported records' own saves — <em>more</em> accurate than the source's, which holds bits for records outside the export</td>
+</tr>
+<tr>
+<td><code>FrequencySketch</code> counters</td>
+<td>Not carried</td>
+<td>Counts of the saves the destination observed; frequencies restart from the import</td>
+</tr>
+</tbody>
+</table>
+<p>The three "not carried" rows are <strong>permanent contracts</strong>, not unfinished work.
+Each declares <code>roundtrip_policy = "partial"</code> with a <code>roundtrip_note</code> saying what
+the destination ends up with, and that note appears in the import report rather
+than the difference passing silently. See
 <a href="../../field-authoring/">Writing Custom Fields</a> if you are deciding how to declare
 this for your own field.</p>
+<h3 id="use-one-on_conflict-for-the-whole-file">Use one <code>on_conflict</code> for the whole file<a class="headerlink" href="#use-one-on_conflict-for-the-whole-file" title="Permanent link">&para;</a></h3>
+<p>Carried state is restored only for records that actually land. Under
+<code>on_conflict="skip"</code> a colliding key is reported as skipped <em>before</em> the save,
+so the destination keeps its own confidence, ledger entry, edges, and access log
+for that record — the export's versions are discarded. Under
+<code>on_conflict="overwrite"</code> the carried structures are replaced wholesale, not
+merged: an imported edge set becomes the record's complete edge set.</p>
+<p>Both are coherent policies; mixing them across re-runs of the same file is not.
+Re-running an interrupted import with a different <code>on_conflict</code> than the first
+pass leaves some records carrying source state and others carrying destination
+state, with nothing in the report distinguishing them. Pick one and keep it.</p>
 <p>Async twins (<code>async_export_records</code> / <code>async_import_records</code>) are not part of this
 API; the driver is a synchronous Python function you call from your own script or an
 async wrapper. A CLI front-end is available — see
