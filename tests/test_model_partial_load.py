@@ -122,7 +122,9 @@ def test_idle_seconds_missing_key_returns_none():
     assert result is None
 
 
-def test_idle_seconds_sends_the_lowercase_idletime_subcommand(widget, monkeypatch):
+def test_idle_seconds_sends_the_lowercase_idletime_subcommand(
+    widget, monkeypatch, assert_captured
+):
     """``OBJECT idletime`` -- lowercase, exactly as the recipe sent it.
 
     The subcommand string goes on the wire verbatim, so its case is a real
@@ -141,10 +143,12 @@ def test_idle_seconds_sends_the_lowercase_idletime_subcommand(widget, monkeypatc
     monkeypatch.setattr(popoto.POPOTO_REDIS_DB, "object", spy)
     Widget.idle_seconds(redis_key=widget.db_key.redis_key)
 
-    assert seen == ["idletime"], f"expected lowercase 'idletime', got {seen}"
+    assert_captured(seen, ["idletime"])
 
 
-def test_partial_load_apis_follow_a_rebound_global_client(monkeypatch, widget):
+def test_partial_load_apis_follow_a_rebound_global_client(
+    monkeypatch, widget, assert_captured
+):
     """``idle_seconds``/``load_fields``/``load_raw_hash`` read the client per call.
 
     Same contract as ``test_store_follows_a_rebound_global_client`` in
@@ -176,4 +180,4 @@ def test_partial_load_apis_follow_a_rebound_global_client(monkeypatch, widget):
     Widget.load_fields(redis_key, "name")
     Widget.load_raw_hash(redis_key)
 
-    assert seen == ["OBJECT", "HGET", "HGETALL"]
+    assert_captured(seen, ["OBJECT", "HGET", "HGETALL"])
