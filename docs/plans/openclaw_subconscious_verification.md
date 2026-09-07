@@ -561,27 +561,166 @@ process per event with no shared mutable state; the Python side is unchanged.
 
 ## Update System
 
-_placeholder_
+No update-system changes. Popoto is a library installed from PyPI; the OpenClaw
+plugin is operator-installed source under `plugins/`, exactly like
+`plugins/hermes/handler.py` and `plugins/claude-code/hooks/hooks.json`. Nothing
+is deployed or propagated.
 
 ## Agent Integration
 
-_placeholder_
+No new MCP surface. The `popoto-memory` executable and its `hook` subcommand
+already exist and are already how the other three harnesses reach the memory
+path; this plan adds a fourth caller of an unchanged entry point. The MCP tools
+(`memory_search`, `memory_save`, `memory_feedback`, `memory_status`) stay exactly
+as they are — the discretionary half is unaffected, and OpenClaw keeps it
+alongside the new automatic half.
 
 ## Documentation
 
-_placeholder_
+### Feature Documentation
+
+- [ ] `docs/features/harness-integration.md` — move OpenClaw's capability row
+      from `no, plugin required` to `yes (before_prompt_build)` /
+      `yes (llm_output)`, and update Setup. **Separately**, move the verification
+      row from `vendor documentation only` to a live-capture statement naming the
+      OpenClaw version — these two tables are deliberately independent and the
+      second only moves if the shipped plugin's own capture succeeds.
+
+### External Documentation Site
+
+- [ ] `docs/guides/harness-openclaw.md` — replace the instructed-memory lead,
+      add the plugin install path, and add a troubleshooting section covering the
+      three operator gates from spike-6 with a positive verification command.
+- [ ] `mkdocs build --strict` passes (any new page must be reachable from the
+      nav).
+
+### Inline Documentation
+
+- [ ] `src/popoto/integrations/hooks.py` — correct the `turn_id` docstring
+      (currently: "Hermes and OpenClaw send neither"). Hermes still does not;
+      OpenClaw does, via `ctx.runId`. State how it is obtained, since it comes
+      from the hook's second argument rather than the event.
+- [ ] `plugins/openclaw/README.md` — currently explains why the automatic half is
+      missing. Rewrite: it is no longer missing, and the "should be reachable"
+      caveat is resolved by a named, dated capture.
+- [ ] `tests/fixtures/harness_payloads/README.md` — the OpenClaw provenance rows.
+- [ ] The new plugin's entry file — comment the two non-obvious lines: the
+      `assistantTexts` join, and why `turn_id` comes from `ctx` and not `event`.
 
 ## Success Criteria
 
-_placeholder_
+- [ ] A live OpenClaw turn, driven by the **shipped** plugin (not a probe),
+      injects popoto context and captures the turn.
+- [ ] `tests/fixtures/harness_payloads/openclaw_before_prompt_build.json` and
+      `openclaw_llm_output.json` are byte-for-byte what that plugin wrote to
+      stdin, with `_provenance` naming OpenClaw 2026.9.2 and the recapture
+      command.
+- [ ] `TURN_IDS` and `SENDS_A_TURN_ID` in `tests/test_integrations_hooks.py`
+      reflect that OpenClaw sends a per-turn id, and the turn-keyed handoff tests
+      exercise it rather than skipping it.
+- [ ] `src/popoto/integrations/hooks.py` no longer claims OpenClaw sends no turn
+      id.
+- [ ] The three operator gates are documented with a positive verification
+      command.
+- [ ] The capability table's verification column names a live capture — **and is
+      left alone if the live capture with the shipped plugin does not succeed.**
+- [ ] No OpenClaw-specific branch is added to `src/popoto/`.
+- [ ] Tests pass (`/do-test`), narrow scope: `tests/test_integrations_hooks.py`.
+- [ ] Documentation updated (`/do-docs`).
 
 ## Step by Step Tasks
 
-_placeholder_
+### 1. Write the OpenClaw plugin
+
+- **Task ID**: build-plugin
+- **Depends On**: none
+- **Validates**: manual live run (no committed automated test — see Risk 4)
+- **Informed By**: spike-2 (real event shapes), spike-3 (`ctx` carries
+  `sessionId`/`workspaceDir`), spike-4 (subprocess allowed), spike-5 (`ctx.runId`)
+- **Assigned To**: plugin-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Create `plugins/openclaw/popoto-memory-plugin/` with `package.json`,
+  `openclaw.plugin.json`, and `index.js` (ESM, no npm dependencies).
+- Register `before_prompt_build` and `llm_output` via `definePluginEntry`.
+- Build the stdin envelope from **both** handler arguments; join
+  `assistantTexts` with newlines; carry `turn_id` from `ctx.runId`.
+- Shell out to `popoto-memory hook` with an explicit timeout below OpenClaw's
+  15-second handler budget.
+- Wrap both handlers so any failure injects nothing and never fails the turn.
+- Support `POPOTO_HOOK_CAPTURE` (tee stdin to a file) — this is what makes
+  task 2 an honest capture rather than a transcription.
+
+### 2. Capture fixtures from a live turn
+
+- **Task ID**: capture-fixtures
+- **Depends On**: build-plugin
+- **Assigned To**: plugin-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Install the shipped plugin the way the guide will tell a user to, including
+  both operator gates.
+- Run one turn via `openclaw agent --local` (**not** `agent exec` — spike-6
+  gate 3).
+- Commit the two teed envelopes verbatim, adding only `_provenance`.
+- Exercise the failure path once (`POPOTO_MEMORY_BIN` pointed at a nonexistent
+  binary), confirm the turn completes with no injection, and record the output
+  for the PR body.
+
+### 3. Correct the turn-id claims
+
+- **Task ID**: build-turnid
+- **Depends On**: capture-fixtures
+- **Validates**: `tests/test_integrations_hooks.py`
+- **Informed By**: spike-5
+- **Assigned To**: adapter-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Update the `NormalizedEvent.turn_id` docstring in
+  `src/popoto/integrations/hooks.py`.
+- Update `TURN_IDS`, its docstring, and `SENDS_A_TURN_ID` in the test.
+- Add a fixture-variant test asserting an absent `turn_id` still falls back to
+  the session FIFO.
+
+### 4. Documentation
+
+- **Task ID**: document-feature
+- **Depends On**: build-turnid
+- **Assigned To**: harness-documentarian
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Rewrite `docs/guides/harness-openclaw.md` and `plugins/openclaw/README.md`.
+- Move both rows in `docs/features/harness-integration.md`, treating the
+  verification row as gated on task 2 succeeding.
+- Update `tests/fixtures/harness_payloads/README.md`.
+
+### 5. Final validation
+
+- **Task ID**: validate-all
+- **Depends On**: build-plugin, capture-fixtures, build-turnid, document-feature
+- **Assigned To**: lane-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification table.
+- Confirm the verification column moved only on live-capture evidence.
 
 ## Verification
 
-_placeholder_
+| Check | Command | Expected |
+|-------|---------|----------|
+| Adapter tests pass | `POPOTO_TEST_DB=5 ./.venv/bin/python -m pytest tests/test_integrations_hooks.py -q` | exit code 0 |
+| Lint clean | `./.venv/bin/python -m ruff check src/` | exit code 0 |
+| Format clean | `./.venv/bin/python -m black --check src/ tests/` | exit code 0 |
+| Docs build | `./.venv/bin/python -m mkdocs build --strict` | exit code 0 |
+| Fixtures are live-captured | `grep -c "captured-from: the OpenClaw plugin hook reference" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json` | match count == 0 |
+| Fixtures name the version | `grep -l "2026.9.2" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json \| wc -l` | output contains 2 |
+| Turn-id claim corrected | `grep -c "Hermes and OpenClaw send neither" src/popoto/integrations/hooks.py` | match count == 0 |
+| OpenClaw sends a turn id in tests | `grep -c "openclaw" <(sed -n '/^SENDS_A_TURN_ID/,/^"""/p' tests/test_integrations_hooks.py)` | output > 0 |
+| Guide no longer says instructed-only | `grep -c "instructed memory, not subconscious memory" docs/guides/harness-openclaw.md` | match count == 0 |
+| Capability table verification moved | `grep -c "^| OpenClaw | vendor documentation only |" docs/features/harness-integration.md` | match count == 0 |
+| Operator gates documented | `grep -c "allowConversationAccess" docs/guides/harness-openclaw.md` | output > 0 |
+| Anti-criterion: no TypeScript reimplementation of the memory path | `find plugins/openclaw -name '*.ts' -o -name '*.js' \| xargs grep -lc "redis\|zadd\|POPOTO" 2>/dev/null \| wc -l` | output contains 0 |
+| Anti-criterion: no OpenClaw branch in src/ | `grep -rci "openclaw" src/popoto/ --include=*.py \| grep -v ':0$' \| grep -v "integrations/hooks.py"` | exit code 1 |
 
 ## Critique Results
 
@@ -589,4 +728,14 @@ _placeholder_
 
 ## Open Questions
 
-_placeholder_
+1. **Does the verification column move on a capture from *this* machine?** The
+   Claude Code row's precedent is "a live `claude` 2.1.220 run" on a developer
+   machine, so the precedent says yes. Confirming, because this is the exact
+   claim #552 exists to protect.
+2. **Should `plugins/openclaw/openclaw.json.fragment` (MCP) stay as-is?** The
+   plan assumes yes — the automatic and discretionary halves are complementary,
+   not alternatives, and the other three harnesses ship both.
+3. **Is the Hermes turn-id question worth filing now?** It is tagged
+   `[SEPARATE-SLUG #574]` in No-Gos against the mechanism's own issue, but #574
+   is closed. If a fresh issue is wanted, say so and it will be filed rather than
+   pointed at a closed one.
