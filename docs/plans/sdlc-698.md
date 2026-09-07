@@ -293,27 +293,265 @@ getting the semantics named correctly in the docs, not in the code.
 
 ## Solution
 
-_(placeholder)_
+### Key Elements
+
+- **A declared baseline, stored in-place**: each stored cycle entry grows an
+  optional 4th slot holding *the declared amplitude that was in force the last
+  time `on_save` wrote this entry*. It is written by `on_save` only, never by
+  the learning methods, so it always records a declaration and never a learned
+  value.
+- **A three-way merge in `on_save`**: baseline absent → preserve learned;
+  baseline equals declared → preserve learned; baseline differs from declared →
+  **declaration wins**, learned amplitude is reset to the declared value.
+- **A loud reset**: the third branch emits one `logger.info` naming the model,
+  field, period, old declared value, new declared value and the discarded
+  learned amplitude. #679 exists because state was destroyed silently; this
+  change destroys learned state by design and must say so.
+- **Legacy-tolerant reads**: an entry with fewer than 4 slots is a first-class
+  input meaning "baseline unknown", handled by falling through to today's
+  behavior. No migration, no backfill, no version byte.
+- **Transfer consistency**: `import_state` carries the optional 4th slot so an
+  export/import round-trip does not silently strip it.
+
+### Flow
+
+Developer edits `amplitude=` in the model → deploys → next `save()` on any
+record → `on_save` sees `baseline != declared` → **learned amplitude reset to
+the new declared value, one INFO log line** → the record's ranking reflects the
+edit, and future `strengthen_cycle` / `weaken_cycle` calls learn away from the
+new declaration.
+
+Contrast, unchanged: `strengthen_cycle()` → `save()` → `on_save` sees
+`baseline == declared` → **learned amplitude preserved** (#679's behavior, and
+the whole test class that pins it, stays green).
+
+### Technical Approach
+
+- **Storage format**: extend the stored cycle tuple from
+  `[period, amplitude, phase]` to `[period, amplitude, phase, declared_baseline]`.
+  Chosen over a separate `:cycle_baselines` companion hash because spike-1
+  proved the read path ignores the extra slot, so the in-place option costs zero
+  Lua changes, zero new keys, and zero new lifecycle plumbing — while a second
+  hash would need creating, deleting (`on_delete`), partition-key derivation,
+  export/import handling, and its own FIFO-alignment story with the entry it
+  describes. Keeping the baseline physically adjacent to the amplitude it
+  describes also makes FIFO pairing under duplicate periods automatic instead of
+  a second thing to keep in step.
+- **Merge is FIFO-by-period, exactly as today**: the existing `learned` dict
+  becomes a dict of `(amplitude, baseline)` pairs (or a parallel `baselines`
+  dict popped in lockstep). Whichever shape is chosen, the pop for amplitude and
+  the pop for baseline must be a single decision — never two independent
+  `.pop(0)` calls that could drift under a malformed payload.
+- **Comparison is exact float equality against the *declared* value**, not a
+  tolerance. Both sides are the same Python float taken from the same
+  `field.cycles` literal on a round-trip through msgpack, which preserves IEEE
+  doubles exactly. A tolerance would silently swallow small deliberate edits.
+- **The corrupt-payload fallback is unchanged in spirit and must stay loud**:
+  the existing `try/except` around decode+normalize (`:570-586`) discards the
+  partial merge and logs. The baselines dict must be cleared on that same path,
+  for the same reason — a half-read payload must not contribute a baseline to
+  some cycles and not others.
+- **`field.cycles` mutation in tests**: the #679 suite changes the declaration
+  by assigning `field.cycles` on the field instance and restoring it in a
+  `finally`. New tests follow that established pattern rather than defining new
+  model classes per scenario.
+- **Integration point with `_adjust_cycle_amplitudes`**: none required. Spike-2
+  confirmed it mutates slot 1 in place and repacks, so slot 3 survives. Do not
+  "helpfully" teach it about the baseline — if it ever writes slot 3, the
+  baseline stops meaning "the declaration" and the whole mechanism collapses
+  back into the two-value ambiguity this plan exists to remove.
+- **Pipeline caveat unchanged**: `on_save` reads directly from Redis while
+  `_adjust_cycle_amplitudes` may write through a pipeline. The existing docstring
+  note ("Queue `save()` first when sharing one pipeline") still applies verbatim
+  and is not in scope to fix.
 
 ## Failure Path Test Strategy
 
-_(placeholder)_
+### Exception Handling Coverage
+- [x] The one exception handler in scope is the decode/normalize `try/except
+  Exception` at `cyclic_decay_field.py:570-586`. It is **not** silent — it
+  `logger.warning`s and falls back to declared amplitudes, and
+  `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_corrupt_stored_entry_falls_back_to_declared`
+  already asserts the log via `caplog`. This change widens the guarded region to
+  cover baseline extraction; the test must be extended to also assert the
+  baseline dict was cleared (i.e. that the post-fallback write records the
+  declared amplitude as the new baseline), so the widened handler has observable
+  cover rather than inheriting the old assertion.
+- [x] The new reset branch is itself a logging path, and its `logger.info` is
+  asserted with `caplog` — an unlogged reset is a test failure, not a style nit.
+
+### Empty/Invalid Input Handling
+- [x] **Entry shorter than 4 slots** (legacy) — documented and tested:
+  baseline is `None`, behavior degrades to #679's.
+- [x] **Entry with a non-numeric 4th slot** (hand-edited or foreign writer) —
+  must be treated as "baseline unknown" (same as absent), not raise out of
+  `save()`. Tested by writing a raw payload with a string in slot 3.
+- [x] **`cycles=[]` on the field** — the `hdel` branch (`:608-610`) is
+  untouched; the existing TC6 test covers it and must stay green.
+- [x] **Amplitude learned to `0.0` by `weaken_cycle`** — the truth test in the
+  merge is on the bucket list, not on the amplitude value (`:596`), so a learned
+  `0.0` is still preserved when the declaration has not changed. This is
+  consequence 1 of the #687 accept and is explicitly *not* being reverted; it
+  needs a test asserting it survives the new code path.
+- [x] Declared amplitude of `0.0` — a legal declaration (`__init__` rejects only
+  `< 0`). `baseline == 0.0` must compare equal and preserve learning, not be
+  mistaken for a falsy "no baseline". **This is the sharpest trap in the change**
+  and gets its own test.
+
+### Error State Rendering
+- [x] No user-visible rendering surface — popoto is a library. The
+  "user-visible" channel here is the logger, covered above.
 
 ## Test Impact
 
-_(placeholder)_
+- [ ] `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_cycle_added_to_declaration_uses_declared_amplitude`
+  — **UPDATE**. It strengthens DAILY to `6.0`, then swaps the declaration to
+  `[(DAILY, 2.0, 0), (WEEKLY, 9.0, 0)]` and asserts DAILY stays `6.0`. Under the
+  new rule DAILY's declared value is *unchanged* (`2.0` → `2.0`), so the
+  assertion still holds — but only because the declaration for that period did
+  not move. The test must be updated to say so explicitly (its point is the
+  *added* WEEKLY cycle), otherwise it reads as pinning the behavior this plan
+  changes.
+- [ ] `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_phase_refreshes_from_declaration_while_amplitude_persists`
+  — **UPDATE**, same reason: it swaps `field.cycles` to
+  `[(DAILY, 2.0, 777)]`, keeping amplitude at `2.0`. Still passes; add a comment
+  pinning that the amplitude is deliberately held constant so the test isolates
+  `phase`.
+- [ ] `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_cycle_removed_from_declaration_is_dropped`
+  — **UPDATE**, same shape (declared amplitude held at `2.0`).
+- [ ] `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_corrupt_stored_entry_falls_back_to_declared`
+  — **UPDATE**: extend to assert the baseline is (re)recorded as the declared
+  amplitude after the fallback.
+- [ ] `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_duplicate_periods_pair_fifo_and_keep_order`
+  — **UPDATE**: extend the assertions to the 4th slot, so FIFO baseline pairing
+  under duplicate periods is pinned, not incidental.
+- [ ] `tests/test_cyclic_decay_field.py` helper `_read_cycles` — **UPDATE**
+  (or leave and add a sibling): several existing assertions index `c[1]`/`c[2]`
+  and are arity-agnostic already; any that assert on the whole list
+  (`assert stored == [[...]]`) must be found and widened.
+- [ ] `tests/test_transfer_fidelity_fields.py` (cyclic round-trip, ~line 505)
+  — **UPDATE**: assert the baseline slot survives export→import, which is the
+  regression cover for spike-2's truncation finding.
+- [ ] `tests/test_cyclic_subclass_companion_keys.py` — **no change expected**
+  (key derivation only, unaffected by payload arity). Listed so the builder
+  confirms rather than assumes.
+- [ ] `tests/test_validity_field.py::TestCyclicDecayGatingGap` and the
+  `DECAY_SCORE_LUA` numkeys guard — **no change expected**; the Lua is not
+  edited and numkeys stays 4. Listed because `CLAUDE.md` flags this file as one
+  that scans *source text*, so a builder must confirm it is unaffected rather
+  than discover it in CI.
+
+New tests (all in `tests/test_cyclic_decay_field.py`, a new class
+`TestDeclaredAmplitudeOverridesLearned`):
+
+- Edited declaration resets a learned amplitude (the defect).
+- Edited declaration resets a learned `0.0`.
+- Unedited declaration preserves a learned amplitude (#679 unregressed).
+- Declared `0.0` baseline compares equal and preserves learning.
+- Legacy 3-element entry preserves learning **and** acquires a baseline.
+- Non-numeric 4th slot is treated as absent, without raising.
+- The reset emits an INFO log naming both values.
+- Duplicate periods reset independently and in FIFO order.
+- `strengthen_cycle` after a reset learns from the *new* declared value.
 
 ## Rabbit Holes
 
-_(placeholder)_
+- **A generic "declared vs learned" framework for every field.**
+  `ConfidenceField`, `DecayingSortedField.base_score_field` and the pressure
+  `rate` all have declared-vs-stored surfaces. Solving them together is a
+  redesign, not a bug fix. Fix `CyclicDecayField`'s amplitude only.
+- **A schema/version byte on the cycles payload.** Tempting for "future"
+  format changes; unnecessary here because arity *is* the discriminator and
+  spike-1 proved the reader tolerates both. Adding a version byte would require
+  a real migration, which the in-place approach specifically avoids.
+- **Backfilling baselines into existing records.** A backfill would have to
+  invent a baseline, and the only value it could invent is the current
+  declaration — which is exactly what the next `save()` records anyway, for free
+  and without a script that walks every cycles hash in the database.
+- **Finishing the #655 accessor conversion in this file.** `CLAUDE.md` records
+  that `fields/cyclic_decay_field.py` is one of two files deliberately held back
+  from the #655 sweep, with a dedicated follow-up owning it. This plan edits
+  `on_save` and will touch lines near a `POPOTO_REDIS_DB` use; it must **not**
+  opportunistically convert the file's remaining call sites, which would collide
+  with that follow-up. Use `get_REDIS_DB()` for any *new* call site (the
+  existing read at `:562` already does), and leave the rest alone.
+- **Fixing the same-pipeline ordering caveat.** Documented at
+  `cyclic_decay_field.py:533-536`; genuinely separate.
+- **Adding a "reset to declared" public method.** The docs already teach the
+  recovery (delete the member's hash field, re-save). A new API is a feature.
 
 ## Risks
 
-_(placeholder)_
+### Risk 1: The reset destroys learned state that a user wanted
+**Impact:** A developer who touches `amplitude=` for an unrelated reason (a
+refactor, a constant rename, a formatting change that alters a float literal)
+wipes every record's accumulated learning for that period, irreversibly.
+**Mitigation:** Only an actual *value* change triggers the reset — `2.0` →
+`2.00` is the same float and compares equal. The reset logs at INFO with both
+values and the discarded amplitude, so the event is attributable after the fact.
+The docs section gains an explicit warning that editing a declared amplitude is
+a destructive act on learned state. Open Question 1 asks whether proportional
+rescale should replace outright reset; if the answer is yes, this risk mostly
+evaporates.
+
+### Risk 2: The first save after upgrade silently swallows a simultaneous edit
+**Impact:** A developer who upgrades popoto *and* edits `amplitude=` in the same
+deploy gets no reset — the legacy entry has no baseline, so the first save
+adopts the new declaration as the baseline and preserves the learned value. The
+edit appears to do nothing, exactly the symptom this issue reports.
+**Mitigation:** Accepted and documented, not fixed. The alternative — treating
+"no baseline" as "declaration changed" — would reset *every* learned amplitude
+in the database on the first save after upgrade, which is strictly worse. The
+documented remedy is the existing one: delete the member's cycles entry and
+re-save. Called out in the docs and in the CHANGELOG entry.
+
+### Risk 3: A stale in-process `field.cycles` makes the baseline oscillate
+**Impact:** If two processes run different code versions during a rolling
+deploy, each save flips the baseline between the old and new declaration, and
+every flip resets the learned amplitude. Learning cannot accumulate until the
+deploy settles.
+**Mitigation:** Bounded and self-healing — it ends when the rollout does, and
+the INFO logs make it visible. Documented as a known interaction. This is
+inherent to "declaration wins" under a heterogeneous fleet and is not fixable
+without a coordination mechanism popoto does not have.
+
+### Risk 4: Payload growth
+**Impact:** Each stored cycle gains one msgpack float (~9 bytes) per cycle per
+member.
+**Mitigation:** Negligible at the 20k-record scale target; no mitigation
+planned. Noted so it is not raised as an unexamined objection at review.
 
 ## Race Conditions
 
-_(placeholder)_
+### Race 1: Read-modify-write on the cycles entry is not atomic
+**Location:** `src/popoto/fields/cyclic_decay_field.py:560-610` (`on_save`
+`hget` → merge → `hset`), against `src/popoto/models/base.py:2734-2762`
+(`_adjust_cycle_amplitudes` `hget` → multiply → `hset`).
+**Trigger:** A concurrent `save()` and `strengthen_cycle()` on the same member.
+Either can read before the other writes, and the later `hset` wins wholesale.
+**Data prerequisite:** the member's cycles entry must exist for either to have
+anything to merge.
+**State prerequisite:** none beyond that.
+**Mitigation:** **Pre-existing and explicitly not addressed here.** This race
+ships today, unchanged by #687 and unchanged by this plan — both operations were
+already non-atomic read-modify-writes on the same hash field. Adding a slot does
+not widen the window, does not add a second key that could tear independently
+(the whole reason the baseline goes *inside* the entry), and does not make a lost
+update worse: a lost baseline update means one missed reset, recovered on the
+next save. Making this atomic means moving the merge into Lua, which is a
+separate, larger change (see No-Gos). The builder must not "fix" it opportunistically.
+
+### Race 2: `on_save` reads directly while an adjustment writes through a pipeline
+**Location:** `cyclic_decay_field.py:533-536` (documented), `:562` (direct read)
+vs `base.py:2755-2757` (pipeline write).
+**Trigger:** queueing `strengthen_cycle(pipeline=p)` before `save()` on the same
+pipeline `p`.
+**Data prerequisite:** the adjustment's `hset` must still be queued, unexecuted.
+**State prerequisite:** a shared `redis.client.Pipeline`.
+**Mitigation:** Already documented in the `on_save` docstring ("Queue `save()`
+first when sharing one pipeline"), unchanged by this plan. The baseline is read
+on the same `hget` as the amplitude, so it cannot desynchronize from it — the
+two are always the same vintage.
 
 ## No-Gos (Out of Scope)
 
