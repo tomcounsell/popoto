@@ -167,6 +167,20 @@ same in both scripts (`ARGV[5]` = strength, `ARGV[6]` = `c0`); only the KEYS ind
 Do not "unify" the two scripts on `KEYS[2]`: reusing it here would `cmsgpack.unpack` the cycles array
 as a confidence dict, which corrupts scores silently instead of raising.
 
+That rule is now enforced by the class boundary rather than by this comment.
+`CyclicDecayField.rank_decayed()` overrides
+[`DecayingSortedField.rank_decayed()`](decaying-sorted-field.md#ranking-a-partition-zset-directly)
+and builds `[zset, zset + ":cycles", zset + ":pressure", confidence_hash]` itself,
+so the base implementation's layout never reaches this fork's script and vice
+versa. Callers pass the same arguments to either field and let method resolution
+pick the layout.
+
+The override accepts `validity=` and **ignores** it. `CYCLIC_DECAY_LUA` has no
+validity gate — a deliberate omission documented under
+[Known limitations](validity-and-supersession.md#known-limitations) — so a caller
+that gates a mixed set of fields passes the gate args unconditionally instead of
+branching on field type, and this field drops them.
+
 ### Redis structure
 
 A fourth structure joins the three above when modulation is active — the `ConfidenceField` `:data`

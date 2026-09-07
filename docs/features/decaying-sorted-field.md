@@ -158,6 +158,34 @@ field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, 
 
 `members()` returns Redis keys as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
 
+### Ranking a partition ZSET directly
+
+`rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
+
+```python
+field = Memory._meta.fields["relevance"]
+zkey = field.get_sortedset_db_key(Memory, "relevance").redis_key
+field.rank_decayed(zkey, now=time.time())                     # every member, one ZCARD + one EVAL
+field.rank_decayed(zkey, now=time.time(), n=10)               # top 10, no ZCARD
+field.rank_decayed(
+    zkey,
+    now=time.time(),
+    confidence=(conf_data_key, strength, c0),                 # from confidence_modulation_args()
+    validity=(invalid_at_key, valid_from_key, as_of),         # from validity_gate_args()
+)
+```
+
+`n=None` (the default) asks for every member's score, which costs one `ZCARD` first; an empty ZSET returns `[]` without issuing the `EVAL` at all. Passing an explicit `n` skips the `ZCARD`. Omitting `confidence` or `validity` disables that join exactly as `MODULATION_DISABLED` / `VALIDITY_GATE_DISABLED` do — same scores, same script, same bytes on the wire.
+
+!!! note "The **field** builds the `KEYS` array, deliberately"
+    `rank_decayed` is polymorphic: `CyclicDecayField` overrides it with its own,
+    mutually incompatible layout (confidence at `KEYS[4]`, not `KEYS[2]`). Each
+    implementation lives in the class that owns its script, so neither body
+    contains an index it must not use, and a caller holding both fields never
+    has to know which is which — dispatch is ordinary method resolution. Callers
+    that assemble the `KEYS` array themselves reintroduce exactly the coupling
+    the "do not unify" comments in both scripts warn about.
+
 ## Confidence-Modulated Decay
 
 `base_score_field` scales the curve's **magnitude**, which never changes relative order: a demoted
