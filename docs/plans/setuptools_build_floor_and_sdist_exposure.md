@@ -262,36 +262,78 @@ source.
 Add a comment recording *why* the floor is 83 specifically, so the next person
 to see `>=83` does not have to re-derive it from an advisory ID.
 
+One honest caveat on that exemption, raised in critique: it is a *first-of-its-
+kind* change. No prior PR has touched `[build-system] requires`, and CLAUDE.md's
+Dependency Updates section — which is where the floor-propagation doctrine
+lives — never mentions the build-system table at all. The argument above rests
+on pip/`build` isolation mechanics, which are correct, not on repo precedent,
+which does not exist either way. A reviewer should read it as a fresh argument
+being made rather than an established practice being followed.
+
 ### 2. Assert what the sdist contains, between build and publish
 
-A new `scripts/check_sdist_contents.py` takes a path to a `.tar.gz` and fails
-non-zero when the tarball contains anything unexpected. Four rules, each
-motivated by something this recon actually found rather than by imagination:
+A new `scripts/check_sdist_contents.py` inspects a built `.tar.gz` — reading tar
+*metadata* only, never extracting — and reports on five rules. Critique split
+these into two severities, and the split is the load-bearing part of the design:
+
+**Hard-fail rules (non-zero exit, release blocked):**
 
 | Rule | Why |
 |---|---|
-| every member path is ASCII | directly forecloses the advisory's precondition 2, permanently, on the artifact itself |
+| every member path is ASCII | directly forecloses the advisory's precondition 2, permanently, on the artifact itself. **This is the only rule that is advisory remediation**; the rest are general hygiene shipped alongside it |
 | no dotfiles at any depth | `.env`, `.git`, `.github`, credentials — the leak shapes that matter |
-| top-level entries within an allowlist | catches a stray directory the defaults or a future `MANIFEST.in` pulls in |
-| no absolute paths and no `..` members | ordinary tarball hygiene; cheap to assert while we are here |
+| no absolute paths and no `..` members | ordinary tarball hygiene |
+| no symlink or hardlink members | a `linkname` can point outside the extraction root or at an absolute path while the member's own `name` is clean ASCII with no `..` — invisible to every path-string rule above. `tarfile.TarInfo.issym()`/`islnk()` answer this from metadata alone |
 
-The allowlist is the six entries the 1.9.0 sdist actually has (`LICENSE`,
+**Warning-only rule (prints, exits 0):**
+
+| Rule | Why warn, not fail |
+|---|---|
+| top-level entries within an allowlist | a legitimate future packaging change — one new top-level file — would otherwise hard-block `publish` under release pressure, and a stray directory is not the normalization exploit. It warns loudly with the unexpected entry named, which is enough to make an unintended change visible without making an intended one an emergency |
+
+The allowlist is the seven entries the 1.9.0 sdist actually has (`LICENSE`,
 `PKG-INFO`, `README.md`, `pyproject.toml`, `setup.cfg`, plus `src/` and
-`tests/`). Membership changes will fail the release and require someone to say
-so deliberately — which is the point.
+`tests/`), maintained by hand. That deserves a direct answer, because Prior Art
+cites CLAUDE.md's criticism of `check_lock_imports.py` for exactly this shape.
+The two cases differ: `check_lock_imports.py` *could* derive its list from
+`[project.optional-dependencies]`, which already declares the truth it is
+checking, and simply does not. Here there is no machine-readable declaration of
+intended sdist membership to parse against — `MANIFEST.in` would be that
+declaration, and No-Gos rules one out for good reason (adding it creates the
+advisory's precondition 1). The hand-list is the source of truth by design, not
+a shortcut around one, which is also why it warns rather than fails.
+
+**Invocation, pinned here so it is not re-derived during the build.** The step
+runs `python scripts/check_sdist_contents.py dist/*.tar.gz`. The script resolves
+its argument list itself and **must fail on anything other than exactly one
+match** — zero matches (a build-layout change, a renamed output directory) must
+be a hard error, never a vacuous pass, and multiple matches (a stale artifact
+from a prior run) must not be silently narrowed to one. `python -m build` writes
+a version-stamped filename that changes every release, so this is the one part
+of the wiring with no stable literal to check against.
 
 Wire it into `release.yml` as one step between `python -m build` and the publish
 action. This is the only place in the pipeline where a real sdist exists, and
 failing there means the bad artifact never reaches PyPI.
+
+**What a green check does not prove**, in CLAUDE.md's #669 framing: it says the
+tarball's *member list* is clean. It says nothing about whether the packaged
+code works, whether the right code was packaged, or whether the wheel — which is
+what almost every consumer installs, and which this check does not inspect — is
+correct. Read it as "no unexpected file reached the sdist", never as "the
+release is good".
 
 ### 3. Keep the wiring from being silently deleted
 
 Two tests, both fast and neither building anything:
 
 - unit tests for the script's rules, driven against synthetic tarballs
-  constructed in a `tmp_path` — a non-ASCII member, a dotfile, an unexpected
-  top-level directory, a `..` member, and a clean control. No `python -m build`,
-  no network.
+  constructed in a `tmp_path` — a non-ASCII member, a dotfile, a `..` member, a
+  symlink member, a clean control, and one asserting the top-level allowlist
+  *warns without failing* (the severity split is the thing most likely to be
+  "simplified" back into a hard failure by a later editor, so it needs a test
+  naming it). Plus the argument-resolution cases: zero matches and two matches
+  must both exit non-zero. No `python -m build`, no network.
 - a test asserting `release.yml` still invokes the script between the build and
   publish steps, in the shape of `tests/test_ci_workflow_redis_url.py`. A check
   wired into a workflow that anyone can delete in a one-line diff is not a
@@ -310,7 +352,7 @@ Two tests, both fast and neither building anything:
   a genuinely separate one, and one with consumer-visible consequences. It gets
   an issue, not a hitchhiking commit.
 - **Generalizing the check into a reusable packaging-policy framework.** The
-  appetite is Small. One script, four rules, one workflow step.
+  appetite is Small. One script, five rules, one workflow step.
 - **Pinning setuptools exactly, or adding an upper bound.** Neither is supported
   by the evidence, and an upper bound would create a maintenance obligation with
   no offsetting benefit.
@@ -335,12 +377,21 @@ Two tests, both fast and neither building anything:
 ## Risks
 
 - **The check is written against a single observed artifact.** An allowlist
-  derived from 1.9.0 will fail a future release that legitimately adds a
-  top-level file. That is the intended behavior — it fails loudly at release
-  time with an obvious one-line remedy — but it must be *documented* in the
-  script's error message, or someone mid-release will read it as a bug in the
-  check. Mitigation: the failure message names the file, the allowlist, and the
-  line to edit.
+  derived from 1.9.0 would fire on a future release that legitimately adds a
+  top-level file. Critique judged that unacceptable as a release-blocking
+  condition, and the design now *warns* on it instead: the message names the
+  unexpected entry, names the allowlist, and names the line to edit, and the
+  release proceeds. The residual risk inverts — a warning can be scrolled past
+  in a release log — and it is the right trade, because the failure mode of the
+  warning is "someone misses a cosmetic packaging change" while the failure mode
+  of the hard-fail was "a legitimate release is blocked at the publish step".
+  The four hard-fail rules all stay hard, because none of them can fire on a
+  legitimate change.
+- **The severity split is fragile to well-meaning simplification.** A later
+  editor tidying the script will see one rule behaving differently from the
+  other four and be tempted to make it uniform. Mitigation: a unit test asserts
+  the allowlist warns-and-exits-0 specifically, so collapsing the split breaks a
+  test that names the intent.
 - **`release.yml` cannot be tested end-to-end without cutting a release.** The
   step is verified by reading the workflow and by running the script by hand
   against the real 1.9.0 tarball — which is a genuine test of the script,
@@ -356,14 +407,20 @@ Two tests, both fast and neither building anything:
 
 ## Success Criteria
 
-- `pyproject.toml` declares `setuptools>=83` with a comment naming the advisory
-  and why 83 specifically.
-- `scripts/check_sdist_contents.py` exits 0 against the real published
-  `popoto-1.9.0.tar.gz` and non-zero against each of the four synthetic
-  violations.
+- **(AC2)** `pyproject.toml` declares `setuptools>=83` with a comment naming the
+  advisory and why 83 specifically.
+- **(AC4)** `scripts/check_sdist_contents.py` exits 0 against the real published
+  `popoto-1.9.0.tar.gz` and non-zero against each of the four hard-fail
+  violations (non-ASCII member, dotfile, `..` member, symlink member) and
+  against both argument-resolution failures (zero matches, two matches).
+- The top-level-allowlist rule prints its warning and exits **0** on an
+  unexpected entry — asserted by its own test, not merely intended.
 - `release.yml` runs the script after `python -m build` and before the publish
   action; the publish step is unreachable when the check fails.
 - New tests pass: the script's unit tests and the workflow-wiring test.
+- The PR body states which rule is advisory remediation (ASCII) and which are
+  general hygiene shipped alongside it, so the scope decision is visible rather
+  than bundled.
 - `ruff check src/` exits 0; `black --check src/ tests/` passes (the new script
   lives under `scripts/`, which is not ruff-gated, but is kept black-clean by
   hand for consistency).
@@ -374,21 +431,22 @@ Two tests, both fast and neither building anything:
 
 ## Step by Step Tasks
 
-1. Raise `[build-system] requires` to `setuptools>=83` with an explanatory
-   comment.
-2. Write `scripts/check_sdist_contents.py`: four rules, a clear failure message
-   naming the offending member and the remedy, a `--help` that explains what it
-   is for.
-3. Run it against the real `popoto-1.9.0.tar.gz` downloaded from PyPI; confirm
-   exit 0.
-4. Add the step to `.github/workflows/release.yml` between build and publish.
-5. Write `tests/test_sdist_contents.py`: synthetic-tarball unit tests for each
-   rule plus a clean control.
-6. Extend it (or add alongside) the workflow-wiring assertion, modeled on
-   `tests/test_ci_workflow_redis_url.py`.
-7. Verify `uv lock --check` and `examples/` lock consistency are unaffected.
-8. Run the narrow gates: the new tests, `ruff`, `black`, the mypy ratchet.
-9. Document the outcome — see Documentation.
+Each task carries the command whose exit status is its completion test. Where a
+task's validation is a human reading something, it says so rather than leaving
+the column blank.
+
+| # | Task | Validation |
+|---|------|------------|
+| 1 | Raise `[build-system] requires` to `setuptools>=83` with an explanatory comment | `grep -q 'setuptools>=83' pyproject.toml` |
+| 2 | Write `scripts/check_sdist_contents.py`: four hard-fail rules, one warning rule, exactly-one-argument resolution, failure messages naming the offending member and the remedy, `--help` explaining what it is for | `python scripts/check_sdist_contents.py --help` exits 0 and names all five rules |
+| 3 | Run it against the real `popoto-1.9.0.tar.gz` from PyPI | `python scripts/check_sdist_contents.py <path>; test $? -eq 0` |
+| 4 | Add the step to `.github/workflows/release.yml` between build and publish | `python -c "import pathlib,sys; t=pathlib.Path('.github/workflows/release.yml').read_text(); b=t.index('python -m build'); c=t.index('check_sdist_contents'); p=t.index('gh-action-pypi-publish'); sys.exit(0 if b<c<p else 1)"` |
+| 5 | Write `tests/test_sdist_contents.py`: synthetic-tarball tests for each hard-fail rule, the warn-not-fail allowlist case, both argument-resolution failures, and a clean control | `pytest tests/test_sdist_contents.py -q` |
+| 6 | Add the workflow-wiring assertion, modeled on `tests/test_ci_workflow_redis_url.py` — same file or alongside | `pytest tests/test_sdist_contents.py -q -k workflow` |
+| 7 | Verify the lockfiles are unaffected | `uv lock --check` in the repo root and in `examples/`, both exit 0 |
+| 8 | Run the narrow gates | `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` (baseline read at measurement time) |
+| 9 | Document the outcome in CLAUDE.md — see Documentation | human read of the diff; the durable requirement is that AC1's answer (exposure nil, three absent preconditions) appears in the repository, checkable with `grep -q 'MANIFEST.in' CLAUDE.md` |
+| 10 | File the follow-up issue for the `tests/`-without-`conftest.py` sdist wart | `gh issue list --search "conftest sdist"` returns it |
 
 ## Documentation
 
