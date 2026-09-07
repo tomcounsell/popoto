@@ -15,7 +15,13 @@ When ``cycles=[]`` and ``pressure_rate=0.0``, behavior is identical to
 DecayingSortedField (the Lua script short-circuits on nil HGET lookups).
 
 Companion Redis hashes store per-member cycle and pressure data:
-    - ``$CyclicDecayF:{Model}:{field}:{partitions}:cycles`` — msgpack cycle tuples
+    - ``$CyclicDecayF:{Model}:{field}:{partitions}:cycles`` — msgpack cycle
+      tuples, ``[period, amplitude, phase]`` or, once a member has saved under
+      this field (#698), ``[period, amplitude, phase, declared_baseline]``.
+      The optional 4th slot records the declared amplitude in force when the
+      entry was last written, letting ``on_save`` tell "the developer edited
+      the declaration" from "learning diverged from the declaration" — see
+      ``CyclicDecayField.on_save``.
     - ``$CyclicDecayF:{Model}:{field}:{partitions}:pressure`` — msgpack pressure dict
 
 Example:
@@ -329,6 +335,26 @@ class CyclicDecayField(DecayingSortedField):
         still have to land on top of ``on_save``'s, and inverting the order
         would still silently discard both the imported amplitudes and the
         accumulated pressure age.
+
+        **Cycle entries deliberately do not carry the declared-baseline slot
+        (#698).** A stored cycle entry may have a 4th element,
+        ``declared_baseline`` — the declared amplitude in force in the
+        deployment that *wrote* the entry (see ``on_save``). That is
+        deployment-local by definition, so this method rebuilds every cycle as
+        a 3-element ``[period, amplitude, phase]`` and never carries slot 3
+        through, even when the exported state has it. Carrying the exporter's
+        baseline into a target whose ``field.cycles`` declares a different
+        amplitude for that period would make the first post-import ``save()``
+        see ``baseline != declared`` and fire a reset — destroying exactly the
+        learned amplitude ``roundtrip_policy = "carry"`` exists to preserve,
+        with no import-time signal. Dropping it instead means the imported
+        entry is "baseline unknown": it preserves the learned amplitude
+        unconditionally and acquires a fresh baseline, from the *importing*
+        deployment's declaration, on its next ordinary save. The cost is one
+        missed detection window if the declaration was also edited between
+        export and that first post-import save — the same trade already
+        accepted for a pre-upgrade record (see ``on_save``'s Risk 2 in
+        docs/plans/sdlc-698.md) and self-healing the same way.
         """
         if not state:
             return None
@@ -346,6 +372,9 @@ class CyclicDecayField(DecayingSortedField):
                 cycle = list(cycle)
                 period, amplitude = cycle[0], cycle[1]
                 phase = cycle[2] if len(cycle) > 2 else 0
+                # Deliberately 3-element, not widened to carry a 4th slot
+                # (#698 / see the docstring above): the declared baseline is
+                # deployment-local and must never come from the exporter.
                 normalized.append([period, amplitude, phase])
             POPOTO_REDIS_DB.hset(
                 field.get_cycles_hash_key(model_instance, field_name),
@@ -517,14 +546,42 @@ class CyclicDecayField(DecayingSortedField):
         refreshed from the field; learned state is preserved.**
 
         For cycles, ``period`` and ``phase`` are declarative and re-read from
-        ``field.cycles`` on every save, while ``amplitude`` is learned (mutated
-        by ``strengthen_cycle`` / ``weaken_cycle``) and carried over from the
-        stored entry when one exists. Stored cycles are matched to declared
-        cycles by period, FIFO within duplicate periods; a declared period with
-        nothing stored takes the declared amplitude, and a stored period no
-        longer declared is dropped. Before #679 this branch overwrote the whole
-        entry with the declared defaults, silently erasing everything the
-        strengthen/weaken calls had accumulated.
+        ``field.cycles`` on every save. ``amplitude`` is learned (mutated by
+        ``strengthen_cycle`` / ``weaken_cycle``) but is now merged with a
+        **three-way rule** rather than a two-way one (#698): each stored entry
+        may carry an optional 4th slot, ``declared_baseline`` — the declared
+        amplitude that was in force the last time ``on_save`` wrote this entry.
+        Comparing the *incoming* declared amplitude against that baseline (not
+        against the learned value) distinguishes "the developer edited the
+        declaration" from "learning diverged from the declaration":
+
+        - baseline absent (a legacy 3-element entry, or a non-numeric slot 3) →
+          "baseline unknown" → preserve the learned amplitude exactly as before
+          #698, and record the declared amplitude as the new baseline.
+        - baseline equals the incoming declared amplitude → the declaration has
+          not moved → preserve the learned amplitude, re-record the same
+          baseline.
+        - baseline differs from the incoming declared amplitude → the developer
+          edited the declaration → **discard the learned amplitude**, adopt the
+          declared value, record it as the new baseline, and emit one
+          ``logger.info`` naming the model, field, member key, period, old
+          baseline, new declared value and the discarded learned amplitude.
+
+        The comparison is exact float equality, never a tolerance — both sides
+        are the same Python float, round-tripped through msgpack, which
+        preserves IEEE doubles exactly. Stored cycles are matched to declared
+        cycles by period, FIFO within duplicate periods, with the amplitude and
+        its baseline popped together as one decision; a declared period with
+        nothing stored takes the declared amplitude (baseline unknown), and a
+        stored period no longer declared is dropped. Before #679 this branch
+        overwrote the whole entry with the declared defaults, silently erasing
+        everything the strengthen/weaken calls had accumulated; #679 then made
+        the merge unconditional the other way, so an edited declaration could
+        never win. #698 adds the missing third input (the baseline) so the
+        merge can tell the two cases apart. A record with no recorded baseline
+        needs two saves to honor an edit made after this change ships: the
+        first save records the baseline, and only an edit made after that save
+        is detected — see the field's module docs / docs/features/cyclic-decay-field.md.
 
         For pressure, ``rate`` is declarative and ``last_resolved`` is learned:
         on first save (no existing entry) the full dict is written with
@@ -557,7 +614,11 @@ class CyclicDecayField(DecayingSortedField):
         #
         # Gated on field.cycles so a pressure-only CyclicDecayField pays no
         # extra round trip — it falls straight through to the hdel branch.
-        learned: dict[Any, list[Any]] = {}
+        # Each bucket entry is an (amplitude, baseline) pair, popped together
+        # as one decision (never two independent .pop(0) calls that could
+        # drift under a malformed payload). baseline is None when slot 3 is
+        # absent or non-numeric — "baseline unknown".
+        learned: dict[Any, list[tuple[Any, Optional[float]]]] = {}
         if field.cycles:
             stored_raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
             if stored_raw:
@@ -566,13 +627,24 @@ class CyclicDecayField(DecayingSortedField):
                 # malformed (an entry whose period slot is itself a list is
                 # unhashable, and would raise TypeError out of save()). Both
                 # failures mean the same thing — the stored state is not
-                # usable — so both take the same fallback.
+                # usable — so both take the same fallback. This also covers
+                # baseline extraction (#698): a half-read payload must not
+                # contribute a baseline to some cycles and not others, so the
+                # bucket is cleared on the same fallback path as the learned
+                # amplitudes.
                 try:
                     stored = msgpack.unpackb(stored_raw, raw=False)
                     if isinstance(stored, (list, tuple)):
                         for entry in stored:
                             if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                                learned.setdefault(entry[0], []).append(entry[1])
+                                baseline = None
+                                if len(entry) >= 4 and isinstance(
+                                    entry[3], (int, float)
+                                ) and not isinstance(entry[3], bool):
+                                    baseline = float(entry[3])
+                                learned.setdefault(entry[0], []).append(
+                                    (entry[1], baseline)
+                                )
                 except Exception:
                     # Mirror export_state's handler: #679 exists because this
                     # state was destroyed silently. Do not add a second mute
@@ -582,21 +654,50 @@ class CyclicDecayField(DecayingSortedField):
                         f"falling back to declared amplitudes for {field_name}"
                     )
                     # Discard any partial merge — a half-read payload must not
-                    # contribute amplitudes to some cycles and not others.
+                    # contribute amplitudes/baselines to some cycles and not
+                    # others.
                     learned = {}
 
-        # Normalize cycles to 3-tuples for storage
+        # Normalize cycles to 4-tuples for storage (#698): a stored entry may
+        # carry an optional declared-baseline slot. Match stored to declared
+        # by period, FIFO within duplicates. The truth test for "has a
+        # learned amplitude" is on the bucket list, not the amplitude value,
+        # so a learned 0.0 from weaken_cycle is preserved rather than reset to
+        # the default.
         normalized_cycles = []
         for cycle in field.cycles:
-            period, amplitude = cycle[0], cycle[1]
+            period, declared_amplitude = cycle[0], cycle[1]
             phase = cycle[2] if len(cycle) > 2 else 0
-            # Match stored to declared by period, FIFO within duplicates. The
-            # truth test is on the list, not the amplitude, so a learned 0.0
-            # from weaken_cycle is preserved rather than reset to the default.
+            amplitude = declared_amplitude
+            new_baseline = declared_amplitude
+
             bucket = learned.get(period)
             if bucket:
-                amplitude = bucket.pop(0)
-            normalized_cycles.append([period, amplitude, phase])
+                learned_amplitude, old_baseline = bucket.pop(0)
+                if old_baseline is None:
+                    # Baseline unknown (legacy entry, or corrupt slot 3):
+                    # preserve today's (#679) behavior and acquire a baseline
+                    # from this save.
+                    amplitude = learned_amplitude
+                elif old_baseline == declared_amplitude:
+                    # Declaration unchanged — learning wins, as #679 intends.
+                    amplitude = learned_amplitude
+                else:
+                    # The developer edited the declared amplitude — the
+                    # declaration wins. The learned amplitude is discarded by
+                    # design (#698); this destroys real state, so it is
+                    # logged loudly.
+                    amplitude = declared_amplitude
+                    logger.info(
+                        f"CyclicDecayField declared amplitude changed for "
+                        f"{model_instance.__class__.__name__}.{field_name} "
+                        f"member={member_key} period={period!r}: "
+                        f"declared baseline {old_baseline!r} -> "
+                        f"{declared_amplitude!r}; discarded learned "
+                        f"amplitude {learned_amplitude!r}"
+                    )
+
+            normalized_cycles.append([period, amplitude, phase, new_baseline])
 
         db = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
