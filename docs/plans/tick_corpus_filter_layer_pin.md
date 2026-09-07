@@ -1,7 +1,7 @@
 ---
 title: Single-layer pin for the tick() semantic corpus filter
 slug: tick_corpus_filter_layer_pin
-status: Planning
+status: Complete
 type: bug
 appetite: Small
 tracking: https://github.com/tomcounsell/popoto/issues/684
