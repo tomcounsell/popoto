@@ -4198,6 +4198,12 @@ the model has one, else the <code>redis_key</code>), <code>tier</code>, <code>im
 <p>Retention is bounded by <code>TOMBSTONE_RETENTION_LIMIT</code> (1000); the oldest age out, so a
 restore is only available while the tombstone is still retained. Archiving happens before
 removal, so a crash between the two steps loses nothing.</p>
+<p>The <code>$TOMB:{Model}:data</code> / <code>$TOMB:{Model}:index</code> keyspace itself is owned by
+<code>popoto.fields.tombstone_store.TombstoneStore</code>, and the eight methods above delegate to
+it. The layout is unchanged and the keys stay deliberately <strong>outside</strong> the model's own
+keyspace, so no query, index scan, or key-set walk can surface a tombstoned record. Use
+the store directly if you want the tombstone keyspace without the policy layer around it;
+<code>Tombstone</code> remains importable from <code>popoto.recipes.memory_lifecycle</code> as the same object.</p>
 <h3 id="custom-policies">Custom policies<a class="headerlink" href="#custom-policies" title="Permanent link">&para;</a></h3>
 <p>Override the default promotion or forget logic at construction time:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">):</span>
