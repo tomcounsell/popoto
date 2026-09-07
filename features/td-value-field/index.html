@@ -12,27 +12,31 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/reference/popoto/integrations/cli/">
+        <link rel="canonical" href="https://popoto.io/features/td-value-field/">
       
       
+        <link rel="prev" href="../confidence-field/">
+      
+      
+        <link rel="next" href="../co-occurrence-field/">
       
       
         
       
       
-      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>popoto.integrations.cli - Popoto Documentation</title>
+        <title>TDValueField - Popoto Documentation</title>
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,9 +55,9 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
-    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -78,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#popotointegrationscli" class="md-skip">
+        <a href="#tdvaluefield" class="md-skip">
           Skip to content
         </a>
       
@@ -92,7 +96,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../../../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+    <a href="../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -112,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              popoto.integrations.cli
+              TDValueField
             
           </span>
         </div>
@@ -225,7 +229,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../../.." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -246,7 +250,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../../guides/agent-memory-quickstart/" class="md-tabs__link">
+        <a href="../../guides/agent-memory-quickstart/" class="md-tabs__link">
           
   
   
@@ -266,7 +270,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../../features/harness-integration/" class="md-tabs__link">
+        <a href="../harness-integration/" class="md-tabs__link">
           
   
   
@@ -282,11 +286,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../../../features/agent-memory/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../agent-memory/" class="md-tabs__link">
           
   
   
@@ -313,7 +319,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../../benchmarks/results/" class="md-tabs__link">
+        <a href="../../benchmarks/results/" class="md-tabs__link">
           
   
   
@@ -343,7 +349,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../../configuration/" class="md-tabs__link">
+        <a href="../../configuration/" class="md-tabs__link">
           
   
   
@@ -364,7 +370,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../../" class="md-tabs__link">
+      <a href="../../reference/" class="md-tabs__link">
         
   
   
@@ -383,7 +389,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../../../style-guide/" class="md-tabs__link">
+      <a href="../../style-guide/" class="md-tabs__link">
         
   
   
@@ -418,7 +424,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../../../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+    <a href="../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -448,7 +454,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../.." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -527,7 +533,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/agent-memory-quickstart/" class="md-nav__link">
+      <a href="../../guides/agent-memory-quickstart/" class="md-nav__link">
         
   
   
@@ -555,7 +561,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/subconscious-memory-recipe/" class="md-nav__link">
+      <a href="../../guides/subconscious-memory-recipe/" class="md-nav__link">
         
   
   
@@ -583,7 +589,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/query-blind-retrieval/" class="md-nav__link">
+      <a href="../../guides/query-blind-retrieval/" class="md-nav__link">
         
   
   
@@ -611,7 +617,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/llm-memory-extraction/" class="md-nav__link">
+      <a href="../llm-memory-extraction/" class="md-nav__link">
         
   
   
@@ -698,7 +704,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/harness-integration/" class="md-nav__link">
+      <a href="../harness-integration/" class="md-nav__link">
         
   
   
@@ -726,7 +732,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/prompt-cache-efficiency/" class="md-nav__link">
+      <a href="../prompt-cache-efficiency/" class="md-nav__link">
         
   
   
@@ -754,7 +760,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/harness-claude-code/" class="md-nav__link">
+      <a href="../../guides/harness-claude-code/" class="md-nav__link">
         
   
   
@@ -782,7 +788,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/harness-codex/" class="md-nav__link">
+      <a href="../../guides/harness-codex/" class="md-nav__link">
         
   
   
@@ -810,7 +816,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/harness-hermes/" class="md-nav__link">
+      <a href="../../guides/harness-hermes/" class="md-nav__link">
         
   
   
@@ -838,7 +844,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/harness-openclaw/" class="md-nav__link">
+      <a href="../../guides/harness-openclaw/" class="md-nav__link">
         
   
   
@@ -870,26 +876,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -907,7 +918,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -925,7 +936,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/agent-memory/" class="md-nav__link">
+      <a href="../agent-memory/" class="md-nav__link">
         
   
   
@@ -950,26 +961,31 @@
                 
   
   
+    
   
   
+  
     
     
     
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" >
         
           
-          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="">
             
   
   
@@ -987,7 +1003,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1005,7 +1021,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/decaying-sorted-field/" class="md-nav__link">
+      <a href="../decaying-sorted-field/" class="md-nav__link">
         
   
   
@@ -1033,7 +1049,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/cyclic-decay-field/" class="md-nav__link">
+      <a href="../cyclic-decay-field/" class="md-nav__link">
         
   
   
@@ -1061,7 +1077,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/confidence-field/" class="md-nav__link">
+      <a href="../confidence-field/" class="md-nav__link">
         
   
   
@@ -1086,10 +1102,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../../../features/td-value-field/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TDValueField
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1105,6 +1148,120 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arguments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-in-memory-attribute-is-not-refreshed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The in-memory attribute is not refreshed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-and-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage and encoding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#valkey-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Valkey compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1117,7 +1274,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/co-occurrence-field/" class="md-nav__link">
+      <a href="../co-occurrence-field/" class="md-nav__link">
         
   
   
@@ -1145,7 +1302,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/existence-filter/" class="md-nav__link">
+      <a href="../existence-filter/" class="md-nav__link">
         
   
   
@@ -1173,7 +1330,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/observation-protocol/" class="md-nav__link">
+      <a href="../observation-protocol/" class="md-nav__link">
         
   
   
@@ -1201,7 +1358,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/validity-and-supersession/" class="md-nav__link">
+      <a href="../validity-and-supersession/" class="md-nav__link">
         
   
   
@@ -1229,7 +1386,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/provenance-journal/" class="md-nav__link">
+      <a href="../provenance-journal/" class="md-nav__link">
         
   
   
@@ -1257,7 +1414,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/auditable-extraction/" class="md-nav__link">
+      <a href="../auditable-extraction/" class="md-nav__link">
         
   
   
@@ -1285,7 +1442,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/reference-resolution/" class="md-nav__link">
+      <a href="../reference-resolution/" class="md-nav__link">
         
   
   
@@ -1313,7 +1470,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/prediction-ledger/" class="md-nav__link">
+      <a href="../prediction-ledger/" class="md-nav__link">
         
   
   
@@ -1341,7 +1498,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/composite-score-query/" class="md-nav__link">
+      <a href="../composite-score-query/" class="md-nav__link">
         
   
   
@@ -1369,7 +1526,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/policy-cache/" class="md-nav__link">
+      <a href="../policy-cache/" class="md-nav__link">
         
   
   
@@ -1397,7 +1554,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/context-assembler/" class="md-nav__link">
+      <a href="../context-assembler/" class="md-nav__link">
         
   
   
@@ -1425,7 +1582,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
+      <a href="../hybrid-retrieval/" class="md-nav__link">
         
   
   
@@ -1453,7 +1610,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/metacognitive-layer/" class="md-nav__link">
+      <a href="../metacognitive-layer/" class="md-nav__link">
         
   
   
@@ -1481,7 +1638,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/never-record-firewall/" class="md-nav__link">
+      <a href="../never-record-firewall/" class="md-nav__link">
         
   
   
@@ -1523,17 +1680,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
         
           
-          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
             
   
   
@@ -1569,7 +1729,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/policy-cache-recipe/" class="md-nav__link">
+      <a href="../../guides/policy-cache-recipe/" class="md-nav__link">
         
   
   
@@ -1597,7 +1757,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/trajectory-memory-recipe/" class="md-nav__link">
+      <a href="../../guides/trajectory-memory-recipe/" class="md-nav__link">
         
   
   
@@ -1625,7 +1785,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/rag-chatbot-recipe/" class="md-nav__link">
+      <a href="../../guides/rag-chatbot-recipe/" class="md-nav__link">
         
   
   
@@ -1653,7 +1813,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/memory-telemetry/" class="md-nav__link">
+      <a href="../memory-telemetry/" class="md-nav__link">
         
   
   
@@ -1681,7 +1841,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../recipes/" class="md-nav__link">
+      <a href="../../recipes/" class="md-nav__link">
         
   
   
@@ -1723,17 +1883,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
-          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
             
   
   
@@ -1769,7 +1932,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/tuning-magic-numbers/" class="md-nav__link">
+      <a href="../../guides/tuning-magic-numbers/" class="md-nav__link">
         
   
   
@@ -1797,7 +1960,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/parametric-sweep/" class="md-nav__link">
+      <a href="../parametric-sweep/" class="md-nav__link">
         
   
   
@@ -1944,7 +2107,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/" class="md-nav__link">
+      <a href="../../benchmarks/results/" class="md-nav__link">
         
   
   
@@ -1972,7 +2135,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
+      <a href="../../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
         
   
   
@@ -2000,7 +2163,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
+      <a href="../../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
         
   
   
@@ -2028,7 +2191,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/locomo_lexical/" class="md-nav__link">
+      <a href="../../benchmarks/results/locomo_lexical/" class="md-nav__link">
         
   
   
@@ -2056,7 +2219,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/locomo_hybrid/" class="md-nav__link">
+      <a href="../../benchmarks/results/locomo_hybrid/" class="md-nav__link">
         
   
   
@@ -2084,7 +2247,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/rlt_redis/" class="md-nav__link">
+      <a href="../../benchmarks/results/rlt_redis/" class="md-nav__link">
         
   
   
@@ -2112,7 +2275,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/results/csr/" class="md-nav__link">
+      <a href="../../benchmarks/results/csr/" class="md-nav__link">
         
   
   
@@ -2148,7 +2311,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../benchmarks/" class="md-nav__link">
+      <a href="../../benchmarks/" class="md-nav__link">
         
   
   
@@ -2287,7 +2450,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../configuration/" class="md-nav__link">
+      <a href="../../configuration/" class="md-nav__link">
         
   
   
@@ -2315,7 +2478,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../fields/" class="md-nav__link">
+      <a href="../../fields/" class="md-nav__link">
         
   
   
@@ -2343,7 +2506,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../query/" class="md-nav__link">
+      <a href="../../query/" class="md-nav__link">
         
   
   
@@ -2371,7 +2534,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../async/" class="md-nav__link">
+      <a href="../../async/" class="md-nav__link">
         
   
   
@@ -2459,7 +2622,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../meta/" class="md-nav__link">
+      <a href="../../meta/" class="md-nav__link">
         
   
   
@@ -2487,7 +2650,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../ttl/" class="md-nav__link">
+      <a href="../../ttl/" class="md-nav__link">
         
   
   
@@ -2515,7 +2678,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../indexed_fields/" class="md-nav__link">
+      <a href="../../indexed_fields/" class="md-nav__link">
         
   
   
@@ -2543,7 +2706,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/corruption-tolerant-decode/" class="md-nav__link">
+      <a href="../corruption-tolerant-decode/" class="md-nav__link">
         
   
   
@@ -2571,7 +2734,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../relationship/" class="md-nav__link">
+      <a href="../../relationship/" class="md-nav__link">
         
   
   
@@ -2599,7 +2762,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../multi-tenancy/" class="md-nav__link">
+      <a href="../../multi-tenancy/" class="md-nav__link">
         
   
   
@@ -2627,7 +2790,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../pubsub/" class="md-nav__link">
+      <a href="../../pubsub/" class="md-nav__link">
         
   
   
@@ -2655,7 +2818,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../features/content-and-embedding-fields/" class="md-nav__link">
+      <a href="../content-and-embedding-fields/" class="md-nav__link">
         
   
   
@@ -2683,7 +2846,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../guides/export-import/" class="md-nav__link">
+      <a href="../../guides/export-import/" class="md-nav__link">
         
   
   
@@ -2719,7 +2882,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../field-authoring/" class="md-nav__link">
+      <a href="../../field-authoring/" class="md-nav__link">
         
   
   
@@ -2747,7 +2910,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../testing/" class="md-nav__link">
+      <a href="../../testing/" class="md-nav__link">
         
   
   
@@ -2782,7 +2945,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../" class="md-nav__link">
+      <a href="../../reference/" class="md-nav__link">
         
   
   
@@ -2809,7 +2972,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../style-guide/" class="md-nav__link">
+      <a href="../../style-guide/" class="md-nav__link">
         
   
   
@@ -2856,33 +3019,44 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#popoto.integrations.cli" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        cli
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="cli">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#popoto.integrations.cli.build_parser" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        build_parser
+        Overview
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#popoto.integrations.cli.main" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        main
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arguments
       
     </span>
   </a>
@@ -2891,6 +3065,50 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-in-memory-attribute-is-not-refreshed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The in-memory attribute is not refreshed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-and-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage and encoding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#valkey-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Valkey compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2914,404 +3132,108 @@
   
 
 
-<h1 id="popotointegrationscli"><code>popoto.integrations.cli</code><a class="headerlink" href="#popotointegrationscli" title="Permanent link">&para;</a></h1>
-
-
-<div class="doc doc-object doc-module">
-
-
-
-<h2 id="popoto.integrations.cli" class="doc doc-heading">
-            <code>popoto.integrations.cli</code>
-
-
-<a href="#popoto.integrations.cli" class="headerlink" title="Permanent link">&para;</a></h2>
-
-    <div class="doc doc-contents first">
-
-        <p><code>popoto-memory</code> -- the single console entry point for harness memory.</p>
-<p>Four subcommands:</p>
-<p><code>hook</code>
-    Read a harness hook payload on stdin, write the harness's response on
-    stdout. One command string serves Claude Code and Codex, because both
-    send <code>hook_event_name</code> and this command dispatches on it.
-<code>mcp</code>
-    Serve the discretionary memory tools over stdio MCP. Requires
-    <code>pip install popoto[mcp]</code>.
-<code>doctor</code>
-    Print resolved configuration, Redis reachability, effective retrieval
-    mode, record count, failure counters, and a measured hook round trip.
-    This is the user-visible error surface; a hook has no console.
-<code>demo</code>
-    Seed a few memories, retrieve them, capture a turn, and report an
-    outcome, against local Redis with no harness and no API keys.</p>
-<p>Startup latency is the reason this module imports almost nothing at module
-scope. The read hook is synchronous and on the critical path of every turn,
-so <code>popoto</code> itself, <code>redis</code>, and the <code>mcp</code> SDK are all imported inside
-the subcommand that needs them.</p>
-
-
-
-
-
-
-
-
-
-
-<div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="popoto.integrations.cli.build_parser" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">build_parser</span><span class="p">()</span></code>
-
-<a href="#popoto.integrations.cli.build_parser" class="headerlink" title="Permanent link">&para;</a></h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Construct the argument parser.</p>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="argparse.ArgumentParser">ArgumentParser</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The configured :class:<code>argparse.ArgumentParser</code>.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>src/popoto/integrations/cli.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-39"> 39</a></span>
-<span class="normal"><a href="#__codelineno-0-40"> 40</a></span>
-<span class="normal"><a href="#__codelineno-0-41"> 41</a></span>
-<span class="normal"><a href="#__codelineno-0-42"> 42</a></span>
-<span class="normal"><a href="#__codelineno-0-43"> 43</a></span>
-<span class="normal"><a href="#__codelineno-0-44"> 44</a></span>
-<span class="normal"><a href="#__codelineno-0-45"> 45</a></span>
-<span class="normal"><a href="#__codelineno-0-46"> 46</a></span>
-<span class="normal"><a href="#__codelineno-0-47"> 47</a></span>
-<span class="normal"><a href="#__codelineno-0-48"> 48</a></span>
-<span class="normal"><a href="#__codelineno-0-49"> 49</a></span>
-<span class="normal"><a href="#__codelineno-0-50"> 50</a></span>
-<span class="normal"><a href="#__codelineno-0-51"> 51</a></span>
-<span class="normal"><a href="#__codelineno-0-52"> 52</a></span>
-<span class="normal"><a href="#__codelineno-0-53"> 53</a></span>
-<span class="normal"><a href="#__codelineno-0-54"> 54</a></span>
-<span class="normal"><a href="#__codelineno-0-55"> 55</a></span>
-<span class="normal"><a href="#__codelineno-0-56"> 56</a></span>
-<span class="normal"><a href="#__codelineno-0-57"> 57</a></span>
-<span class="normal"><a href="#__codelineno-0-58"> 58</a></span>
-<span class="normal"><a href="#__codelineno-0-59"> 59</a></span>
-<span class="normal"><a href="#__codelineno-0-60"> 60</a></span>
-<span class="normal"><a href="#__codelineno-0-61"> 61</a></span>
-<span class="normal"><a href="#__codelineno-0-62"> 62</a></span>
-<span class="normal"><a href="#__codelineno-0-63"> 63</a></span>
-<span class="normal"><a href="#__codelineno-0-64"> 64</a></span>
-<span class="normal"><a href="#__codelineno-0-65"> 65</a></span>
-<span class="normal"><a href="#__codelineno-0-66"> 66</a></span>
-<span class="normal"><a href="#__codelineno-0-67"> 67</a></span>
-<span class="normal"><a href="#__codelineno-0-68"> 68</a></span>
-<span class="normal"><a href="#__codelineno-0-69"> 69</a></span>
-<span class="normal"><a href="#__codelineno-0-70"> 70</a></span>
-<span class="normal"><a href="#__codelineno-0-71"> 71</a></span>
-<span class="normal"><a href="#__codelineno-0-72"> 72</a></span>
-<span class="normal"><a href="#__codelineno-0-73"> 73</a></span>
-<span class="normal"><a href="#__codelineno-0-74"> 74</a></span>
-<span class="normal"><a href="#__codelineno-0-75"> 75</a></span>
-<span class="normal"><a href="#__codelineno-0-76"> 76</a></span>
-<span class="normal"><a href="#__codelineno-0-77"> 77</a></span>
-<span class="normal"><a href="#__codelineno-0-78"> 78</a></span>
-<span class="normal"><a href="#__codelineno-0-79"> 79</a></span>
-<span class="normal"><a href="#__codelineno-0-80"> 80</a></span>
-<span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
-<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
-<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
-<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
-<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
-<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
-<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
-<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
-<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
-<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
-<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
-<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
-<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
-<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span>
-<span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span>
-<span class="normal"><a href="#__codelineno-0-107">107</a></span>
-<span class="normal"><a href="#__codelineno-0-108">108</a></span>
-<span class="normal"><a href="#__codelineno-0-109">109</a></span>
-<span class="normal"><a href="#__codelineno-0-110">110</a></span>
-<span class="normal"><a href="#__codelineno-0-111">111</a></span>
-<span class="normal"><a href="#__codelineno-0-112">112</a></span>
-<span class="normal"><a href="#__codelineno-0-113">113</a></span>
-<span class="normal"><a href="#__codelineno-0-114">114</a></span>
-<span class="normal"><a href="#__codelineno-0-115">115</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-39" name="__codelineno-0-39"></a><span class="k">def</span><span class="w"> </span><span class="nf">build_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40"></a><span class="w">    </span><span class="sd">"""Construct the argument parser.</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41"></a>
-<a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="sd">        The configured :class:`argparse.ArgumentParser`.</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">    """</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45"></a>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
-<a id="__codelineno-0-46" name="__codelineno-0-46"></a>        <span class="n">prog</span><span class="o">=</span><span class="s2">"popoto-memory"</span><span class="p">,</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47"></a>        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a>            <span class="s2">"Subconscious memory for agent harnesses, backed by your own "</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a>            <span class="s2">"Redis or Valkey. No API keys."</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a>        <span class="p">),</span>
-<a id="__codelineno-0-51" name="__codelineno-0-51"></a>        <span class="n">epilog</span><span class="o">=</span><span class="n">USAGE_EPILOG</span><span class="p">,</span>
-<a id="__codelineno-0-52" name="__codelineno-0-52"></a>        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">RawDescriptionHelpFormatter</span><span class="p">,</span>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a>    <span class="p">)</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a>    <span class="n">sub</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_subparsers</span><span class="p">(</span><span class="n">dest</span><span class="o">=</span><span class="s2">"command"</span><span class="p">)</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a>    <span class="n">hook</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a>        <span class="s2">"hook"</span><span class="p">,</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"handle one harness hook event on stdin"</span><span class="p">,</span>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a>        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a>            <span class="s2">"Reads one JSON hook payload on stdin and writes the harness's "</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a>            <span class="s2">"response on stdout. Always exits 0."</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a>        <span class="p">),</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a>    <span class="p">)</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a>    <span class="n">hook</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a>        <span class="s2">"--event"</span><span class="p">,</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a>        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a>        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a>            <span class="s2">"override hook_event_name, for harnesses that do not include it "</span>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a>            <span class="s2">"in the payload"</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a>        <span class="p">),</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a>    <span class="p">)</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a>    <span class="n">sub</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a>        <span class="s2">"mcp"</span><span class="p">,</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"serve the memory tools over stdio MCP"</span><span class="p">,</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a>        <span class="n">description</span><span class="o">=</span><span class="s2">"Runs the stdio MCP server. Requires popoto[mcp]."</span><span class="p">,</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="p">)</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a>    <span class="n">doctor</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>        <span class="s2">"doctor"</span><span class="p">,</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"print resolved config and live state"</span><span class="p">,</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a>        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>            <span class="s2">"Prints resolved configuration, Redis reachability, effective "</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a>            <span class="s2">"retrieval mode, record count, failure counters, and a measured "</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>            <span class="s2">"hook round trip."</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>        <span class="p">),</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>    <span class="p">)</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="n">doctor</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a>        <span class="s2">"--json"</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"emit machine-readable JSON instead"</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="p">)</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">doctor</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>        <span class="s2">"--no-latency"</span><span class="p">,</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"skip the hook round-trip measurement"</span><span class="p">,</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>    <span class="p">)</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>    <span class="n">demo</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>        <span class="s2">"demo"</span><span class="p">,</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"exercise the full loop against local Redis, no harness"</span><span class="p">,</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>            <span class="s2">"Seeds memories, assembles context for a query, captures a turn, "</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>            <span class="s2">"and reports an outcome. Zero API keys."</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>        <span class="p">),</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="p">)</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="n">demo</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="s2">"--agent-id"</span><span class="p">,</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>        <span class="n">default</span><span class="o">=</span><span class="s2">"popoto-memory-demo"</span><span class="p">,</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"agent id to seed and query (default: popoto-memory-demo)"</span><span class="p">,</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>    <span class="p">)</span>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a>    <span class="n">demo</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a>        <span class="s2">"--keep"</span><span class="p">,</span>
-<a id="__codelineno-0-112" name="__codelineno-0-112"></a>        <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"leave the seeded records in Redis when finished"</span><span class="p">,</span>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a>    <span class="p">)</span>
-<a id="__codelineno-0-115" name="__codelineno-0-115"></a>    <span class="k">return</span> <span class="n">parser</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
+<h1 id="tdvaluefield">TDValueField<a class="headerlink" href="#tdvaluefield" title="Permanent link">&para;</a></h1>
+<p>A <code>DecimalField</code> subclass that adds one operation the ordinary save path cannot express: an <strong>atomic temporal-difference update</strong> of a single hash field, performed server-side in one Lua script.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p><code>TDValueField</code> stores a learned value — a Q-value, in reinforcement-learning terms — in the model hash exactly as a plain <code>DecimalField</code> does. Nothing lives outside the hash. What it adds is <code>td_update()</code>, which applies the TD(0) rule</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Q(s,a) &lt;- Q(s,a) + alpha * [reward + gamma * max Q(s',a') - Q(s,a)]
+</code></pre></div>
+<p>as a single atomic read-modify-write. The read and the write happen inside the same script, so two processes updating the same instance serialize at the server instead of racing through a client-side <code>HGET</code> / compute / <code>HSET</code> round trip, where the later writer silently discards the earlier one's update.</p>
+<p>The field was extracted from <code>popoto.recipes.policy_cache</code>, which owned the script directly (issue #647, part of the #630 series). A recipe composes primitives; it should not own one. <code>update_q_value()</code> remains as a convenience wrapper with its original signature — see <a href="../policy-cache/">PolicyCache</a>.</p>
+<h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
+<p>None. <code>TDValueField</code> takes no constructor arguments beyond what <code>DecimalField</code> accepts, and declares no storage of its own.</p>
+<p>The learning rate and discount factor are <strong>call-time arguments</strong> of <code>td_update()</code>, not field-level configuration. That is deliberate: they are experimental tuning constants (see <code>popoto.fields.constants.Defaults</code>), and a field-declared default would let two processes disagree about the gain schedule with no runtime detection — the same hazard <code>ConfidenceField</code>'s <code>evidence_cap</code> carries.</p>
+<div class="admonition warning">
+<p class="admonition-title">The field must be named <code>q_value</code></p>
+<p>The hash field name is hard-coded inside the Lua script. Parameterizing it would change the script text, hence its SHA, hence the on-wire <code>EVALSHA</code> payload. <code>td_update()</code> therefore refuses any other field name with a <code>ValueError</code> rather than silently updating the wrong column.</p>
 </div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="popoto.integrations.cli.main" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">argv</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
-
-<a href="#popoto.integrations.cli.main" class="headerlink" title="Permanent link">&para;</a></h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Entry point for the <code>popoto-memory</code> console script.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>argv</code>
-            </td>
-            <td>
-                  <code><span title="typing.Optional">Optional</span>[<span title="typing.List">List</span>[<span title="str">str</span>]]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Argument list, defaulting to <code>sys.argv[1:]</code>.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>A process exit code. <code>hook</code> always returns 0, whatever happened,</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>because a memory failure must not fail the user's turn.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>src/popoto/integrations/cli.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-118">118</a></span>
-<span class="normal"><a href="#__codelineno-0-119">119</a></span>
-<span class="normal"><a href="#__codelineno-0-120">120</a></span>
-<span class="normal"><a href="#__codelineno-0-121">121</a></span>
-<span class="normal"><a href="#__codelineno-0-122">122</a></span>
-<span class="normal"><a href="#__codelineno-0-123">123</a></span>
-<span class="normal"><a href="#__codelineno-0-124">124</a></span>
-<span class="normal"><a href="#__codelineno-0-125">125</a></span>
-<span class="normal"><a href="#__codelineno-0-126">126</a></span>
-<span class="normal"><a href="#__codelineno-0-127">127</a></span>
-<span class="normal"><a href="#__codelineno-0-128">128</a></span>
-<span class="normal"><a href="#__codelineno-0-129">129</a></span>
-<span class="normal"><a href="#__codelineno-0-130">130</a></span>
-<span class="normal"><a href="#__codelineno-0-131">131</a></span>
-<span class="normal"><a href="#__codelineno-0-132">132</a></span>
-<span class="normal"><a href="#__codelineno-0-133">133</a></span>
-<span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="w">    </span><span class="sd">"""Entry point for the ``popoto-memory`` console script.</span>
-<a id="__codelineno-0-120" name="__codelineno-0-120"></a>
-<a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">        argv: Argument list, defaulting to ``sys.argv[1:]``.</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">        A process exit code. ``hook`` always returns 0, whatever happened,</span>
-<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">        because a memory failure must not fail the user's turn.</span>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    """</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a>    <span class="n">parser</span> <span class="o">=</span> <span class="n">build_parser</span><span class="p">()</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">command</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a>        <span class="n">parser</span><span class="o">.</span><span class="n">print_help</span><span class="p">()</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="k">return</span> <span class="mi">0</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">command</span> <span class="o">==</span> <span class="s2">"hook"</span><span class="p">:</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a>        <span class="k">return</span> <span class="n">_cmd_hook</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">command</span> <span class="o">==</span> <span class="s2">"mcp"</span><span class="p">:</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a>        <span class="k">return</span> <span class="n">_cmd_mcp</span><span class="p">()</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">command</span> <span class="o">==</span> <span class="s2">"doctor"</span><span class="p">:</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>        <span class="k">return</span> <span class="n">_cmd_doctor</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">command</span> <span class="o">==</span> <span class="s2">"demo"</span><span class="p">:</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>        <span class="k">return</span> <span class="n">_cmd_demo</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">print_help</span><span class="p">()</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>    <span class="k">return</span> <span class="mi">0</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-
-
-  </div>
-
-    </div>
-
-</div>
+<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">TDValueField</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Bandit</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">q_value</span> <span class="o">=</span> <span class="n">TDValueField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">"0"</span><span class="p">))</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">arm</span> <span class="o">=</span> <span class="n">Bandit</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">arm</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># One TD(0) step. Returns the TD error.</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">td_error</span> <span class="o">=</span> <span class="n">TDValueField</span><span class="o">.</span><span class="n">td_update</span><span class="p">(</span><span class="n">arm</span><span class="p">,</span> <span class="s2">"q_value"</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">max_future_q</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># =&gt; positive when the outcome beat the current estimate</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="c1"># The in-memory attribute is NOT refreshed — reload to observe the new value.</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="n">arm</span> <span class="o">=</span> <span class="n">Bandit</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="arguments">Arguments<a class="headerlink" href="#arguments" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model_instance</code></td>
+<td>Model</td>
+<td>—</td>
+<td>A <strong>saved</strong> instance carrying a <code>TDValueField</code>.</td>
+</tr>
+<tr>
+<td><code>field_name</code></td>
+<td>str</td>
+<td>—</td>
+<td>Must be <code>"q_value"</code>.</td>
+</tr>
+<tr>
+<td><code>reward</code></td>
+<td>float</td>
+<td>—</td>
+<td>Observed reward signal.</td>
+</tr>
+<tr>
+<td><code>max_future_q</code></td>
+<td>float</td>
+<td><code>0.0</code></td>
+<td>Best value available in the next state. <code>0.0</code> means terminal — no future state.</td>
+</tr>
+<tr>
+<td><code>alpha</code></td>
+<td>float</td>
+<td><code>Defaults.TD_ALPHA</code> (0.1)</td>
+<td>Learning rate: how much new information overrides old.</td>
+</tr>
+<tr>
+<td><code>gamma</code></td>
+<td>float</td>
+<td><code>Defaults.TD_GAMMA</code> (0.95)</td>
+<td>Discount factor: importance of future rewards.</td>
+</tr>
+<tr>
+<td><code>pipeline</code></td>
+<td>Pipeline</td>
+<td><code>None</code></td>
+<td>Queue the update on a pipeline. Returns <code>None</code>; the TD error appears in that pipeline's results after <code>execute()</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Raises <code>ValueError</code> if the instance is unsaved, or if <code>field_name</code> is not a <code>TDValueField</code> named <code>q_value</code>. The guard issues <strong>no</strong> Redis command before raising.</p>
+<h2 id="the-in-memory-attribute-is-not-refreshed">The in-memory attribute is not refreshed<a class="headerlink" href="#the-in-memory-attribute-is-not-refreshed" title="Permanent link">&para;</a></h2>
+<p><code>td_update()</code> returns the TD error, not the new value, and does not write back to the Python object. This is intentional: recomputing the new value client-side would duplicate the arithmetic and the encoding this field exists to own, and re-reading it would add a command to a wire sequence that is otherwise exactly one script call. <strong>Reload the instance to observe the new value.</strong></p>
+<h2 id="storage-and-encoding">Storage and encoding<a class="headerlink" href="#storage-and-encoding" title="Permanent link">&para;</a></h2>
+<p>The value is written as the <code>__Decimal__</code> tagged dict that every <code>DecimalField</code> uses, encoded with <code>cmsgpack</code> inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.</p>
+<p>This matters beyond tidiness. <code>DecayingSortedField</code> reads a <code>base_score_field</code> straight out of the member's hash in its own Lua and falls back to <code>1.0</code> for any encoding it does not recognize. A <code>PolicyEntry</code> declares <code>expected_value = DecayingSortedField(base_score_field="q_value")</code>, so if <code>TDValueField</code> wrote any other encoding, the decay clock would silently fall back to a magnitude of 1.0 rather than error. Keeping <code>TDValueField</code> a <code>DecimalField</code> subclass — <code>type is Decimal</code> — is what keeps that contract.</p>
+<h2 id="valkey-compatibility">Valkey compatibility<a class="headerlink" href="#valkey-compatibility" title="Permanent link">&para;</a></h2>
+<p>Core commands only — <code>HGET</code>, <code>HSET</code>, and <code>cmsgpack</code> inside the script. No Redis-module commands (<code>BF.</code>, <code>CMS.</code>, <code>TOPK.</code>, <code>TS.</code>, <code>JSON.</code>), so this field behaves identically on Redis and Valkey.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../policy-cache/">PolicyCache</a> — the recipe that composes this field, and the <code>update_q_value()</code> wrapper.</li>
+<li><a href="../decaying-sorted-field/">DecayingSortedField</a> — reads <code>q_value</code> as a <code>base_score_field</code>.</li>
+<li><a href="../confidence-field/">ConfidenceField</a> — the sibling primitive whose per-call tuning argument follows the same rule.</li>
+</ul>
 
 
 
@@ -3367,12 +3289,12 @@ the subcommand that needs them.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="../../../../js/open_in_new_tab.js"></script>
+        <script src="../../js/open_in_new_tab.js"></script>
       
     
   </body>

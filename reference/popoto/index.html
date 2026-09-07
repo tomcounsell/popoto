@@ -1089,6 +1089,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/td-value-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TDValueField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/co-occurrence-field/" class="md-nav__link">
         
   
@@ -4163,6 +4191,34 @@
     <span class="md-ellipsis">
       
         migrate_to_partitioned
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.TDValueField" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDValueField
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TDValueField">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.TDValueField.td_update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        td_update
       
     </span>
   </a>
@@ -25419,6 +25475,742 @@ writes each entry to the appropriate partitioned hash.</p>
 <a id="__codelineno-0-797" name="__codelineno-0-797"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">unpartitioned_key</span><span class="p">)</span>
 <a id="__codelineno-0-798" name="__codelineno-0-798"></a>
 <a id="__codelineno-0-799" name="__codelineno-0-799"></a>    <span class="k">return</span> <span class="n">report</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.TDValueField" class="doc doc-heading">
+            <code>TDValueField</code>
+
+
+<a href="#popoto.TDValueField" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="DecimalField (popoto.fields.shortcuts.DecimalField)" href="fields/shortcuts/#popoto.fields.shortcuts.DecimalField">DecimalField</a></code></p>
+
+
+
+        <p>A <code>Decimal</code> column supporting atomic temporal-difference updates.</p>
+<p>Declares no storage of its own and takes no extra constructor arguments —
+it is a <code>DecimalField</code> in every respect except that it carries the
+:meth:<code>td_update</code> operation. The learning rate and discount factor are
+call-time arguments of that method, not field-level configuration: they are
+experimental tuning constants (see
+:class:<code>popoto.fields.constants.Defaults</code>), and field-declared defaults
+would let two processes disagree about the gain schedule with no runtime
+detection.</p>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>The field must be named <code>q_value</code> on the model for :meth:<code>td_update</code>
+to work; see :data:<code>TD_UPDATE_HASH_FIELD</code>.</p>
+</details>
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/fields/td_value_field.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#__codelineno-0-118">118</a></span>
+<span class="normal"><a href="#__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#__codelineno-0-147">147</a></span>
+<span class="normal"><a href="#__codelineno-0-148">148</a></span>
+<span class="normal"><a href="#__codelineno-0-149">149</a></span>
+<span class="normal"><a href="#__codelineno-0-150">150</a></span>
+<span class="normal"><a href="#__codelineno-0-151">151</a></span>
+<span class="normal"><a href="#__codelineno-0-152">152</a></span>
+<span class="normal"><a href="#__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="k">class</span><span class="w"> </span><span class="nc">TDValueField</span><span class="p">(</span><span class="n">DecimalField</span><span class="p">):</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a><span class="w">    </span><span class="sd">"""A ``Decimal`` column supporting atomic temporal-difference updates.</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="sd">    Declares no storage of its own and takes no extra constructor arguments —</span>
+<a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="sd">    it is a ``DecimalField`` in every respect except that it carries the</span>
+<a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="sd">    :meth:`td_update` operation. The learning rate and discount factor are</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">    call-time arguments of that method, not field-level configuration: they are</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">    experimental tuning constants (see</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">    :class:`popoto.fields.constants.Defaults`), and field-declared defaults</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    would let two processes disagree about the gain schedule with no runtime</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    detection.</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">        The field must be named ``q_value`` on the model for :meth:`td_update`</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">        to work; see :data:`TD_UPDATE_HASH_FIELD`.</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">    """</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">td_update</span><span class="p">(</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-138" name="__codelineno-0-138"></a>        <span class="n">reward</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<a id="__codelineno-0-139" name="__codelineno-0-139"></a>        <span class="n">max_future_q</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-140" name="__codelineno-0-140"></a>        <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">TD_ALPHA</span><span class="p">,</span>
+<a id="__codelineno-0-141" name="__codelineno-0-141"></a>        <span class="n">gamma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">TD_GAMMA</span><span class="p">,</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">"redis.client.Pipeline"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="w">        </span><span class="sd">"""Apply one TD(0) update to this instance's value, atomically.</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">        The read-modify-write happens server-side in a single script</span>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">        invocation, so two concurrent calls on the same instance serialize</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">        rather than losing an update.</span>
+<a id="__codelineno-0-149" name="__codelineno-0-149"></a>
+<a id="__codelineno-0-150" name="__codelineno-0-150"></a><span class="sd">        Note:</span>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a><span class="sd">            The in-memory attribute is **not** refreshed. The script returns</span>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="sd">            the TD error only; it does not return the new value, and neither</span>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="sd">            recomputing it client-side nor re-reading it is acceptable (the</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="sd">            first duplicates the arithmetic and encoding this field exists to</span>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">            own, the second adds a command). Reload the instance to observe the</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">            new value.</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">        Note:</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">            When ``pipeline`` is given the update is queued on it and this</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">            method returns ``None``; the TD error is available in that</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">            pipeline's results after ``execute()``.</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">            model_instance: A saved model instance carrying a TDValueField.</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">            field_name: Name of the TDValueField on the model. Must be</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">                ``q_value``.</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">            reward: Observed reward signal.</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">            max_future_q: Maximum value for the next state's best action.</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">                Default 0.0 (terminal — no future state).</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">            alpha: Learning rate. Defaults to ``Defaults.TD_ALPHA``.</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">            gamma: Discount factor. Defaults to ``Defaults.TD_GAMMA``.</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">            pipeline: Optional Redis pipeline to queue the update on.</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">            float: The TD error — positive when the outcome beat the current</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">            estimate, negative when it fell short. ``None`` when queued on a</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">            pipeline.</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">            ValueError: If the instance is unsaved, or ``field_name`` is not a</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">                TDValueField named ``q_value``.</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">        """</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a>        <span class="k">if</span> <span class="n">field_name</span> <span class="o">!=</span> <span class="n">TD_UPDATE_HASH_FIELD</span><span class="p">:</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>                <span class="sa">f</span><span class="s2">"td_update() operates on the '</span><span class="si">{</span><span class="n">TD_UPDATE_HASH_FIELD</span><span class="si">}</span><span class="s2">' hash "</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>                <span class="sa">f</span><span class="s2">"field, which the Lua script names directly; got "</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">'"</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>            <span class="p">)</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">TDValueField</span><span class="p">):</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> is not a TDValueField"</span><span class="p">)</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>        <span class="c1"># Saved-instance guard. Deliberately identical to the guard this</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="c1"># replaced (policy_cache._get_redis_key): attribute or db_key lookup,</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>        <span class="c1"># raising ValueError, and NO extra round trip. ConfidenceField's</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="c1"># equivalent adds an EXISTS probe; copying that here would put a new</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>        <span class="c1"># command in the wire sequence this relocation must leave untouched.</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="n">redis_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_redis_key"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">redis_key</span><span class="p">:</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>                <span class="n">redis_key</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>                <span class="c1"># Name the caller's own class, not PolicyEntry: this field is</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>                <span class="c1"># general-purpose and the recipe is only its first consumer.</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>                <span class="c1"># The string has no wire effect, so it is safe to differ from</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>                <span class="c1"># the guard this replaced.</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>                    <span class="sa">f</span><span class="s2">"Cannot operate on unsaved "</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>                <span class="p">)</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>        <span class="c1"># Client resolved at call time (module attribute, not an import-time</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="c1"># binding) so a rebound connection or a test spy still intercepts.</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="n">client</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">redis_db</span><span class="o">.</span><span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="n">td_error</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>            <span class="n">client</span><span class="p">,</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>            <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>            <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>            <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># KEYS[1] — model hash key</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="p">)</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="popoto.TDValueField.td_update" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">td_update</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">reward</span><span class="p">,</span> <span class="n">max_future_q</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">Defaults</span><span class="o">.</span><span class="n">TD_ALPHA</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="n">Defaults</span><span class="o">.</span><span class="n">TD_GAMMA</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#popoto.TDValueField.td_update" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Apply one TD(0) update to this instance's value, atomically.</p>
+<p>The read-modify-write happens server-side in a single script
+invocation, so two concurrent calls on the same instance serialize
+rather than losing an update.</p>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>The in-memory attribute is <strong>not</strong> refreshed. The script returns
+the TD error only; it does not return the new value, and neither
+recomputing it client-side nor re-reading it is acceptable (the
+first duplicates the arithmetic and encoding this field exists to
+own, the second adds a command). Reload the instance to observe the
+new value.</p>
+</details>
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>When <code>pipeline</code> is given the update is queued on it and this
+method returns <code>None</code>; the TD error is available in that
+pipeline's results after <code>execute()</code>.</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>model_instance</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A saved model instance carrying a TDValueField.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>field_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Name of the TDValueField on the model. Must be
+<code>q_value</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reward</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Observed reward signal.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_future_q</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum value for the next state's best action.
+Default 0.0 (terminal — no future state).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Learning rate. Defaults to <code>Defaults.TD_ALPHA</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="popoto.fields.constants.Defaults.TD_ALPHA">TD_ALPHA</span></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Discount factor. Defaults to <code>Defaults.TD_GAMMA</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="popoto.fields.constants.Defaults.TD_GAMMA">TD_GAMMA</span></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pipeline</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="redis.client.Pipeline">Pipeline</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional Redis pipeline to queue the update on.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>float</code></td>            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The TD error — positive when the outcome beat the current</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>estimate, negative when it fell short. <code>None</code> when queued on a</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>pipeline.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the instance is unsaved, or <code>field_name</code> is not a
+TDValueField named <code>q_value</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/fields/td_value_field.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#__codelineno-0-147">147</a></span>
+<span class="normal"><a href="#__codelineno-0-148">148</a></span>
+<span class="normal"><a href="#__codelineno-0-149">149</a></span>
+<span class="normal"><a href="#__codelineno-0-150">150</a></span>
+<span class="normal"><a href="#__codelineno-0-151">151</a></span>
+<span class="normal"><a href="#__codelineno-0-152">152</a></span>
+<span class="normal"><a href="#__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="k">def</span><span class="w"> </span><span class="nf">td_update</span><span class="p">(</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-138" name="__codelineno-0-138"></a>    <span class="n">reward</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<a id="__codelineno-0-139" name="__codelineno-0-139"></a>    <span class="n">max_future_q</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-140" name="__codelineno-0-140"></a>    <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">TD_ALPHA</span><span class="p">,</span>
+<a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">gamma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">TD_GAMMA</span><span class="p">,</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">"redis.client.Pipeline"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="w">    </span><span class="sd">"""Apply one TD(0) update to this instance's value, atomically.</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">    The read-modify-write happens server-side in a single script</span>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">    invocation, so two concurrent calls on the same instance serialize</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">    rather than losing an update.</span>
+<a id="__codelineno-0-149" name="__codelineno-0-149"></a>
+<a id="__codelineno-0-150" name="__codelineno-0-150"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a><span class="sd">        The in-memory attribute is **not** refreshed. The script returns</span>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="sd">        the TD error only; it does not return the new value, and neither</span>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="sd">        recomputing it client-side nor re-reading it is acceptable (the</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="sd">        first duplicates the arithmetic and encoding this field exists to</span>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">        own, the second adds a command). Reload the instance to observe the</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">        new value.</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">        When ``pipeline`` is given the update is queued on it and this</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">        method returns ``None``; the TD error is available in that</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">        pipeline's results after ``execute()``.</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        model_instance: A saved model instance carrying a TDValueField.</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        field_name: Name of the TDValueField on the model. Must be</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">            ``q_value``.</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">        reward: Observed reward signal.</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        max_future_q: Maximum value for the next state's best action.</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">            Default 0.0 (terminal — no future state).</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">        alpha: Learning rate. Defaults to ``Defaults.TD_ALPHA``.</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">        gamma: Discount factor. Defaults to ``Defaults.TD_GAMMA``.</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">        pipeline: Optional Redis pipeline to queue the update on.</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">        float: The TD error — positive when the outcome beat the current</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">        estimate, negative when it fell short. ``None`` when queued on a</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        pipeline.</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">        ValueError: If the instance is unsaved, or ``field_name`` is not a</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">            TDValueField named ``q_value``.</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    """</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a>    <span class="k">if</span> <span class="n">field_name</span> <span class="o">!=</span> <span class="n">TD_UPDATE_HASH_FIELD</span><span class="p">:</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>            <span class="sa">f</span><span class="s2">"td_update() operates on the '</span><span class="si">{</span><span class="n">TD_UPDATE_HASH_FIELD</span><span class="si">}</span><span class="s2">' hash "</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>            <span class="sa">f</span><span class="s2">"field, which the Lua script names directly; got "</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>            <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">'"</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="p">)</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="n">field</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">TDValueField</span><span class="p">):</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> is not a TDValueField"</span><span class="p">)</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="c1"># Saved-instance guard. Deliberately identical to the guard this</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="c1"># replaced (policy_cache._get_redis_key): attribute or db_key lookup,</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="c1"># raising ValueError, and NO extra round trip. ConfidenceField's</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="c1"># equivalent adds an EXISTS probe; copying that here would put a new</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="c1"># command in the wire sequence this relocation must leave untouched.</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="n">redis_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="s2">"_redis_key"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">redis_key</span><span class="p">:</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>            <span class="n">redis_key</span> <span class="o">=</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>            <span class="c1"># Name the caller's own class, not PolicyEntry: this field is</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="c1"># general-purpose and the recipe is only its first consumer.</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>            <span class="c1"># The string has no wire effect, so it is safe to differ from</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>            <span class="c1"># the guard this replaced.</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>                <span class="sa">f</span><span class="s2">"Cannot operate on unsaved "</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>            <span class="p">)</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="c1"># Client resolved at call time (module attribute, not an import-time</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="c1"># binding) so a rebound connection or a test spy still intercepts.</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="n">client</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">redis_db</span><span class="o">.</span><span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="n">td_error</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="n">client</span><span class="p">,</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># KEYS[1] — model hash key</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="p">)</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -94627,8 +95419,7 @@ redis.rpush("my_queue", "item")</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/__init__.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-119">119</a></span>
-<span class="normal"><a href="#__codelineno-0-120">120</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-120">120</a></span>
 <span class="normal"><a href="#__codelineno-0-121">121</a></span>
 <span class="normal"><a href="#__codelineno-0-122">122</a></span>
 <span class="normal"><a href="#__codelineno-0-123">123</a></span>
@@ -94644,24 +95435,25 @@ redis.rpush("my_queue", "item")</p>
 <span class="normal"><a href="#__codelineno-0-133">133</a></span>
 <span class="normal"><a href="#__codelineno-0-134">134</a></span>
 <span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_redis</span><span class="p">():</span>
-<a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="w">    </span><span class="sd">"""Get the Redis connection for direct Redis operations.</span>
-<a id="__codelineno-0-121" name="__codelineno-0-121"></a>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">    Use this when you need Redis primitives not exposed by Popoto models:</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">    - Sets: SADD, SISMEMBER, SMEMBERS</span>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    - Lists: RPUSH, LPOP, LRANGE</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    - Pub/Sub: PUBLISH, SUBSCRIBE</span>
-<a id="__codelineno-0-126" name="__codelineno-0-126"></a>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">        redis.Redis: The shared Redis connection</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">        import popoto</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">        redis = popoto.get_redis()</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">        redis.sadd("my_set", "value")</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">        redis.rpush("my_queue", "item")</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">    """</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a>    <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span>
+<span class="normal"><a href="#__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#__codelineno-0-137">137</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_redis</span><span class="p">():</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="w">    </span><span class="sd">"""Get the Redis connection for direct Redis operations.</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">    Use this when you need Redis primitives not exposed by Popoto models:</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    - Sets: SADD, SISMEMBER, SMEMBERS</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    - Lists: RPUSH, LPOP, LRANGE</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">    - Pub/Sub: PUBLISH, SUBSCRIBE</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">        redis.Redis: The shared Redis connection</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">        import popoto</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">        redis = popoto.get_redis()</span>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">        redis.sadd("my_set", "value")</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">        redis.rpush("my_queue", "item")</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    """</span>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a>    <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -94763,8 +95555,7 @@ from popoto.embeddings.voyage import VoyageProvider</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/__init__.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-140">140</a></span>
 <span class="normal"><a href="#__codelineno-0-141">141</a></span>
 <span class="normal"><a href="#__codelineno-0-142">142</a></span>
 <span class="normal"><a href="#__codelineno-0-143">143</a></span>
@@ -94806,50 +95597,51 @@ from popoto.embeddings.voyage import VoyageProvider</p>
 <span class="normal"><a href="#__codelineno-0-179">179</a></span>
 <span class="normal"><a href="#__codelineno-0-180">180</a></span>
 <span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-139" name="__codelineno-0-139"></a><span class="k">def</span><span class="w"> </span><span class="nf">configure</span><span class="p">(</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">content_store</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="n">content_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="p">):</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="w">    </span><span class="sd">"""Configure global defaults for ContentField and EmbeddingField.</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">    Call this once at application startup to set the default embedding</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">    provider and content store used by all fields that don't specify</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">    their own.</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a><span class="sd">        embedding_provider: An AbstractEmbeddingProvider instance for</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="sd">            generating embeddings. Required for EmbeddingField and</span>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="sd">            semantic_search() to work.</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="sd">        content_store: An AbstractContentStore instance for content</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">            storage. Defaults to FilesystemStore if not specified.</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">        content_path: Base directory for filesystem content storage.</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">            Overrides POPOTO_CONTENT_PATH env var. Only applies when</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">            using the default FilesystemStore.</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">        import popoto</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">        from popoto.embeddings.voyage import VoyageProvider</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        popoto.configure(</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">            embedding_provider=VoyageProvider(api_key="your-key"),</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">            content_path="/data/popoto-content",</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">        )</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    """</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a>    <span class="k">if</span> <span class="n">embedding_provider</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_default_provider</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a>        <span class="n">set_default_provider</span><span class="p">(</span><span class="n">embedding_provider</span><span class="p">)</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="k">if</span> <span class="n">content_store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_default_store</span>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>        <span class="n">set_default_store</span><span class="p">(</span><span class="n">content_store</span><span class="p">)</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a>    <span class="k">elif</span> <span class="n">content_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.stores.filesystem</span><span class="w"> </span><span class="kn">import</span> <span class="n">FilesystemStore</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_default_store</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a>        <span class="n">set_default_store</span><span class="p">(</span><span class="n">FilesystemStore</span><span class="p">(</span><span class="n">base_path</span><span class="o">=</span><span class="n">content_path</span><span class="p">))</span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-140" name="__codelineno-0-140"></a><span class="k">def</span><span class="w"> </span><span class="nf">configure</span><span class="p">(</span>
+<a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="n">content_store</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a>    <span class="n">content_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="p">):</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a><span class="w">    </span><span class="sd">"""Configure global defaults for ContentField and EmbeddingField.</span>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">    Call this once at application startup to set the default embedding</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">    provider and content store used by all fields that don't specify</span>
+<a id="__codelineno-0-149" name="__codelineno-0-149"></a><span class="sd">    their own.</span>
+<a id="__codelineno-0-150" name="__codelineno-0-150"></a>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="sd">        embedding_provider: An AbstractEmbeddingProvider instance for</span>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="sd">            generating embeddings. Required for EmbeddingField and</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="sd">            semantic_search() to work.</span>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">        content_store: An AbstractContentStore instance for content</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">            storage. Defaults to FilesystemStore if not specified.</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">        content_path: Base directory for filesystem content storage.</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">            Overrides POPOTO_CONTENT_PATH env var. Only applies when</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="sd">            using the default FilesystemStore.</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">        import popoto</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">        from popoto.embeddings.voyage import VoyageProvider</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        popoto.configure(</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">            embedding_provider=VoyageProvider(api_key="your-key"),</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">            content_path="/data/popoto-content",</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        )</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    """</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="k">if</span> <span class="n">embedding_provider</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_default_provider</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>        <span class="n">set_default_provider</span><span class="p">(</span><span class="n">embedding_provider</span><span class="p">)</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>    <span class="k">if</span> <span class="n">content_store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_default_store</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>        <span class="n">set_default_store</span><span class="p">(</span><span class="n">content_store</span><span class="p">)</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a>    <span class="k">elif</span> <span class="n">content_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.stores.filesystem</span><span class="w"> </span><span class="kn">import</span> <span class="n">FilesystemStore</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_default_store</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a>        <span class="n">set_default_store</span><span class="p">(</span><span class="n">FilesystemStore</span><span class="p">(</span><span class="n">base_path</span><span class="o">=</span><span class="n">content_path</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

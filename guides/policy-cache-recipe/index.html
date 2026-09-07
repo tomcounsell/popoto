@@ -1103,6 +1103,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/td-value-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TDValueField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/co-occurrence-field/" class="md-nav__link">
         
   
@@ -3176,8 +3204,8 @@
 <td>Agent partitioning, state fingerprinting, action type</td>
 </tr>
 <tr>
-<td><code>DecimalField</code> (<code>q_value</code>)</td>
-<td>Learned Q-value stored in the model hash</td>
+<td><code>TDValueField</code> (<code>q_value</code>)</td>
+<td>Learned Q-value stored in the model hash; owns the atomic TD(0) update</td>
 </tr>
 <tr>
 <td><code>DecayingSortedField</code> (<code>expected_value</code>)</td>
@@ -3238,7 +3266,10 @@
 <p>Uses the chi-squared test against the uniform distribution. Significant weekly clusters (p &lt; 0.05) are returned as <code>(period, amplitude, phase)</code> tuples suitable for <code>CyclicDecayField</code>. The <code>phase</code> is emitted in <strong>seconds</strong> — a midpoint offset of the peak weekday from the Thursday weekly epoch anchor (1970-01-01 00:00 UTC, which was a Thursday) — matching the <code>CyclicDecayField</code> cycle-tuple contract that documents <code>phase</code> as a time offset in seconds.</p>
 <p>Calendar-accurate monthly or yearly discovery (e.g. via variable-length bucketing or a per-bucket-vector chi-squared statistic) is a possible future feature; no such helper ships today.</p>
 <h2 id="q-value-updates">Q-Value Updates<a class="headerlink" href="#q-value-updates" title="Permanent link">&para;</a></h2>
-<p>The <code>update_q_value</code> function performs atomic TD(0) updates via Lua script:</p>
+<p><code>TDValueField</code> owns the TD(0) update. It is a <code>DecimalField</code> subclass that
+stores the learned value in the model hash exactly as a plain <code>DecimalField</code>
+does, and adds one operation the ordinary save path cannot express — an atomic
+read-modify-write of that single hash field:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Q(s,a) &lt;- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
 </code></pre></div>
 <ul>
@@ -3246,6 +3277,15 @@
 <li><strong>gamma</strong> (discount factor): Importance of future rewards (default: 0.95)</li>
 <li>Returns TD error (positive = better than expected)</li>
 </ul>
+<p>The read and the write happen inside one Lua script, so concurrent updates to
+the same entry serialize at the server instead of racing through a client-side
+<code>HGET</code> / compute / <code>HSET</code> round trip.</p>
+<p><code>update_q_value()</code> is a convenience wrapper over
+<code>TDValueField.td_update(entry, "q_value", ...)</code> — it keeps the recipe's
+signature and defaults, and the field owns the script. Use the recipe function
+when you are working with <code>PolicyEntry</code>; reach for the field directly when you
+want TD updates on a model of your own. See
+<a href="../../features/td-value-field/">TDValueField</a>.</p>
 <h3 id="storage-architecture">Storage architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h3>
 <p>Q-values live in two separate slots that never overwrite each other:</p>
 <ul>

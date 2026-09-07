@@ -1105,6 +1105,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../td-value-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TDValueField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../co-occurrence-field/" class="md-nav__link">
         
   
@@ -3199,7 +3227,7 @@
 <tbody>
 <tr>
 <td><code>q_value</code></td>
-<td>Model hash (<code>DecimalField</code>)</td>
+<td>Model hash (<code>TDValueField</code>)</td>
 <td>Learned Q-value; updated by TD(0)</td>
 </tr>
 <tr>
@@ -3228,9 +3256,13 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">update_q_value</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># After observing reward from taking an action</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">update_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">next_max_q</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">update_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">max_future_q</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
 </code></pre></div>
-<p>The update uses: <code>Q_new = Q_old + alpha * (reward + gamma * next_max_q - Q_old)</code></p>
+<p>The update uses: <code>Q_new = Q_old + alpha * (reward + gamma * max_future_q - Q_old)</code></p>
+<p><code>update_q_value()</code> is a thin wrapper: the script and the arithmetic belong to
+<a href="../td-value-field/"><code>TDValueField</code></a>, the <code>DecimalField</code> subclass <code>q_value</code> is
+declared as. Call <code>TDValueField.td_update()</code> directly to get the same atomic
+update on a model that is not a <code>PolicyEntry</code>.</p>
 <h3 id="temporal-discovery">Temporal Discovery<a class="headerlink" href="#temporal-discovery" title="Permanent link">&para;</a></h3>
 <p>Detects cyclical patterns in event timing:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">temporal_discovery_handler</span>
