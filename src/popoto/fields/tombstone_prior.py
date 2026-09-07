@@ -50,10 +50,12 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 
 from ..batch import batch as _batch
 
-# The accessor, not ``from ..redis_db import POPOTO_REDIS_DB``: that plain
-# import captures a snapshot, and ``set_REDIS_DB_settings()`` rebinds
-# ``redis_db``'s global without updating it, so the importer keeps issuing
-# commands against the pre-reconfiguration client (#655).
+# The accessor, never a plain module-level import of the ``POPOTO_REDIS_DB``
+# global: that import captures a snapshot, and ``set_REDIS_DB_settings()``
+# rebinds ``redis_db``'s global without updating it, so the importer keeps
+# issuing commands against the pre-reconfiguration client (#655). The
+# anti-pattern is deliberately described here rather than quoted, so that a
+# grep for it does not match this comment.
 from ..redis_db import get_REDIS_DB
 from .constants import Defaults
 

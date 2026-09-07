@@ -757,8 +757,18 @@ class MemoryLifecycle:
         key-derived prior could never match anything, and recording it would
         only consume the retention bound.
 
-        Returns None when the model carries no ``ExistenceFilter``, when that
-        field has no ``fingerprint_fn``, or when computing it raises.
+        Returns None when the model carries no ``ExistenceFilter`` with a
+        ``fingerprint_fn``, or when computing that fingerprint raises.
+
+        The scan looks for the first ``ExistenceFilter`` *carrying a
+        ``fingerprint_fn``*, not merely the first ``ExistenceFilter``. Stopping
+        at the first one either way would silently disable the negative prior
+        for a model whose fingerprinted filter happens to be declared after an
+        unfingerprinted one — no error, no warning, just a capability that
+        never engages. Field order is neither documented nor enforced, so it
+        must not decide this. Mirrored in
+        ``WriteFilterMixin._wf_fingerprint_field``; the two must agree, or a
+        record could be penalized on a fingerprint it was never buried under.
         """
         from ..fields.existence_filter import (
             ExistenceFilter,
@@ -768,7 +778,7 @@ class MemoryLifecycle:
         for field in type(record)._meta.fields.values():
             if isinstance(field, ExistenceFilter):
                 if getattr(field, "fingerprint_fn", None) is None:
-                    return None
+                    continue
                 try:
                     return _compute_fingerprint_impl(field, record)
                 except Exception:

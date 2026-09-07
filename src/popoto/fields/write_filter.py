@@ -37,10 +37,12 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 
 from ..exceptions import SkipSaveException
 
-# The accessor, not ``from ..redis_db import POPOTO_REDIS_DB``: that plain
-# import captures a snapshot, and ``set_REDIS_DB_settings()`` rebinds
-# ``redis_db``'s global without updating it, so the importer keeps issuing
-# commands against the pre-reconfiguration client (#655).
+# The accessor, never a plain module-level import of the ``POPOTO_REDIS_DB``
+# global: that import captures a snapshot, and ``set_REDIS_DB_settings()``
+# rebinds ``redis_db``'s global without updating it, so the importer keeps
+# issuing commands against the pre-reconfiguration client (#655). The
+# anti-pattern is deliberately described here rather than quoted, so that a
+# grep for it does not match this comment.
 from ..redis_db import get_REDIS_DB
 from .constants import Defaults, _read_tombstone_prior_switch
 from .tombstone_prior import TombstonePriorStore, penalty_for
@@ -203,11 +205,19 @@ class WriteFilterMixin:
 
         field = None
         meta = getattr(cls, "_meta", None)
+        # First ExistenceFilter *carrying a fingerprint_fn*, not merely the
+        # first ExistenceFilter: stopping at the first one either way would
+        # silently disable the prior for a model whose fingerprinted filter is
+        # declared after an unfingerprinted one, with no error and no warning.
+        # Field order is neither documented nor enforced, so it must not decide
+        # this. Mirrored in MemoryLifecycle._content_fingerprint — the two must
+        # agree, or a record could be penalized on a fingerprint it was never
+        # buried under.
         for candidate in getattr(meta, "fields", {}).values():
             if isinstance(candidate, ExistenceFilter):
                 if getattr(candidate, "fingerprint_fn", None) is not None:
                     field = candidate
-                break
+                    break
 
         cls._wf_fingerprint_field_cache = field
         return field

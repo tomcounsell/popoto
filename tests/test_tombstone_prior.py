@@ -119,12 +119,54 @@ class LifecyclePlainMemory(popoto.Model):
     relevance = DecayingSortedField(decay_rate=0.5)
 
 
+class TwoFilterMemory(WriteFilterMixin, popoto.Model):
+    """Two ExistenceFilters, and the *unfingerprinted one is declared first*.
+
+    Field order decides nothing about which filter carries content identity,
+    and nothing documents or enforces an order — so a scan that stopped at the
+    first ExistenceFilter it saw would resolve this model to "no identity" and
+    silently disable the negative prior for it. That is a no-error, no-warning
+    failure, which is why the ordering is pinned by a model rather than left to
+    a reviewer to notice.
+    """
+
+    name = popoto.UniqueKeyField()
+    content = popoto.Field(type=str)
+    importance = popoto.FloatField(default=0.0)
+    seen = ExistenceFilter(error_rate=0.01, capacity=1000)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=1000,
+        fingerprint_fn=lambda inst: inst.content,
+    )
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+
+class LifecycleTwoFilterMemory(popoto.Model):
+    """Same declaration order, on the burial side of the same contract."""
+
+    name = popoto.UniqueKeyField()
+    tier = popoto.KeyField(type=str, default="episodic")
+    content = popoto.Field(type=str)
+    relevance = DecayingSortedField(decay_rate=0.5)
+    seen = ExistenceFilter(error_rate=0.01, capacity=1000)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=100_000,
+        fingerprint_fn=lambda inst: inst.content,
+    )
+
+
 ALL_MODELS = (
     PriorMemory,
     PlainMemory,
     NoFingerprintFnMemory,
     LifecyclePriorMemory,
     LifecyclePlainMemory,
+    TwoFilterMemory,
+    LifecycleTwoFilterMemory,
 )
 
 
@@ -505,6 +547,47 @@ def test_tombstoning_a_model_without_a_content_fingerprint_records_nothing():
     assert lifecycle.tombstone(record) is not None
 
     assert TombstonePriorStore(LifecyclePlainMemory).count() == 0
+
+
+def test_auto_detect_skips_past_an_unfingerprinted_filter_to_a_later_one():
+    """Declaration order must not decide whether the capability engages.
+
+    ``TwoFilterMemory`` declares an ExistenceFilter with no ``fingerprint_fn``
+    *before* the one that has it. A scan that stopped at the first
+    ExistenceFilter would resolve to None here and disable the negative prior
+    for the whole model, with no error and no warning to say so. Asserting the
+    resolved field is the fingerprinted one — not merely that the result is
+    non-None — is what makes this fail on the stop-at-first shape rather than
+    on any object being returned.
+    """
+    field = TwoFilterMemory._wf_fingerprint_field()
+
+    assert field is not None
+    assert field is TwoFilterMemory._meta.fields["bloom"]
+    assert field.fingerprint_fn is not None
+
+    _bury(TwoFilterMemory, "buried twice-filtered content")
+
+    item = TwoFilterMemory(
+        name="second-filter", content="buried twice-filtered content", importance=0.8
+    )
+    item.save()
+
+    assert item._write_filter_score == pytest.approx(0.4)
+
+
+def test_burial_side_also_skips_past_an_unfingerprinted_filter():
+    """The write side and the burial side must agree on which filter carries
+    identity, or a record gets penalized on a fingerprint it was never buried
+    under — or, as here, never buried at all."""
+    record = LifecycleTwoFilterMemory(name="doomed-2f", content="two-filter content")
+    record.save()
+
+    lifecycle = MemoryLifecycle(LifecycleTwoFilterMemory, importance_field="relevance")
+    assert lifecycle.tombstone(record) is not None
+
+    store = TombstonePriorStore(LifecycleTwoFilterMemory)
+    assert store.burial_count("two-filter content") == 1
 
 
 def test_a_failing_burial_does_not_roll_back_or_break_the_tombstone(
