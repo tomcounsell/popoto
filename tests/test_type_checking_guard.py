@@ -12,9 +12,11 @@ in opposite directions and neither is observable from behavior alone:
 
 - The declaration must NOT bind at runtime. A bare annotation binds nothing and
   the branch never executes, so ``vars(popoto)`` stays clear and the hook still
-  fires. Turning it into ``from .redis_db import POPOTO_REDIS_DB`` would type-check
-  identically and silently restore #651 — ``tests/test_popoto_redis_db_rebind.py``
-  is what fails then.
+  fires. Turning it into ``from .redis_db import POPOTO_REDIS_DB`` would silently
+  restore #651 while leaving ``__init__.py`` itself error-free — the only static
+  signal is ``no_implicit_reexport`` firing at a *consumer*'s site, and only once
+  the package resolves at all, which it does not today.
+  ``tests/test_popoto_redis_db_rebind.py`` is what fails then.
 - The hook must NOT be visible to the checker. Lifting it out of the ``else``
   breaks nothing at runtime; it only re-disables ``attr-defined``. No behavioral
   test can catch that, which is why this file asserts the source *shape* via
@@ -106,7 +108,8 @@ def test_the_declaration_is_an_annotation_not_an_import():
     """The ``if`` branch must declare the name, not bind it.
 
     An import here would shadow the hook permanently at runtime and restore #651
-    in full, while type-checking exactly the same.
+    in full, with no error raised at this file — ``no_implicit_reexport`` only
+    speaks up at a consumer's site, and only once the package resolves.
     """
     # The locator already required the declaration to exist — it is how the
     # guard is identified. What is left to check is that it stays a *bare*

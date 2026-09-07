@@ -310,8 +310,11 @@ if TYPE_CHECKING:
     # 1. An annotation is not a binding. This branch never executes, and a bare
     #    annotation would bind nothing even if it did, so ``vars(popoto)`` stays
     #    clear and the hook still fires. Writing ``from .redis_db import
-    #    POPOTO_REDIS_DB`` here instead would type-check identically and restore
-    #    #651 in full, because *that* is a binding.
+    #    POPOTO_REDIS_DB`` here instead would restore #651 in full, because
+    #    *that* is a binding — and nothing about the runtime would tell you.
+    #    ``no_implicit_reexport`` does eventually catch it, but only at the
+    #    consumer's site (``Module "popoto" does not explicitly export
+    #    attribute``), only once the package resolves at all, and never here.
     # 2. The hook must stay in the ``else``. A module ``__getattr__`` annotated
     #    ``-> Any`` tells mypy every attribute of this package exists, so
     #    declaring the name while leaving the hook visible restores nothing —
