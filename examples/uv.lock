@@ -230,7 +230,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40.0" },
+    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.77.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.3.1" },
     { name = "cyksuid", marker = "extra == 'ksuid'", specifier = ">=1.0.0" },
     { name = "griffe", marker = "extra == 'docs'", specifier = ">=0.45" },
