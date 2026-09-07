@@ -1,7 +1,8 @@
 {
-  "_provenance": "captured-from: the OpenClaw plugin hook reference (docs.openclaw.ai/plugins/hooks, read 2026-08-07), not from a live turn. OpenClaw is not installed on any machine this repo is developed on, and its automatic path needs a TypeScript plugin that this cycle does not ship (see spike-6 in docs/plans/harness_integration.md). Recapture: install OpenClaw, register a plugin whose before_prompt_build handler writes its argument to a file, run one turn.",
-  "event": "before_prompt_build",
-  "session_id": "openclaw-7f2b",
-  "cwd": "/Users/dev/src/demo",
-  "message": "how does the deploy roll back when health checks fail?"
+  "_provenance": "captured-from: a live turn through the shipped popoto OpenClaw plugin (plugins/openclaw/popoto-memory-plugin), OpenClaw 2026.9.2 (3928bad), anthropic/claude-haiku-4-5-20251001, 2026-09-07. This file is byte-for-byte the JSON the plugin wrote to `popoto-memory hook` on stdin, with only this _provenance key added. Recapture: install the plugin per docs/guides/harness-openclaw.md, export POPOTO_HOOK_CAPTURE=<dir>, and run one turn with `openclaw agent --local` (never `agent exec`, which loads no external plugins); the envelopes land in <dir>/before_prompt_build.json and <dir>/llm_output.json.",
+  "hook_event_name": "before_prompt_build",
+  "prompt": "Deploys are blue-green and roll back on failed health checks. Describe what happens on a failed check, using the exact phrase 'automatic rollback' in your answer.",
+  "session_id": "14714e30-1ec9-40d0-a842-dbbc8750cb65",
+  "cwd": "/Users/valorengels/.openclaw-popotoprobe/.openclaw/workspace",
+  "turn_id": "59a6ac21-e27c-4b80-a837-f714168ad16c"
 }
