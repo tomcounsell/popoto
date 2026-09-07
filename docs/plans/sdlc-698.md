@@ -1149,10 +1149,90 @@ usable.
 
 ## Critique Results
 
+**Round:** 2 of 2 (cycle cap reached)
+**Critics:** Risk & Robustness, Scope & Value, History & Consistency (FULL depth)
+**Mode:** independent roster (3 critics)
+**Findings:** 2 total (0 blockers, 2 concerns, 0 nits)
+**Verdict:** READY TO BUILD (with concerns)
+
+All eight round-1 findings (B1, C1–C6, N1) were re-verified against the revised
+plan text *and* the current source, by all three critics independently. Every one
+is genuinely resolved in the plan body, not merely asserted in the Revision log.
+The settled supervisor decisions (hard reset, INFO level, Risk 2 as documentation,
+Race 1 unfixed under No-Go #699) were not re-litigated by any critic.
+
+| Severity | Critics | Finding | Location | Suggested fix |
+|---|---|---|---|---|
+| CONCERN | Scope & Value; History & Consistency (independent convergence) | C7 — The `test-builder` role still reads "the `import_state` **widening** plus its transfer-fidelity cover" — pre-revision language that C2 reversed. Team Orchestration is the section a builder scans first, and as written it points `test-builder` at exactly the change C2 rejected. | Team Orchestration / Team Members (`test-builder`) | Drop "widening": "…the `import_state` docstring/comment recording the deliberate 3-element truncation, plus its transfer-fidelity cover." Plan-text edit only; Task 2's bullets are already correct. |
+| CONCERN | Risk & Robustness | C8 — The reset `logger.info` is specified in three places (Solution / Key Elements, Task 1, Success Criteria) as naming model, field, period, old and new declared value and the discarded amplitude — but never the **member key**. The plan declines sampling and dedupe on the grounds that this is a *per-record audit trail*; without the record identity, two records that discarded the same amplitude emit indistinguishable lines and the trail cannot be traced back to a record. | Solution / Key Elements ("A loud reset"); Task 1; Success Criteria | Add `member_key` to the log call and to all three places that enumerate its contents; extend the planned `caplog` assertion to require it. |
+
+### Concerns — detail
+
+#### C7 — Stale "import_state widening" in the builder role summary
+
+- **Critics:** Scope & Value; History & Consistency (flagged independently)
+- **Location:** Team Orchestration / Team Members, `test-builder` role line
+- **Finding:** The role reads "the `import_state` widening plus its
+  transfer-fidelity cover". C2 reversed that approach: Task 2 says
+  "**Do not widen `import_state`.**", Solution / Key Elements calls the
+  truncation deliberate, and spike-2's Impact records the conclusion as
+  *reversed*. The role summary is the only surviving sentence written against
+  the pre-revision approach.
+- **Suggestion:** Reword the role line to match Task 2.
+- **Implementation Note:** Plan-text edit to the `test-builder` role bullet only —
+  no task-list or code change, because Task 2's bullets already state the correct
+  behavior. After the edit, `grep -c "import_state\` widening"
+  docs/plans/sdlc-698.md` must return 0. **Severity held at CONCERN despite
+  two-critic convergence**: the authoritative task text contradicts the stale
+  summary explicitly, and the Verification row
+  `grep -c "normalized.append(\[period, amplitude, phase\])"` mechanically fails
+  if a builder widens `import_state` anyway, so the misdirection cannot reach a
+  merge undetected.
+
+#### C8 — The reset audit line omits the record it describes
+
+- **Critics:** Risk & Robustness
+- **Location:** Solution / Key Elements ("A loud reset"); Task 1 (`build-merge`);
+  Success Criteria bullet 6
+- **Finding:** The plan accepts an uncapped INFO burst specifically because each
+  line is a per-record audit record, but the enumerated contents identify only the
+  *class-level* facts (model, field, period, old/new declared value) plus the
+  discarded amplitude. Two records that had learned the same amplitude for the
+  same period produce byte-identical lines, so the burst cannot be resolved back
+  to the affected records — which is the entire justification for not
+  deduplicating it.
+- **Suggestion:** Include the member key in the log line and in the three places
+  that enumerate its contents.
+- **Implementation Note:** `member_key` is already in scope in `on_save` at
+  `src/popoto/fields/cyclic_decay_field.py:547`
+  (`member_key = model_instance.db_key.redis_key`), and the sibling
+  corrupt-payload `logger.warning` in the same method already logs it — so this
+  is one f-string field, matching an existing precedent, with no new lookup and
+  no extra Redis call. Extend the planned `caplog` assertion for the reset log to
+  require the member key in the message, otherwise the omission can regress
+  silently.
+
+### Structural check results — round 2
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections | PASS | All plan sections present and non-empty |
+| Task numbering | PASS | Tasks 1, 1b, 2-6; no gaps |
+| Dependencies valid | PASS | `build-merge`, `build-return-arity`, `build-transfer`, `build-tests`, `validate-merge`, `document-feature` all resolve; no cycles |
+| File paths exist | PASS | 15 of 15 referenced paths exist |
+| Prerequisites met | PARTIAL (disclosed) | Redis DB 12 PONG; `numpy`/`sentence_transformers` import; **row 3 genuinely RED** — run from `.worktrees/sdlc-698` it exits 1, resolving to `/Users/valorengels/src/popoto/src/popoto/__init__.py`. The C6 rewrite works: the check now reports the failure instead of hiding it, and the plan already records the disclosure obligation. |
+| Cross-references | PASS | N1 fixed — Success Criteria now says five and enumerates them, matching Test Impact |
+| Verification rows reproduce | PASS | Re-run on the unmodified tree at round 2: `cycle[:3]`=0 (red, as required pre-change), named-test grep=0 (red), `normalized.append([period, amplitude, phase])`=1 (green by construction, C2), stale-doc-claim=1 (red, the sentence is live at `docs/features/cyclic-decay-field.md:122`), numkeys=1, `logger.info`=0, `TestLearnedAmplitudePreservedOnSave`=1 — every value matches the plan's stated smoke test |
+| Cited line numbers | PASS | `base.py:2655/2675/2695/2756/2763` and `cyclic_decay_field.py:264/316/349/547` all verified against the source |
+
+---
+
+## Critique Results — Round 1 (superseded, retained for history)
+
 **Critics:** Risk & Robustness, Scope & Value, History & Consistency (FULL depth)
 **Mode:** independent roster (3 critics)
 **Findings:** 8 total (1 blocker, 6 concerns, 1 nit)
-**Verdict:** NEEDS REVISION
+**Verdict:** NEEDS REVISION — all eight resolved by revision 1; see the Revision log.
 
 | Severity | Critics | Finding | Location | Suggested fix |
 |---|---|---|---|---|
