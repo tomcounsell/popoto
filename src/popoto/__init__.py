@@ -1,5 +1,5 @@
 from importlib.metadata import PackageNotFoundError, version as _get_version
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 try:
     __version__ = _get_version("popoto")
@@ -302,32 +302,60 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> Any:
-    """Resolve ``popoto.POPOTO_REDIS_DB`` live, per PEP 562.
+if TYPE_CHECKING:
+    # A declaration for type checkers, never a runtime binding (#659). The
+    # ``__getattr__`` docstring below carries the history; what matters here is
+    # the shape, and both halves of it are load-bearing:
+    #
+    # 1. An annotation is not a binding. This branch never executes, and a bare
+    #    annotation would bind nothing even if it did, so ``vars(popoto)`` stays
+    #    clear and the hook still fires. Writing ``from .redis_db import
+    #    POPOTO_REDIS_DB`` here instead would restore #651 in full, because
+    #    *that* is a binding — and nothing about the runtime would tell you.
+    #    ``no_implicit_reexport`` does eventually catch it, but only at the
+    #    consumer's site (``Module "popoto" does not explicitly export
+    #    attribute``), only once the package resolves at all, and never here.
+    # 2. The hook must stay in the ``else``. A module ``__getattr__`` annotated
+    #    ``-> Any`` tells mypy every attribute of this package exists, so
+    #    declaring the name while leaving the hook visible restores nothing —
+    #    ``popoto.Modle`` resolves to ``Any`` again.
+    #
+    # ``tests/test_type_checking_guard.py`` asserts both, on the source itself:
+    # neither is observable from runtime behavior.
+    from .redis_db import GuardedRedis
 
-    ``redis_db`` owns the current connection in a module global that
-    ``set_REDIS_DB_settings()`` *rebinds*. Python does not propagate a rebind to
-    a name imported elsewhere, so the plain ``from .redis_db import
-    POPOTO_REDIS_DB`` this replaces froze the client that existed at import
-    time: after any reconfiguration ``popoto.POPOTO_REDIS_DB`` pointed at the
-    previous database while ``redis_db.get_REDIS_DB()`` pointed at the new one,
-    and a caller using it wrote to one database and read from another in
-    silence (#651).
+    POPOTO_REDIS_DB: GuardedRedis
+else:
 
-    This hook only fires because nothing above binds the name in this module's
-    namespace. Re-adding that import would shadow the hook permanently and
-    restore the bug — see the comment at the import block.
+    def __getattr__(name: str) -> Any:
+        """Resolve ``popoto.POPOTO_REDIS_DB`` live, per PEP 562.
 
-    Note that PEP 562 does *not* route unqualified module-global reads through
-    this hook, only attribute access on the module object. Code inside this file
-    must therefore call ``redis_db.get_REDIS_DB()`` rather than referring to a
-    bare ``POPOTO_REDIS_DB``; ``get_redis()`` documents the same constraint.
-    """
-    if name == "POPOTO_REDIS_DB":
-        from .redis_db import get_REDIS_DB
+        ``redis_db`` owns the current connection in a module global that
+        ``set_REDIS_DB_settings()`` *rebinds*. Python does not propagate a
+        rebind to a name imported elsewhere, so the plain ``from .redis_db
+        import POPOTO_REDIS_DB`` this replaces froze the client that existed at
+        import time: after any reconfiguration ``popoto.POPOTO_REDIS_DB``
+        pointed at the previous database while ``redis_db.get_REDIS_DB()``
+        pointed at the new one, and a caller using it wrote to one database and
+        read from another in silence (#651).
 
-        return get_REDIS_DB()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+        This hook only fires because nothing above binds the name in this
+        module's namespace. Re-adding that import would shadow the hook
+        permanently and restore the bug — see the comment at the import block.
+        The ``TYPE_CHECKING`` declaration above is not such a binding; it is an
+        annotation in a branch that never executes (#659).
+
+        Note that PEP 562 does *not* route unqualified module-global reads
+        through this hook, only attribute access on the module object. Code
+        inside this file must therefore call ``redis_db.get_REDIS_DB()`` rather
+        than referring to a bare ``POPOTO_REDIS_DB``; ``get_redis()`` documents
+        the same constraint.
+        """
+        if name == "POPOTO_REDIS_DB":
+            from .redis_db import get_REDIS_DB
+
+            return get_REDIS_DB()
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
