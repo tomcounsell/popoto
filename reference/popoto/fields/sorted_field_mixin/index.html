@@ -3064,23 +3064,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="score">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#popoto.fields.sorted_field_mixin.SortedFieldMixin.score--658-tracks-migrating-that-remaining-caller-off-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        658 tracks migrating that remaining caller off it.
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
         
           <li class="md-nav__item">
@@ -4757,15 +4740,15 @@ category rather than one global set.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="sd">                unpartitioned key via ``get_special_use_field_db_key``</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">                instead. For a field WITH ``partition_by`` set, that base</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">                key cannot contain the member, so ``partitioned=False``</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">                always returns ``None`` in that case. This flag exists</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">                solely to preserve the pre-existing read in</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="sd">                ``recipes/memory_lifecycle.py``, which reads the bare</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">                unpartitioned key today; reproducing that read exactly here</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="sd">                is what keeps this method's introduction a no-op for that</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">                caller. It is the same defect class as issue #474 (already</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">                fixed once in ``recipes/context_assembler.py`` -- see the</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">                docstring at ``context_assembler.py:589-596``), and issue</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">                #658 tracks migrating that remaining caller off it.</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">                always returns ``None`` in that case -- which makes it a</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">                latent instance of the #474 defect class (already fixed once</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="sd">                in ``recipes/context_assembler.py`` -- see the docstring at</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">                ``context_assembler.py:589-596``, and again in</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="sd">                ``recipes/memory_lifecycle.py`` under #658). It has **no</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">                caller in this repository** and exists only as an escape</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">                hatch for reading the base key directly. Reach for it only</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">                when you know the field is unpartitioned, where the two</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">                branches resolve to the same key anyway.</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">        Returns:</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">            The member's score as a ``float``, or ``None`` if the member is</span>
@@ -6843,15 +6826,15 @@ almost always want. When <code>False</code>, reads the base,
 unpartitioned key via <code>get_special_use_field_db_key</code>
 instead. For a field WITH <code>partition_by</code> set, that base
 key cannot contain the member, so <code>partitioned=False</code>
-always returns <code>None</code> in that case. This flag exists
-solely to preserve the pre-existing read in
-<code>recipes/memory_lifecycle.py</code>, which reads the bare
-unpartitioned key today; reproducing that read exactly here
-is what keeps this method's introduction a no-op for that
-caller. It is the same defect class as issue #474 (already
-fixed once in <code>recipes/context_assembler.py</code> -- see the
-docstring at <code>context_assembler.py:589-596</code>), and issue</p>
-<h5 id="popoto.fields.sorted_field_mixin.SortedFieldMixin.score--658-tracks-migrating-that-remaining-caller-off-it">658 tracks migrating that remaining caller off it.<a class="headerlink" href="#popoto.fields.sorted_field_mixin.SortedFieldMixin.score--658-tracks-migrating-that-remaining-caller-off-it" title="Permanent link">&para;</a></h5>
+always returns <code>None</code> in that case -- which makes it a
+latent instance of the #474 defect class (already fixed once
+in <code>recipes/context_assembler.py</code> -- see the docstring at
+<code>context_assembler.py:589-596</code>, and again in
+<code>recipes/memory_lifecycle.py</code> under #658). It has <strong>no
+caller in this repository</strong> and exists only as an escape
+hatch for reading the base key directly. Reach for it only
+when you know the field is unpartitioned, where the two
+branches resolve to the same key anyway.</p>
               </div>
             </td>
             <td>
@@ -7020,15 +7003,15 @@ docstring at <code>context_assembler.py:589-596</code>), and issue</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="sd">            unpartitioned key via ``get_special_use_field_db_key``</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">            instead. For a field WITH ``partition_by`` set, that base</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">            key cannot contain the member, so ``partitioned=False``</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            always returns ``None`` in that case. This flag exists</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">            solely to preserve the pre-existing read in</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="sd">            ``recipes/memory_lifecycle.py``, which reads the bare</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">            unpartitioned key today; reproducing that read exactly here</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="sd">            is what keeps this method's introduction a no-op for that</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">            caller. It is the same defect class as issue #474 (already</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">            fixed once in ``recipes/context_assembler.py`` -- see the</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">            docstring at ``context_assembler.py:589-596``), and issue</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">            #658 tracks migrating that remaining caller off it.</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            always returns ``None`` in that case -- which makes it a</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">            latent instance of the #474 defect class (already fixed once</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="sd">            in ``recipes/context_assembler.py`` -- see the docstring at</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">            ``context_assembler.py:589-596``, and again in</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a><span class="sd">            ``recipes/memory_lifecycle.py`` under #658). It has **no</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">            caller in this repository** and exists only as an escape</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="sd">            hatch for reading the base key directly. Reach for it only</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">            when you know the field is unpartitioned, where the two</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">            branches resolve to the same key anyway.</span>
 <a id="__codelineno-0-585" name="__codelineno-0-585"></a>
 <a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">    Returns:</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">        The member's score as a ``float``, or ``None`` if the member is</span>

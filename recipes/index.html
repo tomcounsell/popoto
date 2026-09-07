@@ -4131,6 +4131,18 @@ than a tuning knob: confidence moves on every reported outcome, so without a min
 track record one unlucky dismissal could bury a memory. Models with no
 <code>ConfidenceField</code> take the importance-only path, unchanged from before.</p>
 <p>Semantic records are <strong>never</strong> forgotten by the default policy.</p>
+<div class="admonition note">
+<p class="admonition-title">Importance is read from the partitioned sorted set</p>
+<p><code>importance_score</code> comes from the importance field's sorted set, read with the
+same key <code>on_save</code> writes — including the partition segment when the field is
+declared with <code>partition_by</code>. Before <a href="https://github.com/tomcounsell/popoto/issues/658">#658</a>
+the read used the bare unpartitioned key, which for a partitioned field can never
+contain the member, so the score silently fell back to a direct attribute read and
+the sorted-set path was dead. If your importance field uses <code>partition_by</code>, expect
+forget decisions to change on upgrade: the record is now scored by its decaying
+sorted-set timestamp rather than by whatever the attribute happened to hold.
+Unpartitioned fields are unaffected — both derivations resolve to the same key.</p>
+</div>
 <h3 id="tombstones">Tombstones<a class="headerlink" href="#tombstones" title="Permanent link">&para;</a></h3>
 <p>Forgetting archives the record and removes it from the live corpus rather than deleting
 it, so exclusion from every retrieval mode is structural — no read path has to remember
