@@ -573,15 +573,15 @@ class SortedFieldMixin:
                 unpartitioned key via ``get_special_use_field_db_key``
                 instead. For a field WITH ``partition_by`` set, that base
                 key cannot contain the member, so ``partitioned=False``
-                always returns ``None`` in that case. This flag exists
-                solely to preserve the pre-existing read in
-                ``recipes/memory_lifecycle.py``, which reads the bare
-                unpartitioned key today; reproducing that read exactly here
-                is what keeps this method's introduction a no-op for that
-                caller. It is the same defect class as issue #474 (already
-                fixed once in ``recipes/context_assembler.py`` -- see the
-                docstring at ``context_assembler.py:589-596``), and issue
-                #658 tracks migrating that remaining caller off it.
+                always returns ``None`` in that case -- which makes it a
+                latent instance of the #474 defect class (already fixed once
+                in ``recipes/context_assembler.py`` -- see the docstring at
+                ``context_assembler.py:589-596``, and again in
+                ``recipes/memory_lifecycle.py`` under #658). It has **no
+                caller in this repository** and exists only as an escape
+                hatch for reading the base key directly. Reach for it only
+                when you know the field is unpartitioned, where the two
+                branches resolve to the same key anyway.
 
         Returns:
             The member's score as a ``float``, or ``None`` if the member is
