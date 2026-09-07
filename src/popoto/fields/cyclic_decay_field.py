@@ -34,13 +34,14 @@ Example:
 
 import logging
 import time
+from typing import Any, Optional
 
 import msgpack
 import redis
 
 from ..exceptions import ModelException
-from ..redis_db import POPOTO_REDIS_DB
-from .decaying_sorted_field import DecayingSortedField
+from ..redis_db import POPOTO_REDIS_DB, run_lua
+from .decaying_sorted_field import MODULATION_DISABLED, DecayingSortedField
 
 logger = logging.getLogger("POPOTO.CyclicDecayField")
 
@@ -412,6 +413,77 @@ class CyclicDecayField(DecayingSortedField):
         """
         ss_key = self.get_partitioned_sortedset_db_key(model_instance, field_name)
         return ss_key.redis_key + ":pressure"
+
+    def rank_decayed(
+        self,
+        zset_key: str,
+        *,
+        now: float,
+        n: Optional[int] = None,
+        confidence: Optional[tuple[str, str, str]] = None,
+        validity: Optional[tuple[str, str, str]] = None,
+        decay_rate: Optional[float] = None,
+        base_score_field: Optional[str] = None,
+    ) -> "list[Any]":
+        """Evaluate the cyclic decay script over one sorted set (#648).
+
+        Overrides :meth:`DecayingSortedField.rank_decayed` because this fork of
+        the decay math uses an **incompatible KEYS layout**: cycles at
+        ``KEYS[2]`` and pressure at ``KEYS[3]``, which pushes the confidence
+        hash to ``KEYS[4]``. Both scripts carry a comment forbidding a "unify"
+        on ``KEYS[2]`` -- reusing index 2 here would ``cmsgpack.unpack`` the
+        cycles array as a confidence dict, a silent corrupt read rather than a
+        clean crash. Keeping the two layouts in two class bodies, rather than
+        behind a flag in one, is what makes that mistake unavailable instead of
+        merely discouraged.
+
+        The companion hash keys are the partition ZSET key plus a suffix (the
+        same derivation as :meth:`get_cycles_hash_key` /
+        :meth:`get_cycles_hash_key_from_parts`), so they follow from
+        ``zset_key`` alone. The confidence hash does not -- it lives under its
+        own ``$ConfidencF:`` prefix -- so it arrives resolved in ``confidence``.
+
+        ``validity`` is accepted and **deliberately ignored**: ``KEYS`` 1-4 are
+        taken here and the script's header forbids renumbering, so this script
+        has no validity gate. That gap is an explicit No-Go, pinned by
+        ``tests/test_validity_field.py::TestCyclicDecayGatingGap`` and recorded
+        under "Known limitations" in
+        ``docs/features/validity-and-supersession.md``. The parameter is kept in
+        the signature so callers stay polymorphic; if you ever gate this script,
+        update all three places.
+
+        Args and return value are otherwise as
+        :meth:`DecayingSortedField.rank_decayed`.
+        """
+        conf_hash_key, conf_s, conf_c0 = (
+            MODULATION_DISABLED if confidence is None else confidence
+        )
+        if n is None:
+            n = int(POPOTO_REDIS_DB.zcard(zset_key))
+            if not n:
+                return []
+        effective_rate = self.decay_rate if decay_rate is None else decay_rate
+        if base_score_field is None:
+            base_score_field = self.base_score_field or ""
+
+        return run_lua(
+            POPOTO_REDIS_DB,
+            CYCLIC_DECAY_LUA,
+            # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
+            # Passing the confidence key without bumping this would shunt it
+            # into ARGV and silently disable modulation.
+            4,
+            zset_key,
+            zset_key + ":cycles",
+            zset_key + ":pressure",
+            conf_hash_key,
+            str(now),
+            str(effective_rate),
+            str(n),
+            base_score_field,
+            conf_s,
+            conf_c0,
+        )
 
     @classmethod
     def get_cycles_hash_key_from_parts(cls, model_class, field_name, *partition_values):

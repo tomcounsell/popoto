@@ -67,8 +67,9 @@ import statistics
 import time
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
+from ..batch import batch
 from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
 from ..fields.confidence_field import ConfidenceField
@@ -81,7 +82,7 @@ from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.tag_field import TagFieldMixin
 from ..fields.validity_field import ValidityField
-from ..redis_db import OUTAGE_ERRORS, POPOTO_REDIS_DB, run_lua
+from ..redis_db import OUTAGE_ERRORS
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
 
@@ -603,9 +604,10 @@ def _partition_scores_for_field(records, *, model_class, field_name, now=None):
     * A :class:`DecayingSortedField` (and its :class:`CyclicDecayField`
       subclass) stores the *last_updated timestamp* as the score, not
       relevance. A naive ``ZSCORE`` would surface ~1.7e9 timestamps and invert
-      staleness. This reuses ``DECAY_SCORE_LUA`` to compute the power-law
-      decayed relevance on the partition ZSET -- identical math to
-      :meth:`Query.top_by_decay`, so the proxy and the query agree.
+      staleness. This routes through the field's own ``rank_decayed`` to
+      compute the power-law decayed relevance on the partition ZSET --
+      identical math to :meth:`Query.top_by_decay`, so the proxy and the
+      query agree.
 
     Records whose member is absent from the partition ZSET, or whose partition
     field value is missing, map to ``None`` (never corrupting other records'
@@ -643,7 +645,7 @@ def _partition_scores_for_field(records, *, model_class, field_name, now=None):
     # Plain SortedField: the stored value IS the score.
     scores = {}
     ordered_keys = []
-    pipe = POPOTO_REDIS_DB.pipeline()
+    pipe = batch()
     for record in records:
         r_key = _get_key(record)
         ordered_keys.append(r_key)
@@ -669,32 +671,34 @@ def _decayed_partition_scores(
 ):
     """Decayed relevance per record for a DecayingSortedField partition ZSET.
 
-    Reuses the same decay scripts :meth:`Query.top_by_decay` runs, so the
-    metacognitive proxy sees the same decayed relevance a query would surface,
-    rather than the raw last_updated timestamp stored as the ZSET score:
+    Runs the decay ranking through ``field.rank_decayed`` — the same seam
+    :meth:`Query.top_by_decay` scores against — so the metacognitive proxy sees
+    the decayed relevance a query would surface, rather than the raw
+    last_updated timestamp stored as the ZSET score.
 
-    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (4 KEYS: the partition
-      ZSET, the ConfidenceField ``:data`` hash (``""`` when modulation is off),
-      and the ValidityField ``invalid_at`` / ``valid_from`` interval ZSETs
-      (``""`` when the model has no validity axis — #580, plan D5)).
-    * :class:`CyclicDecayField` -> ``CYCLIC_DECAY_LUA`` (4 KEYS: the partition
-      ZSET, its ``:cycles`` / ``:pressure`` companion hashes, and the
-      confidence ``:data`` hash), so cyclic cadence/pressure is honoured and
-      the proxy agrees with ``top_by_decay`` for cyclic fields too.
+    Which script runs, and which ``KEYS`` index each key takes in it, is the
+    field's business and not this module's (#648):
+    :class:`DecayingSortedField` and :class:`CyclicDecayField` use **mutually
+    incompatible** layouts, and a caller holding both is exactly the mistake the
+    ``do not "unify" them`` comments inside the two scripts warn about — it
+    corrupts silently rather than erroring. Dispatch here is ordinary method
+    resolution on ``field``, so this function names no ``KEYS`` index at all.
 
     Confidence-modulated decay (#491) must be threaded here too, or the proxy
     would silently disagree with ``top_by_decay`` (the no-drift contract at
     ``test_proxy_matches_top_by_decay``). Unlike the query paths this one has
     records rather than filters, so each record's ``:data`` key is read off the
-    instance; the script is evaluated once per distinct
+    instance; the field is evaluated once per distinct
     ``(partition ZSET, confidence hash)`` pair, which collapses to one EVAL per
     ZSET in the overwhelmingly common case where both share a partitioning.
 
+    Validity gating args are passed unconditionally. A cyclic field accepts and
+    drops them — that script has no gate, a deliberate No-Go — which is why this
+    function does not branch on the field type to decide whether to send them.
+
     Read-only ``EVAL``, Valkey-safe.
     """
-    from ..fields.cyclic_decay_field import CYCLIC_DECAY_LUA
     from ..fields.decaying_sorted_field import (
-        DECAY_SCORE_LUA,
         MODULATION_DISABLED,
         confidence_modulation_args,
         validity_gate_args,
@@ -710,7 +714,6 @@ def _decayed_partition_scores(
     gate_invalid_key, gate_valid_key, gate_as_of = validity_gate_args(model_class)
 
     base_score_field = field.base_score_field or ""
-    is_cyclic = isinstance(field, CyclicDecayField)
 
     # Per-record confidence modulation args. Resolves to MODULATION_DISABLED
     # (empty key, s="0") whenever modulation is off, which reproduces the
@@ -742,51 +745,19 @@ def _decayed_partition_scores(
     decayed = {}
     for zkey, (conf_hash_key, conf_s, conf_c0) in eval_groups:
         try:
-            cardinality = POPOTO_REDIS_DB.zcard(zkey)
-            if not cardinality:
-                continue
-            if is_cyclic:
-                # Companion hashes are the partition ZSET key plus a suffix
-                # (CyclicDecayField.get_cycles/pressure_hash_key), so they are
-                # derivable directly from the partition ZSET key. The
-                # confidence hash is NOT -- it lives under its own
-                # $ConfidencF: prefix -- so it is resolved Python-side above.
-                result = run_lua(
-                    POPOTO_REDIS_DB,
-                    CYCLIC_DECAY_LUA,
-                    4,  # number of KEYS: zset + cycles + pressure + confidence
-                    zkey,
-                    zkey + ":cycles",
-                    zkey + ":pressure",
-                    conf_hash_key,
-                    str(now),
-                    str(field.decay_rate),
-                    str(cardinality),  # return every member's decayed score
-                    base_score_field,
-                    conf_s,
-                    conf_c0,
-                )
-            else:
-                result = run_lua(
-                    POPOTO_REDIS_DB,
-                    DECAY_SCORE_LUA,
-                    # numkeys: zset + confidence (KEYS[2]) + invalid_at
-                    # (KEYS[3]) + valid_from (KEYS[4]). Passing the validity
-                    # keys without bumping this would shunt them into ARGV and
-                    # silently corrupt base_score_field (plan Risk 1).
-                    4,
-                    zkey,
-                    conf_hash_key,
-                    gate_invalid_key,
-                    gate_valid_key,
-                    str(now),
-                    str(field.decay_rate),
-                    str(cardinality),  # return every member's decayed score
-                    base_score_field,
-                    conf_s,
-                    conf_c0,
-                    gate_as_of,  # ARGV[7]
-                )
+            # The FIELD builds the KEYS array (#648). Which script runs, and
+            # which index each key takes in it, is settled by method resolution
+            # on `field` -- CyclicDecayField overrides rank_decayed with its own
+            # incompatible layout. Passing n=None asks for every member's score
+            # and folds the ZCARD (and the empty-set short circuit) inside.
+            result = field.rank_decayed(
+                zkey,
+                now=now,
+                n=None,
+                confidence=(conf_hash_key, conf_s, conf_c0),
+                validity=(gate_invalid_key, gate_valid_key, gate_as_of),
+                base_score_field=base_score_field,
+            )
         except Exception as e:
             logger.warning("decayed partition score eval failed for %s: %s", zkey, e)
             continue
@@ -1679,6 +1650,13 @@ class ContextAssembler:
         data-visibility regression, not a stricter gate. Do not "simplify" this
         into a valid-key intersection.
 
+        The two reads themselves now live on the field, as
+        :meth:`ValidityField.resolve_excluded_keys` (#648) — next to the
+        ``resolve_valid_keys`` this docstring forbids substituting, where the
+        warning and the trap can be read together. What stays here is the part
+        that is assembler *policy* rather than field mechanics: whether the
+        model has a validity axis at all, and the kill-switch check below.
+
         Two read-only ``ZRANGEBYSCORE``s, run once per ``assemble()`` call.
 
         ``Defaults.VALIDITY_GATING_ENABLED`` is read **here, at call time**, not
@@ -1706,23 +1684,9 @@ class ContextAssembler:
             return None
 
         t = time.time() if as_of is None else float(as_of)
-        valid_from_key, invalid_at_key = ValidityField.get_interval_keys(
-            self.model_class, self._validity_field_name
+        return ValidityField.resolve_excluded_keys(
+            self.model_class, self._validity_field_name, as_of=t
         )
-        # invalid_at <= t: already closed. The +inf open sentinel never matches.
-        closed = POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, "-inf", t)
-        # valid_from > t: not yet started.
-        future = POPOTO_REDIS_DB.zrangebyscore(valid_from_key, f"({t}", "+inf")
-        # redis-py types every command ``Awaitable[T] | T`` for both the sync
-        # and async clients, so mypy cannot see that these are concrete lists
-        # on the sync client we actually use. Same family as the existing
-        # narrowing casts elsewhere in this module; see CLAUDE.md's note that
-        # this error class is redis-py-version-dependent.
-        closed_list = cast("list[Any]", closed)
-        future_list = cast("list[Any]", future)
-        return {
-            k.decode() if isinstance(k, bytes) else k for k in closed_list + future_list
-        }
 
     def _fetch_limit(self, base: int) -> int:
         """Widen a candidate fetch to make room for suppressed records.
@@ -2553,7 +2517,7 @@ class ContextAssembler:
         if not selected and not all_pull_candidates:
             return
 
-        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline = batch()
 
         # on_read for pull-path selected records
         for record in selected:
