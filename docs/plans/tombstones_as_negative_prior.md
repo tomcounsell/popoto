@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Medium
 owner: Dev (sdlc-494)
@@ -515,3 +515,398 @@ this repo has been burned by, and how each is avoided here:
    depends on a burial existing first asserts the burial count *before* asserting
    the drawdown, so a filtered-out or never-written precondition surfaces as a
    failure at that line rather than as a silently-skipped guard.
+
+## Rabbit Holes
+
+- **Reusing the existing Bloom filter because it is already there.** spike-1
+  settles this: token-OR matching plus no per-entry weight plus a no-op delete.
+  Do not "just add a second `ExistenceFilter`".
+- **Similarity / embedding matching at write time.** The issue names it as the
+  likely location of the real repetition, and it is genuinely the more valuable
+  half — which is exactly why it deserves its own plan with its own
+  false-positive policy, not a bolt-on here. It costs a retrieval on every save.
+- **Making tombstones a Popoto `Model`.** `tombstone_store.py:10-15` records that
+  this was "explicitly considered and rejected" — the keyspace is outside the
+  model keyspace precisely so no query can surface it. The prior keyspace
+  inherits that constraint.
+- **Un-forgetting / resurrection on strong contrary evidence.** Already dropped
+  by the issue's own recon. Out.
+- **Tuning `TOMBSTONE_PRIOR_DECAY` empirically in this PR.** The repo's sweep
+  harness exists, but these are pinned magic numbers with a stated rationale;
+  a sweep is a separate exercise and the values are trivially re-pinnable.
+- **Refactoring `_check_write_filter`'s score-normalization.** It floors
+  non-numerics to `0.0` before the multiplier. Leave that order alone; a test
+  asserts it.
+
+## Risks
+
+### Risk 1: A legitimately important memory is silently suppressed because it resembles a buried one
+
+**Impact:** The highest-cost failure mode of the whole feature — a valuable
+memory that never persists, with no error and no user-visible signal.
+**Mitigation:** Four layers. (a) Matching is **exact** on a normalized
+fingerprint, not fuzzy — a merely *similar* record cannot match at all, and a
+test asserts exactly that. (b) The response is a *multiplier*, not a reject, so a
+high-scoring record survives burials that would kill a marginal one. (c) The
+floor keeps suppression finite. (d) Every drawdown is counted in
+`$TOMBPRIOR:{Model}:stats`, so suppression is measurable rather than invisible —
+a deployment can see "penalized=N, drawdown_total=X" and notice.
+
+### Risk 2: The write path gains a Redis round trip on every save
+
+**Impact:** Latency regression on a hot path, paid by every adopter.
+**Mitigation:** The consult is skipped entirely — before any client call — for
+models with no content fingerprint, which is every model that does not opt into
+`ExistenceFilter`. For models that do, it is a single O(1) `HGET`. Verified by a
+test that counts commands on a non-fingerprinted model's save and asserts the
+count is unchanged from baseline.
+
+### Risk 3: The prior keyspace grows without bound
+
+**Impact:** Memory growth in Redis proportional to unique buried content.
+**Mitigation:** Hard LRU bound at `TOMBSTONE_PRIOR_LIMIT`, enforced on every
+`record_burial`, with a test that writes `limit + N` distinct fingerprints and
+asserts `ZCARD == limit` and that the *oldest* digests are the ones gone.
+
+### Risk 4: The kill switch does not actually kill
+
+**Impact:** A PyPI adopter who cannot edit model code has no escape hatch — a
+direct violation of the repo's default-on doctrine.
+**Mitigation:** Read at call time, never bound at import (the
+`_read_decode_quarantine_switch` precedent). Tested with `monkeypatch.setenv`
+*after* the module is imported and after a burial is recorded, asserting the
+score is returned unchanged and no telemetry is written.
+
+### Risk 5: A partially-applied telemetry write skews the observability numbers
+
+**Impact:** `penalized` increments but `drawdown_total` does not, or vice versa,
+making the two counters mutually inconsistent.
+**Mitigation:** Both are queued in one transactional pipeline and executed
+together, the same construction `TombstoneStore.archive`/`evict` use for their
+command pairs.
+
+### Risk 6: Coordination collision with the active #674 lane
+
+**Impact:** Merge conflicts or contradictory edits in
+`tests/test_memory_lifecycle.py`.
+**Mitigation:** New tests go in a new file; edits to
+`tests/test_memory_lifecycle.py` are limited to whatever the burial side effect
+strictly requires, and the PR body states explicitly what was touched there.
+
+## Race Conditions
+
+### Race 1: Concurrent burials of the same fingerprint
+
+**Location:** `TombstonePriorStore.record_burial`
+**Trigger:** Two `tick()` sweeps (two processes) forget records with the same
+content fingerprint simultaneously.
+**Data prerequisite:** The burial counter must reflect both burials.
+**State prerequisite:** None beyond the counter.
+**Mitigation:** `HINCRBY` is atomic server-side, so both increments land; the
+count is correct without a lock. `ZADD` is last-writer-wins on the timestamp,
+which is the intended semantic (last burial time).
+
+### Race 2: A save consults the prior while a burial is mid-pipeline
+
+**Location:** `WriteFilterMixin._apply_tombstone_prior` vs `record_burial`
+**Trigger:** A `save()` reads the burial count between the `HINCRBY` and the
+`ZADD` of a concurrent burial.
+**Data prerequisite:** none — the read only needs the count.
+**State prerequisite:** none.
+**Mitigation:** Benign and accepted. The reader either sees the pre-burial count
+or the post-burial count; both are valid instantaneous states, and the penalty is
+an advisory weight, not a correctness invariant. Explicitly *not* mitigated with
+a lock: serializing the write path behind a burial lock would be a far larger
+cost than an occasionally-one-behind penalty.
+
+### Race 3: Bound enforcement evicts a digest a concurrent save is reading
+
+**Location:** `record_burial`'s LRU sweep vs a concurrent `HGET`
+**Trigger:** The sweep `HDEL`s the oldest digest exactly as a save consults it.
+**Data prerequisite:** none.
+**State prerequisite:** none.
+**Mitigation:** Benign. A missing digest reads as "no burials" → no penalty,
+which is the correct behavior for a fingerprint that has aged out of the bound
+anyway. The consult's missing-key path is the same code path either way and is
+tested directly.
+
+## No-Gos (Out of Scope)
+
+- [SEPARATE-SLUG #494] Near-duplicate / paraphrase matching via BM25 or
+  embeddings. The issue itself frames the staged shape ("cheap fingerprint check
+  always, similarity check only when the deployment opts in"); this plan ships
+  stage one. Stage two needs a write-time retrieval budget and a false-positive
+  policy of its own, and will be filed as a follow-up issue referencing this
+  plan's `TombstonePriorStore` as its consumption point. **Anti-criterion below
+  asserts no similarity/embedding call appears in the new code.**
+- [SEPARATE-SLUG #494] Valor-side wiring (ingest + the dedup reflection
+  consulting the registry). The issue's Downstream section states this is
+  follow-up work in `tomcounsell/ai`, not this repo.
+- [SEPARATE-SLUG #494] Resurrecting tombstoned memories on strong contrary
+  evidence. Dropped by the issue's own recon as a separate capability.
+- [SEPARATE-SLUG #655] Converting the other 32 modules that still use the stale
+  `from popoto.redis_db import POPOTO_REDIS_DB` import. This plan converts only
+  `write_filter.py`, the file it already modifies.
+
+## Update System
+
+No update-system changes required. This is a library-internal feature with no
+new dependency, no new service, no config file, and no migration: the
+`$TOMBPRIOR:{Model}:*` keyspace is created lazily on first burial and an
+existing deployment with no burials behaves exactly as it does today.
+
+## Agent Integration
+
+No agent/MCP integration required. This is a substrate-layer behavior change
+inside `save()`, not a new callable surface. It is reachable by an agent only in
+the sense that every `save()` already is — which is the point: the
+subconscious-operation constraint forbids exposing it as something an agent must
+invoke.
+
+## Documentation
+
+### Feature Documentation
+
+- [ ] Create `docs/features/tombstone-negative-prior.md` — what the negative
+      prior does, the keyspace, the three constants and why they are pinned, the
+      `POPOTO_TOMBSTONE_PRIOR_DISABLE` kill switch, and how to read the telemetry
+      via `TombstonePriorStore.stats()` (using `popoto.get_redis()`, never a
+      hand-built client — `tests/test_docs_redis_url.py` gates this).
+- [ ] Add the entry to the `docs/features/` index and to `mkdocs.yml` nav.
+
+### External Documentation Site
+
+- [ ] `mkdocs build --strict` passes with the new page wired into nav.
+
+### Inline Documentation
+
+- [ ] Module docstring on `tombstone_prior.py` stating the keyspace, the bound,
+      and why it is deliberately outside the model keyspace (mirroring
+      `tombstone_store.py:10-20`).
+- [ ] Inline rationale on each of the three `Defaults` constants.
+- [ ] A comment at the `_apply_tombstone_prior` call site in
+      `_check_write_filter` explaining that the multiplier is applied *after*
+      normalization and *before* the threshold comparison, and why that order
+      matters.
+
+### CHANGELOG
+
+- [ ] Add an `### Added` entry under Unreleased naming #494.
+
+## Success Criteria
+
+- [ ] A record whose content fingerprint matches a tombstoned record is admitted
+      with a measurably reduced write-filter score, automatically, with no human
+      step and no opt-in flag.
+- [ ] Tombstone-prior storage is bounded at `TOMBSTONE_PRIOR_LIMIT`; the bound is
+      documented and a test writes past it and asserts the oldest entries are
+      evicted.
+- [ ] A dissimilar record is provably **not** penalized (exact-match
+      characterization test).
+- [ ] Repeated burials escalate suppression (1 → 0.5×, 2 → 0.25×, 3 → 0.125×,
+      asymptotic to the 0.05 floor), asserted at each step.
+- [ ] Penalized writes are counted and readable via `TombstonePriorStore.stats()`.
+- [ ] Valkey parity: no Redis-module command appears in the new code.
+- [ ] A model without a content fingerprint issues **zero** additional Redis
+      commands on `save()`, and `tests/test_write_filter.py` passes untouched.
+- [ ] `POPOTO_TOMBSTONE_PRIOR_DISABLE=1` restores today's behavior with no code
+      change, verified after import.
+- [ ] Every new test is proven non-vacuous by mutation; the table is in the PR body.
+- [ ] `ruff check src/` exits 0; `black --check src/ tests/` passes.
+- [ ] `scripts/mypy_ratchet.py` does not rise above the baseline recorded in
+      `scripts/mypy_baseline.json` at measurement time, with the measuring
+      environment stated.
+- [ ] Tests pass (`/do-test`), documentation updated (`/do-docs`).
+
+## Team Orchestration
+
+Single-lane execution by the Dev agent in `.worktrees/sdlc-494` on Redis DB 7.
+The work is one tightly-coupled module plus two small call-site edits; splitting
+it across parallel builders would create more coordination cost than it saves.
+
+### Team Members
+
+- **Builder (tombstone-prior)**
+  - Name: `prior-builder`
+  - Role: `TombstonePriorStore`, the `Defaults` constants + env switch, the two
+    call-site edits, and the `write_filter.py` client-shape conversion.
+  - Agent Type: builder
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Test engineer (tombstone-prior)**
+  - Name: `prior-tester`
+  - Role: `tests/test_tombstone_prior.py` plus the mutation-based non-vacuity
+    proof table.
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Reviewer**
+  - Name: `prior-reviewer`
+  - Role: PR review against this plan.
+  - Agent Type: code-reviewer
+  - Resume: true
+
+## Step by Step Tasks
+
+### 1. Constants and deploy switch
+
+- **Task ID**: build-constants
+- **Depends On**: none
+- **Validates**: `tests/test_tombstone_prior.py` (create)
+- **Informed By**: spike-4 (all commands core/Valkey-safe)
+- **Assigned To**: prior-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Add the `# -- Tombstone negative prior (fields/tombstone_prior.py, issue #494)`
+  block to `Defaults` with `TOMBSTONE_PRIOR_LIMIT = 1000`,
+  `TOMBSTONE_PRIOR_DECAY = 0.5`, `TOMBSTONE_PRIOR_FLOOR = 0.05`, each with its
+  rationale comment from the Technical Approach table.
+- Add module-level `_read_tombstone_prior_switch()` reading
+  `POPOTO_TOMBSTONE_PRIOR_DISABLE` at **call time**, returning True when
+  ENABLED, following `_read_decode_quarantine_switch` (`constants.py:63`).
+
+### 2. TombstonePriorStore
+
+- **Task ID**: build-store
+- **Depends On**: build-constants
+- **Validates**: `tests/test_tombstone_prior.py` (create)
+- **Informed By**: spike-1 (Bloom rejected), spike-4 (command set)
+- **Assigned To**: prior-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Create `src/popoto/fields/tombstone_prior.py` with a module docstring in
+  `tombstone_store.py`'s style: keyspace, bound, and why it sits outside the
+  model keyspace.
+- `TOMBSTONE_PRIOR_KEY_PREFIX = "$TOMBPRIOR"`; `keys()` returning the
+  `(burials, index, stats)` triple.
+- `digest(fingerprint) -> Optional[str]`: strip + casefold, return `None` for
+  empty/whitespace-only, else `blake2b(..., digest_size=16).hexdigest()`.
+- `record_burial(fingerprint, ts)`: pipelined `HINCRBY` + `ZADD`, then
+  `_enforce_limit()`; every Redis failure logged as a warning and swallowed.
+- `burial_count(fingerprint) -> int`: `HGET`, coercing missing/corrupt to `0`
+  with a warning on corrupt.
+- `_enforce_limit()`: `ZCARD` → `ZRANGE 0 excess-1` → pipelined `HDEL` + `ZREM`,
+  mirroring `_enforce_tombstone_retention`.
+- `note_penalty(before, after)`: pipelined `HINCRBY penalized 1` +
+  `HINCRBYFLOAT drawdown_total (before - after)`.
+- `stats() -> dict`: `HGETALL` on the stats hash, coerced to
+  `{"penalized": int, "drawdown_total": float}` with zeros when absent.
+- `purge_all() -> int`: one `DEL` over all three keys.
+- Use `get_REDIS_DB()` throughout; use `..batch.batch` for every command pair.
+
+### 3. Burial recording in MemoryLifecycle
+
+- **Task ID**: build-burial
+- **Depends On**: build-store
+- **Validates**: `tests/test_tombstone_prior.py`, `tests/test_memory_lifecycle.py`
+- **Informed By**: spike-3 (redis_key fallback must not be recorded)
+- **Assigned To**: prior-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Add `MemoryLifecycle._content_fingerprint(record) -> Optional[str]` beside
+  `_fingerprint`: same `ExistenceFilter` scan, but returns `None` instead of the
+  `redis_key` fallback, and `None` when `fingerprint_fn` is unset or raises.
+- Construct a `TombstonePriorStore(model_class)` in `MemoryLifecycle.__init__`
+  next to `self._tombstones`.
+- In `tombstone()`, after the archive+removal succeeds, record the burial when
+  `_content_fingerprint()` is non-`None`. Best-effort: a failure here logs a
+  warning and must **not** roll back the tombstone.
+- Do **not** change `_fingerprint()` — the `Tombstone.fingerprint` field keeps
+  its current semantics.
+
+### 4. Write-time drawdown in WriteFilterMixin
+
+- **Task ID**: build-drawdown
+- **Depends On**: build-store
+- **Validates**: `tests/test_tombstone_prior.py`, `tests/test_write_filter.py`
+- **Informed By**: spike-2 (single seam; score propagates to both consequences)
+- **Assigned To**: prior-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Add `_wf_fingerprint_field()`: per-class cached lookup of an `ExistenceFilter`
+  with a non-`None` `fingerprint_fn`; returns `None` otherwise. Cache on the
+  class in a private underscore attribute.
+- Add `_apply_tombstone_prior(score) -> float`: kill switch → unchanged; no
+  fingerprint field → unchanged (zero Redis calls); else compute the fingerprint,
+  `burial_count()`, and if `>= 1` apply
+  `max(FLOOR, DECAY ** burials)`, call `note_penalty`, and log at DEBUG.
+  Any exception → warning + unchanged score.
+- Call it from `_check_write_filter()` **after** the `None`/non-numeric
+  normalization and **before** the `_wf_min_threshold` comparison, with the
+  ordering comment.
+- Convert `_tag_priority` and `_delete_write_filter_keys` from the module-level
+  `POPOTO_REDIS_DB` import to `get_REDIS_DB()`; remove the now-unused import.
+
+### 5. Tests
+
+- **Task ID**: build-tests
+- **Depends On**: build-burial, build-drawdown
+- **Validates**: `tests/test_tombstone_prior.py` (create)
+- **Assigned To**: prior-tester
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Create `tests/test_tombstone_prior.py` covering, at minimum: end-to-end
+  bury-then-rewrite drawdown; escalation at 1/2/3 burials and the floor; exact
+  non-matching (dissimilar record unpenalized, counters untouched); the bound
+  (write `limit + 50` digests, assert `ZCARD == limit` and the oldest are gone);
+  telemetry counters; the kill switch set after import; zero extra Redis commands
+  for a model with no `ExistenceFilter`; empty/whitespace fingerprint skipped;
+  corrupt burial count coerced to 0 with a warning; Redis failure on the consult
+  degrades to no-penalty with a logged warning and a successful save; a burial
+  recorded for a model with no fingerprint_fn is skipped (redis_key not stored).
+- For each test, run the mutation proof (invert/delete the named behavior,
+  confirm FAIL, restore, confirm PASS) and record the table.
+- Run with `POPOTO_TEST_DB=7`.
+
+### 6. Documentation
+
+- **Task ID**: document-feature
+- **Depends On**: build-tests
+- **Assigned To**: documentarian
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Write `docs/features/tombstone-negative-prior.md`, wire it into the feature
+  index and `mkdocs.yml` nav, add the CHANGELOG entry, and confirm
+  `mkdocs build --strict` passes.
+
+### 7. Final validation
+
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: prior-reviewer
+- **Agent Type**: code-reviewer
+- **Parallel**: false
+- Run every row of the Verification table and confirm each Success Criterion.
+
+## Verification
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| New tests pass | `POPOTO_TEST_DB=7 python -m pytest tests/test_tombstone_prior.py -q` | exit code 0 |
+| Write-filter suite unchanged | `POPOTO_TEST_DB=7 python -m pytest tests/test_write_filter.py -q` | exit code 0 |
+| Lifecycle suite unchanged | `POPOTO_TEST_DB=7 python -m pytest tests/test_memory_lifecycle.py -q` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Format clean | `python -m black --check src/ tests/` | exit code 0 |
+| Type ratchet holds | `scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `python -m mkdocs build --strict` | exit code 0 |
+| Feature doc exists | `test -f docs/features/tombstone-negative-prior.md` | exit code 0 |
+| Kill switch is call-time, not class-bound | `grep -c "POPOTO_TOMBSTONE_PRIOR_DISABLE" src/popoto/fields/constants.py` | output > 0 |
+| Anti-criterion: no Redis modules | `grep -rnE "\b(BF|CMS|TOPK|TDIGEST)\." src/popoto/fields/tombstone_prior.py src/popoto/fields/write_filter.py` | exit code != 0 |
+| Anti-criterion: no similarity/embedding at write time | `grep -rniE "embed\|cosine\|bm25\|sentence_transformers" src/popoto/fields/tombstone_prior.py src/popoto/fields/write_filter.py` | exit code != 0 |
+| Anti-criterion: no stale client import in write_filter | `grep -c "from ..redis_db import POPOTO_REDIS_DB" src/popoto/fields/write_filter.py` | match count == 0 |
+| Anti-criterion: prior keyspace stays out of the model keyspace | `grep -c "TOMBSTONE_PRIOR_KEY_PREFIX = \"\$TOMBPRIOR\"" src/popoto/fields/tombstone_prior.py` | output > 0 |
+
+## Critique Results
+
+<!-- Populated by /do-plan-critique. Not run for this lane per the lane brief. -->
+
+---
+
+## Open Questions
+
+None blocking. The issue's one genuinely open fork — registry storage shape and
+matching strategy — is resolved above by spikes 1–4 along the axis the issue
+itself proposed (staged: exact fingerprint now, similarity later), and the
+response-strength choice (escalating multiplier, never an outright reject) takes
+the safer of the two options the issue named. Proceeding to build.
