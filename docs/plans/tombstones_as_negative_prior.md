@@ -288,3 +288,230 @@ check rather than by external documentation.
 | Worktree venv resolves to this checkout | `python -c "import popoto; assert '.worktrees/sdlc-494' in popoto.__file__, popoto.__file__"` | Guards the "wrong package under test" trap |
 | Full extras installed | `python -c "import numpy, sentence_transformers, mcp"` | Guards the ~95-test silent deselection |
 | #491 landed | `python -c "from popoto.fields.tombstone_store import Tombstone; assert 'fingerprint' in Tombstone.__dataclass_fields__"` | Hard prerequisite: tombstones carry a fingerprint |
+
+## Solution
+
+### Key Elements
+
+- **`TombstonePriorStore`** (`src/popoto/fields/tombstone_prior.py`, new) — owns
+  the `$TOMBPRIOR:{Model}:*` keyspace: how many times a given content
+  fingerprint has been buried, when it was last buried, and how much drawdown
+  has been applied. Bounded by LRU-by-last-burial. Sibling of `TombstoneStore`,
+  same conventions.
+- **Burial recording** (`MemoryLifecycle.tombstone()` + a new
+  `_content_fingerprint()`) — every forgetting increments the buried
+  fingerprint's counter. Records with no content fingerprint are skipped, not
+  keyed by redis_key.
+- **Write-time drawdown** (`WriteFilterMixin._apply_tombstone_prior()`) — a
+  multiplicative, escalating penalty on the write-filter score, applied inside
+  the existing `_check_write_filter()` before the existing threshold comparison.
+- **Telemetry** (`$TOMBPRIOR:{Model}:stats` + `TombstonePriorStore.stats()`) —
+  count of penalized writes and total score drawdown, readable at any time.
+- **Auto-detect + deploy kill switch** — on by default for any model with a
+  content fingerprint; `POPOTO_TOMBSTONE_PRIOR_DISABLE` turns it off without a
+  code change.
+
+### Flow
+
+Record is repeatedly dismissed → `MemoryLifecycle.tick()` forgets it →
+`tombstone()` archives it **and** increments its fingerprint's burial count →
+*(later, new session)* the same content arrives → `save()` →
+`_check_write_filter()` computes the caller's score → `_apply_tombstone_prior()`
+finds 1 prior burial → score halved, drawdown counted → still above threshold,
+so it saves (with lower priority) → it is dismissed and forgotten again → burial
+count 2 → next occurrence's score is quartered → falls under
+`WF_MIN_THRESHOLD` → **existing** `SkipSaveException` drops the write silently,
+and the telemetry counter records that it did.
+
+### Technical Approach
+
+**Storage — the core design question the issue left open.**
+
+Rejected: a second Bloom filter. It cannot hold a per-entry burial count (needed
+for escalation), its `delete` is a documented no-op so it cannot be bounded, and
+the existing token-OR matching makes it a false-positive machine (spike-1).
+
+Chosen: a **bounded hash + ZSET pair**, exactly mirroring `TombstoneStore`'s
+data/index shape:
+
+```
+$TOMBPRIOR:{Model}:burials  — HASH: fingerprint digest -> burial count (int)
+$TOMBPRIOR:{Model}:index    — ZSET: fingerprint digest -> last-burial timestamp
+$TOMBPRIOR:{Model}:stats    — HASH: {penalized: int, drawdown_total: float}
+```
+
+The cost the issue flagged ("a bounded hash/ZSET can, at higher cost") is one
+`HGET` per save on fingerprinted models and one pipelined `HINCRBY`+`ZADD` per
+burial. Burials are rare (a `tick()` sweep, not a per-write path), so the write
+path pays a single O(1) hash read. That is the right trade for storing the
+weight the escalation criterion requires.
+
+**Bound.** `Defaults.TOMBSTONE_PRIOR_LIMIT = 1000`, matching
+`LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` — the prior can never track more
+fingerprints than there are retained tombstones, so the two bounds move
+together. Enforcement is LRU-by-last-burial: on each `record_burial`, if
+`ZCARD > limit`, `ZRANGE 0 excess-1` the oldest and pipeline `HDEL` + `ZREM`.
+Copied from `_enforce_tombstone_retention` (`memory_lifecycle.py:825`), which
+already has this exact shape and error posture.
+
+**Matching — exact, normalized fingerprint digest.**
+
+```python
+digest = hashlib.blake2b(fingerprint.strip().lower().encode("utf-8"),
+                         digest_size=16).hexdigest()
+```
+
+Deterministic; no similarity, no embedding, no retrieval at write time. Two
+records collide only if their fingerprint strings are equal after
+whitespace-strip and case-fold, or at a 2^-128 hash collision. This makes the
+"a dissimilar record must not be penalized" criterion an exact property rather
+than a tuned threshold. The digest (not the raw fingerprint) is the field name,
+so the keyspace holds no record content — the fingerprint may be user text, and
+`$TOMB:` already archives content only under an explicitly bounded, deliberately
+out-of-model keyspace.
+
+Near-duplicate / paraphrase matching is the issue's own "staged approach" second
+half and is explicitly **out of scope** (see No-Gos): it needs a retrieval at
+write time and a false-positive policy that this plan's exact matcher does not.
+
+**Response strength — multiplicative and escalating, never an outright reject.**
+
+```python
+penalty = max(Defaults.TOMBSTONE_PRIOR_FLOOR,
+              Defaults.TOMBSTONE_PRIOR_DECAY ** burials)
+adjusted = score * penalty
+```
+
+with `TOMBSTONE_PRIOR_DECAY = 0.5` and `TOMBSTONE_PRIOR_FLOOR = 0.05`. One
+burial halves the score, two quarter it, and the floor stops the sequence at 5%
+so a genuinely important record buried many times for situational reasons is
+suppressed but never mathematically annihilated. The escalation criterion is met
+and its shape is explicit.
+
+Crucially the drawdown **does not introduce a rejection path**. It only feeds the
+existing `score < self._wf_min_threshold` comparison. This composes with
+per-model `_wf_min_threshold` overrides, with `apply_overrides()` sweeps, and
+with `Model.save(skip_write_filter=True)` — all of which keep working unchanged.
+
+**Auto-detect, default-ON, deploy kill switch.**
+
+The read is gated on a per-class cached predicate: does this model define an
+`ExistenceFilter` field with a non-`None` `fingerprint_fn`? A model without one
+has no content identity, so there is nothing to match and the consult is skipped
+before any Redis command is issued. This is what makes "deployments not using
+tombstones see byte-identical write behavior" structurally true rather than
+flag-dependent — and it is auto-detect, not opt-in, so the subconscious-operation
+constraint holds.
+
+The cache is `type(self).__dict__`-scoped (a private `_wf_tombstone_fp_field`
+attribute set on the class on first access) so subclasses resolve independently
+and a class whose fields never change pays the field scan once.
+
+The deploy-level switch is `POPOTO_TOMBSTONE_PRIOR_DISABLE`, read **at call
+time** via `_read_tombstone_prior_switch()` in `constants.py` — a module-level
+function, not a `Defaults` class attribute, for exactly the reason
+`_read_decode_quarantine_switch` documents at `constants.py:63-85`: a class-body
+read binds at import and makes a deploy-time flip (or a `monkeypatch.setenv`) a
+no-op. Phrased as a `_DISABLE` so unset means ON, per the default-on doctrine.
+
+**Constants are pinned in-repo, never constructor kwargs** (CLAUDE.md "Key
+Patterns"). Three new entries in `Defaults`, in a
+`# -- Tombstone negative prior (fields/tombstone_prior.py, issue #494)`
+block with the rationale for each value inline:
+
+| Constant | Value | Rationale |
+|---|---|---|
+| `TOMBSTONE_PRIOR_LIMIT` | `1000` | Matches `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT`; the prior can never usefully track more fingerprints than there are retained tombstones. |
+| `TOMBSTONE_PRIOR_DECAY` | `0.5` | One burial halves the score. Chosen so a single burial is recoverable (0.5 clears the 0.1 `WF_MIN_THRESHOLD` for any score ≥ 0.2) and the third burial is not. |
+| `TOMBSTONE_PRIOR_FLOOR` | `0.05` | Suppression asymptote. Below the 0.1 min threshold, so a heavily-buried pattern is reliably dropped, but non-zero so the value is still observable and a raised per-model threshold is still what decides. |
+
+**Redis client shape.** All new code uses `get_REDIS_DB()`, never
+`from ..redis_db import POPOTO_REDIS_DB` (#655, and the reason #673 existed).
+As part of this change, `write_filter.py`'s two existing `POPOTO_REDIS_DB` call
+sites (`_tag_priority`, `_delete_write_filter_keys`) are converted to
+`get_REDIS_DB()` — otherwise this one file mixes both shapes, and a spy test
+written against the module attribute would capture nothing (the vacuity trap
+this repo has hit repeatedly). This is a two-line behavior-preserving conversion
+in a file this plan already modifies, not scope creep.
+
+**Interaction provenance.** `InteractionWeight` is not touched. The drawdown is
+a multiplier applied *after* `compute_filter_score()`, which is where a model
+factors human-vs-agent source weighting in. A human-sourced record therefore
+enters the multiplier with a higher score and survives the same number of
+burials longer than an agent-sourced one — the existing weighting is preserved by
+construction rather than re-implemented.
+
+## Failure Path Test Strategy
+
+### Exception Handling Coverage
+
+`TombstonePriorStore` follows `TombstoneStore`/`MemoryLifecycle`'s established
+posture: **the negative prior must never break a save.** Every Redis call on the
+write path is wrapped and, on failure, degrades to "no penalty" — a memory
+system whose write path dies because a telemetry hash is unreachable is worse
+than one that occasionally misses a drawdown.
+
+- [ ] `_apply_tombstone_prior` on a Redis error → logs a `warning` and returns the
+      **unmodified** score. Test asserts both: the save succeeds *and*
+      `caplog` captured the warning. No bare `except Exception: pass` is
+      introduced — every handler logs.
+- [ ] `record_burial` on a Redis error → logs a `warning`; the tombstone itself
+      is still written (burial recording is best-effort and must not roll back
+      an archive). Test asserts the tombstone exists after a failing prior write.
+- [ ] Bound-enforcement sweep failure → logged and swallowed, matching
+      `_enforce_tombstone_retention` (`memory_lifecycle.py:842`).
+
+### Empty/Invalid Input Handling
+
+- [ ] `fingerprint_fn` returning `""` or whitespace-only → normalizes to an empty
+      string; `record_burial`/`consult` treat it as **no fingerprint** and skip
+      (no digest of the empty string entering the keyspace). Tested both sides.
+- [ ] `fingerprint_fn` returning `None` → `_compute_fingerprint_impl` already
+      raises `ValueError` (`existence_filter.py:296-299`); the auto-detect wraps
+      it and treats it as "no fingerprint", returning the score unchanged.
+- [ ] A corrupt burial count (non-integer bytes in the hash) → coerced to `0`
+      (no penalty) with a warning, never an exception into `save()`.
+- [ ] `compute_filter_score()` returning `None`/non-numeric → already floored to
+      `0.0` by existing code *before* the multiplier; `0.0 * penalty == 0.0`, so
+      behavior is unchanged. Asserted so a later refactor cannot reorder it.
+
+### Error State Rendering
+
+No user-visible UI. The observable surface is the telemetry hash and the log
+line; both are asserted directly (`stats()` returns the incremented counters; a
+`DEBUG` record names the model, digest, burial count, and penalty).
+
+## Test Impact
+
+All new tests live in a **new** file, `tests/test_tombstone_prior.py`, to avoid
+colliding with the active `forget_guard_test_vacuity.md` lane (#674) in
+`tests/test_memory_lifecycle.py`.
+
+- [ ] `tests/test_write_filter.py` — **UPDATE (verify-only expected).** The
+      existing suite uses models with no `ExistenceFilter`, so the auto-detect
+      short-circuits and behavior is unchanged. Run it to prove the
+      "byte-identical for non-adopters" criterion against real existing tests
+      rather than only against a new one.
+- [ ] `tests/test_memory_lifecycle.py` — **UPDATE, minimal.** `tombstone()` gains
+      a burial-recording side effect. Existing tombstone tests must still pass
+      untouched; if any asserts an exact Redis command count on the burial path,
+      it is updated with a comment naming this issue. No restructuring.
+- [ ] `tests/test_tombstone_prior.py` — **CREATE.** Full coverage below.
+
+**Non-vacuity protocol (mandatory, per lane brief).** For every test in the new
+file, prove it can fail: delete or invert the specific behavior the test names,
+confirm the test FAILS, restore, confirm it PASSES. The resulting
+test → mutation → observed-failure table goes in the PR body. Two specific traps
+this repo has been burned by, and how each is avoided here:
+
+1. **The spy-on-a-stale-global trap.** No test spies on
+   `popoto.redis_db.POPOTO_REDIS_DB`. All assertions read real Redis state
+   through `get_REDIS_DB()` on the lane's DB 7, or spy on
+   `TombstonePriorStore` methods directly.
+2. **The structurally-unreachable-guard trap.** Every test that exercises the
+   drawdown asserts a *changed* value (a specific expected score, a specific
+   counter delta) rather than merely "no exception raised", so a guard that never
+   executes fails the assertion instead of passing vacuously. Any test that
+   depends on a burial existing first asserts the burial count *before* asserting
+   the drawdown, so a filtered-out or never-written precondition surfaces as a
+   failure at that line rather than as a silently-skipped guard.
