@@ -1,13 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: sdlc-689
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/689
 last_comment_id: none
-revision_applied: false
-revision_applied_at:
+revision_applied: true
+revision_applied_at: 2026-09-07T12:00:01Z
 ---
 
 # Stop shipping an unrunnable `tests/` in the sdist
@@ -385,9 +385,9 @@ when it is.
 **Team:** Solo dev, code reviewer
 
 **Interactions:**
-- PM check-ins: 1-2 (one decision point: ship-nothing vs. ship-runnable — see
-  Open Questions)
-- Review rounds: 1
+- PM check-ins: 0 required. All three prior open questions are now recorded as
+  decisions (see Resolved Questions); none is a live gate on a task.
+- Review rounds: 1 (plus the completed critique round)
 
 The code change is one new one-directive file, a two-line edit to a frozenset,
 one new guard test, and one new `scripts/verify/` shell script. The appetite is
@@ -396,6 +396,15 @@ entirely on the prose that must stay true (`CLAUDE.md`, `CHANGELOG.md`, the
 `check_sdist_contents.py` docstring, and the #678 plan's superseded finding) and
 on not accidentally flipping the warning-only severity that CLAUDE.md explicitly
 warns future editors against "simplifying away".
+
+Revision note: `scripts/verify/sdist_excludes_tests.sh` is heavier than the
+`scripts/verify/` convention (`no_new_deps.sh` is a one-line `git diff | grep
+-c`), because on this machine it has to resolve the `build` frontend into a
+throwaway venv and take the isolated branch — `.venv` has setuptools 81.0.0, no
+`build`, and no `pip`. That cost is accepted rather than dropped: the two
+anti-criterion rows need a runnable oracle, and inlining a clone-build-count
+into a Markdown table cell is worse. It stays inside Small because it is one
+script with a fully specified behavior list (Task 5a) and no product code.
 
 ## Prerequisites
 
@@ -684,9 +693,20 @@ Deliberately *not* deferred and *not* done — these are decisions, and the plan
 position is "no", not "later":
 
 - Promoting `check_sdist_contents.py`'s top-level rule from warning to hard
-  failure. The severity split is deliberate and CLAUDE.md names it as the thing
-  most likely to be simplified away. An anti-criterion in the Verification table
-  asserts the top-level rule still appends to `warnings`, never `failures`.
+  failure. **This is settled, not pending.** The severity split is deliberate and
+  CLAUDE.md names it as the thing most likely to be simplified away. The
+  critique found this decision stated here as closed *and* re-opened as a PM
+  check-in in Open Question 3; that contradiction is resolved in favor of this
+  section, and OQ3 has been deleted. Task 2's "do not change any rule severity"
+  is therefore an instruction, not a guess a builder has to make. What *does*
+  change is the stated *reason*: CLAUDE.md justified warning-only by "there is
+  no machine-readable declaration of intended sdist membership to parse
+  against" — this change creates exactly such a declaration, so that reason
+  dies. The surviving reason, and the one the docs must now give, is that a
+  legitimate packaging addition must never block a release under release
+  pressure. An anti-criterion in the Verification table asserts the top-level
+  rule still appends to `warnings`, never `failures`, backed behaviorally by
+  `test_unexpected_top_level_warns_without_failing`.
 - Adding `[tool.setuptools.packages.find] exclude = ["tests*"]`. A no-op that
   reads like a fix — the wheel already excludes `tests/` via `where = src`.
 - Making the shipped test suite runnable (Option B). Rejected on evidence in the
@@ -739,6 +759,18 @@ confirmed — so no user-facing page is created or edited.
       the reason with the one that survives: a legitimate packaging addition must
       never block a release under release pressure. Note the new
       `MANIFEST.in` ↔ `EXPECTED_TOP_LEVEL` coupling and the test that guards it.
+- [ ] `CLAUDE.md:81` (the *fifth* stale clause — added in revision, missed by the
+      original four-item cascade): the warning-only rule is described as covering
+      "a top-level entry outside the seven **the 1.9.0 sdist has**". That is an
+      *observed-membership* framing. After this change the allowlist declares
+      *intended* membership — still seven entries, but a different seven, and
+      derived from `MANIFEST.in` + `EXPECTED_TOP_LEVEL` rather than from what
+      1.9.0 happened to ship. Rewrite the clause to say so. Guarded by a
+      Verification row (`grep -c 'the 1.9.0 sdist has' CLAUDE.md` → 0), because
+      nothing else would catch it left stale. The identical phrase in
+      `scripts/check_sdist_contents.py`'s `EXPECTED_TOP_LEVEL` comment is Task
+      2's, has its own grep row, and the CLAUDE.md row is scoped to CLAUDE.md so
+      the two do not mask each other.
 - [ ] `CHANGELOG.md`: correct the same false clause in the #678 entry ("there is
       no `MANIFEST.in` in the repository at all"), and add an entry for #689
       stating plainly that `tests/` no longer ships in the sdist, why it never
@@ -773,8 +805,15 @@ confirmed — so no user-facing page is created or edited.
       (anti-criterion, asserted in the Verification table).
 - [ ] The new guard test parses `MANIFEST.in`'s content — it fails against an
       empty `MANIFEST.in`, demonstrated red-state before green.
-- [ ] All four documentation cascade items landed; no repository document still
-      claims popoto has no `MANIFEST.in`.
+- [ ] All **five** documentation cascade items landed (the fifth is the
+      `CLAUDE.md:81` "the seven the 1.9.0 sdist has" clause); no repository
+      document still claims popoto has no `MANIFEST.in`, and no repository
+      document still frames the top-level allowlist as observed 1.9.0
+      membership.
+- [ ] `scripts/verify/sdist_excludes_tests.sh` runs to completion on this
+      machine (`set -eu`, resolves `build` into a throwaway venv, takes the
+      isolated branch because setuptools is 81.0.0) and both Verification rows
+      that invoke it assert its exit code as well as its output.
 - [ ] `pytest tests/test_sdist_contents.py` passes (`POPOTO_TEST_DB=9`).
 - [ ] Full suite passes (`/do-test`), `ruff check src/` clean,
       `black --check src/ tests/` clean, `scripts/mypy_ratchet.py` at or below
@@ -877,6 +916,13 @@ do not push a decoy ref.
 - Add a synthetic-tarball case (reusing `_make_sdist`) whose members are the
   post-fix top-level set, asserting `check_members` returns **zero** warnings
   and zero failures.
+- **Extend `test_unexpected_top_level_warns_without_failing`** (do not add a
+  parallel test — CLAUDE.md points at this one as the guard on the severity
+  split). It already asserts `failures == []` and `any("docs" in w for w in
+  warnings)`; strengthen the second to also assert `warnings != []` explicitly,
+  so the test states the split behaviorally rather than incidentally. This is
+  the behavioral backing that makes the brittle awk row in the Verification
+  table safe to keep as a red-state demo.
 - **Red-state proof:** before finishing, temporarily blank `MANIFEST.in` and
   confirm the directive test FAILS; paste that output into the PR. Restore.
 
@@ -888,9 +934,15 @@ do not push a decoy ref.
 - **Assigned To**: `sdist-documentarian`
 - **Agent Type**: documentarian
 - **Parallel**: true (no file overlap with tasks 2-3)
-- `CLAUDE.md`: rewrite the "exposure was nil on three counts" clause and the
-  `check_sdist_contents.py` warning-only justification, per the Documentation
-  section. Keep the #678 reasoning; change only what became false.
+- `CLAUDE.md`: rewrite **three** clauses, not two — the "exposure was nil on
+  three counts" clause, the `check_sdist_contents.py` warning-only
+  justification, and (added in revision) the `CLAUDE.md:81` phrase "outside the
+  seven **the 1.9.0 sdist has**", which frames the allowlist as observed rather
+  than intended membership. See the Documentation section. Keep the #678
+  reasoning; change only what became false.
+- Verify with the two scoped grep rows in the Verification table before
+  reporting done — `grep -c 'exists at all' CLAUDE.md` and
+  `grep -c 'the 1.9.0 sdist has' CLAUDE.md`, both expected `0`.
 - `CHANGELOG.md`: correct the false clause in the #678 entry; add a #689 entry.
 - `docs/plans/setuptools_build_floor_and_sdist_exposure.md`: append a
   superseded-by-#689 note to spike-1's finding; do not rewrite the finding.
@@ -1036,32 +1088,64 @@ Robustness, Scope & Value, History & Consistency). Verdict: **NEEDS REVISION**
 | CONCERN | Scope & Value | No-Gos and Open Question 3 give contradictory registers for the same decision. No-Gos lists promoting the top-level rule to a hard failure as a decision where "the plan's position is 'no', not 'later'", while OQ3 re-opens it as a live PM check-in — and only "1-2 PM check-ins" are budgeted. A builder has no signal whether Task 2's "do not change any rule severity" is settled or pending. | No-Gos, Open Questions, Task 2 (`build-manifest`) | Collapse to one source of truth. If No-Gos is authoritative, delete OQ3 and cite the No-Go from it. If OQ3 is a real gate, add an explicit `Blocked On: OQ3` line to Task 2 so the builder waits for the check-in instead of guessing — do not leave both standing, because a builder resolving the ambiguity by reading No-Gos will silently answer a question the PM was asked to decide. |
 | NIT | Scope & Value | Every Verification row is a mechanical grep or member count; none installs the built sdist, despite the plan quoting CLAUDE.md's own doctrine that a green checker run "says nothing about whether the packaged code works". | Verification table | Optional row: `pip install --no-deps dist/popoto-*.tar.gz && python -c "import popoto"` in a scratch venv. `--no-deps` keeps it within the Small appetite. |
 
+
+### Revision Disposition (2026-09-07)
+
+Every finding above is addressed; every environmental claim in the BLOCKER was
+**re-measured during this pass** rather than accepted on the critic's word, and
+all of them held: `.venv` setuptools `81.0.0`; `import build` from `/tmp` →
+`ModuleNotFoundError`; `import build` from the repo root succeeds vacuously with
+`__file__ is None` against `_NamespacePath(['/Users/valorengels/src/popoto/build'])`;
+`import pip` → `ModuleNotFoundError`; `awk … | grep -c 'failures.append'` prints
+`0` on unmodified `main`; `CLAUDE.md:81` carries the phrase "the seven the 1.9.0
+sdist has".
+
+| Finding | Disposition |
+|---|---|
+| BLOCKER — verify script unrunnable, rows report failure as pass | **Fixed.** Task 5a now fully specifies the script (`set -eu`, HEAD-equality guard on the clone, `build` resolved into a throwaway venv, isolation branch chosen from the measured setuptools version, build from a cwd outside the clone, exactly-one-tarball rule). Prerequisites replaced with the measured state and non-vacuous probes. Both Verification rows now assert exit code **and** output, and route `--run-checker` through a file rather than a pipe so an abort cannot read as `0`. |
+| CONCERN — `--run-checker` unspecified | **Fixed.** Task 5a item 8 defines the mode, its verbatim-stdout requirement, its exit-status propagation, and that the two modes must not share a stdout shape or exit-code meaning. Item 9 makes an unknown flag a hard error. |
+| CONCERN — fifth stale clause at `CLAUDE.md:81` | **Fixed.** Added as a fifth Documentation cascade item, added to Task 4, and guarded by a new `grep -c 'the 1.9.0 sdist has' CLAUDE.md` row scoped to CLAUDE.md, with a sibling row for the checker's own comment so the two cannot mask each other. |
+| CONCERN — awk severity row is a brittle source scan | **Fixed, as directed.** Kept as a red-state demo only, with the caveat written into the table; backed by a new non-empty-range row and by extending `test_unexpected_top_level_warns_without_failing` (Task 3) rather than adding a parallel test. Correction to the critic's wording: the row is not vacuous *today* — the awk range is 7 lines and genuinely contains no `failures.append` — the defect is that a reworded anchor would empty the range and still print the pass value. |
+| CONCERN — verify script heavy for Small appetite | **Kept, with the required guards, and the cost priced.** Rationale recorded in Appetite: the anti-criterion needs a runnable oracle and inlining a clone-build-count into a table cell is worse. Stale-clone guard and outside-the-clone build added per the critic's condition. |
+| CONCERN — No-Gos vs OQ3 contradictory registers | **Fixed.** No-Gos is authoritative and now says so explicitly; OQ3 is deleted. Task 2's "do not change any rule severity" is an instruction, not a builder judgment call. |
+| NIT — nothing installs the built sdist | **Adopted.** New Verification row: `pip install --no-deps "$SDIST" && python -c "import popoto"` in a scratch venv. |
+
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Confirm the fork: stop shipping `tests/` rather than making them
-   runnable.** The plan picks "stop shipping" on evidence (23 shipped tests read
-   repository paths that no sdist can contain, one of them a dotfile path the
-   release gate hard-fails on). The counter-argument is a real ecosystem
-   convention — distro and conda-forge packagers expect to run a project's tests
-   from the sdist. Is there any downstream packaging relationship that would
-   make Option B worth its unbounded scope?
+The critique explicitly did **not** dispute questions 1 and 2 below; question 3
+was found to contradict the No-Gos section and is resolved there. All three are
+recorded as decisions rather than left open, so no builder is left guessing and
+the Appetite's "1-2 PM check-ins" budget is not overspent on a question the plan
+already answers.
 
-2. **Is spending advisory-precondition 1 acceptable?** #678 recorded popoto's
-   exposure as nil on three independent counts and raised the build floor
-   *because* the preconditions were "absent-but-returnable". This change
-   deliberately returns one of them, relying on the `setuptools>=83` floor that
-   fixes the bypass and on `check_sdist_contents.py`'s non-ASCII rule — which is
-   promoted from defense-in-depth to load-bearing. The issue itself flags this
-   trade. Accept and document, or is there appetite for a route that avoids it
-   (there is no cheap one — see spike-3 and Rabbit Holes)?
+1. **The fork — stop shipping `tests/`, rather than making them runnable.**
+   **Decided: stop shipping.** Grounded in evidence, not preference: 23 shipped
+   tests read repository paths no sdist can contain, one of them a `.github/`
+   dotfile path that `scripts/check_sdist_contents.py` hard-fails on by design,
+   so Option B cannot be completed without weakening a security rule. The
+   counter-argument (distro and conda-forge packagers expect to run a project's
+   tests from the sdist) is real and is named in Research and Risk 3; it does not
+   apply here because the shipped suite has never been runnable, so no packager
+   can be depending on it. Confirming that empirically is out of an agent's reach
+   and is already filed as an `[EXTERNAL]` No-Go.
 
-3. **Should the top-level-entry rule stay warning-only?** The plan says yes and
-   makes it an anti-criterion, because CLAUDE.md names the severity split as the
-   thing most likely to be simplified away. But CLAUDE.md's *stated reason* for
-   warning-only — "there is no machine-readable declaration of intended sdist
-   membership to parse against, because a `MANIFEST.in` would be that
-   declaration" — is exactly what this change invalidates. Keep the severity and
-   rewrite the reason (the plan's position), or is the disappearance of that
-   reason the moment to promote it to a hard failure?
+2. **Spending advisory-precondition 1.** **Decided: accept and document.** #678
+   recorded popoto's exposure as nil on three independent counts, one being "no
+   `MANIFEST.in` exists at all"; this change deliberately returns that one. The
+   trade is priced, not denied — the build floor is `setuptools>=83`, the release
+   that *fixes* the bypass, and per #694 that floor binds every sdist build
+   including a consumer's `--no-binary`; precondition 3 (APFS/HFS+ build host) is
+   absent because releases build on `ubuntu-latest`; and precondition 2
+   (non-ASCII path) is held off by a hard-failure rule that runs before publish.
+   The documentation cascade must state plainly that the non-ASCII rule is
+   thereby promoted from defense-in-depth to load-bearing. There is no cheaper
+   route — spike-3 established that no `[tool.setuptools]` key reaches sdist
+   membership.
+
+3. **Should the top-level-entry rule stay warning-only?** **Decided: yes —
+   keep the severity, rewrite the reason.** Resolved in the No-Gos section, which
+   is the single source of truth for it. This question previously stood
+   alongside that No-Go in a contradictory register (settled there, live here);
+   the critique flagged the ambiguity and it is removed rather than duplicated.
