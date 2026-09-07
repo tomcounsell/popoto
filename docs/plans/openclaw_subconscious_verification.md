@@ -790,7 +790,71 @@ alongside the new automatic half.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Round 1** — 2026-09-07, FULL depth, independent roster (3 critics: Risk &
+Robustness, Scope & Value, History & Consistency). Verdict: **READY TO BUILD
+(with concerns)** — 0 blockers, 4 concerns, 1 nit.
+
+### C1 — `POPOTO_MEMORY_BIN` is depended on but never specified (CONCERN)
+
+- **Critic**: Risk & Robustness (Skeptic)
+- **Location**: Step by Step Tasks task 1, and Failure Path Test Strategy
+- **Finding**: Both the failure-path strategy and task 2 exercise the fail-silent
+  path by pointing `POPOTO_MEMORY_BIN` at a nonexistent binary, but task 1's list
+  of what `index.js` must implement never requires reading that variable, and
+  nothing in the existing tree establishes it as a convention.
+- **Implementation note**: `const bin = process.env.POPOTO_MEMORY_BIN ||
+  "popoto-memory"; execFile(bin, ["hook"], {timeout: <ms below 15000>}, cb)`.
+
+### C2 — `event.prompt` is read from a single capture (CONCERN)
+
+- **Critic**: Risk & Robustness (Adversary)
+- **Location**: Data Flow, recall step 2
+- **Finding**: The real `before_prompt_build` event carries `{prompt, messages}`
+  and the plugin reads only `prompt`, observed on one turn. If a continuation or
+  tool-result-driven turn leaves `prompt` empty while `messages` carries the
+  content, `JSON.stringify` drops the key, no `_QUERY_FIELDS` name matches the
+  plural `messages`, and recall silently emits nothing with no operator signal.
+- **Implementation note**: `const prompt = event.prompt ||
+  lastUserMessageText(event.messages) || "";` taking the final user-role entry's
+  text before building the envelope.
+
+### C3 — Reversibility is stated for the repo, not the operator (CONCERN)
+
+- **Critic**: Risk & Robustness (Operator)
+- **Location**: Architectural Impact (Reversibility), Documentation
+- **Finding**: Deleting `plugins/openclaw/` restores the repo, not a machine that
+  already installed the plugin and set `allowConversationAccess=true`. Combined
+  with the deliberate fail-silent design and Risk 4's accepted absence of CI
+  coverage, a regression degrades to silent no-memory, and no uninstall step is
+  documented.
+- **Implementation note**: extend the troubleshooting section's positive
+  verification command (`openclaw plugins inspect popoto-memory --runtime
+  --json`) with `openclaw plugins uninstall popoto-memory` as the rollback.
+
+### C4 — Inline-doc task contradicts the adopted design (CONCERN)
+
+- **Critic**: History & Consistency (Consistency Auditor)
+- **Location**: Documentation > Inline Documentation
+- **Finding**: The task says to comment "the `assistantTexts` join" in the plugin
+  entry file, but the Technical Approach forbids a join there, and both a Success
+  Criterion and a Verification anti-criterion (`grep -c "join("` == 0) enforce its
+  absence. A builder following the doc task would add the very call the gate
+  rejects. Leftover wording from the pre-revision design.
+- **Implementation note**: replace with "passing `assistantTexts` through
+  unjoined — the adapter, not the plugin, reduces it".
+
+### N1 — Provenance verification row is negative-only (NIT)
+
+- **Critic**: History & Consistency (Consistency Auditor)
+- **Location**: Verification table, "Fixtures are live-captured"
+- **Finding**: Asserting the old docs-derived sentence is gone does not assert the
+  new `_provenance` documents a live capture; the existing provenance test only
+  requires the `captured-from:` substring to exist at all, so any replacement
+  text would pass.
+- **Suggestion**: grep positively for a fixed phrase naming the shipped plugin,
+  expecting a count of 2.
+
+**Scope & Value returned `No findings.`**
 
 ## Open Questions
 
