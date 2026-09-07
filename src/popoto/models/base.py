@@ -46,7 +46,11 @@ import redis
 if TYPE_CHECKING:
     from redis.client import Pipeline
 
-from .encoding import encode_popoto_model_obj, _decode_field_value
+from .encoding import (
+    encode_popoto_model_obj,
+    _decode_field_value,
+    decode_lazy_field,
+)
 from .canonical_key import canonical_key_str
 from .db_key import DB_key
 from .query import Query
@@ -2060,6 +2064,141 @@ class Model(metaclass=ModelBase):
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
         return bool(POPOTO_REDIS_DB.exists(key))
+
+    @classmethod
+    def idle_seconds(
+        cls,
+        db_key: Union[str, DB_key, None] = None,
+        redis_key: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Optional[float]:
+        """Return seconds since this key was last *accessed*, via ``OBJECT IDLETIME``.
+
+        One ``OBJECT IDLETIME`` round trip and no deserialization. Three ways
+        to name the record, mirroring :meth:`exists`:
+
+        Args:
+            db_key: A :class:`DB_key`, or a full Redis key **string**. A string
+                is treated as ``redis_key`` (see the note below).
+            redis_key: A full Redis key string, named explicitly.
+            **kwargs: KeyField values, from which the key is built.
+
+        Returns:
+            ``float(reply)`` when Redis answers, or ``None`` when the reply is
+            ``None`` (key absent). ``None`` is deliberately distinct from
+            ``0.0`` -- ``0.0`` means "touched just now", ``None`` means "no
+            answer".
+
+        Note:
+            A ``str`` passed as ``db_key`` is short-circuited to ``redis_key``
+            rather than fed to ``DB_key(...)``, exactly as :meth:`exists` and
+            :meth:`Query.get` do.
+
+        Caution:
+            ``OBJECT IDLETIME`` measures time since the key was last *read or
+            written*, not how old the record is -- a record can be ancient
+            and still report ``0.0`` because something just accessed it.
+            Callers that relocate this value must not launder that
+            approximation into a stronger claim about record age.
+
+            It is a **core command on both Redis and Valkey** (Valkey has
+            shipped it since 2.2.3) -- not a Redis-only or module command.
+            The one caveat, identical on both servers: it is unavailable
+            when ``maxmemory-policy`` is an LFU policy (``allkeys-lfu`` or
+            ``volatile-lfu``), since LFU tracks an access-frequency counter
+            in the same object-header bits IDLETIME reads.
+
+        Raises:
+            Whatever the underlying client call raises (e.g. on an LFU
+            policy, a ``redis.ResponseError``) -- exceptions are not
+            swallowed here; the caller decides how to handle them.
+        """
+        key: Optional[str] = redis_key or None
+        if key is None:
+            if isinstance(db_key, str):
+                key = db_key
+            else:
+                resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
+                key = resolved.redis_key
+        # The subcommand string goes on the wire verbatim, so its case is
+        # load-bearing, not cosmetic: the caller this method was extracted
+        # from (recipes/memory_lifecycle.py) sends lowercase "idletime", and
+        # #649's contract is a byte-identical command sequence. Upper-casing
+        # it here shows up as a real diff in that PR's parity capture.
+        reply = POPOTO_REDIS_DB.object("idletime", key)
+        return None if reply is None else float(reply)
+
+    @classmethod
+    def load_fields(cls, redis_key: str, *names: str) -> dict:
+        """Load and decode a subset of this record's hash fields.
+
+        Args:
+            redis_key: The full Redis key string of the record.
+            *names: One or more field names to load. At least one is
+                required.
+
+        Returns:
+            A dict mapping field name to decoded value, with a three-way
+            outcome per requested name:
+
+            - the raw value is ``None`` (key or field absent) -> the field
+              is **omitted** from the returned dict entirely.
+            - the raw value is present but decoding it raises -> the field
+              is **present**, mapped to ``None``.
+            - a Redis-level error (connection, protocol, etc.) -> propagates,
+              it is not caught here.
+
+            This distinction matters to callers that need to tell "key gone"
+            (skip -- nothing was ever there) apart from "tier unreadable"
+            (proceed -- something is there but corrupt). Collapsing the two
+            would silently change caller behavior in a way no wire-level diff
+            could ever catch.
+
+        Raises:
+            ValueError: if ``names`` is empty.
+        """
+        if not names:
+            raise ValueError("load_fields() requires at least one field name")
+        # Command choice is a parity requirement, not an optimization: the
+        # recipe call site this replaces issues HGET for a single field.
+        # Always emitting HMGET here -- even for one name -- would change the
+        # wire trace and break the byte-identical-behavior contract this PR
+        # is gated on. Do not "simplify" this to always-HMGET.
+        if len(names) == 1:
+            raw_values: Iterable[Any] = [POPOTO_REDIS_DB.hget(redis_key, names[0])]
+        else:
+            raw_values = POPOTO_REDIS_DB.hmget(redis_key, list(names))
+        result: dict = {}
+        for name, raw_value in zip(names, raw_values):
+            if raw_value is None:
+                continue
+            try:
+                result[name] = decode_lazy_field(raw_value)
+            except Exception:
+                result[name] = None
+        return result
+
+    @classmethod
+    def load_raw_hash(cls, redis_key: str) -> dict:
+        """Load a record's entire hash, undecoded -- one ``HGETALL``.
+
+        Returns keys and values exactly as Redis returned them (``bytes``),
+        with no MessagePack decoding applied.
+
+        A decoded variant here would be a correctness bug, not just a
+        missed optimization: the caller round-trips this result through
+        ``decode_popoto_model_hashmap``, which requires the hash to survive
+        byte-for-byte -- decoding (and therefore losing the original bytes)
+        before that hand-off would break the round trip.
+
+        Args:
+            redis_key: The full Redis key string of the record.
+
+        Returns:
+            ``dict[bytes, bytes]`` as returned by ``HGETALL``. Empty dict
+            when the key does not exist.
+        """
+        return POPOTO_REDIS_DB.hgetall(redis_key)
 
     def delete(
         self,

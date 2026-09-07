@@ -549,6 +549,63 @@ class SortedFieldMixin:
         ]
 
     @classmethod
+    def score(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        partitioned: bool = True,
+    ) -> typing.Optional[float]:
+        """The member's current score in this field's Sorted Set.
+
+        Issues one ``ZSCORE`` against the resolved sorted-set key with the
+        instance's ``redis_key`` as the member.
+
+        Args:
+            model_instance: A Model instance. Under ``partitioned=True`` it
+                must carry the partition values, as ``count()``/``members()``
+                require; under ``partitioned=False`` only its ``redis_key``
+                is used.
+            field_name: The name of the sorted field.
+            partitioned: When ``True`` (the default), resolves the
+                partition-specific key via ``get_partitioned_sortedset_db_key``,
+                exactly as ``count()``/``members()`` do -- this is what you
+                almost always want. When ``False``, reads the base,
+                unpartitioned key via ``get_special_use_field_db_key``
+                instead. For a field WITH ``partition_by`` set, that base
+                key cannot contain the member, so ``partitioned=False``
+                always returns ``None`` in that case. This flag exists
+                solely to preserve the pre-existing read in
+                ``recipes/memory_lifecycle.py``, which reads the bare
+                unpartitioned key today; reproducing that read exactly here
+                is what keeps this method's introduction a no-op for that
+                caller. It is the same defect class as issue #474 (already
+                fixed once in ``recipes/context_assembler.py`` -- see the
+                docstring at ``context_assembler.py:589-596``), and issue
+                #658 tracks migrating that remaining caller off it.
+
+        Returns:
+            The member's score as a ``float``, or ``None`` if the member is
+            not in the set.
+
+        Raises:
+            QueryException: Propagated from the partition key builder, when
+                ``partitioned=True``.
+        """
+        if partitioned:
+            key = cls.get_partitioned_sortedset_db_key(
+                model_instance, field_name
+            ).redis_key
+        else:
+            key = cls.get_special_use_field_db_key(
+                type(model_instance), field_name
+            ).redis_key
+        member = model_instance.db_key.redis_key
+        # Resolve the client attribute at call time so test spies and fault
+        # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
+        reply = POPOTO_REDIS_DB.zscore(key, member)
+        return None if reply is None else float(reply)
+
+    @classmethod
     def on_save(
         cls,
         model_instance: "Model",
