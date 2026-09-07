@@ -3578,7 +3578,7 @@ possible with simple kwargs. They can be combined using Python operators:</p>
 
 
 <h3 id="popoto.models.q.evaluate_q" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">evaluate_q</span><span class="p">(</span><span class="n">query_instance</span><span class="p">,</span> <span class="n">q_obj</span><span class="p">,</span> <span class="n">all_keys</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">evaluate_q</span><span class="p">(</span><span class="n">query_instance</span><span class="p">,</span> <span class="n">q_obj</span><span class="p">,</span> <span class="n">all_keys</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 <a href="#popoto.models.q.evaluate_q" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -3647,6 +3647,25 @@ sets at each level using set operations:</p>
               <div class="doc-md-description">
                 <p>Set of all Redis keys for the model (used for negation).
      If None, will be fetched when needed for NOT operations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>state</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional <code>_PushdownState</code> carrier. When given, leaf nodes
+route to <code>query_instance._filter_for_keys_set_with_state(state,
+...)</code> so any geo distances a leaf's filter produces accumulate
+into the caller's carrier instead of a throwaway one. Threaded
+down every recursive call unchanged.</p>
               </div>
             </td>
             <td>
@@ -3742,7 +3761,18 @@ are passed as arguments. Users should not need to call it directly.</p>
 <span class="normal"><a href="#__codelineno-0-242">242</a></span>
 <span class="normal"><a href="#__codelineno-0-243">243</a></span>
 <span class="normal"><a href="#__codelineno-0-244">244</a></span>
-<span class="normal"><a href="#__codelineno-0-245">245</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="k">def</span><span class="w"> </span><span class="nf">evaluate_q</span><span class="p">(</span><span class="n">query_instance</span><span class="p">,</span> <span class="n">q_obj</span><span class="p">,</span> <span class="n">all_keys</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="k">def</span><span class="w"> </span><span class="nf">evaluate_q</span><span class="p">(</span><span class="n">query_instance</span><span class="p">,</span> <span class="n">q_obj</span><span class="p">,</span> <span class="n">all_keys</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="w">    </span><span class="sd">"""Evaluate a Q object expression tree and return matching Redis keys.</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>
 <a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">    This function recursively evaluates Q object trees, computing result</span>
@@ -3758,46 +3788,57 @@ are passed as arguments. Users should not need to call it directly.</p>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="sd">        q_obj: The Q object to evaluate</span>
 <a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">        all_keys: Set of all Redis keys for the model (used for negation).</span>
 <a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="sd">                 If None, will be fetched when needed for NOT operations.</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">        Set of Redis keys matching the Q expression.</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">    Note:</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">        This function is called internally by Query.filter() when Q objects</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">        are passed as arguments. Users should not need to call it directly.</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    """</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">is_empty</span><span class="p">():</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="c1"># Empty Q() matches everything</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="k">if</span> <span class="n">all_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>            <span class="n">all_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query_instance</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="k">return</span> <span class="n">all_keys</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">is_leaf</span><span class="p">():</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="c1"># Leaf node - execute the filter</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">query_instance</span><span class="o">.</span><span class="n">filter_for_keys_set</span><span class="p">(</span><span class="o">**</span><span class="n">q_obj</span><span class="o">.</span><span class="n">filters</span><span class="p">)</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="k">elif</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="c1"># Internal node - combine children</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="n">child_results</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>            <span class="n">evaluate_q</span><span class="p">(</span><span class="n">query_instance</span><span class="p">,</span> <span class="n">child</span><span class="p">,</span> <span class="n">all_keys</span><span class="p">)</span> <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">children</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="p">]</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">Q</span><span class="o">.</span><span class="n">AND</span><span class="p">:</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="n">result</span> <span class="o">=</span> <span class="nb">set</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="o">*</span><span class="n">child_results</span><span class="p">)</span> <span class="k">if</span> <span class="n">child_results</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="k">else</span><span class="p">:</span>  <span class="c1"># OR</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>            <span class="n">result</span> <span class="o">=</span> <span class="nb">set</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="n">child_results</span><span class="p">)</span> <span class="k">if</span> <span class="n">child_results</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="c1"># Empty filters, no children - return all keys</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="k">if</span> <span class="n">all_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="n">all_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query_instance</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">all_keys</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="c1"># Apply negation if needed</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">negated</span><span class="p">:</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="k">if</span> <span class="n">all_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>            <span class="n">all_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query_instance</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">all_keys</span> <span class="o">-</span> <span class="n">result</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>    <span class="k">return</span> <span class="n">result</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="sd">        state: Optional `_PushdownState` carrier. When given, leaf nodes</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">            route to `query_instance._filter_for_keys_set_with_state(state,</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">            ...)` so any geo distances a leaf's filter produces accumulate</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="sd">            into the caller's carrier instead of a throwaway one. Threaded</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">            down every recursive call unchanged.</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">        Set of Redis keys matching the Q expression.</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        This function is called internally by Query.filter() when Q objects</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        are passed as arguments. Users should not need to call it directly.</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">    """</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">is_empty</span><span class="p">():</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="c1"># Empty Q() matches everything</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="k">if</span> <span class="n">all_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>            <span class="n">all_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query_instance</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="k">return</span> <span class="n">all_keys</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">is_leaf</span><span class="p">():</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="c1"># Leaf node - execute the filter</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">query_instance</span><span class="o">.</span><span class="n">_filter_for_keys_set_with_state</span><span class="p">(</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>                <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">q_obj</span><span class="o">.</span><span class="n">filters</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="p">)</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">query_instance</span><span class="o">.</span><span class="n">filter_for_keys_set</span><span class="p">(</span><span class="o">**</span><span class="n">q_obj</span><span class="o">.</span><span class="n">filters</span><span class="p">)</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="k">elif</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="c1"># Internal node - combine children</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="n">child_results</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="n">evaluate_q</span><span class="p">(</span><span class="n">query_instance</span><span class="p">,</span> <span class="n">child</span><span class="p">,</span> <span class="n">all_keys</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="n">state</span><span class="p">)</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">children</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>        <span class="p">]</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">Q</span><span class="o">.</span><span class="n">AND</span><span class="p">:</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>            <span class="n">result</span> <span class="o">=</span> <span class="nb">set</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="o">*</span><span class="n">child_results</span><span class="p">)</span> <span class="k">if</span> <span class="n">child_results</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="k">else</span><span class="p">:</span>  <span class="c1"># OR</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>            <span class="n">result</span> <span class="o">=</span> <span class="nb">set</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="n">child_results</span><span class="p">)</span> <span class="k">if</span> <span class="n">child_results</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="c1"># Empty filters, no children - return all keys</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>        <span class="k">if</span> <span class="n">all_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>            <span class="n">all_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query_instance</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">all_keys</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="c1"># Apply negation if needed</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="k">if</span> <span class="n">q_obj</span><span class="o">.</span><span class="n">negated</span><span class="p">:</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>        <span class="k">if</span> <span class="n">all_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>            <span class="n">all_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">query_instance</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">all_keys</span> <span class="o">-</span> <span class="n">result</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

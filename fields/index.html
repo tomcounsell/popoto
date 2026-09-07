@@ -6674,6 +6674,12 @@ results are sorted closest first.</p>
 <p>Geo queries are backed by Redis GEORADIUS commands, which run in O(N+log(M))
 time. This is very fast even with millions of locations.</p>
 </div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The distances are attached per call, so two geo queries running at the same
+time on one model class — on two threads, two coroutines, or both — each get
+their own. See <a href="../configuration/#thread-safety">Thread Safety</a>.</p>
+</div>
 <h2 id="dataframefield">DataFrameField<a class="headerlink" href="#dataframefield" title="Permanent link">&para;</a></h2>
 <p><code>DataFrameField</code> stores <a href="https://pandas.pydata.org/docs/reference/frame.html">Pandas DataFrame</a>
 objects directly in Redis. This is useful for analytics or caching computed datasets.

@@ -5535,7 +5535,9 @@ Results are automatically sorted by distance, closest first.</p>
 </code></pre></div>
 <p>Distance information is stored on each instance as <code>_geo_distance</code> (a float) and
 <code>_geo_distance_unit</code> (a string matching the <code>radius_unit</code> you specified). This is useful for
-displaying "2.3 km away" in a delivery app interface.</p>
+displaying "2.3 km away" in a delivery app interface. The values belong to the call that
+produced them, so overlapping geo queries on one model class — across threads, coroutines, or
+both — do not annotate each other's rows (see <a href="../configuration/#thread-safety">Thread Safety</a>).</p>
 <h3 id="finding-nearby-drivers">Finding Nearby Drivers<a class="headerlink" href="#finding-nearby-drivers" title="Permanent link">&para;</a></h3>
 <p>A common delivery-app pattern is finding the closest available driver to a restaurant.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="n">driver</span> <span class="o">=</span> <span class="n">Driver</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
