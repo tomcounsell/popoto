@@ -119,7 +119,13 @@ directive.save()          # amplitude stays at 1.5x, not reset to the default
 
 Stored cycles are matched to declared ones **by period**, so reordering or editing your `cycles` declaration keeps each period's learned amplitude with that period. Adding a period to the declaration gives it the declared amplitude (nothing has been learned for it yet); removing one drops it — the declaration is authoritative about *which* cycles exist, and learning is authoritative about how strong each one is.
 
-If you edit a declared amplitude for a period that has already learned a value, the learned value wins. Popoto does not store the declared baseline separately, so it cannot tell "the developer changed the default" from "learning diverged."
+If you edit a declared amplitude for a period that has already learned a value, Popoto tries to tell "the developer changed the default" from "learning diverged" apart, by remembering the declared amplitude that was in effect the last time the record was saved (its *declared baseline*):
+
+- **Baseline unchanged** (you haven't touched the `cycles` declaration for that period since the last save): the learned amplitude wins, same as before.
+- **Baseline changed** (you edited the declared amplitude for that period): your new declared amplitude wins, and the previously learned amplitude for that period is discarded. This is a **destructive, non-recoverable reset** — there is no way to get the discarded learned amplitude back. Popoto logs one `INFO`-level line per reset naming the model, field, member key, period, old/new declared values, and the discarded learned amplitude, so this is auditable after the fact even though it can't be undone.
+- **No baseline recorded** (a legacy record saved before this behavior existed, or a record whose cycles entry was written directly rather than through `on_save()`): treated the same as "unchanged" — the learned amplitude is preserved rather than reset, so upgrading to this version never silently discards existing learning.
+
+If you want to intentionally discard learning for a period without changing its declared amplitude, use the zero-then-restore procedure below (delete the cycles hash entry) rather than round-tripping the declared value, since a no-op edit that doesn't change the declared value will not trigger a reset.
 
 !!! warning "A cycle weakened to zero stays at zero"
 
@@ -157,7 +163,7 @@ directive.touch("relevance")
 CyclicDecayField stores data in three Redis structures:
 
 1. **Sorted set** (inherited): `$CyclicDecayF:{Model}:{field}:{partitions}` — member timestamps
-2. **Cycles hash**: `$CyclicDecayF:{Model}:{field}:{partitions}:cycles` — per-member cycle tuples (msgpack)
+2. **Cycles hash**: `$CyclicDecayF:{Model}:{field}:{partitions}:cycles` — per-member cycle tuples (msgpack). Each tuple is `[period, amplitude, phase]`, plus an optional 4th slot, `declared_baseline`, recording the declared amplitude as of the last save — used only to detect declaration edits (above) and invisible to the ranking Lua script, which reads no index beyond 2. `strengthen_cycle()` / `weaken_cycle()` still return and accept the 3-element `[period, amplitude, phase]` shape; the baseline slot is internal bookkeeping, not part of the public API. It's also deployment-local: [`export_state`/`import_state`](../fields.md) round-trip the learned amplitude but drop the baseline slot on import, so moving a record to a new deployment doesn't itself trigger a destructive reset on the first save there.
 3. **Pressure hash**: `$CyclicDecayF:{Model}:{field}:{partitions}:pressure` — per-member `{rate, last_resolved}` (msgpack)
 
 All three structures are maintained automatically by `on_save()` and `on_delete()`.

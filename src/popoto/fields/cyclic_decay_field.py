@@ -638,9 +638,11 @@ class CyclicDecayField(DecayingSortedField):
                         for entry in stored:
                             if isinstance(entry, (list, tuple)) and len(entry) >= 2:
                                 baseline = None
-                                if len(entry) >= 4 and isinstance(
-                                    entry[3], (int, float)
-                                ) and not isinstance(entry[3], bool):
+                                if (
+                                    len(entry) >= 4
+                                    and isinstance(entry[3], (int, float))
+                                    and not isinstance(entry[3], bool)
+                                ):
                                     baseline = float(entry[3])
                                 learned.setdefault(entry[0], []).append(
                                     (entry[1], baseline)
