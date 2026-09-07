@@ -3,9 +3,11 @@
 
 The contract, in three lines:
 
-1. The total mypy error count must be at or below the baseline recorded in
-   ``scripts/mypy_baseline.json``. Over baseline fails; under baseline passes and
-   emits a GitHub Actions warning naming the ``--update`` command.
+1. The total mypy error count must be at or below the ceiling *derived* from the
+   per-package counts in ``scripts/mypy_baseline.json``. The total is deliberately
+   not stored there — a stored copy of a sum merges wrong (#677) — so the ceiling
+   is ``sum(packages.values())``, computed at read time. Over baseline fails;
+   under baseline passes and emits a GitHub Actions warning naming ``--update``.
 2. Every package listed in the baseline's ``clean`` allowlist must be at exactly
    zero errors. A regression there fails even when the total is on baseline.
 3. The running environment must match the baseline's recorded one, because
@@ -151,11 +153,49 @@ def load_baseline(path: Path) -> dict:
     except json.JSONDecodeError as exc:
         raise RatchetError(f"baseline file is not valid JSON: {exc}") from exc
 
-    total = data.get("total")
-    if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+    # The ceiling is derived from 'packages', never read from a stored 'total'.
+    # Two PRs improving different packages merge their per-package lines cleanly
+    # and independently; a stored total is a third line encoding the same fact,
+    # and a line-based merge resolves it to whichever side it saw last. That is
+    # #675: fields 421 + recipes 145 + ... summed to 1038 while the merged file
+    # still claimed 1040, and the gate silently compared against the looser
+    # number. Summing at read time cannot disagree with itself.
+    packages = data.get("packages")
+    if not isinstance(packages, dict) or not packages:
         raise RatchetError(
-            f"baseline 'total' must be a non-negative integer, got {total!r}"
+            "baseline 'packages' must be a non-empty object mapping package "
+            f"name to error count, got {packages!r}"
         )
+    for name, count in packages.items():
+        # isinstance(True, int) is True in Python, so bools must be excluded
+        # explicitly or `"fields": true` would validate and sum as 1.
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise RatchetError(
+                f"baseline 'packages' count for {name!r} must be a non-negative "
+                f"integer, got {count!r}"
+            )
+    derived = sum(packages.values())
+
+    # A stored 'total' is no longer written, but a branch that forked before
+    # #677 still carries one. Consistent is accepted (the transition is silent);
+    # inconsistent is the #675 defect itself and must be loud.
+    stored = data.get("total")
+    if stored is not None:
+        if not isinstance(stored, int) or isinstance(stored, bool) or stored < 0:
+            raise RatchetError(
+                f"baseline 'total' must be a non-negative integer, got {stored!r}"
+            )
+        if stored != derived:
+            raise RatchetError(
+                f"baseline stores total {stored} but its per-package counts sum "
+                f"to {derived}. This is the signature of two branches merging "
+                f"different packages into one file (#675/#677): the counts "
+                f"composed, the total did not. The 'total' key is no longer "
+                f"written — delete it and re-run, or run "
+                f"scripts/mypy_ratchet.py --update on a clean tree."
+            )
+    data["total"] = derived
+
     clean = data.get("clean", [])
     if not isinstance(clean, list) or not all(isinstance(c, str) for c in clean):
         raise RatchetError("baseline 'clean' must be a list of package names")
@@ -187,7 +227,9 @@ def format_table(packages: dict[str, int], clean: list[str]) -> str:
 def write_baseline(
     path: Path, total: int, clean: list[str], packages: dict[str, int], data: dict
 ) -> None:
-    data["total"] = total
+    # The total is derived at read time, not stored (#677). `total` is still a
+    # parameter because callers measure it; popping migrates an older file.
+    data.pop("total", None)
     data["clean"] = sorted(clean)
     data["packages"] = dict(sorted(packages.items()))
     data["environment"] = {**data.get("environment", {}), **current_environment()}
@@ -217,8 +259,30 @@ def main(argv: list[str] | None = None) -> int:
     try:
         baseline = load_baseline(args.baseline)
     except RatchetError as exc:
-        if args.update and not args.baseline.exists():
-            baseline = {"clean": [], "environment": {}}
+        # --update exists to rewrite the baseline, so it must not be gated by the
+        # baseline it is repairing — otherwise the remedy the inconsistent-total
+        # error recommends is itself unreachable (#677). Salvage the fields
+        # --update does not measure (clean, environment, reference) and rewrite
+        # the rest.
+        if args.update:
+            salvaged: dict = {}
+            if args.baseline.exists():
+                try:
+                    loaded = json.loads(args.baseline.read_text())
+                except json.JSONDecodeError:
+                    loaded = None
+                if isinstance(loaded, dict):
+                    salvaged = loaded
+            salvaged.pop("total", None)
+            clean = salvaged.get("clean")
+            if not isinstance(clean, list) or not all(
+                isinstance(c, str) for c in clean
+            ):
+                salvaged["clean"] = []
+            if not isinstance(salvaged.get("environment"), dict):
+                salvaged["environment"] = {}
+            print(f"note: rewriting an unloadable baseline ({exc})", file=sys.stderr)
+            baseline = salvaged
         else:
             print(f"error: {exc}", file=sys.stderr)
             return 1
