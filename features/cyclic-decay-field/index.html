@@ -3569,7 +3569,39 @@ for the full accounting.</p>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">directive</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>          <span class="c1"># amplitude stays at 1.5x, not reset to the default</span>
 </code></pre></div>
 <p>Stored cycles are matched to declared ones <strong>by period</strong>, so reordering or editing your <code>cycles</code> declaration keeps each period's learned amplitude with that period. Adding a period to the declaration gives it the declared amplitude (nothing has been learned for it yet); removing one drops it — the declaration is authoritative about <em>which</em> cycles exist, and learning is authoritative about how strong each one is.</p>
-<p>If you edit a declared amplitude for a period that has already learned a value, the learned value wins. Popoto does not store the declared baseline separately, so it cannot tell "the developer changed the default" from "learning diverged."</p>
+<p>If you edit a declared amplitude for a period that has already learned a value, Popoto tries to tell "the developer changed the default" from "learning diverged" apart, by remembering the declared amplitude that was in effect the last time the record was saved (its <em>declared baseline</em>):</p>
+<ul>
+<li><strong>Baseline unchanged</strong> (you haven't touched the <code>cycles</code> declaration for that period since the last save): the learned amplitude wins, same as before.</li>
+<li><strong>Baseline changed</strong> (you edited the declared amplitude for that period): your new declared amplitude wins, and the previously learned amplitude for that period is discarded. This is a <strong>destructive, non-recoverable reset</strong> — there is no way to get the discarded learned amplitude back. Popoto logs one <code>INFO</code>-level line per reset naming the model, field, member key, period, old/new declared values, and the discarded learned amplitude, so this is auditable after the fact even though it can't be undone. This logging is deliberately unsampled and undeduplicated: editing a declared amplitude that every record has learned emits one INFO line <strong>per reset per record</strong>, so the log volume is proportional to how many records had learned that period — a one-shot burst bounded by the number of affected records, not an ongoing rate.</li>
+<li><strong>No baseline recorded</strong> (a legacy record saved before this behavior existed, or a record whose cycles entry was written directly rather than through <code>on_save()</code>): treated the same as "unchanged" — the learned amplitude is preserved rather than reset, so upgrading to this version never silently discards existing learning.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Upgrading and editing in the same deploy swallows the edit once</p>
+<p>A record written before this behavior existed has no recorded baseline. Its
+first save after upgrading adopts the <em>current</em> declared amplitude as that
+baseline rather than comparing against anything — so if you also edit
+<code>amplitude=</code> in that same deploy, the first save cannot tell the edit apart
+from "no baseline recorded" and preserves the learned value instead of
+resetting it. The edit appears to do nothing; a second save (with no further
+declaration change) is required before a reset is detected. This is
+accepted, not fixed — treating "no baseline" as "declaration changed" would
+instead reset <em>every</em> learned amplitude in the database on the first save
+after upgrade, which is strictly worse. Two remedies:</p>
+<ul>
+<li><strong>Upgrade first, edit later</strong>: let every record save at least once on the
+  new version before editing the declared amplitude, so each one has a
+  recorded baseline to compare against.</li>
+<li><strong>Force the reset directly</strong>: <code>hdel</code> the member's entry from the cycles
+  companion hash and re-save, using the same procedure as the manual reset
+  below — this discards the learned amplitude immediately regardless of
+  baseline state.</li>
+</ul>
+<p>The same one-save swallow applies to a record restored via <code>import_state</code>
+(it normalizes to "baseline unknown," the same shape as a legacy record) and
+to a rolling deploy where old- and new-version processes save the same
+record with different in-process declarations.</p>
+</div>
+<p>If you want to intentionally discard learning for a period without changing its declared amplitude, use the zero-then-restore procedure below (delete the cycles hash entry) rather than round-tripping the declared value, since a no-op edit that doesn't change the declared value will not trigger a reset.</p>
 <div class="admonition warning">
 <p class="admonition-title">A cycle weakened to zero stays at zero</p>
 <p><code>weaken_cycle()</code> snaps amplitudes below <code>0.01</code> to <code>0.0</code>, and that zero is preserved like any other learned value — every future save keeps it. This is deliberate: a silenced cycle should stay silenced. There is no reset method; to restore the declared defaults for a record, delete its entry from the cycles companion hash, and the next <code>save()</code> will re-adopt them:</p>
@@ -3597,7 +3629,7 @@ for the full accounting.</p>
 <p>CyclicDecayField stores data in three Redis structures:</p>
 <ol>
 <li><strong>Sorted set</strong> (inherited): <code>$CyclicDecayF:{Model}:{field}:{partitions}</code> — member timestamps</li>
-<li><strong>Cycles hash</strong>: <code>$CyclicDecayF:{Model}:{field}:{partitions}:cycles</code> — per-member cycle tuples (msgpack)</li>
+<li><strong>Cycles hash</strong>: <code>$CyclicDecayF:{Model}:{field}:{partitions}:cycles</code> — per-member cycle tuples (msgpack). Each tuple is <code>[period, amplitude, phase]</code>, plus an optional 4th slot, <code>declared_baseline</code>, recording the declared amplitude as of the last save — used only to detect declaration edits (above) and invisible to the ranking Lua script, which reads no index beyond 2. <code>strengthen_cycle()</code> / <code>weaken_cycle()</code> still return and accept the 3-element <code>[period, amplitude, phase]</code> shape; the baseline slot is internal bookkeeping, not part of the public API. It's also deployment-local: <a href="../../fields/"><code>export_state</code>/<code>import_state</code></a> round-trip the learned amplitude but drop the baseline slot on import, so moving a record to a new deployment doesn't itself trigger a destructive reset on the first save there.</li>
 <li><strong>Pressure hash</strong>: <code>$CyclicDecayF:{Model}:{field}:{partitions}:pressure</code> — per-member <code>{rate, last_resolved}</code> (msgpack)</li>
 </ol>
 <p>All three structures are maintained automatically by <code>on_save()</code> and <code>on_delete()</code>.</p>
