@@ -1,0 +1,97 @@
+name: Examples
+
+# CI signal for examples/popoto_kitchen/, the Textual TUI demo.
+#
+# Until #611 this directory had no automated coverage of any kind, which is
+# exactly why it was excluded from Dependabot: a bot could raise a dependency
+# and nothing would notice the demo had stopped working. Turning Dependabot on
+# for /examples without this workflow would just move the silence downstream.
+#
+# Two gates, deliberately separate from the main Tests workflow:
+#
+#   lock   — examples/uv.lock must stay in sync with examples/pyproject.toml,
+#            the same contract lock-check.yml enforces at the repo root. That
+#            workflow's path filters only ever named the root manifest, so
+#            examples/ drift was ungated even before this PR.
+#   smoke  — drives all five TUI tabs headlessly through App.run_test().
+#
+# It is not folded into tests.yml because the demo is a separate uv project
+# with its own lockfile and its own Python floor, and because a demo failure
+# should read as "the example broke", not as "the library broke".
+
+on:
+  pull_request:
+    paths:
+      - "examples/**"
+      # The demo consumes popoto as an editable path dependency, so a library
+      # change can break it without touching examples/. Three of the five
+      # defects #611 fixed originated in popoto's own API rather than in
+      # Textual, which is why this trigger is not examples-only.
+      - "src/popoto/**"
+      - ".github/workflows/examples.yml"
+  push:
+    branches: [main]
+    paths:
+      - "examples/**"
+      - "src/popoto/**"
+      - ".github/workflows/examples.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: examples-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  examples:
+    name: kitchen demo (lock + smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      # Named on the job, not set from a fixture: popoto's pytest plugin binds
+      # the connection during pytest_configure, before collection, so REDIS_URL
+      # has to exist in the process environment ahead of pytest. Database 13
+      # keeps the demo's seed data off the 15 the library suite uses, so the
+      # two workflows cannot flush each other's state. examples/tests/conftest.py
+      # asserts this is set and refuses database 0.
+      REDIS_URL: redis://localhost:6379/13
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Same pin and same reasoning as lock-check.yml: an older uv rewrites the
+      # lock in an earlier revision format and reports a good lock as stale.
+      # examples/uv.lock was regenerated with exactly this version.
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.2"
+
+      - name: Verify examples/uv.lock matches examples/pyproject.toml
+        working-directory: examples
+        run: uv lock --check
+
+      - name: Install the demo
+        working-directory: examples
+        run: uv sync --extra dev
+
+      - name: Headless TUI smoke test
+        working-directory: examples
+        run: uv run --no-sync pytest tests/ -v

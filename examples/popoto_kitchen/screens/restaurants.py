@@ -160,7 +160,7 @@ class RestaurantsScreen(Container):
             "name": self.query_one("#filter-name", Input).value,
             "cuisine": (
                 cuisine_select.value
-                if cuisine_select.value != Select.BLANK
+                if cuisine_select.value != Select.NULL
                 else "All Cuisines"
             ),
             "rating": self.query_one("#filter-rating", Input).value,
@@ -170,7 +170,7 @@ class RestaurantsScreen(Container):
     def _clear_filters(self) -> None:
         """Clear all filters."""
         self.query_one("#filter-name", Input).value = ""
-        self.query_one("#filter-cuisine", Select).value = Select.BLANK
+        self.query_one("#filter-cuisine", Select).value = Select.NULL
         self.query_one("#filter-rating", Input).value = ""
         self.query_one("#geo-lat", Input).value = ""
         self.query_one("#geo-lng", Input).value = ""
@@ -218,7 +218,7 @@ class RestaurantsScreen(Container):
         table = self.query_one("#restaurants-table", DataTable)
         if table.cursor_row is not None:
             try:
-                key = list(table._row_locations.keys())[table.cursor_row]
+                key = table.ordered_rows[table.cursor_row].key
                 restaurant = Restaurant.query.get(redis_key=key.value)
                 if restaurant:
                     restaurant.active = not restaurant.active
@@ -249,7 +249,7 @@ class RestaurantsScreen(Container):
             return
 
         try:
-            key = list(table._row_locations.keys())[table.cursor_row]
+            key = table.ordered_rows[table.cursor_row].key
             # Restaurant.name is a KeyField so use full redis_key lookup
             restaurant = Restaurant.query.get(redis_key=key.value)
             if not restaurant:
@@ -264,7 +264,13 @@ class RestaurantsScreen(Container):
                 new_name = restaurant_name(restaurant.cuisine)
 
             restaurant.name = new_name
-            restaurant.save()
+            # `name` is a KeyField, and a KeyField is the model's Redis identity.
+            # Popoto therefore treats identity as immutable by default: a plain
+            # save() raises rather than silently leaving the record reachable
+            # under two keys. migrate_key=True is the explicit opt-in — it writes
+            # the new key and DELETEs the old hash, so the rename is a move
+            # rather than a copy.
+            restaurant.save(migrate_key=True)
             self.refresh_data()
             self.app.notify(f"Renamed to: {new_name}", severity="information")
         except Exception as e:
@@ -275,7 +281,7 @@ class RestaurantsScreen(Container):
         table = self.query_one("#restaurants-table", DataTable)
         if table.cursor_row is not None:
             try:
-                key = list(table._row_locations.keys())[table.cursor_row]
+                key = table.ordered_rows[table.cursor_row].key
                 restaurant = Restaurant.query.get(redis_key=key.value)
                 if restaurant:
                     name = restaurant.name

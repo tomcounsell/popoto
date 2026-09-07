@@ -21,7 +21,10 @@ no workflow at all: tests.yml runs `-m "not slow"`, so the stress suite is a
 local-only gate. Valkey is deliberately not run locally: redis-py talks to
 Redis and Valkey identically and the project forbids Redis modules, so local
 Redis covers the same ground; tests.yml runs the real Valkey job on every PR
-and every push to `main`.
+and every push to `main`. `examples.yml` (the kitchen demo's lockfile check and
+headless TUI smoke test) is likewise not mirrored by `ci-local.sh` — it is a
+separate uv project on Redis DB 13; run it with
+`cd examples && uv sync --extra dev && REDIS_URL=redis://localhost:6379/13 uv run --no-sync pytest tests/`.
 
 ## Test isolation: DB 15, and the six expected failures
 

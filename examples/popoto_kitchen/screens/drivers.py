@@ -168,11 +168,11 @@ class DriversScreen(Container):
         return {
             "name": self.query_one("#filter-name", Input).value,
             "status": (
-                status_select.value if status_select.value != Select.BLANK else "all"
+                status_select.value if status_select.value != Select.NULL else "all"
             ),
             "min_rating": self.query_one("#filter-min-rating", Input).value,
             "vehicle": (
-                vehicle_select.value if vehicle_select.value != Select.BLANK else "all"
+                vehicle_select.value if vehicle_select.value != Select.NULL else "all"
             ),
         }
 
@@ -201,9 +201,9 @@ class DriversScreen(Container):
     def _clear_filters(self) -> None:
         """Clear all filters."""
         self.query_one("#filter-name", Input).value = ""
-        self.query_one("#filter-status", Select).value = Select.BLANK
+        self.query_one("#filter-status", Select).value = Select.NULL
         self.query_one("#filter-min-rating", Input).value = ""
-        self.query_one("#filter-vehicle", Select).value = Select.BLANK
+        self.query_one("#filter-vehicle", Select).value = Select.NULL
         self.query_one("#geo-lat", Input).value = ""
         self.query_one("#geo-lng", Input).value = ""
         self.query_one("#geo-radius", Input).value = "3"
@@ -228,7 +228,7 @@ class DriversScreen(Container):
         table = self.query_one("#drivers-table", DataTable)
         if table.cursor_row is not None:
             try:
-                key = list(table._row_locations.keys())[table.cursor_row]
+                key = table.ordered_rows[table.cursor_row].key
                 return Driver.query.get(key.value.split(":")[-1])
             except Exception:
                 pass

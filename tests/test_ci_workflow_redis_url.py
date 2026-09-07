@@ -40,6 +40,17 @@ _PYPROJECT_TEST_DB = re.compile(
     r"""^\s*popoto_test_db\s*=\s*["'](?P<value>[^"']*)["']""", re.MULTILINE
 )
 
+# Workflows that do NOT run the library suite, and so have no reason to agree
+# with ``popoto_test_db``. Exactly one qualifies: examples.yml runs the kitchen
+# demo, a separate uv project under ``examples/`` that disables the popoto
+# pytest plugin outright (``addopts = "-p no:popoto"``) and manages its own data
+# with model-scoped deletes. With the plugin off there is no isolated database
+# for a from-env bind to agree with, and pinning it to 15 would put the demo's
+# seed data in the path of the library suite's flush on a developer machine.
+# The exclusion is not a hole: test_examples_workflow_uses_its_own_database
+# below pins what examples.yml must do instead.
+_NON_LIBRARY_WORKFLOWS = frozenset({"examples.yml"})
+
 
 def _env_assignment(name: str) -> re.Pattern[str]:
     """Match ``NAME: value`` / ``NAME=value`` lines in a workflow file."""
@@ -86,6 +97,8 @@ def test_workflow_redis_url_names_the_pyproject_test_db() -> None:
     expected = _expected_db()
 
     for path, line, url in _assignments("REDIS_URL"):
+        if path.name in _NON_LIBRARY_WORKFLOWS:
+            continue
         where = f"{path.relative_to(REPO_ROOT)}:{line}"
         database = urlsplit(url).path.lstrip("/")
         assert database, (
@@ -99,6 +112,41 @@ def test_workflow_redis_url_names_the_pyproject_test_db() -> None:
             f"{database!r}, but pyproject.toml says popoto_test_db = "
             f"{expected!r}. Update whichever is stale so both name one "
             "database."
+        )
+
+
+def test_examples_workflow_uses_its_own_database() -> None:
+    """examples.yml is excluded above, so pin what it must do instead.
+
+    The kitchen demo seeds and clears real records. It must therefore name a
+    database explicitly (never inherit database 0 from a db-less URL) and it
+    must not be the library suite's, whose flush would delete the demo's data
+    mid-run when both are run on one developer machine.
+    """
+    library_db = _expected_db()
+    assignments = [
+        (path, line, url)
+        for path, line, url in _assignments("REDIS_URL")
+        if path.name in _NON_LIBRARY_WORKFLOWS
+    ]
+    assert assignments, (
+        "no REDIS_URL assignment found in "
+        f"{sorted(_NON_LIBRARY_WORKFLOWS)}; either the workflow lost its "
+        "database binding (the demo suite fails closed without one) or the "
+        "exclusion list in this module is stale."
+    )
+
+    for path, line, url in assignments:
+        where = f"{path.relative_to(REPO_ROOT)}:{line}"
+        database = urlsplit(url).path.lstrip("/")
+        assert database and database != "0", (
+            f"{where}: REDIS_URL is {url!r}, which resolves to database 0. "
+            "The demo suite seeds and clears data; database 0 is refused."
+        )
+        assert database != library_db, (
+            f"{where}: REDIS_URL is {url!r}, the same database as the library "
+            f"suite's popoto_test_db = {library_db!r}. The library suite "
+            "flushes it, which would delete the demo's seed data mid-run."
         )
 
 
