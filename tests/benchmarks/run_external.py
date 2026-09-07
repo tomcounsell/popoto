@@ -549,16 +549,19 @@ def compute_aggregate(
     sup_totals = {k: 0 for k in supersession_keys}
     sup_excluded_keys_total = 0
     sup_excluded_hits_total = 0
+    sup_measurement_failures_total = 0
     for r in results:
         md = r.metadata or {}
         for k in supersession_keys:
             sup_totals[k] += md.get(k, 0) or 0
         sup_excluded_keys_total += md.get("n_excluded_keys", 0) or 0
         sup_excluded_hits_total += md.get("n_excluded_hits", 0) or 0
+        sup_measurement_failures_total += md.get("measurement_failures", 0) or 0
     supersession_block = {
         "arm": supersession_arm,
         "n_excluded_keys_total": sup_excluded_keys_total,
         "n_excluded_hits_total": sup_excluded_hits_total,
+        "measurement_failures": sup_measurement_failures_total,
         **sup_totals,
     }
 
@@ -1525,6 +1528,11 @@ def _run_benchmark(args, bench_db):
         # (Verification row 10) -- "nothing to report" vs "producer errored
         # on everything" must never look the same in the output.
         print(f"    producer failures : {_sup['producer_failures']}")
+        # measurement_failures mirrors producer_failures (#692 review,
+        # finding 3): a failure in the measurement-only ungated assemble()
+        # call no longer errors the item, so this is the only signal that
+        # n_excluded_hits_total is an undercount for this run.
+        print(f"    measurement fails : {_sup['measurement_failures']}")
     print(f"  Questions evaluated : {s['n_ok']} / {s['n_total']}")
     print(f"  Errors              : {s['n_errors']}")
     print(f"  Recall@1            : {s['recall_at_1']:.4f}")

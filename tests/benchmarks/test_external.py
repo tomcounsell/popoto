@@ -1297,7 +1297,18 @@ class TestSupersessionArm:
     def test_gating_flag_restored_even_if_gated_diff_call_raises(self, monkeypatch):
         """Risk 5's bounded exception: the flag flip around the
         measurement-only ungated call is save/restore-in-a-finally, so a
-        raise from that second call still leaves the flag as main() set it."""
+        raise from that second call still leaves the flag as main() set it.
+
+        Updated for #692 review finding 3: the measurement-only ungated
+        ``assemble()`` call exists purely to compute ``n_excluded_hits`` and
+        its records never reach ``ScenarioResult``. A raise from it must NOT
+        fail the item -- doing so previously errored arm C only (arms A/B
+        never make this call), biasing arm C's ``n_ok`` against A/B in
+        exactly the comparison this instrumentation exists to support. The
+        old assertion (``status == "error"``) encoded that bug; this test now
+        asserts the corrected contract: the item still succeeds, with the
+        failure counted in ``measurement_failures`` and ``n_excluded_hits``
+        reported as 0 for this item."""
         from src.popoto.fields.constants import Defaults
         from src.popoto.recipes.context_assembler import ContextAssembler
         from tests.benchmarks.scenarios.external_base import ExternalScenario
@@ -1319,5 +1330,7 @@ class TestSupersessionArm:
             supersession_arm="content-identity",
         )
         result = scenario.execute()
-        assert result.status == "error"
+        assert result.status == "ok"
+        assert result.metadata["measurement_failures"] == 1
+        assert result.metadata["n_excluded_hits"] == 0
         assert Defaults.VALIDITY_GATING_ENABLED == prev

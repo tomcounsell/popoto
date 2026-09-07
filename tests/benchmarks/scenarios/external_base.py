@@ -808,6 +808,7 @@ class ExternalScenario(Scenario):
         # double retrieval_ms per item on those arms.
         n_excluded_keys = 0
         n_excluded_hits = 0
+        measurement_failures = 0
         if (
             self._supersession_arm != "none"
             and self._assembler is not None
@@ -821,23 +822,41 @@ class ExternalScenario(Scenario):
             if Defaults.VALIDITY_GATING_ENABLED:
                 prev_gating = Defaults.VALIDITY_GATING_ENABLED
                 Defaults.VALIDITY_GATING_ENABLED = False
+                ungated_result = None
                 try:
                     ungated_result = self._assembler.assemble(
                         query_cues={"topic": self.item.query},
                         agent_id=self._agent_id,
                         as_of=as_of_t,
                     )
+                except Exception as e:
+                    # Measurement-only (#692 review, finding 3): this second
+                    # call exists purely to diff key sets for
+                    # n_excluded_hits and its records never reach
+                    # ScenarioResult. Letting a failure here propagate would
+                    # error the WHOLE item on arm C only -- arms A/B never
+                    # make this call -- biasing arm C's n_ok against A/B in
+                    # exactly the comparison this instrumentation exists to
+                    # support. Count it (mirrors producer_failures) and
+                    # report n_excluded_hits=0 for this item instead.
+                    logger.debug(
+                        "Measurement-only ungated assemble() failed for " "item %s: %s",
+                        self.item.item_id,
+                        e,
+                    )
+                    measurement_failures += 1
                 finally:
                     Defaults.VALIDITY_GATING_ENABLED = prev_gating
-                gated_key_set = set(retrieved_keys)
-                ungated_key_set = set()
-                for record in ungated_result.records:
-                    try:
-                        ungated_key_set.add(record.db_key.redis_key)
-                    except Exception:
-                        pass
-                # Measurement-only: these records never reach ScenarioResult.
-                n_excluded_hits = len(ungated_key_set - gated_key_set)
+                if ungated_result is not None:
+                    gated_key_set = set(retrieved_keys)
+                    ungated_key_set = set()
+                    for record in ungated_result.records:
+                        try:
+                            ungated_key_set.add(record.db_key.redis_key)
+                        except Exception:
+                            pass
+                    # Measurement-only: these records never reach ScenarioResult.
+                    n_excluded_hits = len(ungated_key_set - gated_key_set)
 
         # Collapse retrieved Redis keys to ranked IDs at ONE granularity — the
         # dataset's ground-truth unit (session for LongMemEval-S, turn for
@@ -869,6 +888,7 @@ class ExternalScenario(Scenario):
                 "supersession_arm": self._supersession_arm,
                 "n_excluded_keys": n_excluded_keys,
                 "n_excluded_hits": n_excluded_hits,
+                "measurement_failures": measurement_failures,
                 **self._supersession_stats.to_dict(),
             },
         )
