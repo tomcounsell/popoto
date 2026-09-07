@@ -353,6 +353,12 @@ getting the semantics named correctly in the docs, not in the code.
 | Editable install resolves to **this** checkout | `python -c "import popoto,pathlib,sys,subprocess; root=pathlib.Path(subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip()).resolve(); sys.exit(0 if pathlib.Path(popoto.__file__).resolve().is_relative_to(root) else 1)"` run from the worktree root | Worktree gotcha 1 — a stale editable install silently tests another tree. **The previous form of this row (`'popoto' in str(popoto.__file__)`) was vacuous** and passed at critique time while resolving to `/Users/valorengels/src/popoto/src/popoto/` — the **main** checkout, not `.worktrees/sdlc-698`. So this row is **currently RED** and is a real gate, not a formality: before build, either `pip install -e .` from `.worktrees/sdlc-698`, or run the suite from the main checkout and say so in every stage report. Any count reported while this row is red is not usable (`CLAUDE.md`: state the environment alongside any count). |
 | Optional extras installed | `python -c "import numpy, sentence_transformers"` | `.[dev]` alone deselects ~95 tests (worktree gotcha 2) |
 
+**Build prerequisite, carried forward verbatim from the critique round-2 live
+check (2026-09-07):** the editable install in `.worktrees/sdlc-698` currently
+resolves `popoto.__file__` to `/Users/valorengels/src/popoto/src/popoto/__init__.py`
+(the MAIN checkout). Either `pip install -e .` in the worktree before any
+measurement, or every stage report must name the checkout it tested.
+
 ## Solution
 
 ### Key Elements
@@ -384,8 +390,14 @@ getting the semantics named correctly in the docs, not in the code.
   variation of this one. `merge-builder` builds hard reset; nothing in this plan
   is gated on reopening this.
 - **A loud reset**: the third branch emits one `logger.info` naming the model,
-  field, period, old declared value, new declared value and the discarded
-  learned amplitude. #679 exists because state was destroyed silently; this
+  field, **member key**, period, old declared value, new declared value and the
+  discarded learned amplitude. The member key is what makes the per-record audit
+  trail traceable back to a record — without it, two records that discarded the
+  same amplitude for the same period emit indistinguishable lines (C8). It is
+  already in scope at `cyclic_decay_field.py:547`
+  (`member_key = model_instance.db_key.redis_key`) and the sibling
+  corrupt-payload `logger.warning` already logs it, so this costs no extra Redis
+  call. #679 exists because state was destroyed silently; this
   change destroys learned state by design and must say so. **INFO, decided**
   (supervisor decision, closing critique C5 / Decision 2): the reset is intentional and
   expected after a deliberate edit, so WARNING would raise a fleet-wide alarm on
@@ -494,6 +506,9 @@ the whole test class that pins it, stays green).
   cover rather than inheriting the old assertion.
 - [x] The new reset branch is itself a logging path, and its `logger.info` is
   asserted with `caplog` — an unlogged reset is a test failure, not a style nit.
+  The assertion must cover the **member key** as well as the old/new declared
+  values and the discarded amplitude (C8); a reset line without the record
+  identity is not an audit trail.
 
 ### Empty/Invalid Input Handling
 - [x] **Entry shorter than 4 slots** (legacy) — documented and tested:
@@ -857,8 +872,10 @@ are unchanged, so no wiring moves.
 - [ ] A record written before this change (3-element entry) preserves its
       learned amplitude on the next save and acquires a baseline from it.
 - [ ] A malformed slot 3 does not raise out of `save()`.
-- [ ] Each reset emits exactly one INFO log naming the model, field, period, old
-      declared value, new declared value and discarded learned amplitude.
+- [ ] Each reset emits exactly one INFO log naming the model, field, member key,
+      period, old declared value, new declared value and discarded learned
+      amplitude. The `caplog` assertion must require the member key of the record
+      being reset to appear in the message, not only the amplitudes (C8).
 - [ ] `export_state` → `import_state` round-trips the **learned amplitude**, and
       the imported entry deliberately carries **no** baseline
       (`tests/test_transfer_fidelity_fields.py`) — C2 / Risk 5.
@@ -898,7 +915,8 @@ page. Two builder/validator pairs plus a documentarian.
 - **Builder (tests + transfer)**
   - Name: `test-builder`
   - Role: The new `TestDeclaredAmplitudeOverridesLearned` class, the six
-    UPDATE dispositions in Test Impact, and the `import_state` widening plus its
+    UPDATE dispositions in Test Impact, and the `import_state`
+    docstring/comment recording the deliberate 3-element truncation, plus its
     transfer-fidelity cover.
   - Agent Type: test-engineer
   - Resume: true
@@ -954,8 +972,9 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
   and not others.
 - Implement the merge (`:588-599`): baseline `None` → keep learned; baseline
   equals declared → keep learned; baseline differs from declared → **use the
-  declared amplitude** and emit one `logger.info` naming model, field, period,
-  old baseline, new declared value, and the discarded learned amplitude. In all
+  declared amplitude** and emit one `logger.info` naming model, field,
+  `member_key`, period, old baseline, new declared value, and the discarded
+  learned amplitude (`member_key` is already bound at `:547`; C8). In all
   three branches write slot 3 as the **declared** amplitude.
 - Compare with exact float equality, not a tolerance. Treat `0.0` as a value:
   the "has a baseline" test must be `is not None`, never truthiness. Same rule
@@ -1041,7 +1060,9 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
   unedited declaration preserves learning; a declared `0.0` baseline compares
   equal and preserves learning; a legacy 3-element entry preserves learning and
   acquires a baseline; a non-numeric slot 3 is treated as absent without
-  raising; the reset emits exactly one INFO log naming both values; duplicate
+  raising; the reset emits exactly one INFO log naming both values **and the
+  member key of the record being reset** (assert the member key via `caplog`,
+  not only the amplitudes — C8); duplicate
   periods reset independently in FIFO order; `strengthen_cycle` after a reset
   learns from the new declared value.
 - Change declarations by assigning `field.cycles` with a `finally` restore, the
@@ -1146,6 +1167,8 @@ usable.
 | B1 — return arity is pinned by a named test | `grep -rc "def test_strengthen_cycle_return_omits_baseline_slot" tests/ \| grep -vc ":0$"` | output > 0 |
 | C2 — `import_state` still normalizes to 3 elements | `grep -c "normalized.append(\[period, amplitude, phase\])" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
 | C6 — editable install resolves to the checkout under test | the Prerequisites row-3 command, run from the checkout the suite was run in | exit code 0, **or** the stage report explicitly names the checkout that was tested |
+| C7 — `test-builder` role names the truncation, not a widening | `grep -c "docstring/comment recording the deliberate 3-element truncation" docs/plans/sdlc-698.md` | output > 0 (a bare "no widening" grep over this file can never be 0 — the Critique Results section quotes the stale phrase verbatim, so the check is stated positively) |
+| C8 — reset log carries the member key | `grep -A6 "logger.info" src/popoto/fields/cyclic_decay_field.py \| grep -c "member_key"` | output > 0 (currently 0 — the file has no `logger.info` at all pre-change, so this row is red by construction until the reset branch lands; the `-A6` window spans a multi-line f-string) |
 
 ## Critique Results
 
@@ -1224,6 +1247,24 @@ Race 1 unfixed under No-Go #699) were not re-litigated by any critic.
 | Cross-references | PASS | N1 fixed — Success Criteria now says five and enumerates them, matching Test Impact |
 | Verification rows reproduce | PASS | Re-run on the unmodified tree at round 2: `cycle[:3]`=0 (red, as required pre-change), named-test grep=0 (red), `normalized.append([period, amplitude, phase])`=1 (green by construction, C2), stale-doc-claim=1 (red, the sentence is live at `docs/features/cyclic-decay-field.md:122`), numkeys=1, `logger.info`=0, `TestLearnedAmplitudePreservedOnSave`=1 — every value matches the plan's stated smoke test |
 | Cited line numbers | PASS | `base.py:2655/2675/2695/2756/2763` and `cyclic_decay_field.py:264/316/349/547` all verified against the source |
+
+### Round-2 concern fold-in (2026-09-07, plan-text only — no re-scoping)
+
+The critique cycle cap is exhausted and the verdict stands at READY TO BUILD
+(with concerns). Both accepted round-2 concerns are folded into the plan text so
+BUILD executes them. No settled supervisor decision was reopened: hard reset,
+INFO level, Risk 2 as documentation only, and Race 1 deferred to #699 are
+unchanged.
+
+| Concern | Disposition |
+|---|---|
+| C7 — stale "`import_state` widening" in the `test-builder` role | **Folded in**: Team Orchestration's `test-builder` role now reads "the `import_state` docstring/comment recording the deliberate 3-element truncation, plus its transfer-fidelity cover", matching Task 2's "Do not widen `import_state`." Verification row added, stated **positively** — a "no widening" grep over this file can never be 0, because the critique tables above quote the stale phrase verbatim. |
+| C8 — reset audit line omits the record it describes | **Folded in**: `member_key` added to all three enumerations of the log contents (Solution / Key Elements "A loud reset", Task 1, Success Criteria) and to the `caplog` requirement in Success Criteria and Task 3. `member_key` is already bound at `cyclic_decay_field.py:547` (`member_key = model_instance.db_key.redis_key`, re-verified against source at fold-in time), so this costs no extra Redis call. Verification row added; it measures 0 on the unmodified tree (the file has no `logger.info` at all pre-change), so it is red-by-construction rather than vacuous. |
+
+Also carried forward into Prerequisites, verbatim from the round-2 live check:
+the editable install in `.worktrees/sdlc-698` resolves `popoto.__file__` to the
+MAIN checkout, so BUILD must either `pip install -e .` in the worktree before any
+measurement or name the checkout it tested in every stage report.
 
 ---
 
