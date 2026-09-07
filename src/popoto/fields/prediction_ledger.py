@@ -33,6 +33,8 @@ import time
 
 import msgpack
 
+from typing import Any, Optional
+
 from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 
@@ -111,17 +113,95 @@ class PredictionLedgerMixin:
 
     _pl_partition: str = "default"
 
-    # Export/import: prediction metadata and the error sorted set accumulate
-    # via record_prediction()/resolve() calls over the model's lifetime --
-    # they are a function of prediction/resolution history, not of any
-    # single record's stored field values, so they cannot be rebuilt or
-    # meaningfully carried by a per-record export/import. Not addressed in
-    # v1 -- see #556.
-    roundtrip_policy: str = "partial"
-    roundtrip_note: str = (
-        "Prediction/resolution ledger history not carried or rebuilt by "
-        "import; see #556"
-    )
+    # Export/import: the ledger entry for a record is per-record state --
+    # $PL:{Class}:meta:{pk} holds exactly one hash field, keyed by that
+    # record's own redis_key -- and it is a *fact about the record*: a
+    # prediction that was made, and possibly resolved, with the timestamps it
+    # actually carried. So it is carried verbatim rather than replayed. The
+    # error sorted set's member for this record is derived deterministically
+    # from the carried entry. See #556 for the full six-subsystem analysis.
+    roundtrip_policy: str = "carry"
+
+    @classmethod
+    def export_state(
+        cls, model_instance: Any, **kwargs: Any
+    ) -> Optional[dict[str, Any]]:
+        """Export this record's prediction-ledger entry.
+
+        Model-level hook (see ``popoto.transfer.export``'s MRO pass), so the
+        signature carries no ``field_name``.
+
+        Returns:
+            ``{"entry": <decoded meta dict>, "partition": <str>}``, or ``None``
+            when this record has no ledger entry (no prediction was ever
+            recorded, or it has been deleted).
+        """
+        try:
+            member_key = model_instance.db_key.redis_key
+        except Exception:
+            return None
+
+        meta_key = cls._meta_key(model_instance)
+        raw = POPOTO_REDIS_DB.hget(meta_key, member_key)
+        if not raw:
+            return None
+
+        try:
+            entry = msgpack.unpackb(raw, raw=False)
+        except Exception:
+            logger.warning(
+                f"Could not decode prediction metadata for {member_key} "
+                f"in {meta_key}; skipping export"
+            )
+            return None
+        if not isinstance(entry, dict):
+            return None
+
+        return {
+            "entry": entry,
+            "partition": str(getattr(model_instance, "_pl_partition", "default")),
+        }
+
+    @classmethod
+    def import_state(cls, model_instance: Any, state: Any, **kwargs: Any) -> None:
+        """Restore this record's prediction-ledger entry after import.
+
+        Written as a raw ``HSET`` of the re-packed entry, deliberately NOT
+        through ``resolve_prediction`` / ``auto_resolve``. Those go through
+        ``RESOLVE_PREDICTION_LUA``, which would recompute ``prediction_error``
+        against the destination's data, stamp a fresh ``resolved_at``, and fire
+        ``_apply_confidence_feedback`` and ``_log_resolution_event`` -- the
+        first of which would double-count, because ``ConfidenceField`` carries
+        its own state independently. A raw write reproduces the source's
+        ``recorded_at`` and ``resolved_at`` exactly and fires nothing.
+
+        The errors sorted set member is then re-derived: its score is
+        ``abs(prediction_error)``, a pure function of the carried entry, so
+        writing it is derivation rather than fabrication.
+        """
+        if not state:
+            return None
+        entry = state.get("entry")
+        if not isinstance(entry, dict):
+            return None
+
+        try:
+            member_key = model_instance.db_key.redis_key
+        except Exception:
+            return None
+
+        POPOTO_REDIS_DB.hset(
+            cls._meta_key(model_instance), member_key, msgpack.packb(entry)
+        )
+
+        error = entry.get("prediction_error")
+        if entry.get("resolved") and error is not None:
+            partition = state.get("partition") or "default"
+            POPOTO_REDIS_DB.zadd(
+                cls._error_key(model_instance, partition),
+                {member_key: abs(float(error))},
+            )
+        return None
 
     # Runtime-lookup properties — read Defaults.* at attribute-access time
     # so that apply_overrides() patches of Defaults are observed. A subclass

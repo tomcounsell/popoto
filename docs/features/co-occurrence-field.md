@@ -173,6 +173,35 @@ When a model instance is deleted, the `on_delete` hook:
 1. Removes the instance's own edge sorted set
 2. If symmetric, removes reverse edges from all connected PKs
 
+## Export and Import
+
+`CoOccurrenceField` declares `roundtrip_policy = "carry"`: edges are stored
+per-record (the edge key ends in the source PK) and a ZSET score *is* the stored
+weight, so `export_records` writes the weights out verbatim and `import_records`
+writes them back with a raw `ZADD`.
+
+Replay is not merely a worse option here, it is impossible: `link`, `strengthen`,
+and `weaken_all` take a delta or a factor, never an absolute target weight, so
+reaching an exported weight through them would mean inventing an interaction
+history that never happened.
+
+Two things to know before importing:
+
+- **Import replaces the edge set wholesale — it does not merge.** The destination
+  record's existing edges are deleted and replaced by the exported set. If both
+  sides have been accumulating associations independently, the destination's are
+  lost. Export both and reconcile yourself if you need a union.
+- **The destination's limits win.** Weights are clamped to
+  `Defaults.CO_OCCURRENCE_WEIGHT_CAP` and the set is truncated to the destination
+  field's `max_edges`, keeping the heaviest edges — the same rule the pruning Lua
+  applies. Importing into a model with a smaller `max_edges` than the source will
+  silently drop the lightest edges, which is the correct behavior but worth
+  knowing.
+
+Symmetric mirroring is *not* re-run on import. Each record carries its own edge
+set, so a full export of the model restores both directions naturally; a filtered
+export that includes one endpoint but not the other yields a one-directional edge.
+
 ## Synergy with Other Fields
 
 ### With DecayingSortedField

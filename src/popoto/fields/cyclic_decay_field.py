@@ -326,7 +326,7 @@ class CyclicDecayField(DecayingSortedField):
         Inverting the order would silently discard both.
 
         (The unconditional clobber in ``on_save`` is a known pre-existing bug
-        on ordinary saves -- deliberately not fixed here; see #556.)
+        on ordinary saves -- deliberately not fixed here; see #679.)
         """
         if not state:
             return None
