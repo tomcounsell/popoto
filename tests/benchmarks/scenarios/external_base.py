@@ -403,6 +403,28 @@ class ExternalScenario(Scenario):
                 f"Unknown supersession arm {supersession_arm!r}; choose from "
                 f"{supersession_axis.ARM_CHOICES}"
             )
+        # Reject rather than silently mislabel (#692 review, finding 4):
+        # retrieval_mode="vector" sets self._assembler = None and ranks by
+        # raw cosine via QueryBuilder._get_vector_scores(), bypassing
+        # ContextAssembler entirely. Validity gating lives only in
+        # ContextAssembler._resolve_excluded_keys, so the vector path applies
+        # NO exclusion at all -- yet the observability block would still
+        # report supersession_arm="content-identity" with n_excluded_keys=0,
+        # which reads as "gating ran and excluded nothing" rather than
+        # "gating never ran". That is functionally arm B wearing arm C's
+        # label, a trap for whoever runs #586's full corpus. Reject the
+        # combination outright rather than emit a report that needs a
+        # footnote to be read correctly.
+        if retrieval_mode == "vector" and supersession_arm != "none":
+            raise ValueError(
+                "retrieval_mode='vector' bypasses ContextAssembler and "
+                "therefore applies no validity gating; "
+                f"supersession_arm={supersession_arm!r} would be silently "
+                "ungated while still reporting as that arm. Use "
+                "supersession_arm='none' with retrieval_mode='vector', or "
+                "choose a non-vector retrieval_mode with this supersession "
+                "arm."
+            )
         self._supersession_arm = supersession_arm
         self._supersession_stats = supersession_axis.SupersessionStats()
         self._identity_counts: Dict[Any, int] = {}

@@ -1334,3 +1334,35 @@ class TestSupersessionArm:
         assert result.metadata["measurement_failures"] == 1
         assert result.metadata["n_excluded_hits"] == 0
         assert Defaults.VALIDITY_GATING_ENABLED == prev
+
+    def test_vector_mode_rejects_content_identity_arm(self):
+        """#692 review, finding 4: retrieval_mode='vector' bypasses
+        ContextAssembler (self._assembler = None) and ranks by raw cosine,
+        so validity gating -- which lives only in
+        ContextAssembler._resolve_excluded_keys -- never runs on that path.
+        Combined with supersession_arm='content-identity' the observability
+        block would still report supersession_arm='content-identity' with
+        n_excluded_keys=0, indistinguishable from "gating ran and excluded
+        nothing" -- functionally arm B wearing arm C's label. Reject the
+        combination outright at construction time rather than emit a report
+        that needs a footnote to be read correctly."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        with pytest.raises(ValueError, match="vector"):
+            ExternalScenario(
+                item=self._update_item(),
+                retrieval_mode="vector",
+                supersession_arm="content-identity",
+            )
+
+    def test_vector_mode_allows_arm_none(self):
+        """The rejection is scoped to a non-'none' supersession arm --
+        vector mode with no supersession producer is a pre-existing,
+        unaffected combination and must keep working."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="vector",
+            supersession_arm="none",
+        )
