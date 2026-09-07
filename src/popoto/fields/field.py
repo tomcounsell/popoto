@@ -232,8 +232,7 @@ class Field(metaclass=FieldBase):
       to serialize and restore that state explicitly.
     - ``"partial"`` — some state is carried or rebuilt and some is knowingly
       not preserved. Fields declaring ``"partial"`` must also set
-      ``roundtrip_note`` explaining what is lost and why (typically citing a
-      tracking issue).
+      ``roundtrip_note`` stating what the destination does and does not get.
 
     Override this class attribute directly on a Field subclass when it
     maintains any secondary Redis structure via ``on_save`` that a plain
@@ -243,10 +242,23 @@ class Field(metaclass=FieldBase):
     roundtrip_note: str = None
     """
     Human-readable explanation surfaced in the import report when
-    ``roundtrip_policy == "partial"``. Should describe what state is not
-    preserved and, where applicable, cite the tracking issue for future work
-    (e.g. ``"history not carried, see #556"``). Left as ``None`` for
-    ``"rebuild"``/``"carry"`` fields, which need no such caveat.
+    ``roundtrip_policy == "partial"``.
+
+    State the *destination's contract*: what the destination ends up with, in
+    terms a reader can act on ("frequencies restart from the import"), not
+    merely what the code does not do ("counters not carried"). A note is read
+    by someone deciding whether an import is safe for their data, so a bare
+    issue reference tells them nothing.
+
+    Cite a tracking issue only while the gap is genuinely open work. A
+    permanent limitation — one where carrying the state would fabricate
+    history the destination never lived through — should say so explicitly
+    ("Permanent contract, not pending work"), because a lingering issue
+    number invites a future reader to "finish" something that was already
+    decided. See #556 for the six-subsystem analysis that drew this line.
+
+    Left as ``None`` for ``"rebuild"``/``"carry"`` fields, which need no such
+    caveat.
     """
 
     @classmethod

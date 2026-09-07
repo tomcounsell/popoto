@@ -83,14 +83,23 @@ class EventStreamMixin:
     _stream_max_length: int = 10000
     _stream_metadata_fields: tuple = ()
 
-    # Export/import: the Redis Stream is an append-only mutation log built
-    # incrementally by every save/delete over the model's lifetime. There is
-    # no single-record snapshot that reconstructs prior stream entries, and
-    # replaying export/import would fabricate a mutation history that never
-    # happened. Not addressed in v1 -- see #556.
+    # Export/import: the mutation stream is deliberately NOT carried, and
+    # #556 settled that as a permanent contract rather than pending work.
+    # The stream is a property of the *source deployment's history* -- every
+    # save and delete that ever ran there -- not a fact about any record in
+    # the export. Its entries are shared across records, its IDs are
+    # source-clock timestamps that XADD requires to be monotonically
+    # increasing against whatever the destination stream already holds, and
+    # its consumer groups carry per-group delivery state. Carrying it would
+    # either collide with the destination's own history or invent one; the
+    # honest contract is that an import starts a fresh mutation history whose
+    # first entry is the import itself.
     roundtrip_policy: str = "partial"
     roundtrip_note: str = (
-        "Mutation stream history not carried or rebuilt by import; see #556"
+        "Mutation stream history is not carried: it records the source "
+        "deployment's save/delete history, not the state of any exported "
+        "record. The destination begins a fresh stream. Permanent contract, "
+        "not pending work."
     )
 
     def _get_stream_key(self):
