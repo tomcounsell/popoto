@@ -92,6 +92,7 @@ from ..fields.tombstone_store import (  # noqa: F401
     _TOMBSTONE_REQUIRED_FIELDS,
     _unpack_tombstone_entry,
 )
+from ..fields.tombstone_prior import TombstonePriorStore
 
 logger = logging.getLogger("POPOTO.MemoryLifecycle")
 
@@ -449,6 +450,11 @@ class MemoryLifecycle:
         # recipe keeps the policy (when to forget, how long to retain); the
         # store keeps the keys and the commands.
         self._tombstones = TombstoneStore(model_class)
+        # Field-layer keeper of the $TOMBPRIOR:{Model}:* keyspace (#494): how
+        # often a given content fingerprint has been buried. The recipe decides
+        # when a burial happens; the store turns it into negative evidence the
+        # write path can consult.
+        self._tombstone_prior = TombstonePriorStore(model_class)
         self._should_promote = should_promote or _default_should_promote
         self._should_forget = should_forget or _default_should_forget
         self.partition_filters = partition_filters or {}
@@ -736,6 +742,44 @@ class MemoryLifecycle:
                     break
         return record.db_key.redis_key
 
+    def _content_fingerprint(self, record: Any) -> Optional[str]:
+        """Return the record's *content* fingerprint, or None if it has none.
+
+        Sibling of :meth:`_fingerprint` for the negative prior (#494). The
+        difference is the fallback: ``_fingerprint`` falls back to the
+        redis_key, which is a fine restore-time identity but useless as
+        negative evidence — a new record always has a new key, so a
+        key-derived prior could never match anything, and recording it would
+        only consume the retention bound.
+
+        Returns None when the model carries no ``ExistenceFilter`` with a
+        ``fingerprint_fn``, or when computing that fingerprint raises.
+
+        The scan looks for the first ``ExistenceFilter`` *carrying a
+        ``fingerprint_fn``*, not merely the first ``ExistenceFilter``. Stopping
+        at the first one either way would silently disable the negative prior
+        for a model whose fingerprinted filter happens to be declared after an
+        unfingerprinted one — no error, no warning, just a capability that
+        never engages. Field order is neither documented nor enforced, so it
+        must not decide this. Mirrored in
+        ``WriteFilterMixin._wf_fingerprint_field``; the two must agree, or a
+        record could be penalized on a fingerprint it was never buried under.
+        """
+        from ..fields.existence_filter import (
+            ExistenceFilter,
+            _compute_fingerprint_impl,
+        )
+
+        for field in type(record)._meta.fields.values():
+            if isinstance(field, ExistenceFilter):
+                if getattr(field, "fingerprint_fn", None) is None:
+                    continue
+                try:
+                    return _compute_fingerprint_impl(field, record)
+                except Exception:
+                    return None
+        return None
+
     def tombstone(self, record: Any, reason: str = "policy") -> Optional[Tombstone]:
         """Forget a record by tombstoning it: remove from retrieval, keep the death.
 
@@ -814,6 +858,24 @@ class MemoryLifecycle:
             return None
 
         self._enforce_tombstone_retention()
+
+        # Negative prior (#494): the death is now durable evidence that this
+        # shape of content was learned to be worthless, so the next write that
+        # matches it is drawn down. Strictly best-effort and strictly after the
+        # archive+removal has succeeded — a failure here must never roll back a
+        # tombstone that is already correct.
+        try:
+            self._tombstone_prior.record_burial(
+                self._content_fingerprint(record), tomb.tombstoned_at
+            )
+        except Exception as exc:
+            logger.warning(
+                "tombstone: negative-prior burial failed for %s: %s "
+                "(tombstone stands)",
+                live_key,
+                exc,
+            )
+
         logger.debug("tombstoned %s (reason=%s)", live_key, reason)
         return tomb
 

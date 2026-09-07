@@ -190,6 +190,19 @@ VALID_RANGES = {
     "LIFECYCLE_FORGET_CONFIDENCE_CEILING": (0.0, 1.0, True, True),
     "LIFECYCLE_FORGET_MIN_EVIDENCE": (1, 100, False, True),
     "LIFECYCLE_TOMBSTONE_RETENTION_LIMIT": (0, 100000, False, True),
+    # Tombstone negative prior (#494). Both ends of the decay are degenerate
+    # by meaning rather than invalid, so both are excluded: 1.0 is a penalty
+    # of exactly 1 at every burial count (the feature off), and 0.0 sends a
+    # once-buried duplicate straight to the floor with no escalation left.
+    # The floor is degenerate at both ends for the same two reasons, since
+    # penalty_for is max(FLOOR, DECAY ** burials) and DECAY is confined to the
+    # open unit interval above: 0.0 makes the strongest suppression absolute
+    # rather than asymptotic, which is the property the design rests on, and
+    # 1.0 pins the max at 1.0 for every burial count -- the feature off, by a
+    # different route than DECAY = 1.0 but with an identical result.
+    "TOMBSTONE_PRIOR_DECAY": (0.0, 1.0, False, False),
+    "TOMBSTONE_PRIOR_FLOOR": (0.0, 1.0, False, False),
+    "TOMBSTONE_PRIOR_LIMIT": (0, 100000, False, True),
 }
 
 

@@ -181,6 +181,19 @@ class TestDefaultsSync:
             "M4_STATEMENT_MAX_GROWTH_FACTOR",
             "M4_STATEMENT_MAX_GROWTH_CHARS",
             "M4_VALID_FROM_ROLES",
+            # Tombstone negative prior (#494) — all three are read directly
+            # from Defaults at call time (fields/tombstone_prior.py:
+            # penalty_for and TombstonePriorStore._enforce_limit), so no
+            # module-level alias exists and none are in MODULE_CONSTANTS.
+            # An alias would be actively wrong here for the same reason as
+            # the deploy switches above: the tests monkeypatch
+            # Defaults.TOMBSTONE_PRIOR_LIMIT and expect the next call to see
+            # it, which an import-time-bound alias would not. apply_overrides
+            # still reaches all three via its Defaults.<NAME_UPPER> fallback,
+            # so benchmark sweeps can move them without a registry entry.
+            "TOMBSTONE_PRIOR_LIMIT",
+            "TOMBSTONE_PRIOR_DECAY",
+            "TOMBSTONE_PRIOR_FLOOR",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

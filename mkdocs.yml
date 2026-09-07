@@ -59,6 +59,7 @@ nav:
                 - Hybrid Retrieval (BM25 + RRF): 'features/hybrid-retrieval.md'
                 - Metacognitive Layer: 'features/metacognitive-layer.md'
                 - NeverRecordFirewall: 'features/never-record-firewall.md'
+                - Tombstone Negative Prior: 'features/tombstone-negative-prior.md'
           - Recipes:
                 - PolicyCache: 'guides/policy-cache-recipe.md'
                 - TrajectoryMemory: 'guides/trajectory-memory-recipe.md'
