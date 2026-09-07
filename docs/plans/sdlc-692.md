@@ -1051,7 +1051,130 @@ Additionally:
 
 ## Critique Results
 
-**Verdict: READY TO BUILD (with concerns).** FULL depth, independent roster
+### Round 2 (2026-09-07) — verdict: READY TO BUILD (with concerns)
+
+FULL depth, independent roster (Risk & Robustness, Scope & Value, History &
+Consistency). **0 blockers, 2 concerns, 2 nits.** Critique cycle 2 of 2, so the
+concerns below are accepted on the record; embed their implementation notes and
+build.
+
+**Round-1 resolutions verified as landed.** All three critics independently
+re-checked C1, C2, C3, N1 and N2 against the plan *body* (not the resolution
+table) and against source: the teardown shape is stated once and identically in
+Technical Approach step 5 and Task 4; both "when the arm is active" qualifiers
+are present in Task 3 and consistent with Success Criterion 5 and Verification
+rows 1 / 8c; C3 is stated as an accepted scope decision; N1's tie analysis
+matches `SUPERSEDE_LUA`'s strict `close_at < start_num` guard
+(`validity_field.py:369`); N2's re-save safety matches the `ZADD NX` block gated
+on `new_score == false or is_open(new_score)` (`validity_field.py:404-410`). No
+residual contradiction survives anywhere in the plan.
+
+#### R2-C1 — `n_excluded_hits` has no named computation path, and the obvious ones do not work
+
+*Flagged independently by Risk & Robustness and Scope & Value — the strongest
+signal in this round.*
+
+AC2 and Verification row 5 make `n_excluded_hits >= 1` load-bearing, and
+Technical Approach step 6 defines it as "how many of *this item's* retrieved
+candidates the gate actually removed". Nothing in the shipped assembler exposes
+that. `_scope_by_validity` (`src/popoto/recipes/context_assembler.py:1713-1726`)
+returns a filtered list with no count;
+`ValidityField.resolve_excluded_keys` (`src/popoto/fields/validity_field.py:863-931`)
+returns the run-wide exclusion set, which per the spike-2 side finding is not
+even item-scoped; and the server-side `DECAY_SCORE_LUA` layer drops rows before
+they ever become client-side candidates.
+
+**Two seams a builder would reach for are actually dead ends — check this before
+implementing:**
+
+- `all_pull_candidates` is **not** a pre-filter candidate list. It is rebound
+  through `_scope_by_validity` at `context_assembler.py:1875-1876` before it
+  reaches `AssemblyResult` at `:2078`, so it is already gated. The only
+  pre-filter form is `_pull_path`'s return at `:1869`, which is not retained.
+- `self._assembler._assembly_as_of` is **not** readable after `assemble()`
+  returns. It is parked at `:1860` and reset to `None` at `:2087`.
+
+**Resolution for the builder:** pass an explicit `as_of=t` into `assemble()` and
+reuse that same `t` for `ValidityField.resolve_excluded_keys(..., as_of=t)` —
+that satisfies Race 2 without touching a private attribute. For
+`n_excluded_hits`, diff two `assemble()` calls over identical stored state:
+```python
+gated = self._assembler.assemble(query_cues=..., agent_id=..., as_of=t)
+prev = Defaults.VALIDITY_GATING_ENABLED
+Defaults.VALIDITY_GATING_ENABLED = False
+try:
+    ungated = self._assembler.assemble(query_cues=..., agent_id=..., as_of=t)
+finally:
+    Defaults.VALIDITY_GATING_ENABLED = prev
+n_excluded_hits = len(_keys(ungated) - _keys(gated))
+```
+This captures removals from **all three** gating layers, not just the client-side
+one. Guard it so the second call runs only on arm C (`supersession_arm !=
+"none"` and gating currently on) — arm A and arm B have nothing to diff and the
+extra call doubles `retrieval_ms` per item.
+
+**This is a documented, bounded exception to Risk 5, not a violation of it.**
+Risk 5's rule ("set once in `main()`, never per item") is about *which arm an
+artifact reports*; a save/restore in a `finally` around a measurement-only second
+call leaves the arm's flag exactly as `main()` set it. Say so at the call site,
+and never let the ungated call's records reach `ScenarioResult.records`.
+
+#### R2-C2 — `route_write`'s code sample has no `try`/`except`, so `producer_failures` would always read 0
+
+*Risk & Robustness.*
+
+Technical Approach step 3's snippet calls `SupersessionProtocol.save_and_supersede`
+bare, while the paragraph below it promises exceptions are "caught per unit,
+counted in `stats.failures`, and logged". As written the exception escapes
+`route_write` into the ingest loop's pre-existing handler at
+`tests/benchmarks/scenarios/external_base.py:506-510`, which logs but has no
+reference to `stats` — that local is out of scope there. `producer_failures`
+would therefore print 0 under total producer failure, reintroducing exactly the
+"silently-failing producer masquerading as a producer that found nothing" defect
+the same section says the metric prevents (Verification row 10).
+
+**Resolution for the builder:** catch inside `route_write`, which is the function
+that owns `stats`:
+
+```python
+try:
+    result = SupersessionProtocol.save_and_supersede(
+        instance, identity_key=identity, at=at
+    )
+except (SupersedeDeclinedError, ValidityMemberAbsentError,
+        ValidityCloseBeforeStartError) as e:
+    stats.failures += 1
+    logger.warning("supersession producer failed: %s", e)
+    return False
+```
+
+Import paths (three types, **two** modules — do not assume one):
+`SupersedeDeclinedError` from `src/popoto/fields/supersession.py:106`;
+`ValidityMemberAbsentError` and `ValidityCloseBeforeStartError` from
+`src/popoto/fields/validity_field.py:128` and `:138`.
+
+#### R2-N1 — the ingest loop is at `external_base.py:445`, not `:447`
+
+*History & Consistency.* Task 3 and the `### C2` record both cite `:447` for
+`for turn in self.item.history:`; the verified line is **445**. The plan's other
+`external_base.py` citations (`:479`, `:522`, `:506-510`, `:706`/`:710`/`:721`/`:725`)
+are all correct. Either fix both occurrences or drop the number and rely on the
+quoted literal.
+
+#### R2-N2 — the two `ValidityField` key-helper citations are swapped
+
+*Structural check.* Technical Approach step 5 and the `### C1` record both cite
+"`get_all_keys` / `get_prefix_db_key` (`src/popoto/fields/validity_field.py:702`,
+`:782`)". The actual definitions are `get_prefix_db_key` at **`:702`** and
+`get_all_keys` at **`:782`** — the names are in the reverse order of the line
+numbers. Also note `get_all_keys` returns **five** keys, not six (its docstring
+says so explicitly); the sixth is the per-digest open pointer the plan already
+handles with a separate `SCAN`, so the snippet is correct and only the prose
+"six names" is loose.
+
+### Round 1 (2026-09-07) — verdict: READY TO BUILD (with concerns)
+
+FULL depth, independent roster
 (3 critics: Risk & Robustness, Scope & Value, History & Consistency).
 0 blockers, 3 concerns, 2 nits.
 
