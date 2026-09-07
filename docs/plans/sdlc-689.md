@@ -976,10 +976,15 @@ directions.
 | MANIFEST.in has exactly one directive | `python -c "import pathlib; print(sum(1 for l in pathlib.Path('MANIFEST.in').read_text().splitlines() if l.strip() and not l.strip().startswith('#')))"` | output contains 1 |
 | Checker expects MANIFEST.in | `grep -c '"MANIFEST.in"' scripts/check_sdist_contents.py` | output > 0 |
 | Checker no longer blesses tests | `python -c "import importlib.util as u; s=u.spec_from_file_location('c','scripts/check_sdist_contents.py'); m=u.module_from_spec(s); s.loader.exec_module(m); print(int('tests' in m.EXPECTED_TOP_LEVEL))"` | match count == 0 |
-| Severity split intact (anti-criterion) | `awk '/for entry in sorted/,/return failures, warnings/' scripts/check_sdist_contents.py \| grep -c 'failures.append'` | match count == 0 |
-| Sdist ships no tests (anti-criterion) | `sh scripts/verify/sdist_excludes_tests.sh` | match count == 0 |
-| Sdist check is warning-free | `sh scripts/verify/sdist_excludes_tests.sh --run-checker \| grep -c WARNING` | match count == 0 |
+| Severity split, awk range is non-empty (guards the row below from going vacuous) | `awk '/for entry in sorted/,/return failures, warnings/' scripts/check_sdist_contents.py \| wc -l` | output > 0 (measured on `main`: 7) |
+| Severity split intact (anti-criterion, red-state demo only — behavioral backing is the test row below) | `awk '/for entry in sorted/,/return failures, warnings/' scripts/check_sdist_contents.py \| grep -c 'failures.append'` | match count == 0 |
+| Severity split intact (behavioral) | `POPOTO_TEST_DB=9 python -m pytest tests/test_sdist_contents.py::test_unexpected_top_level_warns_without_failing -q` | exit code 0 |
+| Sdist ships no tests (anti-criterion) | `sh scripts/verify/sdist_excludes_tests.sh && test "$(sh scripts/verify/sdist_excludes_tests.sh)" = "0"` | exit code 0 — the leading run asserts the script did not abort, the second asserts the count |
+| Sdist check is warning-free | `sh scripts/verify/sdist_excludes_tests.sh --run-checker > "$TMPOUT" && test "$(grep -c WARNING "$TMPOUT")" = "0"` | exit code 0 — never pipe the script straight into `grep -c`, which converts an aborted run into a `0` that reads as success |
+| Sdist installs and imports (packaged code actually works) | in a scratch venv: `pip install --no-deps "$SDIST" && python -c "import popoto"` | exit code 0 |
 | CLAUDE.md no longer claims no MANIFEST.in | `grep -c 'exists at all' CLAUDE.md` | match count == 0 |
+| CLAUDE.md no longer frames the allowlist as observed 1.9.0 membership | `grep -c 'the 1.9.0 sdist has' CLAUDE.md` | match count == 0 (scoped to CLAUDE.md deliberately — the same phrase lives in `scripts/check_sdist_contents.py`'s comment, which Task 2 covers separately) |
+| Checker comment no longer frames the allowlist as observed 1.9.0 membership | `grep -c 'the 1.9.0 sdist has' scripts/check_sdist_contents.py` | match count == 0 |
 | CHANGELOG no longer claims no MANIFEST.in | `grep -c 'in the repository at all' CHANGELOG.md` | match count == 0 |
 | Sdist guard tests pass | `POPOTO_TEST_DB=9 python -m pytest tests/test_sdist_contents.py -q` | exit code 0 |
 | Full suite passes | `POPOTO_TEST_DB=9 python -m pytest -q` | exit code 0 |
@@ -989,14 +994,28 @@ directions.
 | Docs build | `python -m mkdocs build --strict` | exit code 0 |
 | No stale xfails introduced | `grep -rn 'xfail' tests/test_sdist_contents.py` | exit code 1 |
 
+`$TMPOUT` and `$SDIST` are shell variables the validator sets; the point of
+routing through a file rather than a pipe is that `sh … | grep -c` discards the
+script's exit status, and a script that aborts before building prints nothing —
+so `grep -c` returns `0`, the pass value. That is the exact false pass the
+critique found, and no row in this table may reintroduce it.
+
 Two rows are anti-criteria and must be shown failing before they pass, with the
 FAIL output pasted into the PR description:
 
 - *Severity split intact* — temporarily move the top-level rule's append from
-  `warnings` to `failures` and confirm the row FAILS.
+  `warnings` to `failures` and confirm the row FAILS. Note that this row is a
+  source-text scan of the shape CLAUDE.md criticizes elsewhere: it prints `0` on
+  unmodified `main`, which is also its pass value, so on its own it cannot
+  distinguish "split intact" from "anchors reworded and the awk range empty".
+  The non-empty-range row above and the behavioral pytest row are what make it
+  meaningful; keep all three or drop all three.
 - *Sdist ships no tests* — run it at the branch point (before `MANIFEST.in`
-  lands) and confirm it FAILS with a non-zero count. spike-4 already produced
-  the equivalent output for the checker row:
+  lands) and confirm it FAILS with a non-zero count **and exit code 0** (the
+  script ran to completion and honestly reported tests present). A non-zero exit
+  here means the script is broken, not that the fix is missing — report it as a
+  tooling failure, never as the red state. spike-4 already produced the
+  equivalent output for the checker row:
   `WARNING: 'MANIFEST.in': unexpected top-level entry ... OK: ... 1 warning(s)`.
 
 ## Critique Results
