@@ -9,11 +9,29 @@ description = "Interactive TUI demo showcasing the Popoto Redis ORM"
 requires-python = ">=3.10"
 dependencies = [
     "popoto",
-    "textual>=0.47.0",
+    # 8.2 floor, not 0.47: the screens use Select.NULL and DataTable.ordered_rows,
+    # neither of which exists on the 0.x line. See docs/plans/examples_dependabot_unlock.md.
+    "textual>=8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
 ]
 
 [tool.uv.sources]
 popoto = { path = "..", editable = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# popoto ships a pytest plugin that swaps and FLUSHES a test database when
+# opted in via popoto_test_db. This suite opts out and manages its own data
+# with seed.clear_database() (model-scoped deletes, never a flush), because the
+# database it runs against is named by REDIS_URL — see tests/conftest.py. The
+# plugin would otherwise warn on every run that it is not isolating.
+addopts = "-p no:popoto"
 
 [project.scripts]
 popoto-kitchen = "popoto_kitchen.__main__:main"

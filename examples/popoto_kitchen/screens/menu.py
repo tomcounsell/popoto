@@ -16,8 +16,8 @@ class MenuScreen(Container):
         # Filter bar
         with Horizontal(classes="filter-container"):
             yield Input(placeholder="Search items...", id="filter-name")
-            yield Input(placeholder="Min Price", id="filter-min-price")
-            yield Input(placeholder="Max Price", id="filter-max-price")
+            yield Input(placeholder="Min Price (+category)", id="filter-min-price")
+            yield Input(placeholder="Max Price (+category)", id="filter-max-price")
             yield Select(
                 [(c, c) for c in ["All Categories"] + CATEGORIES],
                 prompt="Category",
@@ -84,24 +84,39 @@ class MenuScreen(Container):
         table.clear()
 
         try:
-            # Build query with price range if specified
-            query_kwargs = {}
+            # MenuItem.price is a SortedField partitioned by the `category`
+            # KeyField, so Redis stores one sorted set per category
+            # (MenuItem:_price:<category>). A range query therefore has to name
+            # the partition it is scanning: filtering on price without a
+            # category has no single sorted set to read and popoto raises.
+            # So the price range is a server-side query only when a real
+            # category is selected; with "All Categories" the demo falls back
+            # to an in-memory price filter and says so in the status line.
+            category = None
+            if filters:
+                selected = filters.get("category")
+                if selected and selected != "All Categories":
+                    category = selected
 
+            price_bounds = {}
             if filters:
                 if filters.get("min_price"):
                     try:
-                        query_kwargs["price__gte"] = float(filters["min_price"])
+                        price_bounds["price__gte"] = float(filters["min_price"])
                     except ValueError:
                         pass
                 if filters.get("max_price"):
                     try:
-                        query_kwargs["price__lte"] = float(filters["max_price"])
+                        price_bounds["price__lte"] = float(filters["max_price"])
                     except ValueError:
                         pass
 
             # Execute query
-            if query_kwargs:
-                items = MenuItem.query.filter(**query_kwargs)
+            price_filtered_in_redis = bool(price_bounds) and category is not None
+            if price_filtered_in_redis:
+                items = MenuItem.query.filter(category=category, **price_bounds)
+            elif category is not None:
+                items = MenuItem.query.filter(category=category)
             else:
                 items = MenuItem.query.all()
 
@@ -115,9 +130,15 @@ class MenuScreen(Container):
                     items_list = [
                         i for i in items_list if name_filter in i.name.lower()
                     ]
-                if filters.get("category") and filters["category"] != "All Categories":
+                if price_bounds and not price_filtered_in_redis:
+                    # Client-side fallback for the un-partitioned case above.
+                    lo = price_bounds.get("price__gte")
+                    hi = price_bounds.get("price__lte")
                     items_list = [
-                        i for i in items_list if i.category == filters["category"]
+                        i
+                        for i in items_list
+                        if (lo is None or (i.price or 0) >= lo)
+                        and (hi is None or (i.price or 0) <= hi)
                     ]
                 if filters.get("restaurant") and filters["restaurant"] != "all":
                     items_list = [
@@ -152,8 +173,19 @@ class MenuScreen(Container):
                 )
                 count += 1
 
-            # Update count label
-            self.query_one("#result-count", Label).update(f"{count} items")
+            # Update count label, explaining which engine served the price
+            # range so the partition requirement is visible in the UI rather
+            # than only in the source.
+            status = f"{count} items"
+            if price_bounds:
+                if price_filtered_in_redis:
+                    status += f" — price range from Redis (category: {category})"
+                else:
+                    status += (
+                        " — price range applied in memory; pick a category to "
+                        "query the sorted index (price is sorted per category)"
+                    )
+            self.query_one("#result-count", Label).update(status)
 
         except Exception as e:
             self.app.notify(f"Error loading menu: {e}", severity="error")
@@ -296,7 +328,12 @@ class MenuScreen(Container):
                 return
 
             item.category = new_category
-            item.save()
+            # `category` is a KeyField, so moving an item between categories
+            # changes its Redis identity. Identity is immutable by default;
+            # migrate_key=True is the explicit opt-in that writes the new key
+            # and DELETEs the old hash. See _rename_restaurant() in
+            # restaurants.py for the same contract on Restaurant.name.
+            item.save(migrate_key=True)
             self.refresh_data(filters=self._get_filters())
             self.app.notify(
                 f"Moved: {item.name} from {old_category} → {new_category}",

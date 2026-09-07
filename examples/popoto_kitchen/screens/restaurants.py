@@ -264,7 +264,13 @@ class RestaurantsScreen(Container):
                 new_name = restaurant_name(restaurant.cuisine)
 
             restaurant.name = new_name
-            restaurant.save()
+            # `name` is a KeyField, and a KeyField is the model's Redis identity.
+            # Popoto therefore treats identity as immutable by default: a plain
+            # save() raises rather than silently leaving the record reachable
+            # under two keys. migrate_key=True is the explicit opt-in — it writes
+            # the new key and DELETEs the old hash, so the rename is a move
+            # rather than a copy.
+            restaurant.save(migrate_key=True)
             self.refresh_data()
             self.app.notify(f"Renamed to: {new_name}", severity="information")
         except Exception as e:
