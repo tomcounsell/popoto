@@ -407,15 +407,172 @@ _placeholder_
 
 ## Solution
 
-_placeholder_
+**Decision: stop shipping `tests/` in the sdist.** The issue offers two
+defensible ends of the fork; this picks the first, on evidence rather than
+taste.
+
+Why not Option B ("ship `conftest.py` and whatever else the suite needs"): the
+"whatever else" is unbounded and partly *illegal*. Making the shipped suite
+runnable requires `tests/conftest.py`, `tests/__init__.py`, four `tests/`
+subpackages including `tests/benchmarks/` (which carries datasets and results),
+and then the repository paths that 23 of the shipped tests read — `docs/`,
+`scripts/`, `examples/`, `uv.lock`, `CLAUDE.md`, and `.github/workflows/`.
+That last one cannot ship: `scripts/check_sdist_contents.py` **hard-fails** on a
+dotfile member at any depth, so `tests/test_ci_workflow_redis_url.py` can never
+pass from an sdist without weakening a security rule. Option B ends at "ship the
+whole repository", i.e. `setuptools-scm`, which is a different project. Option A
+is one directive.
+
+### Key Elements
+
+- **`MANIFEST.in`** (new, repo root, one directive): declares that `tests/` is
+  not part of the source distribution. This is the only mechanism setuptools
+  offers — spike-3 and the setuptools user guide both say so; the route the
+  issue preferred does not exist.
+- **`scripts/check_sdist_contents.py`**: `EXPECTED_TOP_LEVEL` re-calibrated —
+  `tests` out, `MANIFEST.in` in. Still seven entries. Rule severities untouched.
+- **A guard test** in `tests/test_sdist_contents.py`: asserts the
+  `MANIFEST.in` ↔ `EXPECTED_TOP_LEVEL` correspondence that nothing else
+  enforces, and asserts `tests` is *absent* from the known set so a later editor
+  cannot re-add it without reading why.
+- **Prose that becomes false**: `CLAUDE.md` and `CHANGELOG.md` both state, as
+  verified fact, that "no `MANIFEST.in` exists at all"; `CLAUDE.md` and the
+  `check_sdist_contents.py` module docstring both justify the warning-only
+  severity by "a `MANIFEST.in` *would* be that declaration [and adding one would
+  create the advisory's own precondition]". All four passages need updating —
+  not deleting, since the reasoning stays correct as a record of why the floor
+  was raised first.
+
+### Flow
+
+Tag push → `release.yml` checkout (clean) → `python -m build` → setuptools
+`manifest_maker` adds defaults **including `tests/test*.py`** → `read_template()`
+applies `MANIFEST.in`'s `prune tests` → `tests/` removed → tarball →
+`check_sdist_contents.py` sees six known top-level entries plus `MANIFEST.in`,
+zero warnings → publish.
+
+### Technical Approach
+
+- **`MANIFEST.in` body is `prune tests` and nothing else.** Spike-4 measured
+  this exact body: it removes `tests/` completely and leaves `src/` membership
+  identical. Resist adding `global-exclude *.pyc`, `recursive-exclude` lines, or
+  a `graft` — every extra directive is another exclusion rule, and exclusion
+  rules are what the setuptools advisory is about. One directive keeps the
+  blast radius of a hypothetical bypass to one directory that is not shipped
+  anyway.
+- **Do not touch the rule severities in `check_sdist_contents.py`.** CLAUDE.md
+  names the split as "the part most likely to be 'simplified' away by a later
+  editor" and `tests/test_sdist_contents.py` has a test naming it. Adding a
+  `MANIFEST.in` genuinely weakens the *stated reason* for warning-only
+  (a machine-readable declaration now exists), but promoting the top-level rule
+  to a hard failure is a separate judgment call under release pressure and is
+  explicitly a No-Go here.
+- **The `setuptools>=83` floor (#678) is what makes this safe, and #694 is what
+  makes it binding.** The advisory is an exclusion *bypass*: with
+  setuptools<83, a `MANIFEST.in` exclusion can be defeated by an NFC/NFD
+  filename collision on APFS/HFS+. popoto's floor is `>=83`, and per #694 that
+  floor constrains sdist builds — including a consumer's `--no-binary` build —
+  so the exclusion is honored everywhere the sdist can be built. Precondition 1
+  of the advisory does now exist; preconditions 2 (non-ASCII path) and 3
+  (APFS/HFS+ build host) still do not, and `check_sdist_contents.py`'s non-ASCII
+  hard-failure rule is what keeps precondition 2 from returning silently. Say
+  this in the docs: the rule moves from defense-in-depth to load-bearing, which
+  is the trade the issue flagged and which the plan accepts rather than denies.
+- **Version bump / release is not part of this change.** The fix takes effect at
+  the next release from `release.yml`; no republish of 1.9.0 is possible or
+  attempted.
 
 ## Failure Path Test Strategy
 
-_placeholder_
+### Exception Handling Coverage
+- [x] No exception handlers in scope. `MANIFEST.in` contains no code.
+  `scripts/check_sdist_contents.py`'s only edit is a frozenset literal and its
+  docstring; the script has no `except` blocks at all (its two argument-resolution
+  failures raise `SystemExit` deliberately, and CLAUDE.md records that "zero
+  matches and two matches are both hard errors, never a vacuous pass").
+
+### Empty/Invalid Input Handling
+- [x] The relevant empty-input hazard is **a vacuous guard test**, which is this
+  repo's documented failure mode (the #661 empty-capture trap, and CLAUDE.md's
+  "if a spy test cannot tell stale from converted, it is not the test"). The new
+  guard test must therefore assert on **content it parses**, not on a file
+  merely existing: read `MANIFEST.in`, assert the parsed directive set is
+  exactly `{"prune tests"}`, and assert `"tests" not in EXPECTED_TOP_LEVEL` and
+  `"MANIFEST.in" in EXPECTED_TOP_LEVEL`. A test that only asserts
+  `MANIFEST_IN.exists()` passes against an empty file and is not the test.
+- [x] `check_members([])` — an empty member list — must not be treated as a
+  pass by the new test's helpers. The existing suite builds synthetic tarballs
+  in `tmp_path`; keep that shape.
+
+### Error State Rendering
+- [x] The user-visible failure path is the checker's own output, and spike-4
+  already exercised it in the *pre-fix* direction: running the current checker
+  against a pruned sdist prints
+  `WARNING: 'MANIFEST.in': unexpected top-level entry` and exits 0. Paste that
+  output into the PR as the red-state proof that the `EXPECTED_TOP_LEVEL` edit is
+  load-bearing, then show it absent after. A synthetic-tarball test asserting
+  that a member list of `{MANIFEST.in, PKG-INFO, README.md, pyproject.toml,
+  setup.cfg, LICENSE, src/...}` produces **zero** warnings covers the green
+  direction without building anything.
 
 ## Test Impact
 
-_placeholder_
+No existing test breaks. Verified by reading `tests/test_sdist_contents.py`
+rather than assuming: its synthetic fixture is
+`CLEAN = ["PKG-INFO", "README.md", "pyproject.toml", "src/popoto/__init__.py"]`,
+which contains no `tests` member, so removing `tests` from `EXPECTED_TOP_LEVEL`
+changes none of the twelve existing assertions.
+`test_unexpected_top_level_warns_without_failing` uses `docs/index.md` as its
+unexpected entry and is likewise unaffected.
+
+- [ ] `tests/test_sdist_contents.py` — UPDATE (additive): add the guard test
+      described in Failure Path Test Strategy. Add nothing that re-asserts
+      `tests` as an expected member.
+- [ ] `tests/test_sdist_contents.py::test_unexpected_top_level_warns_without_failing`
+      — KEEP UNCHANGED. It is the test CLAUDE.md points at as protecting the
+      severity split; if a build agent finds itself editing it, that is the
+      signal something went wrong.
+- [ ] `tests/test_sdist_contents.py::test_build_system_floor_is_at_least_83`
+      — KEEP UNCHANGED. Its floor is now load-bearing for a live `MANIFEST.in`
+      rather than for a hypothetical one; the assertion is identical, only its
+      docstring's justification could be sharpened.
+
+No xfail/xpass markers exist anywhere in `tests/test_sdist_contents.py`, so
+there is nothing to convert.
+
+## Rabbit Holes
+
+- **Chasing a `pyproject.toml`-only solution because the issue suggested one.**
+  Spike-3 enumerated every `[tool.setuptools]` key; none touches sdist
+  membership. The one that looks like it might, `packages.find.exclude`, governs
+  wheel discovery — and popoto's is already `where = src`, so `tests/` has never
+  been in the wheel. Do not add it; it would be a no-op that reads like a fix.
+- **`[tool.setuptools] cmdclass` pointing at a custom `sdist` command.** This is
+  technically the only pyproject-expressible route, and it is a trap: the
+  cmdclass module must be importable from the *extracted sdist* for any consumer
+  who builds from source, so it would itself have to ship — which requires
+  either a `MANIFEST.in` (circular) or declaring it in `py-modules`, which
+  installs a build helper into every consumer's `site-packages`. Strictly worse
+  than the one-line `MANIFEST.in`.
+- **`setuptools-scm` to make membership "whatever git tracks".** Ships `docs/`,
+  `examples/`, `scripts/`, and `.github/` — the last of which
+  `check_sdist_contents.py` hard-fails on. It would trade a 300-member sdist for
+  a several-thousand-member one and break the release gate on the first run.
+- **Making the shipped suite runnable (Option B).** Bounded only by "ship the
+  whole repository". 23 shipped tests read repository paths; one of them reads
+  `.github/workflows/`, which cannot legally ship. Reject it here rather than
+  discovering the wall three files in.
+- **Auditing the whole `tests/` tree for what a "minimal runnable subset" would
+  need.** That is Option B wearing a smaller hat. The answer is not needed to
+  decide, because the decision is Option A.
+- **"Fixing" the stale-`SOURCES.txt` behavior from spike-5.** It is upstream
+  setuptools behavior, it does not affect CI (clean checkout), and `prune tests`
+  neutralizes it for this directory. Adding `src/*.egg-info` cleanup steps or a
+  pre-build `rm -rf` to `release.yml` solves a problem CI does not have.
+- **Touching the CHANGELOG's #678 entry beyond the one false clause.** It is a
+  historical record of why the floor was raised. Correct "there is no
+  `MANIFEST.in` in the repository at all" and leave the rest of the reasoning
+  intact.
 
 ## Rabbit Holes
 
@@ -423,7 +580,68 @@ _placeholder_
 
 ## Risks
 
-_placeholder_
+### Risk 1: adding `MANIFEST.in` creates precondition 1 of the setuptools advisory
+**Impact:** The advisory (#678) is an exclusion *bypass*: on setuptools<83, a
+`MANIFEST.in` exclusion can be defeated by an NFC/NFD filename collision on
+APFS/HFS+, so an excluded file ships anyway. Today popoto's exposure is nil on
+three counts, one of which is "no `MANIFEST.in` exists at all". This change
+spends that count deliberately. `check_sdist_contents.py`'s non-ASCII rule stops
+being defense-in-depth and becomes the thing keeping precondition 2 away.
+**Mitigation:** three, and all three are already in place — (a) the build floor
+is `setuptools>=83`, the release that *fixes* the bypass, and per #694 that floor
+binds every sdist build including a consumer's `--no-binary`; (b) precondition 3
+is absent, releases build on `ubuntu-latest`, not APFS/HFS+; (c) precondition 2
+is guarded by a hard failure that runs before publish. Additionally the single
+directive excludes a directory whose *leaking* is the status quo, so a bypass
+degrades to today's behavior rather than to something new. Document the
+demotion of the non-ASCII rule from defense-in-depth to load-bearing in
+`CLAUDE.md` — the issue asked for exactly this trade to be named, not hidden.
+
+### Risk 2: the `MANIFEST.in` ↔ `EXPECTED_TOP_LEVEL` correspondence is hand-maintained
+**Impact:** Someone later adds a `graft`/`include` to `MANIFEST.in`, the new
+top-level entry is not in the allowlist, and the release prints a warning nobody
+reads — or, worse, someone removes `MANIFEST.in` and `tests/` silently returns.
+This is the same shape CLAUDE.md criticizes in `check_lock_imports.py`.
+**Mitigation:** the guard test asserts the correspondence in both directions
+(`MANIFEST.in` present in the set, `tests` absent from it) and parses the
+directive rather than checking the file exists. Name the coupling in the
+`check_sdist_contents.py` docstring so a reader of either file finds the other.
+
+### Risk 3: a downstream packager was running the shipped tests
+**Impact:** A distro or conda-forge recipe that runs `pytest` against the
+unpacked sdist would lose that step. This is the strongest argument for keeping
+tests in the sdist and it is a real ecosystem convention.
+**Mitigation:** it cannot regress anyone, because the shipped suite has never
+been runnable — no `conftest.py`, no `tests/__init__.py`, no subpackages, and 23
+files reading paths that never shipped. Any packager doing this is already
+carrying a patch or skipping collection. A CHANGELOG entry states the removal
+plainly and points at `git clone` as the supported way to run popoto's suite.
+
+### Risk 4: verifying the fix by building an sdist in a dirty working tree
+**Impact:** spike-5's finding — a stale `src/popoto.egg-info/SOURCES.txt` is
+re-read by `manifest_maker.add_defaults` and its 166 `tests/` entries re-added.
+A reviewer who builds in the working tree without understanding this could
+report either a false pass or a false failure, and the repo already has a
+documented history (`CLAUDE.md`, the five worktree-verification gotchas) of
+confident wrong numbers from environment drift.
+**Mitigation:** every verification command in this plan builds from a fresh
+`git clone`, and the Verification table says so. State the build environment
+alongside any member count, per CLAUDE.md's standing rule.
+
+## Race Conditions
+
+No race conditions identified. Nothing in this change executes at runtime,
+concurrently, or against shared state: `MANIFEST.in` is read once by
+`manifest_maker` inside a single-threaded build, and `check_sdist_contents.py`
+is a single-process read of a tar member list. The only ordering constraint in
+scope is a *sequential* one already asserted by
+`test_release_workflow_invokes_the_check_before_publishing`: the checker must run
+between `python -m build` and the publish action, and this plan does not move it.
+
+The one lane-level concurrency concern is procedural, not code: `docs/plans/` is
+committed directly on the shared `main` checkout and a sibling lane (`sdlc-698`)
+is writing there at the same time. Commit each plan section as soon as it is
+coherent and never leave `docs/plans/` dirty across an await.
 
 ## Race Conditions
 
