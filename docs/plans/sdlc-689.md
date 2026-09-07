@@ -649,7 +649,45 @@ _placeholder_
 
 ## No-Gos (Out of Scope)
 
-_placeholder_
+Everything mechanically doable is in scope — the code change is three files and
+the doc cascade is four passages, all of which this plan's tasks cover. Two
+entries are genuinely outside an agent's reach:
+
+- [ORDERED] **The fix reaches PyPI only at the next release.** PyPI artifacts are
+  immutable, so 1.9.0's sdist keeps its broken `tests/` forever; nothing can
+  republish it. The corrected membership ships when a human pushes a `v*` tag and
+  `release.yml` runs. Gating event: a maintainer-initiated release, out of this
+  PR's control.
+- [EXTERNAL] **Confirming no downstream packager depended on the shipped tests.**
+  Requires surveying distro/conda-forge recipes maintained by other people.
+  Risk 3 argues the dependency cannot exist (the suite was never runnable), but
+  proving it is a human/world action.
+
+Deliberately *not* deferred and *not* done — these are decisions, and the plan's
+position is "no", not "later":
+
+- Promoting `check_sdist_contents.py`'s top-level rule from warning to hard
+  failure. The severity split is deliberate and CLAUDE.md names it as the thing
+  most likely to be simplified away. An anti-criterion in the Verification table
+  asserts the top-level rule still appends to `warnings`, never `failures`.
+- Adding `[tool.setuptools.packages.find] exclude = ["tests*"]`. A no-op that
+  reads like a fix — the wheel already excludes `tests/` via `where = src`.
+- Making the shipped test suite runnable (Option B). Rejected on evidence in the
+  Solution section, not postponed.
+
+## Update System
+
+No update-system changes required. popoto is a library plus an mkdocs site; there
+is no deployed instance and no `/update` path that propagates sdist membership.
+The only propagation channel is `release.yml`, which needs no edit — the checker
+invocation and its position between build and publish are unchanged.
+
+## Agent Integration
+
+No agent integration required. `MANIFEST.in` is consumed by setuptools during a
+build; `scripts/check_sdist_contents.py` is invoked by a workflow step. Neither
+is reachable from, or relevant to, popoto's MCP server or `popoto-memory` hook
+surface.
 
 ## Update System
 
@@ -661,11 +699,107 @@ _placeholder_
 
 ## Documentation
 
-_placeholder_
+The documentation work here is **correcting statements that this change makes
+false**, not describing a new feature. Nothing in `docs/` (the published mkdocs
+site) mentions the sdist, `MANIFEST.in`, or shipped tests — grepped and
+confirmed — so no user-facing page is created or edited.
+
+### Feature Documentation
+- [ ] No `docs/features/` page. Sdist membership is a packaging property with no
+      user-facing API; the site has no packaging section and inventing one for
+      this would be out of proportion. Recorded here so the DOCS stage can see
+      the decision was made rather than missed.
+
+### External Documentation Site
+- [ ] No mkdocs page changes. `mkdocs build --strict` must still pass (it is a
+      CI gate) but nothing in this change touches it.
+
+### Repository Documentation (the actual cascade — all four are required)
+- [ ] `CLAUDE.md` (the `[build-system] requires` paragraph): "no `MANIFEST.in`
+      exists at all" is now false. Rewrite the three-count exposure argument to
+      say precondition 1 was **deliberately spent** by #689, name the remaining
+      two counts (no non-ASCII path; `ubuntu-latest` builds), and state that the
+      non-ASCII rule in `check_sdist_contents.py` is now load-bearing rather
+      than defense-in-depth.
+- [ ] `CLAUDE.md` (the `check_sdist_contents.py` paragraph): the justification
+      "there is no machine-readable declaration of intended sdist membership to
+      parse against, because a `MANIFEST.in` *would* be that declaration" no
+      longer holds — one now exists. Keep the warning-only severity, but replace
+      the reason with the one that survives: a legitimate packaging addition must
+      never block a release under release pressure. Note the new
+      `MANIFEST.in` ↔ `EXPECTED_TOP_LEVEL` coupling and the test that guards it.
+- [ ] `CHANGELOG.md`: correct the same false clause in the #678 entry ("there is
+      no `MANIFEST.in` in the repository at all"), and add an entry for #689
+      stating plainly that `tests/` no longer ships in the sdist, why it never
+      worked, and that the supported way to run popoto's suite is a `git clone`.
+- [ ] `docs/plans/setuptools_build_floor_and_sdist_exposure.md`: mark spike-1's
+      finding ("**No `MANIFEST.in` exists.**") as superseded by #689 with a
+      pointer, rather than editing the historical result. That plan is an
+      archive of what was true at the time.
+
+### Inline Documentation
+- [ ] `MANIFEST.in`: a comment above `prune tests` naming issue #689, why the
+      directive exists, and why it is the *only* directive (every added
+      exclusion rule widens the advisory's surface).
+- [ ] `scripts/check_sdist_contents.py` module docstring: update the
+      warning-only rationale to match the CLAUDE.md rewrite, and update the
+      `EXPECTED_TOP_LEVEL` comment ("The seven top-level entries the published
+      1.9.0 sdist has") — it is still seven, but they are a different seven and
+      they now describe the *intended* set rather than the observed one.
 
 ## Success Criteria
 
-_placeholder_
+- [ ] `MANIFEST.in` exists at the repo root, contains exactly one directive
+      (`prune tests`) plus comments, and names #689 in a comment.
+- [ ] An sdist built from a **fresh `git clone`** of the branch contains zero
+      members under `tests/`.
+- [ ] The same sdist's `src/` member count is unchanged from a pre-fix build of
+      the same commit — the fix removes `tests/` and nothing else.
+- [ ] `python scripts/check_sdist_contents.py <that sdist>` exits 0 with **zero
+      warnings** (today it would print one for `MANIFEST.in`).
+- [ ] `EXPECTED_TOP_LEVEL` contains `MANIFEST.in` and does not contain `tests`.
+- [ ] The top-level-entry rule still appends to `warnings`, never `failures`
+      (anti-criterion, asserted in the Verification table).
+- [ ] The new guard test parses `MANIFEST.in`'s content — it fails against an
+      empty `MANIFEST.in`, demonstrated red-state before green.
+- [ ] All four documentation cascade items landed; no repository document still
+      claims popoto has no `MANIFEST.in`.
+- [ ] `pytest tests/test_sdist_contents.py` passes (`POPOTO_TEST_DB=9`).
+- [ ] Full suite passes (`/do-test`), `ruff check src/` clean,
+      `black --check src/ tests/` clean, `scripts/mypy_ratchet.py` at or below
+      ceiling, `mkdocs build --strict` clean.
+- [ ] Documentation updated (`/do-docs`).
+- [ ] No xfail/xpass conversions needed — none exist in scope.
+
+## Team Orchestration
+
+Small appetite, one coherent change. Two builders would contend on
+`scripts/check_sdist_contents.py`, so the packaging change and its test are one
+task; the documentation cascade is genuinely separable and runs in parallel.
+
+### Team Members
+
+- **Builder (packaging)**
+  - Name: `sdist-builder`
+  - Role: `MANIFEST.in`, `EXPECTED_TOP_LEVEL`, the guard test, and the inline
+    docstring updates in `scripts/check_sdist_contents.py`
+  - Agent Type: builder
+  - Resume: true
+
+- **Documentarian (cascade)**
+  - Name: `sdist-documentarian`
+  - Role: `CLAUDE.md` (two paragraphs), `CHANGELOG.md` (one correction + one new
+    entry), the superseded-finding note in the #678 plan
+  - Agent Type: documentarian
+  - Resume: true
+
+- **Validator**
+  - Name: `sdist-validator`
+  - Role: build an sdist from a fresh clone, verify membership and checker
+    output, run the Verification table, confirm no document still claims popoto
+    has no `MANIFEST.in`
+  - Agent Type: validator
+  - Resume: true
 
 ## Team Orchestration
 
@@ -673,16 +807,179 @@ _placeholder_
 
 ## Step by Step Tasks
 
-_placeholder_
+Branch: `fix/sdist-excludes-tests` (descriptive, per CLAUDE.md's naming rule).
+Note for the supervisor: G8 artifact verification looks for `session/sdlc-689`
+and will not find it — that is the known upstream defect `tomcounsell/ai#2765`;
+do not push a decoy ref.
+
+### 1. Capture the red state
+- **Task ID**: `red-state`
+- **Depends On**: none
+- **Validates**: no test — this produces the paper trail the PR body needs
+- **Informed By**: spike-2 (build gotcha: the repo root's `build/` dir shadows
+  the module), spike-4 (checker output on a pruned sdist), spike-5 (build from a
+  clean clone or the number is not evidence)
+- **Assigned To**: `sdist-builder`
+- **Agent Type**: builder
+- **Parallel**: false
+- `git clone` the branch point into a scratch directory; from a cwd *outside*
+  the repo, build an sdist with a venv that has `build` installed.
+- Record: total member count, per-top-level counts, and the absence of
+  `tests/conftest.py`. State the environment (OS, Python, setuptools version)
+  alongside every count.
+- Run `python scripts/check_sdist_contents.py` on it and paste the output.
+- Save both outputs for the PR description as the before half.
+
+### 2. Add `MANIFEST.in` and re-calibrate the checker
+- **Task ID**: `build-manifest`
+- **Depends On**: `red-state`
+- **Validates**: `tests/test_sdist_contents.py`
+- **Informed By**: spike-3 (no `[tool.setuptools]` key does this — do not reach
+  for `packages.find.exclude`), spike-4 (`prune tests` is the whole body; the
+  file itself becomes a top-level member)
+- **Assigned To**: `sdist-builder`
+- **Agent Type**: builder
+- **Parallel**: false
+- Create `MANIFEST.in` at the repo root: a comment block naming #689 and why
+  this is the only directive, then `prune tests`. Nothing else.
+- In `scripts/check_sdist_contents.py`, remove `"tests"` from
+  `EXPECTED_TOP_LEVEL` and add `"MANIFEST.in"`. Update the adjacent comment: the
+  set is now the intended membership, not the observed 1.9.0 membership.
+- Update the module docstring's warning-only rationale — the "no
+  machine-readable declaration exists" reason is now false; the surviving reason
+  is that a legitimate packaging addition must not block a release. Add a line
+  naming the `MANIFEST.in` ↔ `EXPECTED_TOP_LEVEL` coupling and the guard test.
+- Do **not** change any rule severity, and do not touch `check_members`' logic.
+
+### 3. Add the guard test
+- **Task ID**: `build-guard-test`
+- **Depends On**: `build-manifest`
+- **Validates**: `tests/test_sdist_contents.py`
+- **Informed By**: the #661 vacuity trap — a guard that passes against an empty
+  file is not a guard
+- **Assigned To**: `sdist-builder`
+- **Agent Type**: builder
+- **Parallel**: false
+- Add a test that reads `MANIFEST.in`, strips comments and blank lines, and
+  asserts the remaining directive set is exactly `{"prune tests"}`.
+- Assert `"tests" not in checker.EXPECTED_TOP_LEVEL` with a message explaining
+  that re-adding it would re-bless the #689 defect.
+- Assert `"MANIFEST.in" in checker.EXPECTED_TOP_LEVEL`, so the release stops
+  printing a spurious warning and a future removal of the entry is caught.
+- Add a synthetic-tarball case (reusing `_make_sdist`) whose members are the
+  post-fix top-level set, asserting `check_members` returns **zero** warnings
+  and zero failures.
+- **Red-state proof:** before finishing, temporarily blank `MANIFEST.in` and
+  confirm the directive test FAILS; paste that output into the PR. Restore.
+
+### 4. Documentation cascade
+- **Task ID**: `docs-cascade`
+- **Depends On**: `build-manifest`
+- **Validates**: no test; `mkdocs build --strict` must still pass
+- **Informed By**: the Documentation section's four required items
+- **Assigned To**: `sdist-documentarian`
+- **Agent Type**: documentarian
+- **Parallel**: true (no file overlap with tasks 2-3)
+- `CLAUDE.md`: rewrite the "exposure was nil on three counts" clause and the
+  `check_sdist_contents.py` warning-only justification, per the Documentation
+  section. Keep the #678 reasoning; change only what became false.
+- `CHANGELOG.md`: correct the false clause in the #678 entry; add a #689 entry.
+- `docs/plans/setuptools_build_floor_and_sdist_exposure.md`: append a
+  superseded-by-#689 note to spike-1's finding; do not rewrite the finding.
+- Do not create a `docs/features/` page (see Documentation section).
+
+### 5. Validation
+- **Task ID**: `validate-all`
+- **Depends On**: `build-manifest`, `build-guard-test`, `docs-cascade`
+- **Assigned To**: `sdist-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Build an sdist from a **fresh clone of the branch** and confirm zero `tests/`
+  members and an unchanged `src/` count versus the red-state build.
+- Additionally build once in a **dirty tree that has a stale
+  `src/popoto.egg-info/SOURCES.txt` listing `tests/` entries**, to confirm
+  spike-5's reasoned claim that `prune` also defeats the stale-manifest re-add.
+  This is the one assertion in the plan carried by reasoning rather than
+  measurement; close it here.
+- Run the Verification table. Run `pytest tests/test_sdist_contents.py` and the
+  full suite with `POPOTO_TEST_DB=9`, stating the environment with the counts.
+- Confirm no repository document still claims popoto has no `MANIFEST.in`.
+- Add `scripts/verify/sdist_excludes_tests.sh` (the repo's existing convention —
+  see `scripts/verify/no_new_deps.sh`): clone `HEAD` into a temp dir, build an
+  sdist from a cwd outside the repo, and print the count of members under
+  `tests/`. Prefer `--no-isolation` when the ambient setuptools already
+  satisfies `>=83`, so the check runs without network; fall back to an isolated
+  build otherwise.
 
 ## Verification
 
-_placeholder_
+All commands run from the repository root. The sdist row shells out to a script
+that builds from a **temporary clone**, never from the working tree — spike-5
+showed a stale `src/popoto.egg-info/SOURCES.txt` in a dirty tree re-adds
+`tests/` entries, which would make a working-tree build a false oracle in both
+directions.
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| MANIFEST.in prunes tests | `grep -c '^prune tests$' MANIFEST.in` | output > 0 |
+| MANIFEST.in has exactly one directive | `python -c "import pathlib; print(sum(1 for l in pathlib.Path('MANIFEST.in').read_text().splitlines() if l.strip() and not l.strip().startswith('#')))"` | output contains 1 |
+| Checker expects MANIFEST.in | `grep -c '"MANIFEST.in"' scripts/check_sdist_contents.py` | output > 0 |
+| Checker no longer blesses tests | `python -c "import importlib.util as u; s=u.spec_from_file_location('c','scripts/check_sdist_contents.py'); m=u.module_from_spec(s); s.loader.exec_module(m); print(int('tests' in m.EXPECTED_TOP_LEVEL))"` | match count == 0 |
+| Severity split intact (anti-criterion) | `awk '/for entry in sorted/,/return failures, warnings/' scripts/check_sdist_contents.py \| grep -c 'failures.append'` | match count == 0 |
+| Sdist ships no tests (anti-criterion) | `sh scripts/verify/sdist_excludes_tests.sh` | match count == 0 |
+| Sdist check is warning-free | `sh scripts/verify/sdist_excludes_tests.sh --run-checker \| grep -c WARNING` | match count == 0 |
+| CLAUDE.md no longer claims no MANIFEST.in | `grep -c 'exists at all' CLAUDE.md` | match count == 0 |
+| CHANGELOG no longer claims no MANIFEST.in | `grep -c 'in the repository at all' CHANGELOG.md` | match count == 0 |
+| Sdist guard tests pass | `POPOTO_TEST_DB=9 python -m pytest tests/test_sdist_contents.py -q` | exit code 0 |
+| Full suite passes | `POPOTO_TEST_DB=9 python -m pytest -q` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Format clean | `python -m black --check src/ tests/` | exit code 0 |
+| Types at or below ceiling | `scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `python -m mkdocs build --strict` | exit code 0 |
+| No stale xfails introduced | `grep -rn 'xfail' tests/test_sdist_contents.py` | exit code 1 |
+
+Two rows are anti-criteria and must be shown failing before they pass, with the
+FAIL output pasted into the PR description:
+
+- *Severity split intact* — temporarily move the top-level rule's append from
+  `warnings` to `failures` and confirm the row FAILS.
+- *Sdist ships no tests* — run it at the branch point (before `MANIFEST.in`
+  lands) and confirm it FAILS with a non-zero count. spike-4 already produced
+  the equivalent output for the checker row:
+  `WARNING: 'MANIFEST.in': unexpected top-level entry ... OK: ... 1 warning(s)`.
 
 ## Critique Results
 
 <!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+
+---
 
 ## Open Questions
 
-_placeholder_
+1. **Confirm the fork: stop shipping `tests/` rather than making them
+   runnable.** The plan picks "stop shipping" on evidence (23 shipped tests read
+   repository paths that no sdist can contain, one of them a dotfile path the
+   release gate hard-fails on). The counter-argument is a real ecosystem
+   convention — distro and conda-forge packagers expect to run a project's tests
+   from the sdist. Is there any downstream packaging relationship that would
+   make Option B worth its unbounded scope?
+
+2. **Is spending advisory-precondition 1 acceptable?** #678 recorded popoto's
+   exposure as nil on three independent counts and raised the build floor
+   *because* the preconditions were "absent-but-returnable". This change
+   deliberately returns one of them, relying on the `setuptools>=83` floor that
+   fixes the bypass and on `check_sdist_contents.py`'s non-ASCII rule — which is
+   promoted from defense-in-depth to load-bearing. The issue itself flags this
+   trade. Accept and document, or is there appetite for a route that avoids it
+   (there is no cheap one — see spike-3 and Rabbit Holes)?
+
+3. **Should the top-level-entry rule stay warning-only?** The plan says yes and
+   makes it an anti-criterion, because CLAUDE.md names the severity split as the
+   thing most likely to be simplified away. But CLAUDE.md's *stated reason* for
+   warning-only — "there is no machine-readable declaration of intended sdist
+   membership to parse against, because a `MANIFEST.in` would be that
+   declaration" — is exactly what this change invalidates. Keep the severity and
+   rewrite the reason (the plan's position), or is the disappearance of that
+   reason the moment to promote it to a hard failure?
