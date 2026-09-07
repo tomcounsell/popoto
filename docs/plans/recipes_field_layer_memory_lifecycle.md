@@ -383,16 +383,53 @@ archival, site 15 needs it **decoded**.
 
 ### Decision 4 — `SortedFieldMixin.score()`
 
-New classmethod, mirroring the `count()`/`members()` signature exactly:
+New classmethod, mirroring the `count()`/`members()` signature, plus one
+parameter:
 
 ```python
-SortedFieldMixin.score(model_instance, field_name) -> Optional[float]
+SortedFieldMixin.score(model_instance, field_name, partitioned=True) -> Optional[float]
 ```
 
-One `ZSCORE`, `None` for a missing member, and the key resolved via
-`get_partitioned_sortedset_db_key` — the same builder its two siblings use.
-Wire-identical to site 2 for every unpartitioned field. See Risk 3 for the
-partitioned case, which is the one deliberate divergence in this PR.
+One `ZSCORE`, `None` for a missing member. `partitioned=True` (the default,
+matching `count()`/`members()`) resolves via `get_partitioned_sortedset_db_key`;
+`partitioned=False` resolves via the bare `get_special_use_field_db_key`.
+
+**The recipe passes `partitioned=False`**, reproducing L330's current key
+exactly. This PR is therefore byte-identical at site 2 for *every* field,
+partitioned or not — there is no deliberate divergence anywhere in this PR.
+
+`partitioned` is a real parameter rather than a hardcoded old key so the
+follow-up fix is a one-line call-site change.
+
+**Why not fix it here** (this reverses the author's initial recommendation;
+decided by the supervisor):
+
+- **It is the third instance of a defect class the repo has already decided
+  how to handle.** #474 (*"RetrievalQuality score proxy ignores partition_by →
+  0.0 scores for partitioned models"*, closed) is the same defect from the same
+  cause, and it was handled as its own issue with its own tests, not as a rider
+  on unrelated work. `context_assembler.py:589-596` records the story in prose:
+  reading the base key *"returned `None` for every partitioned record and
+  silently collapsed every metacognitive signal to its degenerate value (issue
+  #474)"*.
+- **It would hole the parity oracle.** An empty six-path diff is only worth
+  something if it means *nothing changed*. One agreed exception turns every
+  future reading into "empty except the bit we ignore" — and because no test
+  exercises the partitioned path, the diff would not show the change anyway, so
+  the matrix could not even confirm the fix works.
+- **It is a silent behavior change for users who cannot see it coming.** The
+  same `context_assembler` docstring notes that agent-memory sorted fields
+  *"almost always declare `partition_by`"*, so the affected population is not
+  niche. Those users would move from the attribute read to a real `ZSCORE`,
+  changing retention and forgetting decisions — inside a PR whose stated
+  contract is that nothing changes.
+- **"Revert in one line if the reviewer objects" inverts the burden.** In a
+  no-behavior-change PR the default is no change; the fix must argue its way
+  in, which is what its own issue is for.
+
+A follow-up issue is filed **before this PR opens** (Task 0), and the
+`partitioned=False` call site carries a comment naming both #474 and that
+issue number. A fix described only in a PR body evaporates when the PR merges.
 
 ### Flow
 
@@ -512,23 +549,19 @@ with a comment saying why. Verified by running that test specifically.
 Covered by design (Decision 3) and by an explicit test asserting the command
 name for a single-name call. Caught by P2 in the parity matrix regardless.
 
-### Risk 3 — the partitioned-sorted-set divergence *(the one deliberate one)*
-For an importance field declared with `partition_by`, `score()` reads the
-partitioned key while the recipe today reads the unpartitioned base key. This
-is a **behavior change on a configuration that is currently broken**: the base
-key cannot contain the member, so today's `ZSCORE` always returns `None` and
-`_get_importance_score` silently falls through to the attribute read. After the
-change it returns the real score. No test covers it, and every test and
-documented usage of `MemoryLifecycle` uses an unpartitioned field, so parity
-holds everywhere it can be observed.
+### Risk 3 — the partitioned-sorted-set defect is preserved, deliberately
+For an importance field declared with `partition_by`, site 2 reads the
+unpartitioned base key, which by construction cannot contain the member, so
+`ZSCORE` always returns `None` and `_get_importance_score` silently falls
+through to the attribute read. This PR **preserves that defect exactly** by
+passing `partitioned=False` (Decision 4), so there is no behavior change and no
+divergence in the parity matrix.
 
-Flagged for the reviewer as the one place this PR is not byte-identical. If the
-reviewer prefers strict parity over the fix, the revert is one line —
-`score()` gains a `partitioned: bool = True` parameter and the recipe passes
-`False` — and the bug gets its own issue. **Author's recommendation: take the
-fix**, because shipping a `score()` that resolves a different key from its two
-sibling readers is a worse API than a one-line behavior correction on a broken
-path.
+The residual risk is that the defect is now *also* reachable through a new
+public API's non-default branch, which could read as endorsement. Mitigation:
+the call-site comment names #474 and #658, `score()`'s docstring
+states that `partitioned=False` exists only for byte-parity with a known
+defect, and the follow-up issue is filed before this PR opens.
 
 ### Risk 4 — `ruff` F401 on the now-unused imports
 Dropping `POPOTO_REDIS_DB` and `decode_lazy_field` from the recipe while
@@ -585,6 +618,8 @@ window.
 6. **No Redis module commands.** Core commands only; `OBJECT IDLETIME` is core
    on both servers (spike-2).
 7. **Do not widen `Model.load_fields` to accept `DB_key`/kwargs.**
+8. **Do not fix the partitioned-sorted-set key at site 2.** Preserved via
+   `partitioned=False`; tracked in its own follow-up issue (Decision 4).
 
 ## Documentation
 
@@ -623,6 +658,12 @@ window.
 8. PR body carries `Closes #649` and **no** closing keyword for #630.
 
 ## Step by Step Tasks
+
+### 0. File the partition-key follow-up issue (before the PR opens) — DONE: #658
+- Title the defect at `memory_lifecycle.py:330`, cite #474 and
+  `context_assembler.py:589-596` as prior art, state that no test covers the
+  path today so the fix needs one, and note the fix is a one-line change of
+  `partitioned=False` to `partitioned=True` at the call site.
 
 ### 1. Model-layer methods
 - Add `Model.idle_seconds()`, `Model.load_fields(redis_key, *names)`, and
@@ -673,9 +714,11 @@ window.
 
 ## Open Questions
 
-1. **Risk 3 — take the partitioned-key fix, or preserve the broken behavior?**
-   Author recommends taking the fix (argued in Risk 3). Reversible in one line
-   if the critique or review disagrees.
+1. ~~**Risk 3 — take the partitioned-key fix, or preserve the broken
+   behavior?**~~ **Resolved by the supervisor: preserve it.** Pass
+   `partitioned=False`, keep `partitioned` as a real parameter, and file the
+   fix as its own issue before the PR opens. Rationale recorded under
+   Decision 4.
 2. **Where should `Tombstone` / `TombstoneStore` be exported from?** Match
    whatever `td_value_field` did in #653 — resolved by inspection during build,
    not a design question.
