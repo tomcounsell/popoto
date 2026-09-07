@@ -387,7 +387,9 @@ when it is.
   Open Questions)
 - Review rounds: 1
 
-The code change is three lines across three files. The appetite is spent almost
+The code change is one new one-directive file, a two-line edit to a frozenset,
+one new guard test, and one new `scripts/verify/` shell script. The appetite is
+spent almost
 entirely on the prose that must stay true (`CLAUDE.md`, `CHANGELOG.md`, the
 `check_sdist_contents.py` docstring, and the #678 plan's superseded finding) and
 on not accidentally flipping the warning-only severity that CLAUDE.md explicitly
@@ -640,7 +642,7 @@ coherent and never leave `docs/plans/` dirty across an await.
 
 ## No-Gos (Out of Scope)
 
-Everything mechanically doable is in scope — the code change is three files and
+Everything mechanically doable is in scope — the code change is four files and
 the doc cascade is four passages, all of which this plan's tasks cover. Two
 entries are genuinely outside an agent's reach:
 
