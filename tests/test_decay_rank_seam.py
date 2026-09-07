@@ -30,6 +30,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest  # noqa: E402
 from src import popoto  # noqa: E402
 from src.popoto import redis_db  # noqa: E402
+from src.popoto.fields import decaying_sorted_field, validity_field  # noqa: E402
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField  # noqa: E402
 from src.popoto.fields.decaying_sorted_field import (  # noqa: E402
     DecayingSortedField,
@@ -77,15 +78,38 @@ def _aged(model_class, key, *, days, now, **kwargs):
 
 
 def _capture(monkeypatch):
-    """Record the command verb of every call issued on the shared client."""
+    """Record the command verb of every call issued by the code under test.
+
+    The spy goes on the client object the *field modules* hold, not on
+    ``redis_db.POPOTO_REDIS_DB``. Those modules bind the client at import time
+    (``from ..redis_db import POPOTO_REDIS_DB``, the pattern the whole package
+    uses), so a test that reconfigures the connection — ``test_connection.py``
+    rebinds the module attribute to a fresh client — leaves the two references
+    pointing at different objects. Patching the module attribute then spies on
+    a client nobody calls and captures nothing, which is a silent pass on the
+    empty list rather than a failure. Patching every distinct object keeps the
+    capture correct under any suite ordering.
+    """
     commands = []
-    original = redis_db.POPOTO_REDIS_DB.execute_command
 
-    def spy(*args, **kwargs):
-        commands.append(str(args[0]) if args else None)
-        return original(*args, **kwargs)
+    def spy_on(client):
+        original = client.execute_command
 
-    monkeypatch.setattr(redis_db.POPOTO_REDIS_DB, "execute_command", spy)
+        def spy(*args, **kwargs):
+            commands.append(str(args[0]) if args else None)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(client, "execute_command", spy)
+
+    seen = []
+    for client in (
+        decaying_sorted_field.POPOTO_REDIS_DB,
+        validity_field.POPOTO_REDIS_DB,
+        redis_db.POPOTO_REDIS_DB,
+    ):
+        if not any(client is s for s in seen):
+            seen.append(client)
+            spy_on(client)
     return commands
 
 
