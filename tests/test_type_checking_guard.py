@@ -15,12 +15,22 @@ in opposite directions and neither is observable from behavior alone:
   fires. Turning it into ``from .redis_db import POPOTO_REDIS_DB`` would silently
   restore #651 while leaving ``__init__.py`` itself error-free — the only static
   signal is ``no_implicit_reexport`` firing at a *consumer*'s site, and only once
-  the package resolves at all, which it does not today.
+  the package resolves at all — which it now does, since #663.
   ``tests/test_popoto_redis_db_rebind.py`` is what fails then.
 - The hook must NOT be visible to the checker. Lifting it out of the ``else``
   breaks nothing at runtime; it only re-disables ``attr-defined``. No behavioral
   test can catch that, which is why this file asserts the source *shape* via
   ``ast`` rather than only the behavior.
+
+**Do not retire this file now that #663 has landed.** It is tempting to read
+#663 — which made ``mypy src/`` resolve popoto's own imports, so the gate finally
+sees the package namespace — as the thing that makes these assertions redundant.
+It is the opposite. #663 is what gives the guard its payoff, and it is *still*
+blind to the guard's removal: measured under the resolving config, ``mypy src/``
+reports the same total with the hook inside the ``else`` and with it lifted back
+out, because a regression here removes error *reports* rather than adding any.
+The ratchet is a ceiling, so a silent drop to zero package-namespace checking
+passes it. These ``ast`` assertions are the only detector, permanently.
 
 Never touches a database, so it names none.
 """
