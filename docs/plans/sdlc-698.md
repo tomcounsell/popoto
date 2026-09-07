@@ -2,7 +2,7 @@
 status: Ready
 type: bug
 revision_applied: true
-revision_applied_at: 2026-09-07T12:04:00Z
+revision_applied_at: 2026-09-07T12:16:03Z
 appetite: Small
 owner: Valor Engels
 created: 2026-09-07
