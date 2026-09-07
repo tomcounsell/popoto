@@ -99,11 +99,15 @@ workflow definitions.
   command, so it does not violate the no-Redis-modules constraint. Informs
   Decision 2 below.
 - **Local server probe** — `redis-cli -n 15 OBJECT IDLETIME <k>` returns `0`;
-  `CONFIG GET maxmemory-policy` returns `noeviction`. The command is live in
-  the dev environment, and the LFU caveat is inert here.
-- `.github/workflows/tests.yml:106-163` — the Valkey job runs `valkey/valkey:8-alpine`
-  and asserts the server actually is Valkey. It runs the same suite, so a
-  Valkey incompatibility in this file would surface there.
+  `CONFIG GET maxmemory-policy` returns `noeviction`. **This is Redis, not
+  Valkey** (`redis_version:8.6.2`), so it is evidence that the command works
+  and that the LFU caveat is inert on the dev box — and evidence of *nothing*
+  about Valkey. Do not cite it as Valkey evidence.
+- `.github/workflows/tests.yml:106-163` — the Valkey job runs
+  `valkey/valkey:8-alpine` and asserts the server really is Valkey. **Its
+  passing is also not evidence here**: `grep -rn "idletime" tests/` returns no
+  test that exercises the fallback (the only test-side mention is a comment at
+  `test_memory_lifecycle.py:290`), so the Valkey job has never executed L307.
 
 ## Spike Results
 
@@ -303,9 +307,30 @@ framing).
 
 ### Decision 2 — `OBJECT IDLETIME` stays, relocated to `Model.idle_seconds()`
 
-The issue's premise is wrong (spike-2): `OBJECT IDLETIME` is a core Valkey
-command, present since 2.2.3, and it is not a Redis module command. There is
-no Valkey constraint to satisfy and nothing to drop.
+**The argument that carries the weight is structural, not documentary.** L305-311
+is `try: ... except Exception: pass`, falling through to `return 0.0`. On a
+server that refused the command — for any reason: LFU policy, an unsupported
+fork, a future removal — the site already degrades silently to `0.0`. This PR
+relocates that structure **unchanged**, so *Valkey risk on this branch is
+identical to Valkey risk on main*. That conclusion does not depend on any
+external citation being right.
+
+The citation is good supporting detail and belongs in the PR body, but must be
+stated for what it is: `OBJECT IDLETIME` is a core Valkey command since 2.2.3,
+not a module command (spike-2), so there is no constraint to satisfy and
+nothing to drop. Neither the local probe (a Redis server) nor the green Valkey
+CI job (which never executes L307) is evidence about Valkey — see Research.
+
+**The flip side is worth stating too.** That same bare `except Exception: pass`
+means that if the command *were* unsupported, the fallback would be silently
+dead and every affected record would report `age = 0.0` with nobody the wiser.
+`Optional[float]` is a genuine improvement at the boundary, because `None` and
+`0.0` stop being the same answer. But the improvement stops at the boundary:
+**the recipe's call site must still collapse `None` to `0.0`**, because
+`_get_age_seconds` returns `float` and feeds `age >= PROMOTION_MIN_AGE_SECONDS`.
+Propagating `None` outward would be a behavior change. The distinction is now
+available to a future caller that wants it; this caller deliberately discards
+it.
 
 Neither option #649 offers is right:
 
@@ -342,9 +367,11 @@ archival, site 15 needs it **decoded**.
 
 - **`Model.load_fields(redis_key, *names) -> dict[str, Any]`** — decoded.
   Requires at least one name. **Issues `HGET` for exactly one name and `HMGET`
-  for more than one.** This is not an arbitrary optimization: site 15 is an
-  `HGET` today, and emitting `HMGET` there would break parity. It is also the
-  narrower command. Values go through `decode_lazy_field`, which removes that
+  for more than one.** This is a **parity requirement, not an optimization**:
+  site 15 is an `HGET` today, and emitting `HMGET` there would break the wire
+  diff. It must carry an inline comment saying exactly that, or a later cleanup
+  pass will "simplify" it to always-`HMGET` and silently break parity. Values
+  go through `decode_lazy_field`, which removes that
   import from the recipe. Missing fields are absent from the returned dict
   (so `"tier" not in result` distinguishes "key gone" from "tier is None"),
   preserving the L1122 `if raw_tier is None` guard's meaning.
@@ -548,6 +575,9 @@ window.
 
 1. **Do not close #630.** #648 is in flight. The PR body carries `Closes #649`
    and no closing keyword for the umbrella.
+1b. **Do not propagate `idle_seconds()`'s `None` outward.** The recipe's call
+   site collapses `None` to `0.0`, preserving `_get_age_seconds`'s `float`
+   return. The richer signature is for future callers, not this one.
 2. **Do not convert `Tombstone` to a Model** (Decision 1).
 3. **Do not fix `_get_age_seconds`'s idle-time-as-age approximation.**
 4. **Do not change any existing test expectation.** Additions only.
