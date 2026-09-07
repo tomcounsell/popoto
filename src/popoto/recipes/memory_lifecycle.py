@@ -859,9 +859,17 @@ class MemoryLifecycle:
         # matches it is drawn down. Strictly best-effort and strictly after the
         # archive+removal has succeeded — a failure here must never roll back a
         # tombstone that is already correct.
-        self._tombstone_prior.record_burial(
-            self._content_fingerprint(record), tomb.tombstoned_at
-        )
+        try:
+            self._tombstone_prior.record_burial(
+                self._content_fingerprint(record), tomb.tombstoned_at
+            )
+        except Exception as exc:
+            logger.warning(
+                "tombstone: negative-prior burial failed for %s: %s "
+                "(tombstone stands)",
+                live_key,
+                exc,
+            )
 
         logger.debug("tombstoned %s (reason=%s)", live_key, reason)
         return tomb

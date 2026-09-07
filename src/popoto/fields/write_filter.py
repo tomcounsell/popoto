@@ -33,6 +33,7 @@ Example:
 """
 
 import logging
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from ..exceptions import SkipSaveException
 
@@ -43,6 +44,9 @@ from ..exceptions import SkipSaveException
 from ..redis_db import get_REDIS_DB
 from .constants import Defaults, _read_tombstone_prior_switch
 from .tombstone_prior import TombstonePriorStore, penalty_for
+
+if TYPE_CHECKING:
+    from .existence_filter import ExistenceFilter
 
 logger = logging.getLogger("POPOTO.WriteFilter")
 
@@ -97,6 +101,13 @@ class WriteFilterMixin:
     # be bypassed per-record via Model.save(skip_write_filter=True) -- a
     # driver-level flag, not carried state.
     roundtrip_policy: str = "rebuild"
+
+    #: Per-class memo for ``_wf_fingerprint_field()``. Declared, never assigned
+    #: here: a bare annotation binds nothing, so the attribute stays absent from
+    #: every class ``__dict__`` until that method resolves it, which is what the
+    #: ``cls.__dict__.get(..., _UNRESOLVED)`` lookup depends on to keep
+    #: subclasses resolving independently of their parents.
+    _wf_fingerprint_field_cache: ClassVar[Optional["ExistenceFilter"]]
 
     def compute_filter_score(self):
         """Compute the write filter score for this instance.
@@ -168,7 +179,7 @@ class WriteFilterMixin:
         return score
 
     @classmethod
-    def _wf_fingerprint_field(cls):
+    def _wf_fingerprint_field(cls) -> Optional["ExistenceFilter"]:
         """Return this model's content-fingerprint field, or None.
 
         The auto-detect for the tombstone negative prior (#494). A model with
@@ -201,7 +212,7 @@ class WriteFilterMixin:
         cls._wf_fingerprint_field_cache = field
         return field
 
-    def _apply_tombstone_prior(self, score):
+    def _apply_tombstone_prior(self, score: float) -> float:
         """Draw ``score`` down if this record's content has been buried before.
 
         A tombstone (#491) is durable evidence that a kind of memory was
