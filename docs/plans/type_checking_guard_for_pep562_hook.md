@@ -49,7 +49,7 @@ else:
 
 Both halves are load-bearing, in opposite directions:
 
-- The `if` branch must **declare**, never bind. `TYPE_CHECKING` is `False` at runtime so the branch does not execute, and a bare annotation binds nothing even where it does. `vars(popoto)` stays clear and the hook still fires. Replacing the annotation with an import would type-check identically and silently restore #651.
+- The `if` branch must **declare**, never bind. `TYPE_CHECKING` is `False` at runtime so the branch does not execute, and a bare annotation binds nothing even where it does. `vars(popoto)` stays clear and the hook still fires. Replacing the annotation with an import would silently restore #651 while leaving `__init__.py` itself error-free — the only static signal is `no_implicit_reexport` firing at a *consumer*'s site (`Module "popoto" does not explicitly export attribute "POPOTO_REDIS_DB"`), and only once the package resolves at all, which under the current `setup.cfg` it does not.
 - The `else` branch must **hide** the hook. Declaring the name while leaving `__getattr__` at module level restores nothing: the hook still answers for every unknown attribute, so typos resolve to `Any` again.
 
 `GuardedRedis` is the honest annotation: every assignment site in `redis_db.py` (lines 413, 425, 475, 480) constructs one, and `get_REDIS_DB()` returns that global (it is itself unannotated).
@@ -100,6 +100,8 @@ The behavioral half is weak on its own — lifting `__getattr__` out of the `els
 1. `__getattr__` is in the guard's `orelse` and absent from module level.
 2. `POPOTO_REDIS_DB` is a bare `AnnAssign` under the `if` — no value, and not an import.
 3. Runtime: `TYPE_CHECKING is False`, `__getattr__` is in `vars(popoto)`, `POPOTO_REDIS_DB` is not, and both `popoto.__getattr__("POPOTO_REDIS_DB")` and `popoto.POPOTO_REDIS_DB` are `redis_db.get_REDIS_DB()`.
+
+**And no ratchet will ever catch it either.** Measured under the resolving config (`MYPYPATH=src mypy --explicit-package-bases src/`), the total is 1063 both with the guard and with the hook lifted back out of the `else` — the suppression changes what is *checked*, not how many errors `src/` itself emits, because nothing in `src/` typos a `popoto.` attribute. So even after #663 lands, a total-count ratchet cannot detect this regression. The `ast` test is the only detector, permanently.
 
 **The guard locator must not over-fit one spelling.** `if typing.TYPE_CHECKING:` is an `ast.Attribute`, not an `ast.Name`, and is semantically identical; matching only `ast.Name` would make the test fail with "found 0" on a legal refactor rather than exercising the invariant. Nor may it assume uniqueness — an unrelated second module-level `TYPE_CHECKING` block added later would break `len(guards) == 1` with a misleading message. Match on `ast.Name(id="TYPE_CHECKING")` **or** `ast.Attribute(attr="TYPE_CHECKING")`, and disambiguate by selecting the block whose body declares `POPOTO_REDIS_DB` rather than by count.
 
