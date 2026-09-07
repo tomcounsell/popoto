@@ -131,6 +131,71 @@ Restaurant.exists(db_key=restaurant.db_key)
 closed still exists. Use the [ValidityField filters](#validityfield-filters) for
 as-of membership.
 
+## Read Named Fields Without Loading
+
+`exists()`'s neighbours. When you want a value or two out of a stored record but not the
+record itself, `Model.load_fields()` reads just those hash fields and decodes them, with
+no instance built and no other field touched.
+
+```python
+Restaurant.load_fields("Restaurant:Burger Palace", "cuisine")
+# => {'cuisine': 'American'}
+
+Restaurant.load_fields("Restaurant:Burger Palace", "cuisine", "rating")
+# => {'cuisine': 'American', 'rating': 4.5}
+```
+
+It takes a full Redis key string and one or more field names, and issues a single `HGET`
+for one name or a single `HMGET` for several.
+
+The returned dict has a **three-way** outcome per requested name, and the distinction is
+worth reading closely, because two of the three look alike:
+
+| What is in Redis | What you get back |
+|---|---|
+| The key or the field is absent | The name is **omitted** from the dict |
+| A value is there but will not decode | The name is **present**, mapped to `None` |
+| Redis itself errors | The exception **propagates** — nothing is swallowed |
+
+So `"rating" not in result` means *nothing was ever stored there*, while
+`result["rating"] is None` means *something is stored and it is unreadable*. A caller that
+collapses the two — treating both as "no value" — will act on a corrupt record as though
+it had been deleted. That is exactly the distinction Popoto's own lifecycle forget-guard
+depends on, which is why `load_fields()` reports it rather than normalizing it away.
+
+`Model.load_raw_hash()` is the whole-hash counterpart, in one `HGETALL`, returning keys
+and values exactly as Redis sent them:
+
+```python
+Restaurant.load_raw_hash("Restaurant:Burger Palace")
+# => {b'cuisine': b'\xa8American', ...}
+```
+
+It deliberately does **not** decode. The bytes are what you need if you intend to hand the
+hash to `decode_popoto_model_hashmap()` yourself, or to inspect a record whose contents
+will not decode — the case where a decoding reader is no use. An absent key returns `{}`.
+
+`Model.idle_seconds()` answers a different question again: how long since this record was
+last *accessed*.
+
+```python
+Restaurant.idle_seconds(redis_key="Restaurant:Burger Palace")
+# => 42.0     (seconds since last access)
+```
+
+It accepts the same three key spellings as `exists()` and returns `None` when the key does
+not exist. It measures idleness, **not age** — a record written a month ago and read a
+second ago is not idle. It is one `OBJECT IDLETIME`, a core command on both Redis and
+Valkey.
+
+!!! warning
+    `OBJECT IDLETIME` is unavailable when the server runs an LFU eviction policy
+    (`maxmemory-policy allkeys-lfu` or `volatile-lfu`), where the object header stores an
+    access *frequency* instead of an access *time*. The server replies with an error there,
+    and `idle_seconds()` lets it propagate rather than returning a fabricated `0.0` — a
+    made-up idle time reads as "just accessed" and would quietly protect every record from
+    any idleness-based policy. This restriction is identical on Redis and Valkey.
+
 ## Batching Commands into One Transaction
 
 `popoto.batch()` opens a batch of queued commands against Popoto's shared connection, so

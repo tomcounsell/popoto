@@ -836,6 +836,60 @@ def test_forget_guard_skips_absent_key():
     assert summary["forgotten"] == 0
 
 
+def test_forget_guard_forgets_record_with_undecodable_tier(monkeypatch):
+    """Re-check-tier guard: an UNDECODABLE tier is not a reason to keep a record.
+
+    The guard has two failure modes that look identical on the wire -- both
+    issue the same HGET -- but must produce opposite outcomes:
+
+      - key or field ABSENT            -> skip, the record is already gone.
+      - value present but UNDECODABLE  -> proceed, and forget it.
+
+    That asymmetry is the contract ``Model.load_fields()`` encodes by omitting
+    an absent field while mapping an undecodable one to ``None`` (#649,
+    Decision 3). No command-sequence diff can catch a regression here: keeping
+    the distinction and collapsing it produce byte-identical traffic. Hence an
+    end-to-end test.
+
+    The undecodable value is injected by failing the decode rather than by
+    writing junk bytes into the hash. Writing junk is not a route to this
+    state for THIS model: ``tier`` is a KeyField, so a corrupt value makes the
+    corpus scan at the top of ``tick()`` raise ``CorruptFieldError`` (#537/#538
+    -- a KeyField is deliberately never quarantined) long before the guard
+    re-reads it. Failing the decode at the guard's own call site reaches the
+    branch under test and nothing else.
+    """
+    import popoto as popoto_pkg
+    from src.popoto.models import base as base_module
+
+    redis = popoto_pkg.get_redis()
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+    )
+    # -1.0, not 0.0: the condition is `idle > FORGET_IDLE_SECONDS`, so a
+    # freshly-saved record (idle 0) only qualifies against a negative floor.
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1  # floor above max importance
+    lifecycle.FORGET_IDLE_SECONDS = -1.0
+
+    record = _make_record(tier="episodic", confirm_accesses=0)
+    live_key = record._redis_key
+
+    def _explode(value_b):
+        raise ValueError("simulated undecodable tier")
+
+    monkeypatch.setattr(base_module, "decode_lazy_field", _explode)
+
+    summary = lifecycle.tick()
+
+    assert summary["forgotten"] == 1, (
+        "an undecodable tier was treated like an absent one -- the record "
+        "was skipped instead of forgotten"
+    )
+    assert not redis.exists(live_key)
+
+
 # ---------------------------------------------------------------------------
 # Confidence-driven forgetting (#491) + tombstoning
 # ---------------------------------------------------------------------------

@@ -56,7 +56,7 @@ import redis
 from ..models.canonical_key import canonical_key_str
 from ..models.db_key import DB_key
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -547,6 +547,82 @@ class SortedFieldMixin:
                 else POPOTO_REDIS_DB.zrange(key, start, stop)
             )
         ]
+
+    @classmethod
+    def score(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        partitioned: bool = True,
+    ) -> typing.Optional[float]:
+        """The member's current score in this field's Sorted Set.
+
+        Issues one ``ZSCORE`` against the resolved sorted-set key with the
+        instance's ``redis_key`` as the member.
+
+        Args:
+            model_instance: A Model instance. Under ``partitioned=True`` it
+                must carry the partition values, as ``count()``/``members()``
+                require; under ``partitioned=False`` only its ``redis_key``
+                is used.
+            field_name: The name of the sorted field.
+            partitioned: When ``True`` (the default), resolves the
+                partition-specific key via ``get_partitioned_sortedset_db_key``,
+                exactly as ``count()``/``members()`` do -- this is what you
+                almost always want. When ``False``, reads the base,
+                unpartitioned key via ``get_special_use_field_db_key``
+                instead. For a field WITH ``partition_by`` set, that base
+                key cannot contain the member, so ``partitioned=False``
+                always returns ``None`` in that case. This flag exists
+                solely to preserve the pre-existing read in
+                ``recipes/memory_lifecycle.py``, which reads the bare
+                unpartitioned key today; reproducing that read exactly here
+                is what keeps this method's introduction a no-op for that
+                caller. It is the same defect class as issue #474 (already
+                fixed once in ``recipes/context_assembler.py`` -- see the
+                docstring at ``context_assembler.py:589-596``), and issue
+                #658 tracks migrating that remaining caller off it.
+
+        Returns:
+            The member's score as a ``float``, or ``None`` if the member is
+            not in the set.
+
+        Raises:
+            QueryException: Propagated from the partition key builder, when
+                ``partitioned=True``.
+        """
+        if partitioned:
+            key = cls.get_partitioned_sortedset_db_key(
+                model_instance, field_name
+            ).redis_key
+        else:
+            # get_sortedset_db_key() with no partition values IS the base,
+            # unpartitioned key -- it delegates straight to
+            # get_special_use_field_db_key(). Going through it rather than
+            # calling that helper directly keeps the mixin's own declared
+            # surface as the only thing this method depends on.
+            key = cls.get_sortedset_db_key(type(model_instance), field_name).redis_key
+        # ``pk`` -- not ``db_key.redis_key`` -- because ``pk`` is exactly
+        # ``_redis_key or db_key.redis_key``, the expression the recipe call
+        # site this method replaces used. The two agree for any record whose
+        # KeyFields have not been mutated since it was loaded, which is why
+        # the parity capture cannot tell them apart; they diverge for a record
+        # mutated in memory without an intervening save, where ``pk`` names
+        # the member actually in the Sorted Set and the recomputed key does
+        # not. ``on_save``/``on_delete`` below use ``db_key.redis_key``
+        # deliberately -- they are writing the NEW member during a save, and
+        # pair it with ``obsolete_redis_key`` for the old one. A read has no
+        # such pairing, so it must ask for where the member is now.
+        member = model_instance.pk
+        # The accessor, not the module-level ``POPOTO_REDIS_DB`` its sibling
+        # readers above use: that name is a snapshot this module took at
+        # import, and ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s
+        # global without updating it, so a rebound process reads from the
+        # pre-reconfiguration client (#655). Spies and fault injectors
+        # patched onto the client object still intercept, since the accessor
+        # hands back that same object.
+        reply = get_REDIS_DB().zscore(key, member)
+        return None if reply is None else float(reply)
 
     @classmethod
     def on_save(
