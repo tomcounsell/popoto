@@ -255,10 +255,15 @@ time, not import time).
    pointing at the `TestCyclicDecayGatingGap` No-Go so the drop is visibly
    deliberate rather than an oversight.
 
-3. **`VALIDITY_GATE_DISABLED`** — name the existing `("", "", "")` triple that
-   `decaying_sorted_field.py:466` already documents in a comment but does not
-   bind, so the default argument is self-describing next to
-   `MODULATION_DISABLED`.
+3. **Reuse `VALIDITY_GATE_DISABLED`** — the `("", "", "")` gate-off triple is
+   **already a bound module-level constant** at `decaying_sorted_field.py:470`,
+   consumed by `validity_gate_args` at L517 and L521. (An earlier draft of this
+   plan claimed it was only documented in a comment; that was wrong — the
+   critique caught it.) Nothing is added here: `rank_decayed` takes it as the
+   default for `validity=`, exactly as it takes the existing
+   `MODULATION_DISABLED` (`decaying_sorted_field.py:312`) for `confidence=`.
+   **Do not redefine it** — a second binding of the same tuple would be
+   harmless at runtime and actively confusing to read.
 
 4. **`ValidityField.resolve_excluded_keys`** (new classmethod,
    `validity_field.py`) — derives both interval keys, issues the two
@@ -304,8 +309,20 @@ Regression scope to run: `tests/test_context_assembler.py`,
 Capture the Redis command sequence base-vs-branch via a `MONITOR`-style
 connection callback, for four paths:
 
-1. `assemble()` on a model with a plain `DecayingSortedField` and no validity
-   field (exercises L646, L745, L770, L2556).
+1. `assemble()` on a model carrying **both** a plain `SortedField` and a
+   `DecayingSortedField` in its `score_weights`, with no validity field
+   (exercises L745, L770, L2556 — and L646).
+
+   The two-field fixture is required, not incidental. `_partition_scores_for_field`
+   returns early via `_decayed_partition_scores` whenever
+   `isinstance(f, DecayingSortedField)` (`context_assembler.py:633-641`), and
+   `CyclicDecayField` is a subclass (`cyclic_decay_field.py:208`) so it takes the
+   same early return. **L646 is reachable only for a plain, non-decaying
+   `SortedField`.** An earlier draft of this plan claimed a lone
+   `DecayingSortedField` fixture would exercise L646; it cannot, and that would
+   have left one of the two `batch()` swaps outside the empty-diff oracle
+   entirely. Giving the fixture both fields drives both branches of
+   `_partition_scores_for_field` in a single capture.
 2. `assemble()` on a model with a `CyclicDecayField` (exercises L754).
 3. `assemble()` on a model with a `ValidityField` (exercises L1713/L1715).
 4. `assess()` / the metacognitive proxy path with confidence modulation on.
@@ -388,3 +405,15 @@ field does not make them atomic with each other, and deliberately does not: a
 6. Parity capture, all four paths, empty diff.
 7. Regression scope + lint + ratchet.
 8. Docs cascade + CHANGELOG.
+
+## Pipeline Sequencing (#642)
+
+Issue #648's own contract requires this and the sibling plan
+`recipes_field_layer_policy_cache.md` carries it, so it is recorded here as a
+task, not left to memory: **all review-driven patching and the entire docs
+cascade land BEFORE `verdict finalize`, and the delta is then re-reviewed.**
+
+The substrate refuses to open DOCS without a finalized REVIEW verdict, but DOCS
+commits move the head that the verdict's trailer pins. Finalizing first
+therefore *guarantees* a trailer mismatch against the merged head — that is
+#642. Patch, cascade docs, re-review the delta, and only then finalize.
