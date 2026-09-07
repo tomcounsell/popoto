@@ -348,7 +348,11 @@ class CoOccurrenceField(Field):
         ranked = sorted(
             (
                 (
-                    target.decode("utf-8") if isinstance(target, bytes) else str(target),
+                    (
+                        target.decode("utf-8")
+                        if isinstance(target, bytes)
+                        else str(target)
+                    ),
                     min(float(weight), cap),
                 )
                 for target, weight in edges.items()

@@ -118,7 +118,7 @@ class AccessTrackerMixin:
         if raw_count is None and raw_last is None and not raw_log:
             return None
 
-        state = {}
+        state: dict[str, object] = {}
         if raw_count is not None:
             try:
                 state["access_count"] = int(raw_count)
@@ -133,7 +133,7 @@ class AccessTrackerMixin:
             # Decoded to floats here rather than left as bytes: to_jsonable
             # tags bytes with a __bytes__ envelope, which round-trips but
             # stops matching the plain-list shape the docs describe.
-            log = []
+            log: list[float] = []
             for raw_ts in raw_log:
                 try:
                     log.append(float(raw_ts))
@@ -167,7 +167,7 @@ class AccessTrackerMixin:
         if not state:
             return None
 
-        mapping = {}
+        mapping: dict[str, float] = {}
         if state.get("access_count") is not None:
             mapping["access_count"] = int(state["access_count"])
         if state.get("last_accessed") is not None:

@@ -249,9 +249,7 @@ class TestCoOccurrenceCarry:
         for i, weight in enumerate((0.1, 0.2, 0.5, 0.9)):
             field.link(HistAssoc, pk, f"t{i}", initial_weight=weight)
 
-        state = HistAssoc._meta.fields["edges"].export_state(
-            source, "edges", None
-        )
+        state = HistAssoc._meta.fields["edges"].export_state(source, "edges", None)
         assert state is not None and len(state["edges"]) == 4
 
         dest = HistAssocSmall.create(name="c")
@@ -286,7 +284,8 @@ class TestAccessTrackerCarry:
 
     def _log_of(self, instance):
         return [
-            float(ts) for ts in POPOTO_REDIS_DB.lrange(instance._at_key("access_log"), 0, -1)
+            float(ts)
+            for ts in POPOTO_REDIS_DB.lrange(instance._at_key("access_log"), 0, -1)
         ]
 
     def test_confirmed_log_carries_alongside_the_counters(self):
@@ -331,9 +330,7 @@ class TestAccessTrackerCarry:
     def test_state_without_an_access_log_imports_cleanly(self):
         # The shape #554-era code exported: counters only, no access_log key.
         item = HistAccess.create(name="a3", content="x")
-        HistAccess.import_state(
-            item, {"access_count": 7, "last_accessed": 1234.5}
-        )
+        HistAccess.import_state(item, {"access_count": 7, "last_accessed": 1234.5})
         assert item.access_count == 7
         assert self._log_of(item) == []
 
@@ -370,7 +367,9 @@ class TestPermanentLimitations:
     quietly adding a carrier.
     """
 
-    @pytest.mark.parametrize("klass,label", PERMANENT, ids=lambda v: getattr(v, "__name__", v))
+    @pytest.mark.parametrize(
+        "klass,label", PERMANENT, ids=lambda v: getattr(v, "__name__", v)
+    )
     def test_declares_partial_with_a_note_stating_the_contract(self, klass, label):
         assert klass.__dict__["roundtrip_policy"] == "partial"
         note = klass.__dict__["roundtrip_note"]
@@ -380,7 +379,9 @@ class TestPermanentLimitations:
             f"not leave a reader expecting future work"
         )
 
-    @pytest.mark.parametrize("klass,label", PERMANENT, ids=lambda v: getattr(v, "__name__", v))
+    @pytest.mark.parametrize(
+        "klass,label", PERMANENT, ids=lambda v: getattr(v, "__name__", v)
+    )
     def test_declares_no_carrier_of_its_own(self, klass, label):
         for member in ("export_state", "import_state"):
             assert member not in klass.__dict__, (
@@ -389,7 +390,9 @@ class TestPermanentLimitations:
                 f"rather than adding a carrier under a 'partial' policy."
             )
 
-    @pytest.mark.parametrize("klass,label", PERMANENT, ids=lambda v: getattr(v, "__name__", v))
+    @pytest.mark.parametrize(
+        "klass,label", PERMANENT, ids=lambda v: getattr(v, "__name__", v)
+    )
     def test_note_no_longer_dangles_a_tracking_issue(self, klass, label):
         note = klass.__dict__["roundtrip_note"]
         assert "#556" not in note, (

@@ -1965,6 +1965,18 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 | `$AT:{ClassName}:access_log:{pk}` | List | Confirmed access timestamps (capped) |
 | `$AT:{ClassName}:meta:{pk}` | Hash | `access_count` (int) and `last_accessed` (float) |
 
+### Export and import
+
+`export_records` carries `access_count`, `last_accessed`, and the confirmed access
+log; the destination's `import_records` restores the log trimmed to *its* own
+`_max_access_log`, keeping the most recent timestamps.
+
+Staged reads are deliberately not carried. A staged entry is an unconfirmed,
+TTL-bounded read awaiting `confirm_access()`, so dropping it in transit is
+observably identical to calling `discard_staged_access()` — a first-class
+operation, not a gap. This is why the mixin declares `roundtrip_policy =
+"partial"`. See [Export and import](guides/export-import.md#fidelity-what-crosses-and-what-does-not).
+
 ## EventStreamMixin
 
 Automatically appends to a Redis Stream on every `save()`, `update()`, or `delete()`. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.
