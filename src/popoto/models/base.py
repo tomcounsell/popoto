@@ -2063,7 +2063,7 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
-        return bool(POPOTO_REDIS_DB.exists(key))
+        return bool(get_REDIS_DB().exists(key))
 
     @classmethod
     def idle_seconds(
