@@ -18,6 +18,7 @@ No mocks.
 """
 
 import io
+import json
 import os
 import sys
 import time
@@ -260,6 +261,31 @@ class TestCoOccurrenceCarry:
         # Truncation keeps the heaviest edges, matching the Lua prune.
         assert set(after) == {"t3", "t2"}
 
+    def test_an_edge_to_a_record_outside_the_export_still_lands(self):
+        """A dangling edge is the expected result of a filtered export.
+
+        Each record carries its own edge set, so exporting one endpoint and
+        not the other yields a one-directional edge pointing at a PK the
+        destination does not hold. That must land as written and must not
+        break the BFS -- ``propagate`` walks to a missing node and stops.
+        """
+        source = HistAssoc.create(name="e")
+        field = HistAssoc._meta.fields["edges"]
+        pk = source.db_key.redis_key
+        field.link(HistAssoc, pk, "HistAssoc:never-exported", initial_weight=0.4)
+
+        _roundtrip(HistAssoc)
+
+        restored = HistAssoc.query.get(name="e")
+        after = self._edges_of(HistAssoc, restored)
+        assert "HistAssoc:never-exported" in after
+        assert after["HistAssoc:never-exported"] == pytest.approx(0.4)
+
+        scores = field.propagate(
+            HistAssoc, [restored.db_key.redis_key], depth=2, decay_per_hop=0.5
+        )
+        assert "HistAssoc:never-exported" in scores
+
     def test_carried_weights_are_clamped_to_the_weight_cap(self):
         dest = HistAssoc.create(name="d")
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
@@ -344,6 +370,66 @@ class TestAccessTrackerCarry:
         assert len(after) == cap
         # The trim keeps the most recent entries, matching CONFIRM_ACCESS_LUA.
         assert after == pytest.approx(timestamps[-cap:])
+
+
+# ---------------------------------------------------------------------------
+# Wire shape
+# ---------------------------------------------------------------------------
+
+
+class TestExportWireShape:
+    """The regression guard for the decode requirement.
+
+    ``to_jsonable`` routes a dict with ``bytes`` keys through a tagged
+    ``__dictpairs__`` / ``__bytes__`` encoding. That round-trips correctly, so a
+    carrier that forgets to decode Redis's raw replies still passes every
+    behavioral test above while silently emitting a different wire shape -- one
+    no non-popoto reader can parse. Only an assertion on the JSONL itself
+    catches it.
+    """
+
+    def setup_method(self):
+        _wipe(HistAssoc)
+        _wipe(HistAccess)
+
+    def teardown_method(self):
+        _wipe(HistAssoc)
+        _wipe(HistAccess)
+
+    def test_carried_structures_are_plain_json(self):
+        assoc = HistAssoc.create(name="w1")
+        field = HistAssoc._meta.fields["edges"]
+        field.link(HistAssoc, assoc.db_key.redis_key, "t", initial_weight=0.25)
+
+        access = HistAccess.create(name="w2", content="x")
+        access.on_read()
+        assert access.confirm_access() == 1
+
+        def records_of(model_class):
+            data = export_records(model_class).data
+            assert "__dictpairs__" not in data, (
+                f"{model_class.__name__}'s export carries a tagged bytes "
+                f"encoding: a carrier handed raw Redis bytes to to_jsonable "
+                f"instead of decoding them"
+            )
+            assert "__bytes__" not in data
+            # The first line is the manifest; records carry a "key".
+            found = [
+                parsed
+                for parsed in (json.loads(ln) for ln in data.splitlines() if ln.strip())
+                if "key" in parsed
+            ]
+            assert found, f"{model_class.__name__} exported no record"
+            return found
+
+        edges = records_of(HistAssoc)[0]["state"]["edges"]["edges"]
+        assert all(isinstance(k, str) for k in edges)
+        assert all(isinstance(v, float) for v in edges.values())
+
+        log = records_of(HistAccess)[0]["model_state"]["AccessTrackerMixin"][
+            "access_log"
+        ]
+        assert all(isinstance(ts, float) for ts in log)
 
 
 # ---------------------------------------------------------------------------
