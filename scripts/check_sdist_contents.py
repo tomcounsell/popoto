@@ -58,11 +58,6 @@ EXPECTED_TOP_LEVEL = frozenset(
 )
 
 
-def _top_level(name: str) -> str:
-    """First path component of an archive member name."""
-    return name.split("/", 1)[0]
-
-
 def check_members(members: list[tarfile.TarInfo]) -> tuple[list[str], list[str]]:
     """Return ``(failures, warnings)`` for an sdist's member list.
 
@@ -117,7 +112,37 @@ def check_members(members: list[tarfile.TarInfo]) -> tuple[list[str], list[str]]
     return failures, warnings
 
 
+USAGE = """usage: check_sdist_contents.py <sdist.tar.gz>
+
+Assert what a built sdist contains, before it reaches PyPI. Run between
+`python -m build` and the publish step:
+
+    python scripts/check_sdist_contents.py dist/*.tar.gz
+
+The glob is expanded by the shell; this script never re-globs its arguments,
+and exits non-zero on anything other than exactly one existing file.
+
+Hard failures (exit 1):
+  1. a member path with a non-ASCII character -- the rule that maps to the
+     setuptools MANIFEST.in normalization-collision advisory (#678)
+  2. a dotfile at any depth (.env, .git, CI config, credentials)
+  3. an absolute path or a '..' component
+  4. a symlink or hardlink member, checked on tar metadata, never extracted
+
+Warning only (exit 0):
+  5. a top-level entry outside the known set: %s
+
+A green run proves the tarball's member list is clean. It does not prove the
+packaged code works, that the right code was packaged, or that the wheel --
+which this does not inspect -- is correct.
+""" % ", ".join(sorted(EXPECTED_TOP_LEVEL))
+
+
 def main(argv: list[str]) -> int:
+    if any(arg in ("-h", "--help") for arg in argv[1:]):
+        print(USAGE)
+        return 0
+
     paths = argv[1:]
 
     # Two argument-resolution failures, both hard errors, never a vacuous pass.

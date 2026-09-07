@@ -141,6 +141,15 @@ def test_unexpanded_glob_reports_zero_matches(tmp_path):
     assert "no sdist found matching" in result.stderr
 
 
+def test_help_exits_zero_and_names_all_five_rules():
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    for rule in ("non-ASCII", "dotfile", "absolute path", "symlink", "top-level"):
+        assert rule in result.stdout, f"--help does not mention the {rule!r} rule"
+
+
 def test_release_workflow_invokes_the_check_before_publishing():
     """A check anyone can delete in a one-line diff is not a check."""
     text = WORKFLOW.read_text()

@@ -25,6 +25,10 @@ jobs:
       - name: Build package
         run: python -m build
 
+      # scripts/check_sdist_contents.py (#678) -- the only point in the pipeline
+      # where a real sdist exists and a failure still keeps it off PyPI. Must
+      # stay between the build and the publish step; tests/test_sdist_contents.py
+      # asserts that ordering.
       - name: Check sdist contents
         run: python scripts/check_sdist_contents.py dist/*.tar.gz
 
