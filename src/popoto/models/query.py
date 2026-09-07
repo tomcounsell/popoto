@@ -78,7 +78,6 @@ from ..redis_db import (
     POPOTO_REDIS_DB,
     get_async_redis_db,
     normalize_redis_keys,
-    run_lua,
 )
 from ..fields.constants import Defaults
 
@@ -520,7 +519,7 @@ class QueryBuilder:
             QueryException: If field is not a DecayingSortedField or
                 required partition_by filter is missing.
         """
-        from ..fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
+        from ..fields.decaying_sorted_field import DecayingSortedField
         from .encoding import decode_popoto_model_hashmap
 
         model_class = self._query.model_class
@@ -589,8 +588,6 @@ class QueryBuilder:
 
         now = time.time()
 
-        # Use extended Lua script for CyclicDecayField, plain script otherwise
-        from ..fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
         from ..fields.decaying_sorted_field import (
             confidence_modulation_args,
             validity_gate_args,
@@ -610,67 +607,38 @@ class QueryBuilder:
         # result is the member list itself, with no ZUNIONSTORE afterwards to
         # reintroduce a skipped member.
         #
-        # NOT so for a CyclicDecayField: the branch below dispatches to
-        # CYCLIC_DECAY_LUA, which is deliberately left ungated (an explicit plan
-        # No-Go — its KEYS 1-4 are taken and its header comment forbids
-        # renumbering). So a *direct* top_by_decay() call on a CyclicDecayField
-        # returns superseded records. Assembler paths are unaffected: they never
-        # call top_by_decay, and layers 2 and 3 cover them. Pinned by
-        # tests/test_validity_field.py::TestCyclicDecayGatingGap and documented
-        # under "Known limitations" in docs/features/validity-and-supersession.md
-        # — if you gate the cyclic script, update all three.
+        # NOT so for a CyclicDecayField. The triple is passed to rank_decayed
+        # unconditionally below, but CyclicDecayField.rank_decayed accepts and
+        # deliberately *ignores* it: CYCLIC_DECAY_LUA's KEYS 1-4 are taken and
+        # its header forbids renumbering, so that script has no validity gate
+        # (an explicit No-Go). A *direct* top_by_decay() call on a
+        # CyclicDecayField therefore returns superseded records. Assembler paths
+        # are unaffected: they never call top_by_decay, and layers 2 and 3 cover
+        # them. Pinned by tests/test_validity_field.py::TestCyclicDecayGatingGap
+        # and documented under "Known limitations" in
+        # docs/features/validity-and-supersession.md — if you ever gate the
+        # cyclic script, update all three.
         gate_invalid_key, gate_valid_key, gate_as_of = validity_gate_args(
             model_class, as_of=as_of
         )
 
-        if isinstance(field, CyclicDecayField):
-            # Build companion hash keys from partition values
-            cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-                model_class, field_name, *partition_values
-            )
-            pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
-                model_class, field_name, *partition_values
-            )
-
-            result = run_lua(
-                POPOTO_REDIS_DB,
-                CYCLIC_DECAY_LUA,
-                # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
-                # Passing the confidence key without bumping this would shunt
-                # it into ARGV and silently disable modulation.
-                4,
-                sortedset_db_key.redis_key,
-                cycles_hash_key,
-                pressure_hash_key,
-                conf_hash_key,
-                str(now),
-                str(effective_decay_rate),
-                str(n),
-                effective_base_score_field,
-                conf_s,
-                conf_c0,
-            )
-        else:
-            result = run_lua(
-                POPOTO_REDIS_DB,
-                DECAY_SCORE_LUA,
-                # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
-                # valid_from (KEYS[4]). Passing the validity keys without
-                # bumping this would shunt them into ARGV and silently corrupt
-                # base_score_field / the confidence params (plan Risk 1).
-                4,
-                sortedset_db_key.redis_key,
-                conf_hash_key,
-                gate_invalid_key,
-                gate_valid_key,
-                str(now),
-                str(effective_decay_rate),
-                str(n),
-                effective_base_score_field,
-                conf_s,
-                conf_c0,
-                gate_as_of,  # ARGV[7]
-            )
+        # The KEYS array is the field's to build, not ours (#648, #662). The two
+        # scripts bind incompatible layouts -- confidence is KEYS[2] in
+        # DECAY_SCORE_LUA but KEYS[4] in CYCLIC_DECAY_LUA, where KEYS[2]/KEYS[3]
+        # are cycles/pressure -- and mixing them up corrupts silently rather
+        # than erroring. Dispatching on the field keeps each layout inside the
+        # class that owns the script, so this call site cannot get it wrong.
+        # `n` is passed explicitly: it is already guaranteed > 0 above, and
+        # omitting it would make rank_decayed issue a ZCARD first.
+        result = field.rank_decayed(
+            sortedset_db_key.redis_key,
+            now=now,
+            n=n,
+            confidence=(conf_hash_key, conf_s, conf_c0),
+            validity=(gate_invalid_key, gate_valid_key, gate_as_of),
+            decay_rate=effective_decay_rate,
+            base_score_field=effective_base_score_field,
+        )
 
         if not result:
             return []
@@ -1550,9 +1518,6 @@ class QueryBuilder:
         """
         import time
 
-        from ..fields.decaying_sorted_field import DECAY_SCORE_LUA
-        from ..fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
-
         model_name = model_class.__name__
 
         try:
@@ -1571,7 +1536,6 @@ class QueryBuilder:
         )
 
         now = time.time()
-        base_score_field = field.base_score_field or ""
 
         # Confidence-modulated decay (#491) — same resolution as top_by_decay,
         # so composite_score and top_by_decay never disagree on a score.
@@ -1595,49 +1559,21 @@ class QueryBuilder:
             model_class, as_of=self._validity_as_of
         )
 
-        # Get all decay scores via Lua
-        if isinstance(field, CyclicDecayField):
-            cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-                model_class, field_name, *partition_values
-            )
-            pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
-                model_class, field_name, *partition_values
-            )
-            result = run_lua(
-                POPOTO_REDIS_DB,
-                CYCLIC_DECAY_LUA,
-                # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
-                4,
-                sortedset_db_key.redis_key,
-                cycles_hash_key,
-                pressure_hash_key,
-                conf_hash_key,
-                str(now),
-                str(field.decay_rate),
-                str(999999),  # get all members
-                base_score_field,
-                conf_s,
-                conf_c0,
-            )
-        else:
-            result = run_lua(
-                POPOTO_REDIS_DB,
-                DECAY_SCORE_LUA,
-                # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
-                # valid_from (KEYS[4]). See the Risk 1 note in top_by_decay.
-                4,
-                sortedset_db_key.redis_key,
-                conf_hash_key,
-                gate_invalid_key,
-                gate_valid_key,
-                str(now),
-                str(field.decay_rate),
-                str(999999),  # get all members
-                base_score_field,
-                conf_s,
-                conf_c0,
-                gate_as_of,  # ARGV[7]
-            )
+        # Get all decay scores via the field's own script dispatch (#648, #662).
+        # See the KEYS-layout note in top_by_decay: the field owns the array so
+        # this call site cannot mix the two incompatible layouts. `validity` is
+        # ignored by the cyclic override, exactly as it is there.
+        #
+        # n=999999 is the pre-existing "get all members" sentinel, kept verbatim.
+        # Passing n=None instead would make rank_decayed issue a ZCARD first and
+        # short-circuit an empty ZSET, which is a different wire sequence.
+        result = field.rank_decayed(
+            sortedset_db_key.redis_key,
+            now=now,
+            n=999999,
+            confidence=(conf_hash_key, conf_s, conf_c0),
+            validity=(gate_invalid_key, gate_valid_key, gate_as_of),
+        )
 
         temp_key = f"$CSQ:{model_name}:decay:{field_name}:{uid}"
         temp_keys.append(temp_key)
