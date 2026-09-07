@@ -83,27 +83,39 @@ class AccessTrackerMixin:
     # Export/import: this is a Model-level mixin, reached by the transfer
     # driver's MRO walk rather than by iterating _meta.fields, so its
     # export_state/import_state take the same signature minus ``field_name``.
-    # The meta hash counters are carried; the confirmed access log and any
-    # staged reads are a function of read *history* and are not.
+    # The meta hash counters and the confirmed access log are carried: both
+    # are per-record facts about reads that genuinely happened on the source.
+    # The staged list is deliberately NOT carried, and that is why this stays
+    # "partial" -- staged entries are uncommitted, TTL-bounded reads awaiting
+    # confirm_access(), so dropping them is observably identical to calling
+    # discard_staged_access(), a first-class operation. An in-flight,
+    # unconfirmed read not surviving a transfer is correct, not a gap. #556
+    # settled this as a permanent contract rather than pending work.
     roundtrip_policy: str = "partial"
     roundtrip_note: str = (
-        "access_count and last_accessed are carried; the confirmed access log "
-        "($AT:{Class}:access_log:{key}) and staged reads are not carried or "
-        "rebuilt by import; see #556"
+        "access_count, last_accessed, and the confirmed access log "
+        "($AT:{Class}:access_log:{key}) are carried. Staged (unconfirmed, "
+        "TTL-bounded) reads are not: dropping an in-flight read is equivalent "
+        "to discard_staged_access(). This is a permanent contract, not "
+        "pending work."
     )
 
     @classmethod
     def export_state(cls, model_instance, **kwargs):
-        """Export the access-tracker meta counters for one instance.
+        """Export the access-tracker meta counters and confirmed log.
 
         Returns:
-            ``{"access_count": int, "last_accessed": float | None}``, or
-            ``None`` when this instance has never had a confirmed access.
+            ``{"access_count": int, "last_accessed": float,
+            "access_log": [float, ...]}``, or ``None`` when this instance has
+            never had a confirmed access. Each key is omitted when its source
+            structure is absent, so an instance with counters but an empty log
+            exports exactly the shape #554-era code produced.
         """
         meta_key = model_instance._at_key("meta")
         raw_count = POPOTO_REDIS_DB.hget(meta_key, "access_count")
         raw_last = POPOTO_REDIS_DB.hget(meta_key, "last_accessed")
-        if raw_count is None and raw_last is None:
+        raw_log = POPOTO_REDIS_DB.lrange(model_instance._at_key("access_log"), 0, -1)
+        if raw_count is None and raw_last is None and not raw_log:
             return None
 
         state = {}
@@ -117,18 +129,40 @@ class AccessTrackerMixin:
                 state["last_accessed"] = float(raw_last)
             except (TypeError, ValueError):
                 logger.warning(f"Non-numeric last_accessed in {meta_key}; skipping")
+        if raw_log:
+            # Decoded to floats here rather than left as bytes: to_jsonable
+            # tags bytes with a __bytes__ envelope, which round-trips but
+            # stops matching the plain-list shape the docs describe.
+            log = []
+            for raw_ts in raw_log:
+                try:
+                    log.append(float(raw_ts))
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Non-numeric access_log entry for {meta_key}; skipping entry"
+                    )
+            if log:
+                state["access_log"] = log
         return state or None
 
     @classmethod
     def import_state(cls, model_instance, state, **kwargs):
-        """Restore the access-tracker meta counters after import.
+        """Restore the access-tracker meta counters and confirmed log.
 
         ``access_count`` and ``last_accessed`` are exposed only as read-only
         properties, so this writes the meta hash directly -- the same hash
-        ``CONFIRM_ACCESS_LUA`` maintains. The access log itself is not
-        restored (see ``roundtrip_note``), so a subsequent
-        ``confirm_access()`` continues the carried count rather than
-        restarting it.
+        ``CONFIRM_ACCESS_LUA`` maintains. The log is restored by a raw
+        DELETE + RPUSH rather than by staging the timestamps and calling
+        ``confirm_access()``: that path would HINCRBY the count a second time
+        on top of the carried value and overwrite ``last_accessed``, and it
+        would push the timestamps through a staging list whose TTL contract
+        has nothing to do with a transfer.
+
+        The log is trimmed to the *destination's* ``_max_access_log``, keeping
+        the most recent entries -- the same trim ``CONFIRM_ACCESS_LUA``
+        applies at ``:47``. ``access_log`` absent from ``state`` is tolerated:
+        a file exported by #554-era code has no such key, and must import
+        cleanly rather than raise.
         """
         if not state:
             return None
@@ -140,6 +174,14 @@ class AccessTrackerMixin:
             mapping["last_accessed"] = float(state["last_accessed"])
         if mapping:
             POPOTO_REDIS_DB.hset(model_instance._at_key("meta"), mapping=mapping)
+
+        log = state.get("access_log")
+        if isinstance(log, (list, tuple)) and log:
+            cap = max(1, int(cls._max_access_log))
+            entries = [str(float(ts)) for ts in log][-cap:]
+            log_key = model_instance._at_key("access_log")
+            POPOTO_REDIS_DB.delete(log_key)
+            POPOTO_REDIS_DB.rpush(log_key, *entries)
         return None
 
     def _at_key(self, kind):

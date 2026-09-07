@@ -252,16 +252,115 @@ class CoOccurrenceField(Field):
             associations = CoOccurrenceField(symmetric=True, max_edges=100)
     """
 
-    # Export/import: edge weights are accumulated by strengthen()/weaken_all()
-    # calls over time -- a function of interaction history between records,
-    # not of any single record's own field value -- so they cannot be
-    # rebuilt from a per-record export/import replay. Not addressed in v1
-    # -- see #556.
-    roundtrip_policy: str = "partial"
-    roundtrip_note: str = (
-        "Weighted association edges reflect interaction history, not "
-        "carried or rebuilt by import; see #556"
-    )
+    # Export/import: the edge set is stored per-record -- get_edge_key()
+    # appends the source pk -- and a ZSET score is the stored weight itself,
+    # with no derived encoding. So it is carried verbatim by a raw ZADD.
+    # A replay-based restore is not merely inferior here but impossible:
+    # strengthen() and weaken_all() take a delta and a factor, never an
+    # absolute target weight, so reaching an exported weight through them
+    # would mean inventing an interaction history that never happened.
+    # See #556.
+    roundtrip_policy: str = "carry"
+    roundtrip_note: str = None
+
+    @classmethod
+    def export_state(cls, model_instance, field_name, field_value, **kwargs):
+        """Export this record's association edges.
+
+        Returns:
+            ``{"edges": {target_pk: weight}, "max_edges": int}``, or ``None``
+            when this record has no edges.
+        """
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, CoOccurrenceField):
+            return None
+
+        model_class = type(model_instance)
+        try:
+            pk = model_instance.db_key.redis_key
+        except Exception:
+            return None
+
+        raw = POPOTO_REDIS_DB.zrange(
+            field.get_edge_key(model_class, pk), 0, -1, withscores=True
+        )
+        if not raw:
+            return None
+
+        # Members come back as bytes. They must be decoded here, not left for
+        # the JSON layer: to_jsonable routes a dict with bytes keys through the
+        # __dictpairs__/__bytes__ tagged encoding, which round-trips correctly
+        # but silently stops matching the plain-object export shape the docs
+        # describe. Same idiom as get_linked() and on_delete().
+        edges = {
+            (member.decode("utf-8") if isinstance(member, bytes) else str(member)): (
+                float(score)
+            )
+            for member, score in raw
+        }
+        return {"edges": edges, "max_edges": int(field.max_edges)}
+
+    @classmethod
+    def import_state(cls, model_instance, field_name, state, **kwargs):
+        """Restore this record's association edges after import.
+
+        Written as a raw ``DELETE`` + ``ZADD``, never through ``link`` or
+        ``strengthen``: those apply relative adjustments and NX semantics, and
+        cannot reproduce an absolute weight. Symmetric mirroring is
+        deliberately NOT performed -- each record owns its own edge set, so a
+        partner's mirror edge arrives with the partner record if it is in the
+        export.
+
+        This REPLACES rather than merges. ``on_save`` never touches edge keys
+        (``CoOccurrenceField`` defines no ``on_save``), so there is nothing to
+        merge with except edges the destination accumulated on its own since
+        the export was taken -- and under ``on_conflict="overwrite"``, whose
+        contract is that the record is replaced wholesale, keeping those would
+        leave a graph matching neither side.
+
+        Two normalizations to the DESTINATION's configuration are applied, and
+        both are load-bearing rather than cosmetic:
+
+        * weights are clamped to ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``, because
+          ``propagate()`` depends on a contraction invariant that an over-cap
+          weight would break -- BFS would stop decaying with hop count;
+        * the set is truncated to the destination field's ``max_edges``,
+          keeping the highest weights, exactly as ``LINK_WITH_PRUNE_LUA`` does
+          on the normal path.
+        """
+        if not state:
+            return None
+        edges = state.get("edges")
+        if not isinstance(edges, dict) or not edges:
+            return None
+
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, CoOccurrenceField):
+            return None
+
+        model_class = type(model_instance)
+        try:
+            pk = model_instance.db_key.redis_key
+        except Exception:
+            return None
+
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+        ranked = sorted(
+            (
+                (
+                    target.decode("utf-8") if isinstance(target, bytes) else str(target),
+                    min(float(weight), cap),
+                )
+                for target, weight in edges.items()
+            ),
+            key=lambda pair: pair[1],
+            reverse=True,
+        )[: max(1, int(field.max_edges))]
+
+        edge_key = field.get_edge_key(model_class, pk)
+        POPOTO_REDIS_DB.delete(edge_key)
+        POPOTO_REDIS_DB.zadd(edge_key, dict(ranked))
+        return None
 
     def __init__(self, **kwargs):
         self.symmetric = kwargs.pop("symmetric", True)
