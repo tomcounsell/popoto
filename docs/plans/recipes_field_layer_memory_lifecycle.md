@@ -427,7 +427,7 @@ decided by the supervisor):
   no-behavior-change PR the default is no change; the fix must argue its way
   in, which is what its own issue is for.
 
-A follow-up issue is filed **before this PR opens** (Task 0), and the
+The follow-up issue is **#658**, filed before this PR opens (Task 0), and the
 `partitioned=False` call site carries a comment naming both #474 and that
 issue number. A fix described only in a PR body evaporates when the PR merges.
 
@@ -561,7 +561,7 @@ The residual risk is that the defect is now *also* reachable through a new
 public API's non-default branch, which could read as endorsement. Mitigation:
 the call-site comment names #474 and #658, `score()`'s docstring
 states that `partitioned=False` exists only for byte-parity with a known
-defect, and the follow-up issue is filed before this PR opens.
+defect, and #658 is filed before this PR opens.
 
 ### Risk 4 — `ruff` F401 on the now-unused imports
 Dropping `POPOTO_REDIS_DB` and `decode_lazy_field` from the recipe while
@@ -619,7 +619,7 @@ window.
    on both servers (spike-2).
 7. **Do not widen `Model.load_fields` to accept `DB_key`/kwargs.**
 8. **Do not fix the partitioned-sorted-set key at site 2.** Preserved via
-   `partitioned=False`; tracked in its own follow-up issue (Decision 4).
+   `partitioned=False`; tracked as #658 (Decision 4).
 
 ## Documentation
 
