@@ -3542,6 +3542,18 @@ hash and <code>KEYS[3]</code> = pressure hash. The confidence <code>:data</code>
 same in both scripts (<code>ARGV[5]</code> = strength, <code>ARGV[6]</code> = <code>c0</code>); only the KEYS index differs.</p>
 <p>Do not "unify" the two scripts on <code>KEYS[2]</code>: reusing it here would <code>cmsgpack.unpack</code> the cycles array
 as a confidence dict, which corrupts scores silently instead of raising.</p>
+<p>That rule is now enforced by the class boundary rather than by this comment.
+<code>CyclicDecayField.rank_decayed()</code> overrides
+<a href="../decaying-sorted-field/#ranking-a-partition-zset-directly"><code>DecayingSortedField.rank_decayed()</code></a>
+and builds <code>[zset, zset + ":cycles", zset + ":pressure", confidence_hash]</code> itself,
+so the base implementation's layout never reaches this fork's script and vice
+versa. Callers pass the same arguments to either field and let method resolution
+pick the layout.</p>
+<p>The override accepts <code>validity=</code> and <strong>ignores</strong> it. <code>CYCLIC_DECAY_LUA</code> has no
+validity gate — a deliberate omission documented under
+<a href="../validity-and-supersession/#known-limitations">Known limitations</a> — so a caller
+that gates a mixed set of fields passes the gate args unconditionally instead of
+branching on field type, and this field drops them.</p>
 <h3 id="redis-structure">Redis structure<a class="headerlink" href="#redis-structure" title="Permanent link">&para;</a></h3>
 <p>A fourth structure joins the three above when modulation is active — the <code>ConfidenceField</code> <code>:data</code>
 hash, <code>$ConfidencF:{Model}:{field}:data[:{partition}]</code>. It is read-only from this script's

@@ -3108,6 +3108,34 @@ field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, 
 
 `members()` returns Redis keys as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
 
+### Ranking a partition ZSET directly
+
+`rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
+
+```python
+field = Memory._meta.fields["relevance"]
+zkey = field.get_sortedset_db_key(Memory, "relevance").redis_key
+field.rank_decayed(zkey, now=time.time())                     # every member, one ZCARD + one EVAL
+field.rank_decayed(zkey, now=time.time(), n=10)               # top 10, no ZCARD
+field.rank_decayed(
+    zkey,
+    now=time.time(),
+    confidence=(conf_data_key, strength, c0),                 # from confidence_modulation_args()
+    validity=(invalid_at_key, valid_from_key, as_of),         # from validity_gate_args()
+)
+```
+
+`n=None` (the default) asks for every member's score, which costs one `ZCARD` first; an empty ZSET returns `[]` without issuing the `EVAL` at all. Passing an explicit `n` skips the `ZCARD`. Omitting `confidence` or `validity` disables that join exactly as `MODULATION_DISABLED` / `VALIDITY_GATE_DISABLED` do — same scores, same script, same bytes on the wire.
+
+!!! note "The **field** builds the `KEYS` array, deliberately"
+    `rank_decayed` is polymorphic: `CyclicDecayField` overrides it with its own,
+    mutually incompatible layout (confidence at `KEYS[4]`, not `KEYS[2]`). Each
+    implementation lives in the class that owns its script, so neither body
+    contains an index it must not use, and a caller holding both fields never
+    has to know which is which — dispatch is ordinary method resolution. Callers
+    that assemble the `KEYS` array themselves reintroduce exactly the coupling
+    the "do not unify" comments in both scripts warn about.
+
 ## Confidence-Modulated Decay
 
 `base_score_field` scales the curve's **magnitude**, which never changes relative order: a demoted
@@ -3453,6 +3481,20 @@ same in both scripts (`ARGV[5]` = strength, `ARGV[6]` = `c0`); only the KEYS ind
 
 Do not "unify" the two scripts on `KEYS[2]`: reusing it here would `cmsgpack.unpack` the cycles array
 as a confidence dict, which corrupts scores silently instead of raising.
+
+That rule is now enforced by the class boundary rather than by this comment.
+`CyclicDecayField.rank_decayed()` overrides
+[`DecayingSortedField.rank_decayed()`](decaying-sorted-field.md#ranking-a-partition-zset-directly)
+and builds `[zset, zset + ":cycles", zset + ":pressure", confidence_hash]` itself,
+so the base implementation's layout never reaches this fork's script and vice
+versa. Callers pass the same arguments to either field and let method resolution
+pick the layout.
+
+The override accepts `validity=` and **ignores** it. `CYCLIC_DECAY_LUA` has no
+validity gate — a deliberate omission documented under
+[Known limitations](validity-and-supersession.md#known-limitations) — so a caller
+that gates a mixed set of fields passes the gate args unconditionally instead of
+branching on field type, and this field drops them.
 
 ### Redis structure
 
@@ -4682,6 +4724,14 @@ regression dressed up as "stricter" behavior.
     `ContextAssembler._resolve_excluded_keys` (assembler path); both compute
     exclusion sets, not whitelists.
 
+    Its subtractive counterpart is **`ValidityField.resolve_excluded_keys(model,
+    field_name, as_of=None)`**, which sits directly beside it and returns the
+    *exclusion* set: the union of `invalid_at <= as_of` (already closed) and
+    `valid_from > as_of` (not yet started), as a `set[str]` of Redis keys, in two
+    read-only `ZRANGEBYSCORE`s. A record absent from both interval ZSETs appears
+    in neither result and stays retrievable. When you want gating, this is the
+    method — `resolve_valid_keys` is not the one to reach for.
+
 ## `SupersessionProtocol`
 
 `SupersessionProtocol` is a stateless coordinator of `@staticmethod`s —
@@ -4956,7 +5006,11 @@ arms, none of which route through `composite_score`'s `ZUNIONSTORE` or
 consult the `filters` dict at all. Two read-only `ZRANGEBYSCORE`s per
 `assemble()` call produce an exclusion set; `_scope_by_validity` drops any
 candidate record whose key is in it. Mirrors the tag-scoping pattern
-(`_scope_by_tags`) already established for issue #492.
+(`_scope_by_tags`) already established for issue #492. Since
+[#648](https://github.com/tomcounsell/popoto/issues/648) those two reads live in
+`ValidityField.resolve_excluded_keys` (see "The exclusion rule"); the assembler
+method keeps only what is assembler *policy* — whether the model has a validity
+axis at all, and the kill-switch check.
 
 No layer is load-bearing for a path another layer already covers — Layer 1 is
 the only mechanism for `top_by_decay` on a plain `DecayingSortedField`; Layer 2

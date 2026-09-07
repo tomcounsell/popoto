@@ -3632,6 +3632,13 @@ unmanaged record. The gating call sites are
 <code>QueryBuilder._apply_validity_mask</code> (composite path) and
 <code>ContextAssembler._resolve_excluded_keys</code> (assembler path); both compute
 exclusion sets, not whitelists.</p>
+<p>Its subtractive counterpart is <strong><code>ValidityField.resolve_excluded_keys(model,
+field_name, as_of=None)</code></strong>, which sits directly beside it and returns the
+<em>exclusion</em> set: the union of <code>invalid_at &lt;= as_of</code> (already closed) and
+<code>valid_from &gt; as_of</code> (not yet started), as a <code>set[str]</code> of Redis keys, in two
+read-only <code>ZRANGEBYSCORE</code>s. A record absent from both interval ZSETs appears
+in neither result and stays retrievable. When you want gating, this is the
+method — <code>resolve_valid_keys</code> is not the one to reach for.</p>
 </div>
 <h2 id="supersessionprotocol"><code>SupersessionProtocol</code><a class="headerlink" href="#supersessionprotocol" title="Permanent link">&para;</a></h2>
 <p><code>SupersessionProtocol</code> is a stateless coordinator of <code>@staticmethod</code>s —
@@ -3882,7 +3889,11 @@ arms, none of which route through <code>composite_score</code>'s <code>ZUNIONSTO
 consult the <code>filters</code> dict at all. Two read-only <code>ZRANGEBYSCORE</code>s per
 <code>assemble()</code> call produce an exclusion set; <code>_scope_by_validity</code> drops any
 candidate record whose key is in it. Mirrors the tag-scoping pattern
-(<code>_scope_by_tags</code>) already established for issue #492.</p>
+(<code>_scope_by_tags</code>) already established for issue #492. Since
+<a href="https://github.com/tomcounsell/popoto/issues/648">#648</a> those two reads live in
+<code>ValidityField.resolve_excluded_keys</code> (see "The exclusion rule"); the assembler
+method keeps only what is assembler <em>policy</em> — whether the model has a validity
+axis at all, and the kill-switch check.</p>
 <p>No layer is load-bearing for a path another layer already covers — Layer 1 is
 the only mechanism for <code>top_by_decay</code> on a plain <code>DecayingSortedField</code>; Layer 2
 is the only one that enforces membership on the composite path; Layer 3 is the
