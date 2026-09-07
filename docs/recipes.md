@@ -451,6 +451,18 @@ track record one unlucky dismissal could bury a memory. Models with no
 
 Semantic records are **never** forgotten by the default policy.
 
+!!! note "Importance is read from the partitioned sorted set"
+
+    `importance_score` comes from the importance field's sorted set, read with the
+    same key `on_save` writes — including the partition segment when the field is
+    declared with `partition_by`. Before [#658](https://github.com/tomcounsell/popoto/issues/658)
+    the read used the bare unpartitioned key, which for a partitioned field can never
+    contain the member, so the score silently fell back to a direct attribute read and
+    the sorted-set path was dead. If your importance field uses `partition_by`, expect
+    forget decisions to change on upgrade: the record is now scored by its decaying
+    sorted-set timestamp rather than by whatever the attribute happened to hold.
+    Unpartitioned fields are unaffected — both derivations resolve to the same key.
+
 ### Tombstones
 
 Forgetting archives the record and removes it from the live corpus rather than deleting

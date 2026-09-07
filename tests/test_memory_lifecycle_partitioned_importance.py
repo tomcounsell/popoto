@@ -154,9 +154,9 @@ def test_partitioned_importance_does_not_read_the_base_key():
     finally:
         client.zscore = real_zscore
 
-    assert observed == [partitioned_key], (
-        f"expected one ZSCORE against {partitioned_key!r}, saw {observed!r}"
-    )
+    assert observed == [
+        partitioned_key
+    ], f"expected one ZSCORE against {partitioned_key!r}, saw {observed!r}"
 
 
 def test_unpartitioned_importance_is_unchanged():
@@ -198,6 +198,6 @@ def test_forget_decision_moves_for_partitioned_model():
     lifecycle.FORGET_IMPORTANCE_FLOOR = 0.75
 
     assert ZSET_NORMALIZED < lifecycle.FORGET_IMPORTANCE_FLOOR < FALLBACK_SENTINEL
-    assert _default_should_forget(record, lifecycle) is True, (
-        "forget decision was driven by the attribute fallback, not the ZSET"
-    )
+    assert (
+        _default_should_forget(record, lifecycle) is True
+    ), "forget decision was driven by the attribute fallback, not the ZSET"
