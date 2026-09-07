@@ -7,7 +7,7 @@ created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/692
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-07T12:04:34Z
+revision_applied_at: 2026-09-07T12:18:15Z
 ---
 
 # #692 — A label-blind supersession producer for the LongMemEval-S ingest arm
@@ -337,7 +337,8 @@ creation from the original name `ExternalBenchmarkMemory`, and
 actually picks up the rename.
 
 Verified against the source: the validity keys for *every* item in a run would
-collapse onto the same six key names —
+collapse onto the same key names — the five fixed ZSETs `get_all_keys` returns,
+plus the per-identity-digest open pointers (critique R2-N2) —
 
 ```
 $ValidityF:ExternalBenchmarkMemory:validity:valid_from   (and :invalid_at,
@@ -512,8 +513,8 @@ Per benchmark item: parse turns (now with dates) → build model class (with
 function for an identity; no identity means a plain `.save()`, an identity means
 `save_and_supersede` at that session's date → retrieve through the assembler,
 which gates or does not gate per the runtime flag → emit result metadata
-including exclusion-set size → teardown deletes records *and* the six validity
-keys *and* the open pointers.
+including exclusion-set size → teardown deletes records *and* the five validity
+keys `get_all_keys` returns *and* the per-digest open pointers.
 
 ### Technical Approach
 
@@ -569,18 +570,48 @@ benefit.
 **3. The write router.**
 
 ```python
+from popoto.fields.supersession import SupersedeDeclinedError  # supersession.py:106
+from popoto.fields.validity_field import (  # validity_field.py:128 / :138
+    ValidityCloseBeforeStartError,
+    ValidityMemberAbsentError,
+)
+
+
 def route_write(instance, *, identity, at, stats) -> bool:
     if identity is None:
         stats.plain_writes += 1
         return bool(instance.save())
-    result = SupersessionProtocol.save_and_supersede(
-        instance, identity_key=identity, at=at
-    )
+    try:
+        result = SupersessionProtocol.save_and_supersede(
+            instance, identity_key=identity, at=at
+        )
+    except (
+        SupersedeDeclinedError,
+        ValidityMemberAbsentError,
+        ValidityCloseBeforeStartError,
+    ) as e:
+        stats.failures += 1
+        logger.warning("supersession producer failed: %s", e)
+        return False
     stats.identity_writes += 1
     if result.closed_key:
         stats.supersessions += 1
     return True
 ```
+
+**The `try`/`except` is inside `route_write` on purpose, and must stay there
+(critique R2-C2).** `route_write` is the only function that holds `stats`. If the
+exception is allowed to escape, it lands in the ingest loop's pre-existing
+handler at `external_base.py:506-510`, which logs but has no reference to
+`stats` — that local is out of scope there — so `producer_failures` would print
+**0 under total producer failure**, reintroducing the exact
+"silently-failing producer masquerading as a producer that found nothing" defect
+this metric exists to prevent (Verification row 10).
+
+The three exception types span **two** modules — do not assume one import line:
+`SupersedeDeclinedError` from `src/popoto/fields/supersession.py:106`;
+`ValidityMemberAbsentError` and `ValidityCloseBeforeStartError` from
+`src/popoto/fields/validity_field.py:128` and `:138`.
 
 Two non-obvious requirements, both from spike-2:
 
@@ -638,10 +669,13 @@ Three points the builder must not re-litigate:
   `self._supersession_arm != "none"`.** Both are correct today (the field is
   declared iff the arm is active), but the field-presence form is the one that
   cannot drift if a future arm changes that coupling.
-- **It must not be made unconditional.** `get_all_keys` / `get_prefix_db_key`
-  (`src/popoto/fields/validity_field.py:702`, `:782`) only concatenate
+- **It must not be made unconditional.** `get_prefix_db_key`
+  (`src/popoto/fields/validity_field.py:702`) and `get_all_keys` (`:782`) —
+  note the order, the round-1 record cites the two names swapped relative to
+  their line numbers (critique R2-N2) — only concatenate
   `_meta.db_class_key` + field name into key *strings*, so an unconditional
-  `delete()` would not raise — that is exactly the hazard. A `DEL` of six names
+  `delete()` would not raise — that is exactly the hazard. A `DEL` of those five
+  names
   that arm `none` never created succeeds vacuously, and Verification row 1 ("no
   `$ValidityF:*` key created during a `none`-arm item") would then be checked
   against a keyspace the teardown had just swept regardless. Deleting keys that
@@ -651,7 +685,7 @@ Three points the builder must not re-litigate:
   `:725`); do not copy that shape, and do not convert those lines here either —
   the conversion is a separate concern (see CLAUDE.md).
 
-This is mandatory, not hygiene: per the spike-2 side finding these six keys are
+This is mandatory, not hygiene: per the spike-2 side finding these keys are
 **shared across every item in a run** (the post-hoc `__name__` rename does not
 reach `_meta.db_class_key`), and the harness's existing two SCAN patterns cannot
 match them. Without this the exclusion set grows monotonically across the run.
@@ -671,6 +705,53 @@ and `n_excluded_hits` (how many of *this item's* retrieved candidates the gate
 actually removed). The last two are what turn acceptance criterion 2 from an
 assertion into an observation, and `n_excluded_hits` is the one that
 distinguishes "the gate had state" from "the gate did something".
+
+**How those two numbers are computed — there is no shipped accessor, and the
+two obvious seams are dead ends (critique R2-C1).** This is load-bearing: AC2
+and Verification row 5 rest on `n_excluded_hits >= 1`, and nothing in the
+assembler exposes it. `_scope_by_validity`
+(`src/popoto/recipes/context_assembler.py:1713-1726`) returns a filtered list
+with no count; `ValidityField.resolve_excluded_keys`
+(`src/popoto/fields/validity_field.py:863-931`) returns the run-wide exclusion
+set, which per the spike-2 side finding is not even item-scoped; and the
+server-side `DECAY_SCORE_LUA` layer drops rows before they ever become
+client-side candidates. Specifically, do **not** reach for either of these:
+
+- `all_pull_candidates` is **not** a pre-filter candidate list. It is rebound
+  through `_scope_by_validity` at `context_assembler.py:1875-1876` before it
+  reaches `AssemblyResult` at `:2078`, so it is already gated. The only
+  pre-filter form is `_pull_path`'s return at `:1869`, which is not retained.
+- `self._assembler._assembly_as_of` is **not** readable after `assemble()`
+  returns. It is parked at `:1860` and reset to `None` at `:2087`.
+
+The path that works: pass an **explicit** `as_of=t` into `assemble()` and reuse
+that same `t` for `ValidityField.resolve_excluded_keys(..., as_of=t)` — that is
+`n_excluded_keys`, and it satisfies Race 2 without touching a private attribute.
+For `n_excluded_hits`, diff two `assemble()` calls over identical stored state:
+
+```python
+gated = self._assembler.assemble(query_cues=..., agent_id=..., as_of=t)
+# Measurement-only second call: bounded, documented exception to Risk 5.
+prev = Defaults.VALIDITY_GATING_ENABLED
+Defaults.VALIDITY_GATING_ENABLED = False
+try:
+    ungated = self._assembler.assemble(query_cues=..., agent_id=..., as_of=t)
+finally:
+    Defaults.VALIDITY_GATING_ENABLED = prev
+n_excluded_hits = len(_keys(ungated) - _keys(gated))
+```
+
+Three constraints on that block:
+
+- **Guard it to arm C only** (`supersession_arm != "none"` *and* gating
+  currently on). Arms A and B have nothing to diff, and the second `assemble()`
+  doubles `retrieval_ms` per item — an ungated diff call on arm B would corrupt
+  the very latency figure the three arms exist to attribute.
+- **The ungated call's records must never reach `ScenarioResult.records`.** It is
+  a measurement, not a retrieval; only its key set is consumed.
+- **Save/restore in a `finally`, never a bare assignment.** The diff captures
+  removals from **all three** gating layers rather than the client-side layer
+  alone, which is why it is worth the extra call.
 
 A **firing-rate caveat that must be measured, not assumed**: under
 `--extraction raw` (the committed baseline arm) a written unit is an entire
@@ -745,6 +826,18 @@ New, in `tests/benchmarks/`:
     survives — that arm `none` performs no validity deletion. The second half is
     what keeps the guard honest: a teardown that swept those names
     unconditionally would make Verification row 1 vacuous.
+  - **`n_excluded_hits` is computed by the two-call diff and only on arm C**
+    (critique R2-C1): assert that on arms `none` and `--no-validity-gating` only
+    one `assemble()` is issued per item (spy on the assembler), that
+    `Defaults.VALIDITY_GATING_ENABLED` holds its `main()`-set value after
+    `run()` returns even when the gated call raises, and that
+    `ScenarioResult.records` never contains a record that only the ungated call
+    returned.
+  - **`route_write` counts producer failures itself** (critique R2-C2): with
+    `save_and_supersede` patched to raise each of `SupersedeDeclinedError`,
+    `ValidityMemberAbsentError`, `ValidityCloseBeforeStartError`, assert
+    `stats.failures` increments, `route_write` returns `False`, and the
+    exception does **not** propagate to the ingest loop's handler.
   - The history-ordering helper returns `self.item.history` **unchanged** (same
     object identity or same element order) on arm `none`, and date-sorted on
     arm `content-identity` (critique C2) — asserted directly on the helper, so
@@ -813,6 +906,14 @@ one arm runs per process invocation. Mitigation: set it once in `main()` before
 any scenario is constructed, never per item, and echo its value into the report
 header so an artifact always states which arm produced it.
 
+**One bounded, documented exception (critique R2-C1):** the `n_excluded_hits`
+measurement in Technical Approach step 6 flips the flag around a second,
+measurement-only `assemble()` and restores it in a `finally`. This does not
+violate the rule above, which is about *which arm an artifact reports*: the
+flag is left exactly as `main()` set it, no arm-reported record comes from the
+ungated call, and the block runs only on arm C. State this at the call site in
+a comment so a later reader does not "fix" it into a per-item flag flip.
+
 ## Race Conditions
 
 ### Race 1: Corpus order is not date order
@@ -864,11 +965,17 @@ concurrent writer. The reported `n_excluded_keys` must be read *at the same
 `as_of`* the assembler used, not at a later wall-clock instant, or the reported
 cardinality will not be the one that gated.
 
+**The mechanism is an explicit `as_of=t`, not a read-back.** Choose `t` in the
+scenario, pass it as `assemble(as_of=t)`, and pass the same `t` to
+`resolve_excluded_keys(..., as_of=t)`. Do not try to recover the value from
+`self._assembler._assembly_as_of` afterwards — it is reset to `None` at
+`context_assembler.py:2087` before `assemble()` returns (critique R2-C1).
+
 ### Race 3: Concurrent worktree lanes on one Redis DB
 
 Standing repo hazard, made worse here because the validity keys are not
 agent-scoped and not model-name-isolated (spike-2 side finding): a second
-concurrent run writes into *the same six keys*. The demonstration run must pin
+concurrent run writes into *the same shared keys*. The demonstration run must pin
 its own `POPOTO_TEST_DB` / `REDIS_URL` database and say which one in the report.
 
 ## No-Gos (Out of Scope)
@@ -958,7 +1065,8 @@ Additionally:
 
    **Both "when the arm is active" qualifiers are load-bearing (critique C2).**
    The loop to guard is `for turn in self.item.history:` in
-   `ExternalScenario.setup()` (`external_base.py:447`). On arm `none` that
+   `ExternalScenario.setup()` (`external_base.py:445` — verified; the `:447`
+   cited in the round-1 record is off by two, critique R2-N1). On arm `none` that
    iteration order must be untouched: it is the insertion order into the
    `DecayingSortedField` and the BM25 index, so reordering it would move
    committed-baseline numbers and break Success Criterion 5 and Verification
@@ -990,8 +1098,18 @@ Additionally:
    Use `get_REDIS_DB()`, not the module-level `POPOTO_REDIS_DB` the surrounding
    teardown still imports.
 5. **Emit the observability metadata** in `ExternalScenario.run()`:
-   `n_supersessions`, `n_excluded_keys`, `n_excluded_hits` (read at the same
-   `as_of` the assembler used — Race 2), plus the stats dataclass fields.
+   `n_supersessions`, `n_excluded_keys`, `n_excluded_hits`, plus the stats
+   dataclass fields. Compute them exactly as Technical Approach step 6
+   specifies, which is authoritative: pick `t` in the scenario, call
+   `assemble(query_cues=…, agent_id=…, as_of=t)`, take `n_excluded_keys` from
+   `ValidityField.resolve_excluded_keys(..., as_of=t)` at that same `t`
+   (Race 2), and take `n_excluded_hits` from the key-set difference between an
+   ungated and the gated `assemble()` over identical stored state, with
+   `Defaults.VALIDITY_GATING_ENABLED` saved and restored in a `finally` and the
+   whole diff guarded to **arm C only**. Neither `all_pull_candidates` nor
+   `self._assembler._assembly_as_of` is a usable seam — both are already-gated
+   or already-reset (critique R2-C1). The ungated call's records must not reach
+   `ScenarioResult.records`.
 6. **Extend the LongMemEval-S fixture.** Add one record to
    `tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json` with
    `question_type: "knowledge-update"` and two sessions whose `haystack_dates`
@@ -1044,6 +1162,8 @@ Additionally:
 | 8 | No key leak | Post-teardown `SCAN "$ValidityF:*"` | Empty |
 | 8b | Arm-`none` teardown is a real no-op | `pytest tests/benchmarks/test_external.py -k teardown_none` | No exception raised, and a pre-seeded sentinel under the shared `$ValidityF:…:validity:*` names **survives** — proving row 1 is not vacuous |
 | 8c | Arm-`none` ingest order untouched | Unit test on the history-ordering helper | Returns `self.item.history` unchanged on `none`; date-sorted on `content-identity` |
+| 8d | `n_excluded_hits` diff is arm-C-only and leak-free | `pytest tests/benchmarks/test_external.py -k excluded_hits` | One `assemble()` per item on arms A/B, two on arm C; `Defaults.VALIDITY_GATING_ENABLED` unchanged after `run()`; no ungated-only record in `ScenarioResult.records` |
+| 8e | Producer failures are counted in `route_write` | `pytest tests/benchmarks/test_supersession_axis.py -k failure` | Each of the three exception types increments `stats.failures`, returns `False`, and does not propagate |
 | 9 | Contamination check | First item of the demonstration run | `n_excluded_keys == 0` |
 | 10 | Failure counting is visible | Report header on a run with zero supersessions | `producer_failures` and `supersessions` both printed |
 | 11 | Repo gates | `ruff check src/`; `black --check src/ tests/`; `scripts/mypy_ratchet.py`; `mkdocs build --strict`; full `pytest` | All clean; ratchet count unchanged (no `src/` change) |
@@ -1068,6 +1188,19 @@ matches `SUPERSEDE_LUA`'s strict `close_at < start_num` guard
 (`validity_field.py:369`); N2's re-save safety matches the `ZADD NX` block gated
 on `new_score == false or is_open(new_score)` (`validity_field.py:404-410`). No
 residual contradiction survives anywhere in the plan.
+
+#### Round-2 resolution status (revision pass, 2026-09-07)
+
+All four round-2 items are now embedded **in the plan body**; the sections below
+are kept as the critique record. Where body and record differ, **the body is
+authoritative**.
+
+| # | Finding | Embedded where | Disposition |
+|---|---|---|---|
+| R2-C1 | `n_excluded_hits` has no named computation path | Technical Approach step 6 (the two dead-end seams, the explicit `as_of=t`, the two-call diff with `finally`, arm-C guard); Task 5; Race 2; Risk 5 (bounded exception); Test Impact + Verification row 8d | **Fixed.** A builder reading only the body now has the computation, the seams to avoid, and the three constraints on the flag flip. |
+| R2-C2 | `route_write` snippet has no `try`/`except`, so `producer_failures` reads 0 | Technical Approach step 3 (snippet now catches, with the two-module import paths); Test Impact + Verification row 8e | **Fixed.** Catch lives in the function that owns `stats`; escaping to the ingest handler at `external_base.py:506-510` is named as the defect. |
+| R2-N1 | Ingest loop is at `:445`, not `:447` | Task 3 | **Fixed** in the body; the round-1 verbatim record retains `:447` and is annotated here and in Task 3. |
+| R2-N2 | `get_all_keys` / `get_prefix_db_key` citations swapped; five keys not six | Technical Approach step 5; spike-2 side finding; Flow; Race 3 | **Fixed.** `get_prefix_db_key` is `:702`, `get_all_keys` is `:782` and returns **five** keys; the sixth is the per-digest open pointer the separate `SCAN` already handles. |
 
 #### R2-C1 — `n_excluded_hits` has no named computation path, and the obvious ones do not work
 
