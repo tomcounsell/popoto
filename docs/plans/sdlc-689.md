@@ -5,7 +5,9 @@ appetite: Small
 owner: sdlc-689
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/689
-last_comment_id:
+last_comment_id: none
+revision_applied: false
+revision_applied_at:
 ---
 
 # Stop shipping an unrunnable `tests/` in the sdist
