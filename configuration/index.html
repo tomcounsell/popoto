@@ -3800,6 +3800,20 @@ callers wait for a free connection instead of opening an unbounded number of soc
 <p><code>popoto.get_redis()</code> is the public spelling of <code>popoto.redis_db.get_REDIS_DB()</code>;
 either works. Both re-read the global on every call, so they keep returning the
 current connection after <code>set_REDIS_DB_settings()</code> replaces it.</p>
+<p>The attribute <code>popoto.POPOTO_REDIS_DB</code> does too. It is not an ordinary
+attribute: the package resolves it through a module <code>__getattr__</code> that
+calls <code>get_REDIS_DB()</code> on each access, precisely so it cannot go stale. Reading
+it is equivalent to calling <code>popoto.get_redis()</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>from popoto.redis_db import POPOTO_REDIS_DB</code> is a snapshot</p>
+<p>Importing the name binds a <em>copy</em> of it in your module, taken at import
+time. <code>set_REDIS_DB_settings()</code> rebinds the original, and Python does not
+propagate a rebind to a copy — so after any reconfiguration your copy still
+points at the old database, and reads and writes land in different places
+with no error. Call <code>popoto.get_redis()</code> at the point of use instead. (The
+package-level <code>popoto.POPOTO_REDIS_DB</code> above is exempt because it is served
+by a hook rather than bound by an import.)</p>
+</div>
 <p>Prefer this over building your own client. A hand-built <code>redis.from_url(...)</code>
 opens a <em>different</em> connection, and unless its URL names the same database, reads
 and writes land somewhere Popoto never touched — with no error to say so.</p>

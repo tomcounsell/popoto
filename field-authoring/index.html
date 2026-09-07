@@ -3161,10 +3161,23 @@ re-save that declares a <code>valid_from</code> the index disagrees with. See
 <h2 id="lua-scripts-use-run_lua-not-clienteval">Lua scripts: use <code>run_lua</code>, not <code>client.eval</code><a class="headerlink" href="#lua-scripts-use-run_lua-not-clienteval" title="Permanent link">&para;</a></h2>
 <p>A field that needs atomicity should run its script through
 <code>popoto.redis_db.run_lua</code>, which takes the same arguments <code>client.eval</code> does:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">run_lua</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">run_lua</span><span class="p">(</span><span class="n">pipeline</span> <span class="ow">or</span> <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span> <span class="n">MY_LUA</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">key_a</span><span class="p">,</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">arg_1</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_lua</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">run_lua</span><span class="p">(</span><span class="n">pipeline</span> <span class="ow">or</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">(),</span> <span class="n">MY_LUA</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">key_a</span><span class="p">,</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">arg_1</span><span class="p">)</span>
 </code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Resolve the client at the point of use</p>
+<p><code>from popoto.redis_db import POPOTO_REDIS_DB</code> binds a copy of that name in
+your module, frozen at import time. <code>set_REDIS_DB_settings()</code> rebinds the
+original and Python does not propagate a rebind to a copy, so a field
+holding one keeps writing to the pre-reconfiguration database while the rest
+of the ORM has moved on — silently. <code>popoto.get_redis()</code> re-reads the global
+on every call. Fields shipped before this was understood still hold
+module-level imports;
+<a href="https://github.com/tomcounsell/popoto/issues/655">#655</a> tracks converting
+them.</p>
+</div>
 <p><code>run_lua</code> caches a redis-py <code>Script</code> per script text and sends <code>EVALSHA</code>,
 falling back to loading the source only when the server does not know the
 hash. Calling <code>client.eval</code> directly still works, but it ships the whole
@@ -3217,25 +3230,31 @@ enforced by that test, but the obligation is the same: if your field holds state
   preserved. A field declaring <code>"partial"</code> must also set <code>roundtrip_note</code> explaining
   what is lost and why — typically citing a tracking issue for future work.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">LearnedScoreField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">        </span><span class="sd">"""Return this field's auxiliary state, or None if there is nothing to carry."""</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"score"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">raw</span><span class="p">)}</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">        </span><span class="sd">"""Restore state after the record has been constructed and saved."""</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>            <span class="k">return</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">"score"</span><span class="p">]</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>        <span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">LearnedScoreField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">        </span><span class="sd">"""Return this field's auxiliary state, or None if there is nothing to carry."""</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        <span class="p">)</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"score"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">raw</span><span class="p">)}</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">        </span><span class="sd">"""Restore state after the record has been constructed and saved."""</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>            <span class="k">return</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>        <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_data_hash_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">"score"</span><span class="p">]</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>        <span class="p">)</span>
 </code></pre></div>
 <p><code>export_state</code> is called once per field per exported record, after the field's plain
 value has already been captured by <code>to_dict()</code>. Read whatever secondary Redis
