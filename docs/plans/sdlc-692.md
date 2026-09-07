@@ -99,11 +99,150 @@ which is strictly better evidence.
 
 ## The Design Decision (what reading this plan adopts)
 
-<!-- skeleton — the section issue #692 acceptance criterion 1 demands -->
+**This plan adopts the faithful-modeling reading, and enforces it structurally
+by making the producer label-blind.** The scored label — `question_type`, and in
+particular the value `knowledge-update` — is never an input to the producer. It
+is used only as a post-hoc reporting breakdown, in the same place
+`--question-type` already slices results.
+
+### Why, in three steps
+
+**1. Driving on `question_type` buys almost nothing, and costs everything.**
+
+The teaching-to-the-test objection is not a matter of taste here; it is a
+question of what the category actually tells you. `question_type` is annotated
+per *question*, not per *turn*. Knowing an item is `knowledge-update` tells you
+that somewhere in its haystack a fact changed. It does not tell you **which
+session carries the stale claim and which carries the current one** — and that
+is exactly the pair a producer must identify. So a category-driven producer
+still needs a within-haystack pair-selection heuristic, identical to the one a
+label-blind producer needs. The category would only gate *whether* to run that
+heuristic.
+
+That is a bad trade. It adds no information the producer actually consumes,
+while making the resulting number un-defendable: the ingest arm would behave
+differently on the 78 items the benchmark scores as updates than on the other
+422, driven by an annotation no deployed system receives. Under the issue's own
+framing, the delta would then characterize the annotation, not the system.
+
+**2. The repo already has a doctrine for this, and it is structural, not
+promissory.**
+
+`collapse_to_ranking_unit` (`external_base.py:271-330`, issue #514) takes no
+`relevant_ids` parameter *by construction*, and its docstring says why: "the
+answer key cannot reach this function, so it cannot influence which ID a record
+emits." The defect it replaced was precisely a gold-consulting path that
+inflated Recall@K. This plan applies the same construction to the ingest arm:
+the producer is given `(content, session_id, session_date)` and nothing else.
+`BenchmarkItem.relevant_ids` and `metadata["question_type"]` are not in its
+signature, so no future edit can quietly start consulting them without changing
+the signature — and a test asserts that signature.
+
+**3. The corpus does carry an ingest-visible temporal signal, and it is not the
+label.**
+
+The issue notes that `haystack_dates` "exists in the raw HuggingFace schema but
+is never parsed into `BenchmarkItem`". Verified: it is present on every fixture
+record and dropped by `_parse_record`. Those are per-session wall-clock
+timestamps (e.g. `"2023/05/20 (Sat) 02:21"`), parallel to
+`haystack_session_ids`. They are exactly the signal a deployed agent memory
+system *does* have — every write carries a time — and they are orthogonal to
+what the benchmark scores. Parsing them is therefore not a concession to the
+test; it is closing a gap where the harness was discarding a real ingest input.
+
+Direction of time is the one thing a supersession producer cannot make up, and
+this gives it honestly.
+
+### What the producer actually is
+
+A designed heuristic — the issue is right that no producer can be "neutral", and
+this plan does not claim otherwise. The claim is narrower and checkable: it is
+**label-blind**, meaning the benchmark's answer key and scored category are
+structurally outside its inputs.
+
+Concretely (details in Technical Approach): within one item's haystack, group
+written records by a content-derived identity; where a group has more than one
+member, order by the session's `haystack_dates` timestamp and route the writes
+through `SupersessionProtocol.save_and_supersede` in that order, so the latest
+claim is open and the earlier ones are closed. Groups of size one are written
+with a plain `.save()` and never enter the validity axis.
+
+The identity function is the whole heuristic and the whole risk. It is
+deliberately conservative — a high-precision, low-recall rule that supersedes
+rarely and predictably — because the gate is subtractive: a false supersession
+*removes* a record from retrieval and can only cost recall, including on gold
+sessions. Under-producing yields a small, honest delta; over-producing yields a
+large, meaningless one.
 
 ## What the resulting delta does and does not establish
 
-<!-- skeleton — acceptance criterion 3 -->
+This section is a deliverable, not a caveat. It is written here so that #586
+copies it verbatim into the published report rather than inventing a weaker
+version under deadline.
+
+### Three arms, because two would conflate
+
+A two-arm (baseline vs. producer+gating) comparison cannot attribute its delta,
+because the producer and the gate are two changes shipped together. The run is
+therefore three arms over the identical item sample:
+
+| Arm | Model declares `ValidityField` | Producer runs | `Defaults.VALIDITY_GATING_ENABLED` |
+|---|---|---|---|
+| **A — baseline** | no | no | n/a |
+| **B — producer, gate off** | yes | yes | `False` |
+| **C — producer, gate on** | yes | yes | `True` (default) |
+
+- **A → B** isolates everything the change does *other than gate*: the extra
+  per-save Lua command, the field declaration, the producer's write ordering.
+  On a recall metric this should be ~0; a non-zero A→B is a finding about the
+  harness, not about validity, and must be reported before C is read at all.
+- **B → C** is the only pair that isolates the gate. Both arms have identical
+  stored state; they differ only in whether the three gating layers subtract.
+
+### What C − B does establish
+
+- That V0's gating machinery, on a real corpus at real scale, subtracts the
+  records a producer closed and does not subtract records it did not — i.e.
+  the gate is live and its effect is measurable rather than structurally nil.
+  That is the specific thing #692 exists to make possible.
+- The *sign and magnitude of the retrieval cost or benefit of subtracting
+  superseded records*, **conditional on this producer**. If C − B is negative,
+  the gate is removing records the retriever wanted; that is a real finding
+  about subtractive gating and must be published, per #586's criterion 4.
+- Operational facts worth having regardless of sign: exclusion-set cardinality
+  per item, per-item supersession counts, and the retrieval-latency cost of the
+  two extra `ZRANGEBYSCORE` reads per `assemble()`.
+
+### What it does not establish
+
+- **It is not "V0 validity gating improves LongMemEval-S by X".** V0 ships no
+  producer. Every number here is a property of the pair (this heuristic, V0's
+  gate), and the heuristic is a harness artifact that nothing in `src/` uses.
+  Attributing the delta to V0 alone is the metric-attribution error the issue
+  names, and this plan's write-up must refuse it in those words.
+- **It is not an upper bound, or a lower bound.** A better identity function
+  would produce a different number in an unknown direction. Nothing here
+  brackets the achievable effect.
+- **It says nothing about the `knowledge-update` category specifically.**
+  Per-category breakdowns will be reported because they are cheap and
+  interesting, but with n=78 in the committed n=500 baseline, a per-category
+  delta on a small effect is not separable from noise, and the plan does not
+  pretend otherwise. Report the breakdown; draw no category-level conclusion
+  without an interval that excludes zero.
+- **It is not comparable to any judged-accuracy number.** Metric-family
+  doctrine: the committed n=500 LongMemEval-S baseline is recall-family. The
+  three arms are compared to each other within that family and to nothing else.
+  `--judged` is explicitly out of scope for this issue (see No-Gos).
+- **It does not resolve #693.** Whether save-only inertness is the right library
+  default is untouched by this work; the producer here is an explicit imperative
+  caller, which is exactly the shape #693 questions.
+
+### Environment reporting
+
+Every number produced under this plan — spike, demonstration run, or published
+arm — carries Python version, redis-py version, platform, Redis DB, and the
+baseline commit SHA, per repo doctrine. Numbers from different redis-py versions
+are not compared.
 
 ## Spike Results
 
