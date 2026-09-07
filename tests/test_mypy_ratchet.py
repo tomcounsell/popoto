@@ -416,7 +416,12 @@ def test_committed_baseline_is_well_formed():
     assert data["total"] > 0
     assert ratchet.check_allowlist_names(data["clean"]) == []
     assert set(data["environment"]) >= {"python", "mypy", "redis"}
-    assert sum(data["packages"].values()) == data["total"]
+    # No sum(packages) == data["total"] assertion here: since #677 that is the
+    # definition of data["total"], so it asserts x == x and can never fail. The
+    # property it used to pin — that the file's counts and its total agree — is
+    # now guarded by test_committed_baseline_does_not_store_a_total (there is no
+    # second number to disagree) and by
+    # test_inconsistent_stored_total_is_rejected_by_the_script.
 
 
 def test_committed_baseline_does_not_store_a_total():
