@@ -18,6 +18,14 @@ resolves to whichever screen comes first in DOM order (restaurants), so every
 lookup below is scoped through its screen container. Only the DataTable ids
 (`#menu-table`, `#restaurants-table`, ...) are app-unique.
 
+Buttons are activated with the public `Button.press()` rather than
+`Pilot.click()`. Two `Pilot.click()` calls on the *same* widget within one test
+silently collapse — the second posts no `Button.Pressed` at all, so the screen
+never refreshes and the assertion reads a stale label. That produced a test
+that passed in a full-file run and failed in isolation. `test_restaurant_geo_search`
+keeps a real `Pilot.click()` (it presses one button once) so the suite retains
+some coverage of hit-testing and layout.
+
 Requires Redis. Bind an explicit test database before pytest starts — see
 `conftest.py` for why it cannot be done from a fixture:
 
@@ -143,7 +151,7 @@ async def test_restaurant_rename_migrates_key(app, seeded_kitchen):
         table = app.query_one("#restaurants-table", DataTable)
         before = {table.get_row_at(i)[0] for i in range(table.row_count)}
 
-        await pilot.click(screen.query_one("#btn-rename", Button))
+        screen.query_one("#btn-rename", Button).press()
         await pilot.pause()
 
         assert_no_errors(app, "rename")
@@ -163,7 +171,7 @@ async def test_menu_move_category_migrates_key(app):
         before_count = table.row_count
         before_categories = [table.get_row_at(i)[1] for i in range(table.row_count)]
 
-        await pilot.click(screen.query_one("#btn-move-category", Button))
+        screen.query_one("#btn-move-category", Button).press()
         await pilot.pause()
 
         assert_no_errors(app, "move category")
@@ -187,13 +195,13 @@ async def test_menu_price_filter_needs_a_category(app):
         screen.query_one("#filter-min-price", Input).value = "5"
         screen.query_one("#filter-max-price", Input).value = "50"
 
-        await pilot.click(screen.query_one("#btn-filter", Button))
+        screen.query_one("#btn-filter", Button).press()
         await pilot.pause()
         assert_no_errors(app, "price filter without category")
         assert "in memory" in label_text(screen, "#result-count")
 
         screen.query_one("#filter-category", Select).value = "Main"
-        await pilot.click(screen.query_one("#btn-filter", Button))
+        screen.query_one("#btn-filter", Button).press()
         await pilot.pause()
         assert_no_errors(app, "price filter with category")
         label = label_text(screen, "#result-count")
@@ -211,12 +219,12 @@ async def test_restaurant_filters_and_clear(app, seeded_kitchen):
         table = app.query_one("#restaurants-table", DataTable)
 
         # No selection: Select.NULL must read as "no filter", not as a value.
-        await pilot.click(screen.query_one("#btn-filter", Button))
+        screen.query_one("#btn-filter", Button).press()
         await pilot.pause()
         assert_no_errors(app, "filter with empty selects")
         assert table.row_count == seeded_kitchen["num_restaurants"]
 
-        await pilot.click(screen.query_one("#btn-clear-filter", Button))
+        screen.query_one("#btn-clear-filter", Button).press()
         await pilot.pause()
         assert_no_errors(app, "clear filters")
         assert table.row_count == seeded_kitchen["num_restaurants"]
