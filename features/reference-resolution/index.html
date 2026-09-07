@@ -3312,7 +3312,9 @@ an <code>assumed</code> fact can never be surfaced without its flag: querying
 join.</p>
 <p><strong>The fifth literal, <code>res:degraded</code>, takes precedence over the status
 literal.</strong> <code>degraded</code> is set whenever the resolution stage failed open — a
-missing <code>anthropic</code> client, a raising client, a malformed reply, or the
+missing <code>anthropic</code> client, an <code>anthropic</code> too old to accept
+<code>output_config</code> (below 0.77.0, which raises <code>AnthropicVersionError</code> when
+the default client is built), a raising client, a malformed reply, or the
 <code>M4_RESOLUTION_ENABLED</code> kill switch — and in every one of those cases the
 model never actually rendered a verdict. Without a separate literal, a
 degraded run and a genuine model abstention would both tag
@@ -3407,10 +3409,11 @@ established for its own fail-open paths.</p>
 <a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="nb">print</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">subject_tag</span><span class="p">)</span>       <span class="c1"># "res:resolved"</span>
 <a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">valid_from</span><span class="p">)</span>        <span class="c1"># epoch float for 2026-03-01 in America/Los_Angeles</span>
 </code></pre></div>
-<p><code>resolve_references</code> requires the optional <code>anthropic</code> package and an API
-key to produce a non-degraded result; without either it returns the same
-degraded <code>Resolution</code> the kill switch produces, matching M3's fail-open
-contract.</p>
+<p><code>resolve_references</code> requires the optional <code>anthropic</code> package (<strong>0.77.0
+or newer</strong> — older releases do not accept the <code>output_config</code> parameter
+this stage passes) and an API key to produce a non-degraded result;
+without either it returns the same degraded <code>Resolution</code> the kill switch
+produces, matching M3's fail-open contract.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../auditable-extraction/">Auditable Extraction</a> — the candidate generator,
