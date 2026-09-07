@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "popoto-kitchen"
 version = "0.1.0"
 description = "Interactive TUI demo showcasing the Popoto Redis ORM"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "popoto",
     "textual>=0.47.0",

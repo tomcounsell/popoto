@@ -163,7 +163,7 @@ class OrdersScreen(Container):
         status_select = self.query_one("#filter-status", Select)
         return {
             "status": (
-                status_select.value if status_select.value != Select.BLANK else None
+                status_select.value if status_select.value != Select.NULL else None
             ),
             "min_total": self.query_one("#filter-min-total", Input).value,
             "max_total": self.query_one("#filter-max-total", Input).value,
@@ -191,7 +191,7 @@ class OrdersScreen(Container):
 
     def _clear_filters(self) -> None:
         """Clear all filters."""
-        self.query_one("#filter-status", Select).value = Select.BLANK
+        self.query_one("#filter-status", Select).value = Select.NULL
         self.query_one("#filter-min-total", Input).value = ""
         self.query_one("#filter-max-total", Input).value = ""
         self.refresh_data()
@@ -201,7 +201,7 @@ class OrdersScreen(Container):
         table = self.query_one("#orders-table", DataTable)
         if table.cursor_row is not None:
             try:
-                key = list(table._row_locations.keys())[table.cursor_row]
+                key = table.ordered_rows[table.cursor_row].key
                 return Order.query.get(redis_key=key.value)
             except Exception:
                 pass

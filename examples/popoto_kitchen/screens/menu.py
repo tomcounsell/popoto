@@ -168,12 +168,12 @@ class MenuScreen(Container):
             "max_price": self.query_one("#filter-max-price", Input).value,
             "category": (
                 category_select.value
-                if category_select.value != Select.BLANK
+                if category_select.value != Select.NULL
                 else "All Categories"
             ),
             "restaurant": (
                 restaurant_select.value
-                if restaurant_select.value != Select.BLANK
+                if restaurant_select.value != Select.NULL
                 else "all"
             ),
         }
@@ -208,8 +208,8 @@ class MenuScreen(Container):
         self.query_one("#filter-name", Input).value = ""
         self.query_one("#filter-min-price", Input).value = ""
         self.query_one("#filter-max-price", Input).value = ""
-        self.query_one("#filter-category", Select).value = Select.BLANK
-        self.query_one("#filter-restaurant", Select).value = Select.BLANK
+        self.query_one("#filter-category", Select).value = Select.NULL
+        self.query_one("#filter-restaurant", Select).value = Select.NULL
         self.refresh_data()
 
     def _create_item(self) -> None:
@@ -244,7 +244,7 @@ class MenuScreen(Container):
         table = self.query_one("#menu-table", DataTable)
         if table.cursor_row is not None:
             try:
-                key = list(table._row_locations.keys())[table.cursor_row]
+                key = table.ordered_rows[table.cursor_row].key
                 # Use full redis_key: category is now a KeyField (MenuItem:<category>:<item_id>)
                 item = MenuItem.query.get(redis_key=key.value)
                 if item:
@@ -272,7 +272,7 @@ class MenuScreen(Container):
             return
 
         try:
-            key = list(table._row_locations.keys())[table.cursor_row]
+            key = table.ordered_rows[table.cursor_row].key
             # Use full redis_key since category is now a KeyField
             item = MenuItem.query.get(redis_key=key.value)
             if not item:
@@ -310,7 +310,7 @@ class MenuScreen(Container):
         table = self.query_one("#menu-table", DataTable)
         if table.cursor_row is not None:
             try:
-                key = list(table._row_locations.keys())[table.cursor_row]
+                key = table.ordered_rows[table.cursor_row].key
                 # Use full redis_key since category is now a KeyField
                 item = MenuItem.query.get(redis_key=key.value)
                 if item:
