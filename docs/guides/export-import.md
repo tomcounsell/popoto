@@ -160,8 +160,10 @@ Every exported record ends up in exactly one of five categories:
 absence, so `report.summary()` surfaces it first. `report.fidelity` carries the
 per-field `roundtrip_policy` roll-up from the manifest, so the report can tell you
 which fields were fully restored and which were only ever declared `"partial"` on
-the source side (for example, `CoOccurrenceField` or `EventStreamMixin` — see
-[Writing Custom Fields](../field-authoring.md) for the full policy taxonomy).
+the source side (for example, `AccessTrackerMixin` or `EventStreamMixin` — see
+[Writing Custom Fields](../field-authoring.md) for the full policy taxonomy, and
+the [fidelity matrix](#fidelity-what-crosses-and-what-does-not) below for where
+each of Popoto's own subsystems lands).
 
 Rejection is never detected by truthiness. `Model.save()` returns the `HSET` reply
 count on success, and `HSET` returns `0` when every field already existed — so a

@@ -114,6 +114,31 @@ For string values: `0.0` if equal, `1.0` if different.
 
 Missing keys contribute `1.0` error per key.
 
+## Export and Import
+
+`PredictionLedgerMixin` declares `roundtrip_policy = "carry"`. The meta hash holds
+exactly one field per record, keyed by that record's own PK, so a prediction is a
+per-record fact and `export_records` writes it out verbatim.
+
+`import_records` restores it with a raw `HSET` of the re-packed entry — deliberately
+not through `resolve_prediction` or `auto_resolve`. Going through
+`RESOLVE_PREDICTION_LUA` would recompute `prediction_error` against the
+*destination's* data, stamp a fresh `resolved_at`, and fire the ConfidenceField
+feedback described above a second time, double-counting against confidence state
+that is already carried independently. The raw write reproduces the source's
+`recorded_at` and `resolved_at` exactly and fires nothing.
+
+For a resolved prediction, the record's member in the error sorted set is then
+re-derived rather than carried: its score is `abs(prediction_error)`, a pure
+function of the entry that just landed. An unresolved prediction writes no member,
+because the source has none either.
+
+A record that never had a prediction exports no ledger state and imports without
+one being invented.
+
+See [Export and import](../guides/export-import.md#fidelity-what-crosses-and-what-does-not)
+for how this compares with the other history-shaped subsystems.
+
 ## Architecture
 
 - **Meta hash**: `$PL:{ClassName}:meta:{pk}` — msgpack prediction metadata per instance
