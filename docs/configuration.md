@@ -459,11 +459,16 @@ lived on the shared instance and was reset and repopulated mid-query, so two thr
 querying different partitions of one model could return each other's rows —
 see [#600](https://github.com/tomcounsell/popoto/issues/600).
 
-!!! note "One remaining exception"
-    Geo-distance annotations (`_geo_distances`) are still shared across
-    threads. Concurrent geo queries on one model class can attach another
-    query's distances to this query's rows; the rows themselves are correct.
-    Tracked in [#640](https://github.com/tomcounsell/popoto/issues/640).
+**Geo-distance annotations too.** The `_geo_distance` / `_geo_distance_unit`
+attributes attached by a `{field}_with_distances=True` query belong to the call
+that produced them. They are carried per call rather than per thread, because a
+`await Model.query.async_filter(...)` starts on the event loop's thread and does
+its index read on a worker thread — per-thread storage would lose the distances
+on the way back. So concurrent geo queries are safe from each other whether they
+run on threads, on coroutines, or both. Popoto 1.9.0 and earlier kept this
+bookkeeping on the shared `Query` instance, where one geo query could attach
+another's distances — or none at all — to its rows; the rows themselves were
+always correct ([#640](https://github.com/tomcounsell/popoto/issues/640)).
 
 If you read the private query bookkeeping directly (`Model.query._pushdown_limit`
 and friends), note it is now readable **only on the thread that ran the query**.
