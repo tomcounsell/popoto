@@ -596,9 +596,12 @@ class SortedFieldMixin:
                 model_instance, field_name
             ).redis_key
         else:
-            key = cls.get_special_use_field_db_key(
-                type(model_instance), field_name
-            ).redis_key
+            # get_sortedset_db_key() with no partition values IS the base,
+            # unpartitioned key -- it delegates straight to
+            # get_special_use_field_db_key(). Going through it rather than
+            # calling that helper directly keeps the mixin's own declared
+            # surface as the only thing this method depends on.
+            key = cls.get_sortedset_db_key(type(model_instance), field_name).redis_key
         member = model_instance.db_key.redis_key
         # Resolve the client attribute at call time so test spies and fault
         # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.

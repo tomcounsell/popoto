@@ -65,24 +65,35 @@ Example::
     print(state.tier, state.promotion_eligible, state.forget_eligible)
 """
 
-import dataclasses
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import msgpack
 
 from ..exceptions import ModelException
-from ..models.encoding import decode_lazy_field, decode_popoto_model_hashmap
-from ..redis_db import POPOTO_REDIS_DB
+from ..models.encoding import decode_popoto_model_hashmap
+
+# The tombstone keyspace and its entry codec now live in the field layer
+# (#649). They are re-exported here unchanged because they were public from
+# this module first: `from popoto.recipes.memory_lifecycle import Tombstone`
+# must keep working, and tests/test_memory_lifecycle.py reaches for several of
+# the underscore-prefixed helpers directly.
+from ..fields.tombstone_store import (  # noqa: F401
+    TOMBSTONE_KEY_PREFIX,
+    Tombstone,
+    TombstoneStore,
+    _decoded_members,
+    _sync,
+    _tombstone_from_entry,
+    _TOMBSTONE_FIELDS,
+    _TOMBSTONE_REQUIRED_FIELDS,
+    _unpack_tombstone_entry,
+)
 
 logger = logging.getLogger("POPOTO.MemoryLifecycle")
-
-# Namespace for tombstone structures, kept out of the model's own keyspace so
-# no query, index scan, or key-set walk can ever surface a tombstoned record.
-TOMBSTONE_KEY_PREFIX = "$TOMB"
 
 
 # ---------------------------------------------------------------------------
@@ -109,118 +120,6 @@ class LifecycleState:
     importance_score: float
     promotion_eligible: bool
     forget_eligible: bool
-
-
-# ---------------------------------------------------------------------------
-# Tombstone — the record of a forgetting (#491)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Tombstone:
-    """Durable record that a memory was forgotten, and what it looked like.
-
-    Forgetting tombstones rather than deletes so an aggressive low-confidence
-    forget policy stays reversible (Risk 6) and so each death becomes negative
-    evidence a future write path can consult (#494).
-
-    Attributes:
-        redis_key: The forgotten record's Redis key. Restore handle.
-        fingerprint: ExistenceFilter fingerprint of the dead record — the
-            identity token #494 matches new writes against.
-        tier: Tier the record held at death.
-        importance_at_death: Importance score at the moment of forgetting.
-        confidence_at_death: ConfidenceField value at death, or None if the
-            model carries no confidence signal.
-        evidence_count: Observations backing that confidence.
-        dismissal_count: Contradiction/dismissal count at death.
-        tombstoned_at: Unix timestamp of the forgetting.
-        reason: Free-form marker for what triggered it.
-    """
-
-    redis_key: str
-    fingerprint: str
-    tier: str
-    importance_at_death: float
-    confidence_at_death: Optional[float]
-    evidence_count: int
-    dismissal_count: int
-    tombstoned_at: float
-    reason: str = "policy"
-
-
-_TOMBSTONE_FIELDS: Tuple[str, ...] = tuple(Tombstone.__dataclass_fields__)
-
-# Fields with no dataclass default must be present in a stored entry — a
-# Tombstone missing one of them is not a Tombstone, it is a None-filled shell.
-_TOMBSTONE_REQUIRED_FIELDS: Tuple[str, ...] = tuple(
-    name
-    for name, f in Tombstone.__dataclass_fields__.items()
-    if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
-)
-
-
-def _sync(reply: Any) -> Any:
-    """Narrow a redis-py reply out of its ``Awaitable[T] | T`` union.
-
-    redis-py shares one set of command stubs between its sync and asyncio
-    clients, so every command is typed as possibly-awaitable. ``POPOTO_REDIS_DB``
-    is always the sync client, so these replies are never awaitable. Which
-    call sites this affects varies by redis-py version (7.x flags several that
-    8.x does not), so the narrowing is centralized here rather than sprinkled
-    as per-site ``type: ignore`` comments that would go stale in either
-    direction.
-    """
-    return reply
-
-
-def _decoded_members(reply: Any) -> List[str]:
-    """Decode a Redis ZSET member reply into ``str`` keys.
-
-    redis-py types ``zrange``/``zrevrange`` as a union covering their
-    ``withscores`` overloads (member, or ``(member, score)`` pairs). These
-    call sites never pass ``withscores``, so the reply is always a flat list
-    of members — the cast records that, rather than blanket-ignoring the
-    resulting type error at each call site.
-    """
-    return [
-        m.decode() if isinstance(m, bytes) else m for m in cast(Iterable[Any], reply)
-    ]
-
-
-def _unpack_tombstone_entry(raw: Any) -> Optional[Dict[str, Any]]:
-    """Decode a stored tombstone entry, or None if absent/corrupt/incomplete.
-
-    A partial or foreign msgpack dict under ``$TOMB:{Model}:data`` is dropped
-    on the same log-and-skip path as undecodable bytes, rather than being
-    inflated into a Tombstone whose non-Optional fields are all None.
-    """
-    if raw is None:
-        return None
-    try:
-        entry = msgpack.unpackb(raw, raw=False)
-    except Exception as exc:
-        logger.warning("tombstone entry is undecodable, skipping: %s", exc)
-        return None
-    if not isinstance(entry, dict):
-        logger.warning(
-            "tombstone entry is not a mapping (%s), skipping", type(entry).__name__
-        )
-        return None
-    missing = [k for k in _TOMBSTONE_REQUIRED_FIELDS if k not in entry]
-    if missing:
-        logger.warning("tombstone entry is missing required keys %s, skipping", missing)
-        return None
-    return entry
-
-
-def _tombstone_from_entry(entry: Dict[str, Any]) -> Tombstone:
-    """Build a Tombstone from a stored entry, ignoring the archived payload.
-
-    Callers must pass an entry that has already cleared
-    ``_unpack_tombstone_entry``, which guarantees every required key is present.
-    """
-    return Tombstone(**{k: entry[k] for k in _TOMBSTONE_FIELDS if k in entry})
 
 
 # ---------------------------------------------------------------------------
@@ -301,10 +200,19 @@ def _get_age_seconds(record) -> float:
             elif isinstance(val, (int, float)):
                 return time.time() - float(val)
 
-    # Fall back: object idle time from Redis
+    # Fall back: object idle time, via the model layer (#649).
+    #
+    # Model.idle_seconds() returns Optional[float] — None means "no answer"
+    # (key gone, or a server that refused the command), which is a genuinely
+    # different fact from 0.0 ("touched just now"). This call site must still
+    # collapse None to 0.0: that is exactly what the old inline
+    # `try/except Exception: pass` -> `return 0.0` did, and #649's contract is
+    # that behaviour does not change. The improvement is that the distinction
+    # now exists at the boundary for future callers, not that this caller acts
+    # on it.
     try:
         redis_key = record._redis_key or record.db_key.redis_key
-        idle = POPOTO_REDIS_DB.object("idletime", redis_key)
+        idle = type(record).idle_seconds(redis_key=redis_key)
         if idle is not None:
             return float(idle)
     except Exception:
@@ -327,11 +235,22 @@ def _get_importance_score(record, importance_field: str) -> float:
     field = record._meta.fields.get(importance_field)
     if isinstance(field, SortedFieldMixin):
         try:
-            sorted_key = field.get_special_use_field_db_key(
-                type(record), importance_field
-            )
-            redis_key = record._redis_key or record.db_key.redis_key
-            raw_score = POPOTO_REDIS_DB.zscore(sorted_key.redis_key, redis_key)
+            # partitioned=False reproduces this call site's pre-#649 read
+            # EXACTLY: it resolved the bare `get_special_use_field_db_key`,
+            # not the partition-specific key that count()/members() use.
+            #
+            # For a field WITH partition_by set, the bare key cannot contain
+            # the member, so this ZSCORE always returns None and the function
+            # falls through to the attribute read below. That is the #474
+            # defect class over again — the same bug, same cause, already
+            # fixed once in recipes/context_assembler.py (see its docstring at
+            # L589-596). It is preserved verbatim here on purpose: #649's
+            # contract is a byte-identical command sequence, and changing the
+            # key would silently change retention and forgetting decisions for
+            # exactly the users who cannot see it coming. The fix is tracked
+            # as its own issue, #658, where it can get the test it needs; the
+            # migration there is this one keyword argument.
+            raw_score = field.score(record, importance_field, partitioned=False)
             if raw_score is not None:
                 # Normalize: score is a timestamp; use recency as proxy for importance.
                 # A score older than FORGET_IDLE_SECONDS has low importance.
@@ -531,6 +450,10 @@ class MemoryLifecycle:
         self.model_class = model_class
         self.importance_field = importance_field
         self.tier_field = tier_field
+        # Field-layer keeper of the $TOMB:{Model}:* keyspace (#649). The
+        # recipe keeps the policy (when to forget, how long to retain); the
+        # store keeps the keys and the commands.
+        self._tombstones = TombstoneStore(model_class)
         self._should_promote = should_promote or _default_should_promote
         self._should_forget = should_forget or _default_should_forget
         self.partition_filters = partition_filters or {}
@@ -787,12 +710,15 @@ class MemoryLifecycle:
     # -------------------------------------------------------------------
 
     def _tombstone_keys(self) -> Tuple[str, str]:
-        """Return the (data hash, recency index) Redis keys for tombstones."""
-        name = self.model_class.__name__
-        return (
-            f"{TOMBSTONE_KEY_PREFIX}:{name}:data",
-            f"{TOMBSTONE_KEY_PREFIX}:{name}:index",
-        )
+        """Return the (data hash, recency index) Redis keys for tombstones.
+
+        Delegating shim (#649): the keys are owned by ``TombstoneStore`` now.
+        This stays because it is a de-facto public seam —
+        ``tests/test_memory_lifecycle.py`` calls it to inject entries directly
+        into the store (see ``test_partial_tombstone_entry_is_dropped_not_inflated``)
+        and outside code may reasonably do the same.
+        """
+        return self._tombstones.keys()
 
     def _fingerprint(self, record: Any) -> str:
         """Return the record's ExistenceFilter fingerprint.
@@ -834,7 +760,10 @@ class MemoryLifecycle:
         live_key = getattr(record, "_redis_key", None) or record.db_key.redis_key
 
         try:
-            raw_hash = POPOTO_REDIS_DB.hgetall(live_key)
+            # load_raw_hash, not a decoded load: restore() feeds this straight
+            # back through decode_popoto_model_hashmap, which needs the bytes
+            # exactly as Redis returned them.
+            raw_hash = self.model_class.load_raw_hash(live_key)
         except Exception as exc:
             logger.warning("tombstone: HGETALL failed for %s: %s", live_key, exc)
             return None
@@ -866,12 +795,12 @@ class MemoryLifecycle:
         entry = dict(tomb.__dict__)
         entry["payload"] = payload
 
-        data_key, index_key = self._tombstone_keys()
         try:
-            pipeline = POPOTO_REDIS_DB.pipeline()
-            pipeline.hset(data_key, live_key, msgpack.packb(entry, use_bin_type=True))
-            pipeline.zadd(index_key, {live_key: tomb.tombstoned_at})
-            pipeline.execute()
+            self._tombstones.archive(
+                live_key,
+                msgpack.packb(entry, use_bin_type=True),
+                tomb.tombstoned_at,
+            )
         except Exception as exc:
             logger.warning("tombstone: write failed for %s: %s", live_key, exc)
             return None
@@ -900,20 +829,15 @@ class MemoryLifecycle:
         they replaced. Returns the number evicted.
         """
         limit = int(self.TOMBSTONE_RETENTION_LIMIT)
-        data_key, index_key = self._tombstone_keys()
         keys: List[str] = []
         try:
-            excess = int(_sync(POPOTO_REDIS_DB.zcard(index_key))) - limit
+            excess = self._tombstones.count() - limit
             if excess <= 0:
                 return 0
-            oldest = POPOTO_REDIS_DB.zrange(index_key, 0, excess - 1)
-            if not oldest:
+            keys = self._tombstones.oldest_keys(excess)
+            if not keys:
                 return 0
-            keys = _decoded_members(oldest)
-            pipeline = POPOTO_REDIS_DB.pipeline()
-            pipeline.hdel(data_key, *keys)
-            pipeline.zrem(index_key, *keys)
-            pipeline.execute()
+            self._tombstones.evict(keys)
         except Exception as exc:
             logger.warning("tombstone retention sweep failed: %s", exc)
             return 0
@@ -922,25 +846,22 @@ class MemoryLifecycle:
 
     def tombstone_count(self) -> int:
         """Return the number of retained tombstones for this model class."""
-        _, index_key = self._tombstone_keys()
         try:
-            return int(_sync(POPOTO_REDIS_DB.zcard(index_key)))
+            return self._tombstones.count()
         except Exception:
             return 0
 
     def list_tombstones(self, limit: Optional[int] = None) -> List[Tombstone]:
         """Return retained Tombstones, newest death first."""
-        data_key, index_key = self._tombstone_keys()
         stop = -1 if limit is None else max(0, limit - 1)
         try:
-            raw_keys = POPOTO_REDIS_DB.zrevrange(index_key, 0, stop)
+            keys = self._tombstones.newest_keys(stop)
         except Exception as exc:
             logger.warning("list_tombstones: index read failed: %s", exc)
             return []
-        if not raw_keys:
+        if not keys:
             return []
-        keys = _decoded_members(raw_keys)
-        raws = _sync(POPOTO_REDIS_DB.hmget(data_key, keys))
+        raws = self._tombstones.get_entries(keys)
         tombstones: List[Tombstone] = []
         for raw in raws:
             entry = _unpack_tombstone_entry(raw)
@@ -950,8 +871,7 @@ class MemoryLifecycle:
 
     def get_tombstone(self, redis_key: str) -> Optional[Tombstone]:
         """Return the Tombstone for a redis_key, or None if not retained."""
-        data_key, _ = self._tombstone_keys()
-        entry = _unpack_tombstone_entry(POPOTO_REDIS_DB.hget(data_key, redis_key))
+        entry = _unpack_tombstone_entry(self._tombstones.get_entry(redis_key))
         return None if entry is None else _tombstone_from_entry(entry)
 
     def restore(self, redis_key: Union[str, Tombstone]) -> Optional[Any]:
@@ -966,8 +886,7 @@ class MemoryLifecycle:
         """
         if isinstance(redis_key, Tombstone):
             redis_key = redis_key.redis_key
-        data_key, _ = self._tombstone_keys()
-        entry = _unpack_tombstone_entry(POPOTO_REDIS_DB.hget(data_key, redis_key))
+        entry = _unpack_tombstone_entry(self._tombstones.get_entry(redis_key))
         if entry is None:
             return None
 
@@ -992,18 +911,11 @@ class MemoryLifecycle:
         """Drop a tombstone permanently. Returns True if one was removed."""
         if isinstance(redis_key, Tombstone):
             redis_key = redis_key.redis_key
-        data_key, index_key = self._tombstone_keys()
-        pipeline = POPOTO_REDIS_DB.pipeline()
-        pipeline.hdel(data_key, redis_key)
-        pipeline.zrem(index_key, redis_key)
-        removed = pipeline.execute()
-        return bool(removed and removed[0])
+        return self._tombstones.purge(redis_key)
 
     def purge_all_tombstones(self) -> int:
         """Drop every retained tombstone. Returns the number removed."""
-        count = self.tombstone_count()
-        POPOTO_REDIS_DB.delete(*self._tombstone_keys())
-        return count
+        return self._tombstones.purge_all()
 
     def forget_hard(self, record: Any) -> bool:
         """Delete a record outright, leaving no tombstone.
@@ -1114,20 +1026,25 @@ class MemoryLifecycle:
                 live_key = getattr(record, "_redis_key", None)
                 if live_key is None:
                     continue
+                # load_fields with a single name emits HGET (not HMGET) and
+                # decodes for us. Its three-way contract is what preserves this
+                # guard's two DIFFERENT failure paths, which look alike but are
+                # not: an absent key skips the forget, while a present-but-
+                # undecodable tier falls through to live_tier=None and the
+                # record IS forgotten. Both issue the same command, so the
+                # wire diff cannot tell them apart — see the dedicated test in
+                # tests/test_model_partial_load.py.
                 try:
-                    raw_tier = POPOTO_REDIS_DB.hget(live_key, self.tier_field)
+                    fetched = self.model_class.load_fields(live_key, self.tier_field)
                 except Exception:
-                    raw_tier = None
+                    fetched = {}
 
-                if raw_tier is None:
+                if self.tier_field not in fetched:
                     # Key no longer exists — skip delete
                     logger.debug("forget guard: key absent, skipping %s", live_key)
                     continue
 
-                try:
-                    live_tier = decode_lazy_field(raw_tier)
-                except Exception:
-                    live_tier = None
+                live_tier = fetched[self.tier_field]
 
                 if live_tier == "semantic":
                     logger.debug(

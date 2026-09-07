@@ -39,7 +39,7 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 
 import redis
 
@@ -2129,7 +2129,7 @@ class Model(metaclass=ModelBase):
         return None if reply is None else float(reply)
 
     @classmethod
-    def load_fields(cls, redis_key: str, *names: str) -> dict:
+    def load_fields(cls, redis_key: str, *names: str) -> Dict[str, Any]:
         """Load and decode a subset of this record's hash fields.
 
         Args:
@@ -2168,7 +2168,7 @@ class Model(metaclass=ModelBase):
             raw_values: Iterable[Any] = [POPOTO_REDIS_DB.hget(redis_key, names[0])]
         else:
             raw_values = POPOTO_REDIS_DB.hmget(redis_key, list(names))
-        result: dict = {}
+        result: Dict[str, Any] = {}
         for name, raw_value in zip(names, raw_values):
             if raw_value is None:
                 continue
@@ -2179,7 +2179,7 @@ class Model(metaclass=ModelBase):
         return result
 
     @classmethod
-    def load_raw_hash(cls, redis_key: str) -> dict:
+    def load_raw_hash(cls, redis_key: str) -> Dict[Any, Any]:
         """Load a record's entire hash, undecoded -- one ``HGETALL``.
 
         Returns keys and values exactly as Redis returned them (``bytes``),

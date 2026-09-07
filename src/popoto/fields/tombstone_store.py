@@ -255,7 +255,17 @@ class TombstoneStore:
         return bool(removed and removed[0])
 
     def purge_all(self) -> int:
-        """Drop every retained tombstone for this model: one ``DEL`` over both keys."""
-        count = self.count()
+        """Drop every retained tombstone for this model: one ``DEL`` over both keys.
+
+        The count read is best-effort and its failure is swallowed: the caller
+        this was relocated from (``MemoryLifecycle.purge_all_tombstones``) read
+        the count through an error-swallowing helper and issued the ``DEL``
+        regardless. A failed count must not leave the tombstones in place — the
+        return value is a report, the delete is the job.
+        """
+        try:
+            count = self.count()
+        except Exception:
+            count = 0
         POPOTO_REDIS_DB.delete(*self.keys())
         return count
