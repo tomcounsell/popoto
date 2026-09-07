@@ -218,9 +218,13 @@ class TestLongMemEvalAdapter:
         assert len(items) <= 2
 
     def test_all_fixture_items_loaded(self):
-        """All 3 fixture items should be loaded without errors."""
+        """All 4 fixture items should be loaded without errors.
+
+        Fixture gained a 4th ``knowledge-update`` record in #692 to exercise
+        the supersession producer (non-monotonic + tied haystack_dates).
+        """
         items = list(iter_longmemeval(fixture_path=LME_FIXTURE))
-        assert len(items) == 3
+        assert len(items) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -1042,3 +1046,273 @@ class TestVectorRetrievalMode:
         # No unsuffixed lexical _latest pointers were created by the vector run.
         assert not (results_dir / "longmemeval_s_latest.json").exists()
         assert not (results_dir / "longmemeval_s_latest.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# session_date parsing (#692)
+# ---------------------------------------------------------------------------
+
+
+class TestSessionDateParsing:
+    """``haystack_dates`` parses into a per-turn ``session_date`` (#692)."""
+
+    def test_session_date_key_present_on_every_lme_turn(self):
+        items = list(iter_longmemeval(fixture_path=LME_FIXTURE))
+        for item in items:
+            for turn in item.history:
+                assert "session_date" in turn
+
+    def test_session_date_is_epoch_float_or_none(self):
+        items = list(iter_longmemeval(fixture_path=LME_FIXTURE))
+        for item in items:
+            for turn in item.history:
+                value = turn["session_date"]
+                assert value is None or isinstance(value, float)
+
+    def test_locomo_turns_have_no_session_date_and_are_tolerated(self):
+        """LoCoMo carries no per-session dates; the key is simply absent, and
+        every producer-side consumer treats that the same as an unparseable
+        LME date via ``.get(...)`` -> ``None``."""
+        items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
+        for item in items:
+            for turn in item.history:
+                assert turn.get("session_date") is None
+
+
+# ---------------------------------------------------------------------------
+# Supersession producer arm, end-to-end (#692)
+# ---------------------------------------------------------------------------
+
+
+class TestSupersessionArm:
+    """End-to-end tests for the label-blind supersession producer through
+    ``ExternalScenario``. Unit tests of the producer itself live in
+    ``test_supersession_axis.py``.
+    """
+
+    @staticmethod
+    def _update_item():
+        """The fixture's 4th (``knowledge-update``) item: non-monotonic +
+        tied ``haystack_dates`` relative to haystack order (Task 6)."""
+        items = list(iter_longmemeval(fixture_path=LME_FIXTURE))
+        return next(
+            i
+            for i in items
+            if i.metadata.get("question_type") == "knowledge-update"
+        )
+
+    def test_arm_none_is_byte_identical(self):
+        """Success Criterion 5 / Verification row 1: no ValidityField, no
+        validity keys created, for the default arm."""
+        from src.popoto.redis_db import get_REDIS_DB
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        scenario = ExternalScenario(
+            item=self._update_item(), retrieval_mode="lexical"
+        )
+        result = scenario.execute()
+        assert result.status == "ok"
+        assert "validity" not in scenario._model_class._meta.fields
+
+        cursor = 0
+        found: list = []
+        while True:
+            cursor, keys = get_REDIS_DB().scan(
+                cursor, match="$ValidityF:*", count=200
+            )
+            found.extend(keys)
+            if cursor == 0:
+                break
+        assert found == []
+
+    def test_content_identity_produces_non_empty_exclusion_set(self):
+        """AC2 / Verification row 5: n_excluded_keys >= 1, n_excluded_hits >=
+        1, superseded record absent, successor present."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        scenario = ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
+        )
+        result = scenario.execute()
+        assert result.status == "ok"
+        assert result.metadata["n_excluded_keys"] >= 1
+        assert result.metadata["n_excluded_hits"] >= 1
+        assert result.metadata["n_supersessions"] >= 1
+        retrieved = result.metadata["retrieved_contents"]
+        # The superseded claims (Beta Inc., and the tied-and-lost Acme claim
+        # from upd_late) are gone; only the current claim (upd_tied) survives.
+        assert not any("Beta Inc" in c for c in retrieved)
+        assert any("Acme Corp. still" in c for c in retrieved)
+
+    def test_no_validity_gating_restores_superseded_record(self):
+        """Success Criterion 6 / Verification row 6: arm B is executable."""
+        from src.popoto.fields.constants import Defaults
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        prev = Defaults.VALIDITY_GATING_ENABLED
+        Defaults.VALIDITY_GATING_ENABLED = False
+        try:
+            scenario = ExternalScenario(
+                item=self._update_item(),
+                retrieval_mode="lexical",
+                supersession_arm="content-identity",
+            )
+            result = scenario.execute()
+        finally:
+            Defaults.VALIDITY_GATING_ENABLED = prev
+        assert result.status == "ok"
+        retrieved = result.metadata["retrieved_contents"]
+        assert any("Beta Inc" in c for c in retrieved)
+
+    def test_no_leaked_validity_keys_after_teardown(self):
+        """Verification row 8 / Success Criterion 7 -- direct regression test
+        for the spike-2 side finding's key-leak hazard."""
+        from src.popoto.redis_db import get_REDIS_DB
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        scenario = ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
+        )
+        scenario.execute()
+
+        cursor = 0
+        found: list = []
+        while True:
+            cursor, keys = get_REDIS_DB().scan(
+                cursor, match="$ValidityF:*", count=200
+            )
+            found.extend(keys)
+            if cursor == 0:
+                break
+        assert found == []
+
+    def test_teardown_on_arm_none_is_real_noop(self):
+        """Verification row 8b: teardown on an arm-none item does not raise,
+        AND a pre-seeded sentinel under the shared validity keyspace
+        survives -- proving the guard is not vacuous (critique C1)."""
+        from src.popoto.fields.validity_field import ValidityField
+        from src.popoto.redis_db import get_REDIS_DB
+        from tests.benchmarks.scenarios.external_base import (
+            ExternalScenario,
+            _build_external_model_class,
+        )
+
+        validity_cls = _build_external_model_class(
+            "teardownchk", with_validity=True
+        )
+        keys = ValidityField.get_all_keys(validity_cls, "validity")
+        sentinel_key = next(iter(keys.values()))
+        get_REDIS_DB().zadd(sentinel_key, {"sentinel-member": 1})
+        try:
+            scenario = ExternalScenario(
+                item=self._update_item(), retrieval_mode="lexical"
+            )
+            result = scenario.execute()  # arm "none" -- must not raise
+            assert result.status == "ok"
+            assert get_REDIS_DB().zscore(sentinel_key, "sentinel-member") == 1.0
+        finally:
+            get_REDIS_DB().delete(sentinel_key)
+
+    def test_ordered_history_unchanged_on_none_sorted_on_content_identity(self):
+        """Verification row 8c, asserted directly on the helper."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        item = self._update_item()
+        none_scenario = ExternalScenario(item=item, retrieval_mode="lexical")
+        assert none_scenario._ordered_history() is item.history
+
+        ci_scenario = ExternalScenario(
+            item=item,
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
+        )
+        ordered = ci_scenario._ordered_history()
+        dates = [
+            t.get("session_date")
+            for t in ordered
+            if t.get("session_date") is not None
+        ]
+        assert dates == sorted(dates)
+
+    def test_excluded_hits_diff_is_arm_c_only(self, monkeypatch):
+        """Verification row 8d: one assemble() call per item on arms A/B, two
+        on arm C; the gating flag is restored after run()."""
+        from src.popoto.fields.constants import Defaults
+        from src.popoto.recipes.context_assembler import ContextAssembler
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        orig_assemble = ContextAssembler.assemble
+        call_count = {"n": 0}
+
+        def counting_assemble(self, *args, **kwargs):
+            call_count["n"] += 1
+            return orig_assemble(self, *args, **kwargs)
+
+        monkeypatch.setattr(ContextAssembler, "assemble", counting_assemble)
+
+        # Arm A (none): one call.
+        call_count["n"] = 0
+        result = ExternalScenario(
+            item=self._update_item(), retrieval_mode="lexical"
+        ).execute()
+        assert result.status == "ok"
+        assert call_count["n"] == 1
+
+        # Arm B (content-identity, gate off): one call -- nothing to diff.
+        prev = Defaults.VALIDITY_GATING_ENABLED
+        Defaults.VALIDITY_GATING_ENABLED = False
+        try:
+            call_count["n"] = 0
+            result = ExternalScenario(
+                item=self._update_item(),
+                retrieval_mode="lexical",
+                supersession_arm="content-identity",
+            ).execute()
+        finally:
+            Defaults.VALIDITY_GATING_ENABLED = prev
+        assert result.status == "ok"
+        assert call_count["n"] == 1
+        assert Defaults.VALIDITY_GATING_ENABLED == prev
+
+        # Arm C (content-identity, gate on): two calls -- gated + ungated diff.
+        call_count["n"] = 0
+        result = ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
+        ).execute()
+        assert result.status == "ok"
+        assert call_count["n"] == 2
+        assert Defaults.VALIDITY_GATING_ENABLED == prev
+
+    def test_gating_flag_restored_even_if_gated_diff_call_raises(self, monkeypatch):
+        """Risk 5's bounded exception: the flag flip around the
+        measurement-only ungated call is save/restore-in-a-finally, so a
+        raise from that second call still leaves the flag as main() set it."""
+        from src.popoto.fields.constants import Defaults
+        from src.popoto.recipes.context_assembler import ContextAssembler
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        orig_assemble = ContextAssembler.assemble
+        call_count = {"n": 0}
+
+        def flaky_assemble(self, *args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise RuntimeError("boom")
+            return orig_assemble(self, *args, **kwargs)
+
+        monkeypatch.setattr(ContextAssembler, "assemble", flaky_assemble)
+        prev = Defaults.VALIDITY_GATING_ENABLED
+        scenario = ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
+        )
+        result = scenario.execute()
+        assert result.status == "error"
+        assert Defaults.VALIDITY_GATING_ENABLED == prev

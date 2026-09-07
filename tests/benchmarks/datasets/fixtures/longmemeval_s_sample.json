@@ -154,5 +154,57 @@
         }
       ]
     ]
+  },
+  {
+    "question_id": "9f3c21ab",
+    "question_type": "knowledge-update",
+    "question": "Where do I currently work?",
+    "question_date": "2023/06/15 (Thu) 12:00",
+    "answer": "Acme Corp",
+    "answer_session_ids": [
+      "upd_tied"
+    ],
+    "haystack_dates": [
+      "2023/06/10 (Sat) 10:00",
+      "2023/06/01 (Thu) 09:00",
+      "2023/06/10 (Sat) 10:00"
+    ],
+    "haystack_session_ids": [
+      "upd_late",
+      "upd_early",
+      "upd_tied"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I work at Acme Corp. now. It's a great change of pace from my last job."
+        },
+        {
+          "role": "assistant",
+          "content": "Congratulations on the new role at Acme Corp! I hope it's going well so far."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I work at Beta Inc. as a project coordinator, and I've been there a couple of years now."
+        },
+        {
+          "role": "assistant",
+          "content": "That's great, a couple of years is a solid tenure. What does a typical day look like for you at Beta Inc.?"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I work at Acme Corp. still, just wanted to check in about some benefits questions."
+        },
+        {
+          "role": "assistant",
+          "content": "Happy to help with benefits questions for Acme Corp employees. What would you like to know?"
+        }
+      ]
+    ]
   }
 ]
