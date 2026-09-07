@@ -1,8 +1,11 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Medium
 tracking: https://github.com/tomcounsell/popoto/issues/556
+critique_verdict: READY TO BUILD (with concerns)
+revision_applied: true
+revision_applied_at: 2026-09-07T03:50:23Z
 ---
 
 # Round-tripping history-shaped state: six verdicts
@@ -200,6 +203,15 @@ Policy moves `"partial"` → `"carry"`.
 `$AT:{C}:access_log:{key}` is per-record and is a list of `str(time.time())`
 values capped at `_max_access_log` (`access_tracker.py:77`, default 100). Each
 element is a timestamp at which the record was genuinely read on the source.
+
+Popoto exposes no read API for the log — only `access_count` and `last_accessed`
+are public properties — which raises the fair question of whether carrying it
+earns its weight. It does: `tests/test_access_tracker.py:607-649` demonstrates
+the intended consumer, a spacing-effect priority score
+`B = ln(sum(t_j^-d))` computed directly from the raw timestamps via `LRANGE`.
+That score is only meaningful over a real access history, so a destination that
+loses the log loses the signal entirely rather than degrading. *(Raised and
+resolved by the Scope & Value critic.)*
 Copying it is fact-copying: tests 1 and 2 pass, and `import_state` already
 writes the sibling meta hash directly (`:142`), so extending it to `DEL` + `RPUSH`
 the log is the same move on the same precedent. The log is trimmed to the
@@ -377,13 +389,34 @@ correct degradation and needs no new machinery.
 
 ### Shape of each carrier
 
-All three follow the `ConfidenceField` precedent verbatim
-(`confidence_field.py:176-235`), including its two structural moves: resolve the
+All three follow the one structural move that makes the `ConfidenceField`
+precedent (`confidence_field.py:176-235`) work: **write with a raw Redis command
+rather than the field's own mutation API.**
+
+Only `CoOccurrenceField` also uses that precedent's *second* move — resolving the
 field instance from inside the classmethod via
-`model_instance._meta.fields.get(field_name)` plus an `isinstance` guard (needed
-because `max_edges` and friends are set in `__init__`, not as class attributes,
-so `cls` cannot reach them), and write with a raw Redis command rather than the
-field's own mutation API.
+`model_instance._meta.fields.get(field_name)` plus an `isinstance` guard. It
+needs it because `max_edges` is set in `__init__` (`co_occurrence_field.py:265`),
+not as a class attribute, so `cls` cannot reach it. `PredictionLedgerMixin` and
+`AccessTrackerMixin` are **model-level** mixins: their signatures drop
+`field_name` entirely and they are reached by the MRO pass, not the field pass,
+so `_meta.fields` is not part of their idiom at all — the existing
+`AccessTrackerMixin.export_state`/`import_state` (`access_tracker.py:95-143`)
+resolve state through `model_instance._at_key(...)` and never touch it. *(History
+& Consistency critic; the earlier "follows the precedent verbatim" phrasing
+described an idiom that is structurally impossible for two of the three.)*
+
+**Decode every value Redis returns before it reaches the export dict.** This is
+not optional bookkeeping — `to_jsonable` (`transfer/format.py:117-125`) routes a
+dict with `bytes` keys through the `__dictpairs__`/`__bytes__` tagged encoding
+rather than emitting a plain JSON object. It round-trips correctly through
+`from_jsonable`, so nothing *breaks*, but the exported file would silently stop
+matching the plain shape this plan promises and the docs describe. Every existing
+reader of these keys already decodes — `get_linked` (`co_occurrence_field.py:596-599`)
+and `on_delete` (`:724-727`) both do `m.decode("utf-8") if isinstance(m, bytes)
+else m`. Each carrier applies the same idiom: ZSET members and list elements to
+`str`, scores and timestamps to `float`, msgpack blobs via
+`msgpack.unpackb(raw, raw=False)`. *(Risk & Robustness critic.)*
 
 **`PredictionLedgerMixin`** (`fields/prediction_ledger.py`), model-level, so the
 signature drops `field_name`:
@@ -479,6 +512,7 @@ confirmed untouched rather than assumed.
 | `#554`-era export (no `access_log` key) imported by new code | Key absent → log restore skipped, counters restored as before. Explicitly tested. |
 | New export imported by `#554`-era code | Same `FORMAT_VERSION`; the extra dict key is ignored by the older `import_state`. No version bump needed. |
 | Carried CoOccurrence edge whose target record is absent | Edge lands, dangling. `get_linked` returns a pk with no record; `propagate` traverses an empty key and stops. Documented, not detected. |
+| **Mixed-outcome import of a symmetric CoOccurrence graph** | Under `on_conflict="skip"`, an already-present record never reaches `import_state` (`import_.py:235-237`), so its edge ZSET keeps the destination's own contents — while a *newly landing* partner overwrites its own set from the export. The result can be directionally inconsistent (B→A carried, A→B stale or absent) with nothing in the report signalling it, since both records are legitimate `skipped`/`landed` outcomes. This is strictly worse than the dangling-edge case, which at least leaves a visible empty key. **Mitigation is documentary, not code:** the export/import guide states that a symmetric graph must be imported with a uniform `on_conflict` policy — `"overwrite"` for a converging re-run, or a full re-export — and that `"skip"` over a partially-populated destination does not preserve edge symmetry. *(Risk & Robustness critic.)* |
 | Source `max_edges` > destination's | Truncated to destination cap, highest weights kept. |
 | Source weight > destination `CO_OCCURRENCE_WEIGHT_CAP` | Clamped. Preserves the `propagate` contraction invariant. |
 | PL entry unresolved (`resolved: False`) | Meta blob carried; no ZSET member written, because the source has none either. |
@@ -513,7 +547,13 @@ covers). Cases:
    `access_log` key; assert `import_state` restores counters and does not raise.
 9. **AccessTracker staged not carried** — stage a read without confirming;
    assert the destination staged key is absent.
-10. **Policy declarations** — assert the three carriers now report `"carry"`
+10. **Export wire shape** — parse the exported JSONL and assert the CoOccurrence
+    `edges` object and the AccessTracker `access_log` array are plain JSON
+    (string keys, float values), i.e. that no `__dictpairs__` / `__bytes__` tag
+    appears anywhere in the record line. This is the regression guard for the
+    decode requirement in Solution; without it a missing `.decode()` round-trips
+    correctly and the defect is invisible. *(Risk & Robustness critic.)*
+11. **Policy declarations** — assert the three carriers now report `"carry"`
     with `roundtrip_note is None`, and that the three permanent ones report
     `"partial"` with a note that does **not** contain `"see #556"`. This is the
     test that makes the docs claim enforceable.
@@ -602,9 +642,18 @@ full-suite-ordered run before the result is trusted.
 - **`docs/fields.md`** — the AccessTracker key table (`:1958-1965`) currently
   implies all three keys are equally transient; add that the confirmed log is
   carried by export/import and the staged list is not.
-- **`docs/features/co-occurrence-field.md`** — add the export/import section:
-  edges carried verbatim, clamped and truncated to destination config, dangling
-  edges under a filtered export.
+- **`docs/features/co-occurrence-field.md`** — currently has zero export/import
+  mentions, so this is the only place a user would learn the semantics. Add the
+  section covering all four: edges carried verbatim; clamped and truncated to
+  destination config; **import replaces the destination record's entire edge set
+  rather than merging it, so edges added via `link`/`strengthen` on the
+  destination after the export was taken are lost**; and dangling edges under a
+  filtered export. The overwrite sentence is a required deliverable of task 9,
+  not an internal note. *(Scope & Value critic.)*
+- **`docs/guides/export-import.md`** (second requirement) — the fidelity matrix
+  states the same overwrite behavior, and states that a symmetric CoOccurrence
+  graph must be imported under a uniform `on_conflict` policy (see the
+  mixed-outcome row in Failure paths).
 - **`CLAUDE.md`** — no change. The round-trip protocol is not one of the
   invariants that file tracks.
 
@@ -650,17 +699,58 @@ full-suite-ordered run before the result is trusted.
 10. Gates: ruff, black, mypy ratchet (state environment), narrow tests.
 11. Open PR with `Closes #556`; `/do-pr-review`; patch; `/do-docs`; `/do-merge`.
 
+## Critique
+
+FULL war room, 3/3 roster (Risk & Robustness, Scope & Value, History &
+Consistency), independent roster, all grounded. **Verdict: READY TO BUILD (with
+concerns)** — 0 blockers, 4 concerns, 0 nits. Structural checks all PASS: every
+one of the 19 file paths the plan cites exists, tasks 1-11 are gapless with no
+dependency references, every Success Criterion maps to a task, and no No-Go or
+Rabbit Hole appears in the Solution.
+
+All four concerns were applied in this revision:
+
+| # | Critic | Concern | Applied at |
+|---|---|---|---|
+| 1 | Risk & Robustness | ZSET members / list elements / msgpack blobs come back as `bytes`; undecoded, `to_jsonable` silently reroutes them through the `__dictpairs__`/`__bytes__` tagged encoding instead of plain JSON | Solution ("Decode every value…"), Test impact case 10 |
+| 2 | Risk & Robustness | A mixed `skip`/`overwrite` import can leave a symmetric CoOccurrence graph directionally inconsistent with nothing in the report signalling it | Failure paths (new row), Documentation |
+| 3 | Scope & Value | The wholesale-overwrite of destination edges was an internal note, not a docs deliverable, in the one file where a user would learn it | Documentation (both bullets, task 9) |
+| 4 | History & Consistency | "Follows the `ConfidenceField` precedent verbatim" describes an idiom structurally impossible for the two model-level mixins | Solution ("Shape of each carrier") |
+
+Three checks the History & Consistency critic ran came back clean and are worth
+recording because each was a claim this plan asserted: `FORMAT_VERSION` needs no
+bump (`format.py:36` gates manifest/record *shape*, and the carriers only add
+optional keys inside existing payloads); the Verdict summary table agrees with
+every per-subsystem prose verdict; and `tests/test_transfer_roundtrip.py` holds
+no hardcoded list of `"partial"` fields — `TestRoundtripPolicyDeclared`
+(`:700-796`) discovers subclasses dynamically, so the three `"partial"` →
+`"carry"` flips are picked up automatically, and it will additionally enforce
+that each new `"carry"` field implements *both* halves.
+
+Per the lane's one-round critique cap, no re-critique is run; the concerns are
+accepted on the record as resolved above and the build proceeds.
+
 ## Open Questions
 
-1. **Is "documented permanent limitation" acceptable for three of six?** The
-   issue explicitly authorizes it, and the reasoning above argues each is not
-   just unavailable but *wrong* to carry. Flagging it because it is the plan's
-   central judgment call.
-2. **No fourth `roundtrip_policy` value** — the TODO-vs-contract distinction
-   lives in note text plus the docs matrix. If a machine-readable flag is wanted
-   (e.g. `roundtrip_permanent: bool`), say so now; it is cheap before build and
-   expensive after, since it touches the manifest and the report.
-3. **CoOccurrence import overwrites the destination's existing edges.** Chosen
-   for consistency with `on_conflict="overwrite"` replacing the record wholesale.
-   Merging (union, max weight) is the alternative. Confirm the overwrite reading.
+Both remaining questions are recorded for the reviewer rather than blocking:
+each has a stated default that the build proceeds on. Question 3 is resolved.
+
+1. **Is "documented permanent limitation" acceptable for three of six?**
+   *Proceeding on: yes.* The issue explicitly authorizes it, and the reasoning
+   above argues each of the three is not merely unavailable but *wrong* to carry
+   — EventStream would fabricate a mutation history, FrequencySketch would
+   double-count, ExistenceFilter would import the source's accumulated error.
+   Flagged because it is the plan's central judgment call.
+2. **No fourth `roundtrip_policy` value.** *Proceeding on: three values.* The
+   TODO-vs-contract distinction lives in note text plus the docs matrix. If a
+   machine-readable flag is wanted (e.g. `roundtrip_permanent: bool`), it is
+   cheap to add before build and expensive after, since it touches the manifest
+   and the report.
+3. ~~**CoOccurrence import overwrites the destination's existing edges.**~~
+   **Resolved: overwrite.** Consistent with `on_conflict="overwrite"` replacing
+   the record wholesale, and with `ConfidenceField.import_state`, which
+   deliberately overwrites for the same reason (`confidence_field.py:224-230`).
+   Merging (union, max weight) was the alternative; it was rejected because it
+   would leave the destination holding a graph that matches neither side. The
+   behavior is now a documented deliverable rather than an internal note.
 
