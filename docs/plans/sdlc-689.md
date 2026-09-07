@@ -201,23 +201,205 @@ repeat.
 
 ## Spike Results
 
-_placeholder_
+All five spikes were run at plan time on this machine. Environment, because
+CLAUDE.md requires a count to carry one: macOS 25.6 (APFS), Python 3.12,
+setuptools 84.0.0 and `build` in a throwaway venv, no Redis involved (nothing
+here executes popoto).
+
+### spike-1: does the *published* 1.9.0 sdist really contain tests and no conftest?
+- **Assumption**: "the published 1.9.0 sdist contains all 141 `tests/test_*.py`
+  files but **not** `tests/conftest.py`"
+- **Method**: prototype (download from PyPI, enumerate `tarfile` members)
+- **Finding**: **Confirmed exactly.** 264 members total. Top-level counts:
+  `tests` 141, `src` 117, plus `LICENSE`, `PKG-INFO`, `README.md`,
+  `pyproject.toml`, `setup.cfg` — the seven entries `EXPECTED_TOP_LEVEL` names.
+  The 141 is 140 `tests/test_*.py` files plus the `tests/` directory member.
+  Zero members matching `conftest`.
+- **Confidence**: high
+- **Impact on plan**: the issue's premise is exact; no re-scoping needed.
+
+### spike-2: does the defect still reproduce on current `main`?
+- **Assumption**: "nothing since the issue was filed has changed sdist membership"
+- **Method**: prototype (`python -m build --sdist` against baseline `a9d858fc`)
+- **Finding**: **Reproduces.** 297 members; `tests` 167, `src` 124. Still no
+  `conftest.py`, no `tests/__init__.py`, no `tests/all_tests.py`, and none of
+  `tests/benchmarks/`, `tests/recipes/`, `tests/embeddings/`, `tests/fixtures/`.
+  The count moved (167 vs 141) only because tests were added to the repo.
+  **Build gotcha worth recording:** `python -m build` cannot be run from the repo
+  root with the repo's own venv, because the untracked `build/` directory shadows
+  the `build` module (`No module named build.__main__`). Build from a different
+  cwd passing the source dir, in a venv that has `build` installed.
+- **Confidence**: high
+- **Impact on plan**: disposition "still broken"; no chance the parent PR fixed it.
+
+### spike-3: is there a `[tool.setuptools]` key that controls sdist membership?
+- **Assumption**: the issue's preferred route — "Configuring membership through
+  `[tool.setuptools]` in `pyproject.toml` avoids that trade entirely"
+- **Method**: code-read (enumerate the accepted keys in setuptools 84.0.0's
+  `setuptools.config._validate_pyproject` schema) + web research
+- **Finding**: **Assumption is false.** The complete `[tool.setuptools]` key set
+  is: `cmdclass`, `data-files`, `dynamic`, `eager-resources`,
+  `exclude-package-data`, `ext-modules`, `include-package-data`, `license-files`,
+  `namespace-packages`, `obsoletes`, `package-data`, `package-dir`, `packages`,
+  `platforms`, `provides`, `py-modules`, `script-files`, `zip-safe`. Every one
+  of them feeds *package/wheel* content or metadata. None reaches
+  `sdist.add_defaults`. `packages.find.exclude` is the one people reach for and
+  it governs discovery, not the sdist (pypa/setuptools#3817). The one
+  theoretical exception, `cmdclass`, is rejected in Rabbit Holes.
+- **Confidence**: high
+- **Impact on plan**: **this is the finding that selects the solution.** The
+  issue asks for a route that does not exist; the plan adopts `MANIFEST.in` and
+  documents why, rather than silently doing something the issue advised against.
+
+### spike-4: does a one-line `MANIFEST.in` actually remove `tests/`?
+- **Assumption**: "`prune tests` in `MANIFEST.in` excludes the directory from
+  the sdist and changes nothing else"
+- **Method**: prototype, in an isolated `git clone` of the repo (not the working
+  tree), so no repo pollution
+- **Finding**: **Works, one directive, no side effects.** With
+  `MANIFEST.in` containing only `prune tests`: 131 members, top-level
+  `src` 124, `LICENSE`, `MANIFEST.in`, `PKG-INFO`, `README.md`, `pyproject.toml`,
+  `setup.cfg`. `tests` gone entirely; `src` membership byte-for-byte the same
+  count as the unpruned build. `MANIFEST.in` itself ships (setuptools appends
+  `self.template` to the file list) — so it *replaces* `tests` in the top-level
+  set rather than shrinking it, and the set stays at seven entries.
+  Running the real checker on that tarball:
+  `WARNING: 'MANIFEST.in': unexpected top-level entry` then
+  `OK: ... (131 members, 1 warning(s))`, exit 0 — confirming both that the
+  warning fires and that it is non-blocking, i.e. `EXPECTED_TOP_LEVEL` must be
+  updated in the same PR or every future release prints a spurious warning.
+- **Confidence**: high
+- **Impact on plan**: fixes the exact `MANIFEST.in` body and makes the
+  `EXPECTED_TOP_LEVEL` edit a required task rather than a nicety.
+
+### spike-5: *why* does `tests/` ship at all, and is a local build a valid oracle?
+- **Assumption**: "the default membership rule is stable, so a local build tells
+  us what CI will publish"
+- **Method**: code-read of setuptools 84.0.0
+  `setuptools/_distutils/command/sdist.py` and
+  `setuptools/command/egg_info.py::manifest_maker`
+- **Finding**: two distinct mechanisms, and only one of them is the defect.
+  1. `distutils sdist._add_defaults_optional` globs
+     `['tests/test*.py', 'test/test*.py', 'setup.cfg']`. That is the defect: a
+     non-recursive filename glob that `conftest.py` cannot match.
+  2. `manifest_maker.add_defaults` ends with
+     `elif os.path.exists(self.manifest): self.read_manifest()`, where
+     `self.manifest` is `src/popoto.egg-info/SOURCES.txt`. **A stale
+     `SOURCES.txt` left in a developer's working tree is re-read and its entries
+     re-added to a new sdist.** `src/popoto.egg-info/` is gitignored, so CI's
+     `actions/checkout` never has one and CI builds are clean, but a local build
+     can carry files forward from a previous build. The repo's current
+     `SOURCES.txt` lists 166 `tests/` entries.
+  This is why spike-4 was run in a fresh `git clone` and not in the working tree.
+- **Confidence**: high
+- **Impact on plan**: adds a hard constraint to the Verification section — any
+  sdist reproduced by hand must be built from a clean checkout, or the result is
+  not evidence. It also means `prune tests` should do double duty: `MANIFEST.in`
+  is applied by `manifest_maker.run()`'s `read_template()`, which runs *after*
+  `add_defaults()`, so the directive removes both mechanism 1's glob matches and
+  mechanism 2's stale `SOURCES.txt` re-adds. That second half is read from the
+  source, not measured — spike-4 ran in a fresh clone, which by construction has
+  no stale `SOURCES.txt`. A build task verifies it in a dirty tree.
 
 ## Data Flow
 
-_placeholder_
+The "data" here is a file list moving from the repository to PyPI. Tracing it is
+what makes clear where an intervention can and cannot be placed.
+
+1. **Entry point**: a `v*` tag push triggers `.github/workflows/release.yml`.
+2. **`actions/checkout@v7`**: a clean tree — no `src/popoto.egg-info/`, no
+   `build/`, no `.venv`. This is why CI membership is deterministic and a local
+   build is not (spike-5).
+3. **`python -m build`**: resolves an isolated build env against
+   `[build-system] requires = ["setuptools>=83", "wheel"]`, then calls the
+   setuptools backend.
+4. **`egg_info` → `manifest_maker.run()`**: builds the file list.
+   `add_defaults()` adds `src/**/*.py` (from `build_py`, driven by
+   `setup.cfg`'s `packages = find:` / `where = src`), the standards
+   (`README.md`, `LICENSE`, `setup.cfg`, `pyproject.toml`), the egg-info
+   directory — **and `tests/test*.py` via `_add_defaults_optional`. This is the
+   only step where `tests/` enters.** Then `read_template()` applies
+   `MANIFEST.in` if one exists — **this is the single point where the fix
+   lands** — then `add_license_files()`, `_add_referenced_files()`,
+   `prune_file_list()`, and the list is written to
+   `src/popoto.egg-info/SOURCES.txt`.
+5. **`sdist.make_distribution()`**: copies the file list into
+   `popoto-<version>/` and tars it into `dist/`.
+6. **`scripts/check_sdist_contents.py dist/*.tar.gz`**: reads the tar member
+   list, hard-fails on non-ASCII / dotfile / absolute-or-`..` / link members,
+   warns on a top-level entry outside `EXPECTED_TOP_LEVEL`. **Observes; never
+   changes membership.** After the fix its known set must read
+   `MANIFEST.in` where it currently reads `tests`.
+7. **Output**: `pypa/gh-action-pypi-publish` uploads `dist/*` to PyPI.
+
+The wheel path is disjoint and unaffected: `bdist_wheel` takes its contents from
+`build_py`/package discovery, which is already `where = src`, so `tests/` has
+never been in the wheel and nothing in this plan touches that.
 
 ## Why Previous Fixes Failed
 
-_placeholder_
+No previous fix targeted sdist membership, so there is no failure history to
+analyze. One adjacent near-miss is worth recording, because it is the reason
+this issue exists as a separate item rather than as a line in #678:
+
+| Prior Fix | What It Did | Why It Was Incomplete (by design) |
+|-----------|-------------|-----------------------------------|
+| PR #691 (#678) | Raised the build floor to `setuptools>=83`; added `scripts/check_sdist_contents.py` as a *member-list assertion* run before publish | Scoped deliberately to asserting what the sdist contains, not to deciding what it should contain. Its `EXPECTED_TOP_LEVEL` therefore *records* `tests` as expected — it froze the defect as the baseline instead of flagging it. That is correct behavior for an assertion written against the shipped artifact, and it is exactly why the issue says "out of scope there". |
+
+**Root cause pattern:** an observability gate calibrated against a broken
+baseline blesses the baseline. Nothing here failed; the ordering just means the
+membership decision has to be made now, and `EXPECTED_TOP_LEVEL` re-calibrated
+when it is.
 
 ## Architectural Impact
 
-_placeholder_
+- **New dependencies**: none. No runtime dependency, no build dependency, no new
+  extra. `MANIFEST.in` is read by the setuptools already required.
+- **Interface changes**: the *published sdist's* contents change — 141 fewer
+  members in 1.9.0 terms, ~166 fewer at current `main`. Nothing importable
+  changes: `tests/` was never a package in the sdist (`tests/__init__.py` never
+  shipped) and never installed by any install path.
+- **Coupling**: adds one coupling that must be maintained by hand —
+  `MANIFEST.in`'s `prune tests` and `check_sdist_contents.py`'s
+  `EXPECTED_TOP_LEVEL` must agree. This is the same hand-maintained shape
+  CLAUDE.md already criticizes in `check_lock_imports.py`, and the mitigation is
+  the same: a test that names the correspondence (see Test Impact).
+- **Data ownership**: **this is the meaningful change.** Today, sdist membership
+  is owned by a distutils default nobody in this repo chose. After this change,
+  it is owned by a file in the repo. The `check_sdist_contents.py` docstring's
+  reason for the warning-only severity — "there is no machine-readable
+  declaration of intended sdist membership to parse against, because a
+  `MANIFEST.in` *would* be that declaration" — **stops being true**, and the
+  prose must be updated even though the severity split itself deliberately does
+  not change (see No-Gos).
+- **Reversibility**: total. Deleting `MANIFEST.in` restores the old behavior
+  exactly; there is no state, no migration, and no consumer that can have
+  depended on it between releases.
 
 ## Appetite
 
-_placeholder_
+**Size:** Small
+
+**Team:** Solo dev, code reviewer
+
+**Interactions:**
+- PM check-ins: 1-2 (one decision point: ship-nothing vs. ship-runnable — see
+  Open Questions)
+- Review rounds: 1
+
+The code change is three lines across three files. The appetite is spent almost
+entirely on the prose that must stay true (`CLAUDE.md`, `CHANGELOG.md`, the
+`check_sdist_contents.py` docstring, and the #678 plan's superseded finding) and
+on not accidentally flipping the warning-only severity that CLAUDE.md explicitly
+warns future editors against "simplifying away".
+
+## Prerequisites
+
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| `build` frontend available in a venv that is not the repo root's | `python -c "import build"` run from a directory other than the repo root | Reproducing the sdist. The repo root's untracked `build/` directory shadows the module (spike-2). |
+| Network access to PyPI | `curl -sfI https://pypi.org/pypi/popoto/1.9.0/json > /dev/null` | Only needed to re-verify the published-artifact claim; not needed to build or test. |
+| Redis/Valkey on `localhost:6379` | `redis-cli ping` | Required by the popoto suite generally, not by any test this plan adds. Use `POPOTO_TEST_DB=9` for this lane. |
 
 ## Prerequisites
 
