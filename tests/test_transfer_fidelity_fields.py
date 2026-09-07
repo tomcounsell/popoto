@@ -31,11 +31,13 @@ Everything runs against live Redis. The only stub is the deterministic
 embedding provider the existing embedding tests already use -- Redis itself is
 never mocked.
 
-Known pre-existing bug (deliberately NOT asserted here, deferred to #556):
-``CyclicDecayField.on_save`` unconditionally overwrites learned per-member
-cycle amplitudes with the class-level defaults, so any ordinary save discards
-what ``strengthen_cycle`` / ``weaken_cycle`` accumulated. The import path only
-survives it because carried state is restored after the save.
+Fixed in #679: ``CyclicDecayField.on_save`` used to overwrite learned
+per-member cycle amplitudes with the class-level defaults, so any ordinary save
+discarded what ``strengthen_cycle`` / ``weaken_cycle`` accumulated, and the
+import path survived only because carried state is restored after the save.
+``on_save`` now preserves stored amplitudes; the import path still restores
+after the save, because an imported record has nothing stored yet. Direct
+coverage of the save-side behavior lives in ``test_cyclic_decay_field.py``.
 """
 
 import io

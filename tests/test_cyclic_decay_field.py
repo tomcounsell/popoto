@@ -1274,6 +1274,394 @@ class TestCyclicTieOrderingWithConfidence:
         assert [r.db_key.redis_key for r in results] == expected[:3]
 
 
+# --- Learned amplitude preservation (#679) ---
+
+
+class CyclicLearned(popoto.Model):
+    name = popoto.UniqueKeyField()
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.DAILY, 2.0, 0)],
+    )
+
+
+class CyclicLearnedMulti(popoto.Model):
+    name = popoto.UniqueKeyField()
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[
+            (TemporalPeriod.DAILY, 2.0, 0),
+            (TemporalPeriod.WEEKLY, 3.0, 0),
+        ],
+    )
+
+
+class CyclicLearnedDup(popoto.Model):
+    name = popoto.UniqueKeyField()
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[
+            (TemporalPeriod.DAILY, 1.0, 0),
+            (TemporalPeriod.DAILY, 4.0, 100),
+        ],
+    )
+
+
+def _read_cycles(model_class, item):
+    """Decode the stored cycles entry for one member, or None."""
+    field = model_class._meta.fields["relevance"]
+    key = field.get_cycles_hash_key(item, "relevance")
+    raw = popoto.get_redis().hget(key, item.db_key.redis_key)
+    return msgpack.unpackb(raw, raw=False) if raw else None
+
+
+def _write_cycles_raw(model_class, item, payload):
+    """Write raw bytes into the member's cycles entry."""
+    field = model_class._meta.fields["relevance"]
+    key = field.get_cycles_hash_key(item, "relevance")
+    popoto.get_redis().hset(key, item.db_key.redis_key, payload)
+
+
+class TestLearnedAmplitudePreservedOnSave:
+    """on_save preserves learned amplitudes; period/phase stay declarative.
+
+    Regression cover for #679: ``on_save`` used to rewrite the member's cycles
+    entry from the class-level declaration on every save, silently erasing
+    whatever ``strengthen_cycle`` / ``weaken_cycle`` had accumulated.
+    """
+
+    def setup_method(self):
+        CyclicLearned.delete_all()
+        CyclicLearnedMulti.delete_all()
+        CyclicLearnedDup.delete_all()
+        CyclicItem.delete_all()
+
+    def teardown_method(self):
+        CyclicLearned.delete_all()
+        CyclicLearnedMulti.delete_all()
+        CyclicLearnedDup.delete_all()
+        CyclicItem.delete_all()
+
+    # TC1 — the defect itself.
+    def test_strengthened_amplitude_survives_resave(self):
+        item = CyclicLearned.create(name="tc1")
+        assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
+
+        item.strengthen_cycle("relevance", factor=1.5)
+        assert _read_cycles(CyclicLearned, item)[0][1] == pytest.approx(3.0)
+
+        item.save()
+
+        stored = _read_cycles(CyclicLearned, item)
+        assert stored[0][1] == pytest.approx(
+            3.0
+        ), "save() reset the learned amplitude to the class default — #679"
+
+    def test_weakened_amplitude_survives_resave(self):
+        item = CyclicLearned.create(name="tc1b")
+        item.weaken_cycle("relevance", factor=0.5)
+        assert _read_cycles(CyclicLearned, item)[0][1] == pytest.approx(1.0)
+
+        item.save()
+        assert _read_cycles(CyclicLearned, item)[0][1] == pytest.approx(1.0)
+
+    def test_repeated_saves_do_not_drift(self):
+        item = CyclicLearned.create(name="tc1c")
+        item.strengthen_cycle("relevance", factor=2.0)
+        for _ in range(5):
+            item.save()
+        assert _read_cycles(CyclicLearned, item)[0][1] == pytest.approx(4.0)
+
+    # TC2/TC3 — nothing learned yet: declared defaults still win.
+    def test_first_save_writes_declared_amplitudes(self):
+        item = CyclicLearnedMulti.create(name="tc3")
+        stored = _read_cycles(CyclicLearnedMulti, item)
+        assert [c[1] for c in stored] == [2.0, 3.0]
+
+    def test_second_save_without_learning_keeps_declared(self):
+        item = CyclicLearnedMulti.create(name="tc3b")
+        item.save()
+        stored = _read_cycles(CyclicLearnedMulti, item)
+        assert [c[1] for c in stored] == [2.0, 3.0]
+
+    # TC4 — declaration is authoritative about WHICH cycles exist.
+    def test_cycle_added_to_declaration_uses_declared_amplitude(self):
+        item = CyclicLearned.create(name="tc4a")
+        item.strengthen_cycle("relevance", factor=3.0)  # DAILY -> 6.0
+
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [
+                (TemporalPeriod.DAILY, 2.0, 0),
+                (TemporalPeriod.WEEKLY, 9.0, 0),
+            ]
+            item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearned, item)
+        by_period = {c[0]: c[1] for c in stored}
+        assert by_period[TemporalPeriod.DAILY] == pytest.approx(6.0)
+        assert by_period[TemporalPeriod.WEEKLY] == pytest.approx(9.0)
+
+    def test_cycle_removed_from_declaration_is_dropped(self):
+        item = CyclicLearnedMulti.create(name="tc4b")
+        item.strengthen_cycle("relevance", factor=2.0)
+
+        field = CyclicLearnedMulti._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 2.0, 0)]
+            item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearnedMulti, item)
+        assert [c[0] for c in stored] == [TemporalPeriod.DAILY]
+        assert stored[0][1] == pytest.approx(4.0)
+
+    # TC5 — declared parameters refresh; learned amplitude does not.
+    def test_phase_refreshes_from_declaration_while_amplitude_persists(self):
+        item = CyclicLearned.create(name="tc5")
+        item.strengthen_cycle("relevance", factor=2.0)
+
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 2.0, 777)]
+            item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[2] == 777, "phase is declarative and must refresh"
+        assert stored[1] == pytest.approx(4.0), "amplitude is learned"
+
+    def test_duplicate_periods_pair_fifo_and_keep_order(self):
+        item = CyclicLearnedDup.create(name="tc5b")
+        stored = _read_cycles(CyclicLearnedDup, item)
+        assert [c[1] for c in stored] == [1.0, 4.0]
+
+        item.strengthen_cycle("relevance", factor=2.0)
+        item.save()
+
+        stored = _read_cycles(CyclicLearnedDup, item)
+        assert [c[0] for c in stored] == [TemporalPeriod.DAILY] * 2
+        assert [c[1] for c in stored] == [pytest.approx(2.0), pytest.approx(8.0)]
+        assert [c[2] for c in stored] == [0, 100]
+
+    # TC6 — the empty-cycles branch is unchanged.
+    def test_empty_cycles_still_deletes_stale_entry(self):
+        item = CyclicItem.create(name="tc6")
+        field = CyclicItem._meta.fields["relevance"]
+        key = field.get_cycles_hash_key(item, "relevance")
+        popoto.get_redis().hset(
+            key, item.db_key.redis_key, msgpack.packb([[86400, 5.0, 0]])
+        )
+
+        item.save()
+
+        assert popoto.get_redis().hget(key, item.db_key.redis_key) is None
+
+    # TC7 — corrupt stored state degrades to declared defaults, loudly.
+    def test_corrupt_stored_entry_falls_back_to_declared(self, caplog):
+        item = CyclicLearned.create(name="tc7")
+        _write_cycles_raw(CyclicLearned, item, b"\xff\xfe not msgpack \x00")
+
+        with caplog.at_level("WARNING", logger="POPOTO.CyclicDecayField"):
+            item.save()  # must not raise
+
+        stored = _read_cycles(CyclicLearned, item)
+        assert stored[0][1] == 2.0
+        assert any("Could not decode cycles" in r.message for r in caplog.records)
+
+    def test_stored_entry_of_wrong_shape_falls_back_to_declared(self):
+        item = CyclicLearned.create(name="tc7b")
+        # Valid msgpack, wrong shape — a dict where a list of cycles belongs.
+        _write_cycles_raw(CyclicLearned, item, msgpack.packb({"nope": 1}))
+
+        item.save()
+
+        assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
+
+    def test_unhashable_period_falls_back_instead_of_raising(self, caplog):
+        """A payload can decode cleanly and still be unusable.
+
+        The period slot here is itself a list, so keying the merge dict by it
+        raises ``TypeError: unhashable type: 'list'``. That is a decode-time
+        failure in every sense that matters, so it must take the same
+        warn-and-fall-back path — not escape ``save()``. Distinguishes a guard
+        around the decode alone from one around decode + normalization.
+        """
+        item = CyclicLearned.create(name="tc7c")
+        _write_cycles_raw(
+            CyclicLearned,
+            item,
+            msgpack.packb([[[TemporalPeriod.DAILY], 9.0, 0]], use_bin_type=True),
+        )
+
+        with caplog.at_level("WARNING", logger="POPOTO.CyclicDecayField"):
+            item.save()  # must not raise
+
+        assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
+        assert any("Could not decode cycles" in r.message for r in caplog.records)
+
+    def test_partial_merge_discarded_when_a_later_entry_is_malformed(self):
+        """A half-read payload contributes nothing, not something.
+
+        The first entry is well-formed and the second is not. Carrying the
+        first while the second raises would apply learned state to some
+        cycles and declared defaults to others — a silently mixed record.
+        Both declared cycles must fall back together.
+        """
+        item = CyclicLearnedMulti.create(name="tc7d")
+        _write_cycles_raw(
+            CyclicLearnedMulti,
+            item,
+            msgpack.packb(
+                [
+                    [TemporalPeriod.DAILY, 7.0, 0],
+                    [[TemporalPeriod.WEEKLY], 8.0, 0],
+                ],
+                use_bin_type=True,
+            ),
+        )
+
+        item.save()  # must not raise
+
+        stored = {c[0]: c[1] for c in _read_cycles(CyclicLearnedMulti, item)}
+        assert stored[TemporalPeriod.DAILY] == 2.0
+        assert stored[TemporalPeriod.WEEKLY] == 3.0
+
+    # TC8 — a pipelined save preserves too.
+    def test_pipelined_save_preserves_learned_amplitude(self):
+        item = CyclicLearned.create(name="tc8")
+        item.strengthen_cycle("relevance", factor=2.5)
+
+        pipe = popoto.get_redis().pipeline()
+        item.save(pipeline=pipe)
+        pipe.execute()
+
+        assert _read_cycles(CyclicLearned, item)[0][1] == pytest.approx(5.0)
+
+    # TC9 — the learned value is observable through ranking, not just bytes.
+    def test_learned_amplitude_changes_ranking(self):
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        # Pin phase to now so cos(2*pi*(now - phase)/period) ~= 1 and a larger
+        # amplitude deterministically means a larger effective score.
+        phase = int(time.time())
+        # Names are chosen so the equal-score tie-break (ascending key) puts the
+        # strengthened item LAST. If the learned amplitude were lost, the two
+        # scores would tie and "tc9_aaa_weak" would win — so this assertion
+        # cannot be satisfied by the tie-break alone.
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 1.0, phase)]
+            weak = CyclicLearned.create(name="tc9_aaa_weak")
+            strong = CyclicLearned.create(name="tc9_zzz_strong")
+
+            strong.strengthen_cycle("relevance", factor=50.0)
+            strong.save()
+
+            results = CyclicLearned.query.top_by_decay("relevance", n=2)
+        finally:
+            field.cycles = original
+
+        assert [r.name for r in results] == [
+            "tc9_zzz_strong",
+            "tc9_aaa_weak",
+        ], "learned amplitude did not reach the Lua scoring path"
+        assert _read_cycles(CyclicLearned, weak)[0][1] == 1.0
+
+    def test_reordered_declaration_pairs_by_period_not_position(self):
+        """Stored amplitudes follow their period, not their slot index.
+
+        Distinguishes period-keyed matching from naive positional matching:
+        the two survive every other test in this class identically.
+        """
+        item = CyclicLearnedMulti.create(name="tc5c")
+        item.strengthen_cycle("relevance", factor=2.0)
+        # stored is now DAILY=4.0, WEEKLY=6.0, in that order
+        assert [c[1] for c in _read_cycles(CyclicLearnedMulti, item)] == [4.0, 6.0]
+
+        field = CyclicLearnedMulti._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            # Same two cycles, declared in the opposite order.
+            field.cycles = [
+                (TemporalPeriod.WEEKLY, 3.0, 0),
+                (TemporalPeriod.DAILY, 2.0, 0),
+            ]
+            item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearnedMulti, item)
+        assert [c[0] for c in stored] == [TemporalPeriod.WEEKLY, TemporalPeriod.DAILY]
+        # Positional matching would give [4.0, 6.0] here; period matching gives
+        # each period back its own learned amplitude.
+        assert [c[1] for c in stored] == [pytest.approx(6.0), pytest.approx(4.0)]
+
+    # TC10 — the cost claim in the plan's Risks table, enforced.
+    def test_no_cycles_read_when_field_declares_no_cycles(self, monkeypatch):
+        """Implementation-pinning: update deliberately on refactor.
+
+        Asserts the ``if field.cycles:`` gate in ``on_save`` — a pressure-only
+        CyclicDecayField must not pay a cycles HGET. Any refactor that keeps
+        the cost contract but moves the read may legitimately rewrite this.
+        """
+        from src.popoto.fields import cyclic_decay_field as cdf
+
+        real = cdf.get_REDIS_DB()
+        calls = []
+
+        class CountingClient:
+            def __getattr__(self, attr):
+                return getattr(real, attr)
+
+            def hget(self, key, member):
+                calls.append(key)
+                return real.hget(key, member)
+
+        monkeypatch.setattr(cdf, "get_REDIS_DB", lambda: CountingClient())
+
+        CyclicItem.create(name="tc10").save()
+        assert calls == [], f"unexpected cycles read for a cycles-less field: {calls}"
+
+        monkeypatch.undo()
+        item = CyclicLearned.create(name="tc10b")
+        monkeypatch.setattr(cdf, "get_REDIS_DB", lambda: CountingClient())
+        item.save()
+        assert len(calls) == 1, "a declared-cycles field must read exactly once"
+
+    # TC11 — Decision 2: a learned 0.0 is preserved, and is recoverable.
+    def test_zero_amplitude_is_preserved_not_reset(self):
+        item = CyclicLearned.create(name="tc11")
+        item.weaken_cycle("relevance", factor=0.0001)  # snaps below 0.01 -> 0.0
+        assert _read_cycles(CyclicLearned, item)[0][1] == 0.0
+
+        item.save()
+
+        assert (
+            _read_cycles(CyclicLearned, item)[0][1] == 0.0
+        ), "a deliberately silenced cycle must not be resurrected by a save"
+
+    def test_deleting_hash_member_restores_declared_defaults(self):
+        item = CyclicLearned.create(name="tc11b")
+        item.weaken_cycle("relevance", factor=0.0001)
+        assert _read_cycles(CyclicLearned, item)[0][1] == 0.0
+
+        # The documented recovery path: drop the member, then re-save.
+        field = CyclicLearned._meta.fields["relevance"]
+        key = field.get_cycles_hash_key(item, "relevance")
+        popoto.get_redis().hdel(key, item.db_key.redis_key)
+
+        item.save()
+
+        assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
+
+
 # --- Export tests ---
 
 

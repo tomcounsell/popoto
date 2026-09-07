@@ -40,7 +40,7 @@ import msgpack
 import redis
 
 from ..exceptions import ModelException
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB, run_lua
 from .decaying_sorted_field import MODULATION_DISABLED, DecayingSortedField
 
 logger = logging.getLogger("POPOTO.CyclicDecayField")
@@ -316,17 +316,19 @@ class CyclicDecayField(DecayingSortedField):
     def import_state(cls, model_instance, field_name, state, **kwargs):
         """Restore per-member cycles and pressure companion data after import.
 
-        Ordering note -- this looks wrong but is correct:
-        ``CyclicDecayField.on_save`` UNCONDITIONALLY overwrites the cycles
-        hash entry with the class-level ``field.cycles`` defaults, and seeds
-        ``pressure.last_resolved`` to ``now`` whenever the entry is fresh.
-        The transfer driver calls ``import_state`` *after* ``save()``, so
-        these writes land on top of what ``on_save`` just clobbered and the
-        learned amplitudes / accumulated pressure age survive the round trip.
-        Inverting the order would silently discard both.
+        Ordering note -- the transfer driver calls ``import_state`` *after*
+        ``save()``, and that is still required, though since #679 the reason
+        has narrowed.
 
-        (The unconditional clobber in ``on_save`` is a known pre-existing bug
-        on ordinary saves -- deliberately not fixed here; see #679.)
+        ``on_save`` no longer clobbers learned amplitudes; it preserves
+        whatever is already stored for the member. But on an import the record
+        is *new*, so there is nothing stored yet and ``on_save`` legitimately
+        writes the class-level defaults -- and it seeds
+        ``pressure.last_resolved`` to ``now`` whenever the entry is fresh,
+        which is exactly the value the import must replace. So these writes
+        still have to land on top of ``on_save``'s, and inverting the order
+        would still silently discard both the imported amplitudes and the
+        accumulated pressure age.
         """
         if not state:
             return None
@@ -511,9 +513,27 @@ class CyclicDecayField(DecayingSortedField):
     def on_save(cls, model_instance, field_name, field_value, pipeline=None, **kwargs):
         """Store timestamp (parent) then store cycle/pressure companion data.
 
-        On first save (no existing entry in pressure hash), writes the full
-        pressure dict with last_resolved=now. On subsequent saves, only
-        updates the rate — never overwrites last_resolved.
+        Both companion hashes follow the same rule: **declared parameters are
+        refreshed from the field; learned state is preserved.**
+
+        For cycles, ``period`` and ``phase`` are declarative and re-read from
+        ``field.cycles`` on every save, while ``amplitude`` is learned (mutated
+        by ``strengthen_cycle`` / ``weaken_cycle``) and carried over from the
+        stored entry when one exists. Stored cycles are matched to declared
+        cycles by period, FIFO within duplicate periods; a declared period with
+        nothing stored takes the declared amplitude, and a stored period no
+        longer declared is dropped. Before #679 this branch overwrote the whole
+        entry with the declared defaults, silently erasing everything the
+        strengthen/weaken calls had accumulated.
+
+        For pressure, ``rate`` is declarative and ``last_resolved`` is learned:
+        on first save (no existing entry) the full dict is written with
+        ``last_resolved=now``; on subsequent saves only the rate is updated.
+
+        Note that an amplitude adjustment queued on the *same* pipeline as this
+        save is still lost, because ``_adjust_cycle_amplitudes`` writes through
+        the pipeline while both it and this method read directly. Queue
+        ``save()`` first when sharing one pipeline.
         """
         # Call parent to store timestamp in sorted set
         result = super().on_save(
@@ -528,18 +548,61 @@ class CyclicDecayField(DecayingSortedField):
         cycles_hash_key = field.get_cycles_hash_key(model_instance, field_name)
         pressure_hash_key = field.get_pressure_hash_key(model_instance, field_name)
 
+        # Cycle periods and phases are declarative; amplitudes are LEARNED
+        # (mutated by strengthen_cycle / weaken_cycle) and must survive an
+        # ordinary save. Mirror the pressure branch below: refresh the declared
+        # parameters from the field, preserve the learned one from storage.
+        # Read directly from Redis (not the pipeline) because the result is
+        # needed immediately to build the value being written.
+        #
+        # Gated on field.cycles so a pressure-only CyclicDecayField pays no
+        # extra round trip — it falls straight through to the hdel branch.
+        learned: dict[Any, list[Any]] = {}
+        if field.cycles:
+            stored_raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
+            if stored_raw:
+                # The guarded region covers the decode AND the shape
+                # normalization: a payload can decode cleanly and still be
+                # malformed (an entry whose period slot is itself a list is
+                # unhashable, and would raise TypeError out of save()). Both
+                # failures mean the same thing — the stored state is not
+                # usable — so both take the same fallback.
+                try:
+                    stored = msgpack.unpackb(stored_raw, raw=False)
+                    if isinstance(stored, (list, tuple)):
+                        for entry in stored:
+                            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                                learned.setdefault(entry[0], []).append(entry[1])
+                except Exception:
+                    # Mirror export_state's handler: #679 exists because this
+                    # state was destroyed silently. Do not add a second mute
+                    # path — fall back to declared defaults, but say so.
+                    logger.warning(
+                        f"Could not decode cycles data for {member_key}; "
+                        f"falling back to declared amplitudes for {field_name}"
+                    )
+                    # Discard any partial merge — a half-read payload must not
+                    # contribute amplitudes to some cycles and not others.
+                    learned = {}
+
         # Normalize cycles to 3-tuples for storage
         normalized_cycles = []
         for cycle in field.cycles:
             period, amplitude = cycle[0], cycle[1]
             phase = cycle[2] if len(cycle) > 2 else 0
+            # Match stored to declared by period, FIFO within duplicates. The
+            # truth test is on the list, not the amplitude, so a learned 0.0
+            # from weaken_cycle is preserved rather than reset to the default.
+            bucket = learned.get(period)
+            if bucket:
+                amplitude = bucket.pop(0)
             normalized_cycles.append([period, amplitude, phase])
 
         db = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
         )
 
-        # Store cycles data (always write field-level defaults)
+        # Store cycles data (declared periods/phases, learned amplitudes)
         if normalized_cycles:
             db.hset(cycles_hash_key, member_key, msgpack.packb(normalized_cycles))
         else:
