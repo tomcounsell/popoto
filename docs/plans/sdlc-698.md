@@ -188,7 +188,7 @@ second was resolvable by code-read and is recorded as such.
     (`cyclic_decay_field.py:293`) copies whatever arity is stored.
   - `import_state` **truncates** it: it rebuilds each entry as
     `[period, amplitude, phase]` (`cyclic_decay_field.py:344-349`), discarding a
-    4th slot. An export/import round-trip would therefore silently strip the
+    slot 3. An export/import round-trip would therefore silently strip the
     baseline, and the imported record's next save would re-adopt the current
     declaration as its baseline.
 - **Confidence**: high
@@ -295,8 +295,14 @@ getting the semantics named correctly in the docs, not in the code.
 
 ### Key Elements
 
+> **Terminology.** A stored cycle entry is a msgpack array. Throughout this plan
+> "**slot 3**" means the fourth element, i.e. index 3 in the zero-based array
+> `[period, amplitude, phase, declared_baseline]` — `period` is slot 0,
+> `amplitude` slot 1, `phase` slot 2. "4-element entry" and "an entry with a
+> baseline" mean the same thing.
+
 - **A declared baseline, stored in-place**: each stored cycle entry grows an
-  optional 4th slot holding *the declared amplitude that was in force the last
+  optional slot 3 holding *the declared amplitude that was in force the last
   time `on_save` wrote this entry*. It is written by `on_save` only, never by
   the learning methods, so it always records a declaration and never a learned
   value.
@@ -310,7 +316,7 @@ getting the semantics named correctly in the docs, not in the code.
 - **Legacy-tolerant reads**: an entry with fewer than 4 slots is a first-class
   input meaning "baseline unknown", handled by falling through to today's
   behavior. No migration, no backfill, no version byte.
-- **Transfer consistency**: `import_state` carries the optional 4th slot so an
+- **Transfer consistency**: `import_state` carries the optional slot 3 so an
   export/import round-trip does not silently strip it.
 
 ### Flow
@@ -383,7 +389,7 @@ the whole test class that pins it, stays green).
 ### Empty/Invalid Input Handling
 - [x] **Entry shorter than 4 slots** (legacy) — documented and tested:
   baseline is `None`, behavior degrades to #679's.
-- [x] **Entry with a non-numeric 4th slot** (hand-edited or foreign writer) —
+- [x] **Entry with a non-numeric slot 3** (hand-edited or foreign writer) —
   must be treated as "baseline unknown" (same as absent), not raise out of
   `save()`. Tested by writing a raw payload with a string in slot 3.
 - [x] **`cycles=[]` on the field** — the `hdel` branch (`:608-610`) is
@@ -423,7 +429,7 @@ the whole test class that pins it, stays green).
   — **UPDATE**: extend to assert the baseline is (re)recorded as the declared
   amplitude after the fallback.
 - [ ] `tests/test_cyclic_decay_field.py::TestLearnedAmplitudePreservedOnSave::test_duplicate_periods_pair_fifo_and_keep_order`
-  — **UPDATE**: extend the assertions to the 4th slot, so FIFO baseline pairing
+  — **UPDATE**: extend the assertions to slot 3, so FIFO baseline pairing
   under duplicate periods is pinned, not incidental.
 - [ ] `tests/test_cyclic_decay_field.py` helper `_read_cycles` — **UPDATE**
   (or leave and add a sibling): several existing assertions index `c[1]`/`c[2]`
@@ -449,7 +455,7 @@ New tests (all in `tests/test_cyclic_decay_field.py`, a new class
 - Unedited declaration preserves a learned amplitude (#679 unregressed).
 - Declared `0.0` baseline compares equal and preserves learning.
 - Legacy 3-element entry preserves learning **and** acquires a baseline.
-- Non-numeric 4th slot is treated as absent, without raising.
+- Non-numeric slot 3 is treated as absent, without raising.
 - The reset emits an INFO log naming both values.
 - Duplicate periods reset independently and in FIFO order.
 - `strengthen_cycle` after a reset learns from the *new* declared value.
@@ -625,7 +631,7 @@ are unchanged, so no wiring moves.
       - the upgrade caveat (Risk 2): the first save after upgrading records a
         baseline, so an edit made in the same deploy is not detected;
       - a note that the stored entry is now
-        `[period, amplitude, phase, declared_baseline]`, with the 4th slot
+        `[period, amplitude, phase, declared_baseline]`, with slot 3
         optional, updating the storage description around line 160.
 - [ ] `docs/features/README.md` index needs no new entry (no new feature page).
 - [ ] Check `docs/fields.md` and `docs/field-authoring.md` for any statement of
@@ -638,7 +644,7 @@ are unchanged, so no wiring moves.
 - [ ] `CyclicDecayField.on_save` docstring — currently documents the two-way
       rule (`:514-536`). Rewrite the cycles paragraph for the three-way rule,
       keeping the pipeline caveat verbatim.
-- [ ] Module docstring companion-hash description (`:17-19`) — note the 4th slot.
+- [ ] Module docstring companion-hash description (`:17-19`) — note slot 3.
 - [ ] `import_state` docstring — note that it carries the optional baseline.
 - [ ] A comment at the merge site explaining why the baseline is compared
       against the **declared** value and never against the learned one, and why
@@ -656,7 +662,7 @@ are unchanged, so no wiring moves.
       sentinel.
 - [ ] A record written before this change (3-element entry) preserves its
       learned amplitude on the next save and acquires a baseline from it.
-- [ ] A malformed 4th slot does not raise out of `save()`.
+- [ ] A malformed slot 3 does not raise out of `save()`.
 - [ ] Each reset emits exactly one INFO log naming the model, field, period, old
       declared value, new declared value and discarded learned amplitude.
 - [ ] `export_state` → `import_state` round-trips the baseline
@@ -674,15 +680,201 @@ are unchanged, so no wiring moves.
 
 ## Team Orchestration
 
-_(placeholder)_
+Small appetite, one file of production code plus two test files and one doc
+page. Two builder/validator pairs plus a documentarian.
+
+### Team Members
+
+- **Builder (merge rule)**
+  - Name: `merge-builder`
+  - Role: The `on_save` three-way merge, the baseline write, the reset log, and
+    the widened corrupt-payload guard. Owns
+    `src/popoto/fields/cyclic_decay_field.py` only.
+  - Agent Type: builder
+  - Domain: Redis/Popoto data — paste the matching rules from
+    `DOMAIN_FRAMING.md` into the assignment.
+  - Resume: true
+
+- **Builder (tests + transfer)**
+  - Name: `test-builder`
+  - Role: The new `TestDeclaredAmplitudeOverridesLearned` class, the six
+    UPDATE dispositions in Test Impact, and the `import_state` widening plus its
+    transfer-fidelity cover.
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Validator (semantics)**
+  - Name: `merge-validator`
+  - Role: Verifies the three-way rule against every row of the test matrix,
+    confirms `CYCLIC_DECAY_LUA` and `numkeys` are untouched, and confirms no
+    `POPOTO_REDIS_DB` line was opportunistically converted (the #655 rabbit
+    hole).
+  - Agent Type: validator
+  - Resume: true
+
+- **Documentarian**
+  - Name: `cyclic-doc`
+  - Role: `docs/features/cyclic-decay-field.md` (line 122 above all), the
+    docstrings, and the CHANGELOG entry.
+  - Agent Type: documentarian
+  - Resume: true
+
+- **Validator (final)**
+  - Name: `final-validator`
+  - Role: Runs the whole Verification table and reports with its environment
+    stated.
+  - Agent Type: validator
+  - Resume: true
+
+### Available Agent Types
+
+Per the standard roster (`builder`, `validator`, `code-reviewer`,
+`test-engineer`, `documentarian`, …). No specialist agents needed.
 
 ## Step by Step Tasks
 
-_(placeholder)_
+### 1. Extend the stored cycle tuple and implement the three-way merge
+- **Task ID**: build-merge
+- **Depends On**: none
+- **Validates**: `tests/test_cyclic_decay_field.py`
+- **Informed By**: spike-1 (confirmed: a fourth element (slot 3) is invisible to
+  `CYCLIC_DECAY_LUA`; scores byte-identical, so no Lua or numkeys change)
+- **Assigned To**: `merge-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- In `CyclicDecayField.on_save`, extend the stored-entry read
+  (`cyclic_decay_field.py:560-586`) to also collect slot 3 into a baseline
+  bucket keyed by period, FIFO-aligned with the amplitude bucket. A stored entry
+  with `len < 4`, or a non-numeric slot 3, yields `None` — "baseline unknown".
+  Pop the amplitude and its baseline as **one decision**, never two independent
+  `.pop(0)` calls.
+- Widen the existing `try/except` so decode *and* baseline extraction are inside
+  it, and clear the baseline bucket on the fallback path exactly as `learned` is
+  cleared — a half-read payload must not contribute a baseline to some cycles
+  and not others.
+- Implement the merge (`:588-599`): baseline `None` → keep learned; baseline
+  equals declared → keep learned; baseline differs from declared → **use the
+  declared amplitude** and emit one `logger.info` naming model, field, period,
+  old baseline, new declared value, and the discarded learned amplitude. In all
+  three branches write slot 3 as the **declared** amplitude.
+- Compare with exact float equality, not a tolerance. Treat `0.0` as a value:
+  the "has a baseline" test must be `is not None`, never truthiness. Same rule
+  as the existing amplitude bucket, whose truth test is deliberately on the list
+  rather than the value (`:596`).
+- Write entries as `[period, amplitude, phase, declared_baseline]`
+  (`:606-610`). Leave the `hdel` / empty-cycles branch untouched.
+- Do **not** touch `CYCLIC_DECAY_LUA`, `rank_decayed`, or `numkeys`.
+- Do **not** convert any existing `POPOTO_REDIS_DB` use in this file — it is
+  held back from the #655 sweep by a dedicated follow-up (`CLAUDE.md`). Any
+  *new* call site uses `get_REDIS_DB()`.
+- Do **not** make `_adjust_cycle_amplitudes` aware of slot 3. It preserves it by
+  construction (spike-2); teaching it to write slot 3 destroys the mechanism.
+- Update the `on_save` docstring, the module docstring's companion-hash
+  description, and add the "why the comparison is against the declared value"
+  comment.
+
+### 2. Widen `import_state` and cover the transfer round-trip
+- **Task ID**: build-transfer
+- **Depends On**: none
+- **Validates**: `tests/test_transfer_fidelity_fields.py`
+- **Informed By**: spike-2 (confirmed: `export_state` preserves arity;
+  `import_state` truncates to 3 slots at `cyclic_decay_field.py:344-349`;
+  `_adjust_cycle_amplitudes` preserves slot 3 with no change)
+- **Assigned To**: `test-builder`
+- **Agent Type**: test-engineer
+- **Parallel**: true
+- In `import_state`, carry an optional slot 3 through the normalization
+  instead of rebuilding a 3-element list. A 3-element imported entry stays
+  3-element (baseline unknown), not padded with a guess.
+- Extend the cyclic case in `tests/test_transfer_fidelity_fields.py` (~line 505)
+  to assert the baseline survives export → import, and that a 3-element legacy
+  export imports without a fabricated baseline.
+- Update the `import_state` docstring.
+
+### 3. Build the semantics test matrix
+- **Task ID**: build-tests
+- **Depends On**: build-merge
+- **Validates**: `tests/test_cyclic_decay_field.py`
+- **Assigned To**: `test-builder`
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Add `TestDeclaredAmplitudeOverridesLearned` covering: edited declaration
+  resets a learned amplitude; edited declaration resets a learned `0.0`;
+  unedited declaration preserves learning; a declared `0.0` baseline compares
+  equal and preserves learning; a legacy 3-element entry preserves learning and
+  acquires a baseline; a non-numeric slot 3 is treated as absent without
+  raising; the reset emits exactly one INFO log naming both values; duplicate
+  periods reset independently in FIFO order; `strengthen_cycle` after a reset
+  learns from the new declared value.
+- Change declarations by assigning `field.cycles` with a `finally` restore, the
+  pattern the #679 suite already uses — do not add model classes per scenario.
+- Apply the six UPDATE dispositions listed in Test Impact, including extending
+  the `caplog` assertion in `test_corrupt_stored_entry_falls_back_to_declared`
+  to the baseline, and extending
+  `test_duplicate_periods_pair_fifo_and_keep_order` to slot 3.
+- Confirm (do not assume) that `tests/test_cyclic_subclass_companion_keys.py`
+  and `tests/test_validity_field.py::TestCyclicDecayGatingGap` need no change.
+
+### 4. Validate the semantics
+- **Task ID**: validate-merge
+- **Depends On**: build-merge, build-transfer, build-tests
+- **Assigned To**: `merge-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the touched test files under `POPOTO_TEST_DB=12` and state the
+  environment (popoto version, redis-py version, extras installed) with every
+  count — required by `CLAUDE.md`.
+- Confirm `CYCLIC_DECAY_LUA` is byte-identical to `origin/main` and `numkeys`
+  is still 4.
+- Confirm no `POPOTO_REDIS_DB` line was removed from
+  `src/popoto/fields/cyclic_decay_field.py`.
+- Confirm no new Redis key, no new script under `scripts/`, and no migration.
+
+### 5. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-merge
+- **Assigned To**: `cyclic-doc`
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Rewrite `docs/features/cyclic-decay-field.md:122` for the three-way rule; add
+  the destructive-edit warning, the Risk 2 upgrade caveat, and the 4-slot
+  storage note near line 160.
+- Sweep `docs/fields.md` and `docs/field-authoring.md` for any statement of the
+  cycles payload shape.
+- Add the CHANGELOG entry naming the semantics change.
+- `mkdocs build --strict`.
+
+### 6. Final validation
+- **Task ID**: validate-all
+- **Depends On**: validate-merge, document-feature
+- **Assigned To**: `final-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Run every row of the Verification table.
+- Run the full suite once, stating the environment; treat
+  `tests/test_version.py::test_version_matches_pyproject` on a stale editable
+  install as expected noise per `docs/sdlc/do-sdlc.md`.
+- Report pass/fail per criterion.
 
 ## Verification
 
-_(placeholder)_
+| Check | Command | Expected |
+|-------|---------|----------|
+| Touched suites pass | `POPOTO_TEST_DB=12 pytest tests/test_cyclic_decay_field.py tests/test_transfer_fidelity_fields.py tests/test_cyclic_subclass_companion_keys.py tests/test_validity_field.py -q` | exit code 0 |
+| Full suite passes | `POPOTO_TEST_DB=12 pytest -q --deselect tests/test_version.py::test_version_matches_pyproject` | exit code 0 |
+| Lint clean | `ruff check src/` | exit code 0 |
+| Format clean | `black --check src/ tests/` | exit code 0 |
+| Type ratchet holds | `scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `mkdocs build --strict` | exit code 0 |
+| New semantics test class exists | `grep -c "class TestDeclaredAmplitudeOverridesLearned" tests/test_cyclic_decay_field.py` | output > 0 |
+| #679 regression class still present | `grep -c "class TestLearnedAmplitudePreservedOnSave" tests/test_cyclic_decay_field.py` | output > 0 |
+| Reset is logged | `grep -c "logger.info" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
+| Stale doc claim removed | `grep -c "the learned value wins" docs/features/cyclic-decay-field.md` | match count == 0 |
+| Anti-criterion — Lua untouched (No-Go #699) | `git diff origin/main -- src/popoto/fields/cyclic_decay_field.py \| grep -c "^[+-].*redis\.call"` | match count == 0 |
+| Anti-criterion — numkeys still 4 | `grep -A3 "CYCLIC_DECAY_LUA," src/popoto/fields/cyclic_decay_field.py \| grep -c "^ *4,"` | output > 0 |
+| Anti-criterion — no new companion Redis key | `git diff origin/main -- src/popoto/ \| grep -c "^+.*:cycle_baselines\|^+.*:baselines"` | match count == 0 |
+| Anti-criterion — no migration script added | `git diff --name-only origin/main -- scripts/ \| grep -c .` | match count == 0 |
+| Anti-criterion — #655 sweep not pre-empted | `git diff origin/main -- src/popoto/fields/cyclic_decay_field.py \| grep -c "^-.*POPOTO_REDIS_DB"` | match count == 0 |
 
 ## Critique Results
 
@@ -692,4 +884,32 @@ _(placeholder)_
 
 ## Open Questions
 
-_(placeholder)_
+1. **On a detected declaration change: hard reset, or proportional rescale?**
+   This plan assumes **hard reset** — the learned amplitude is discarded and the
+   new declared value takes its place. The alternative is to preserve the
+   learned *ratio*: `new_learned = new_declared * (old_learned / old_baseline)`,
+   so a record that had learned "3x the default" keeps learning 3x the new
+   default. Reset is more predictable and matches what a developer editing a
+   constant probably expects; rescale is less destructive and keeps months of
+   accumulated learning meaningful. Rescale needs an answer for
+   `old_baseline == 0.0` (division by zero → fall back to the declared value)
+   and would make Risk 1 largely disappear. **This is a product call and the one
+   thing the plan cannot settle on its own.**
+
+2. **Should the reset log at INFO or WARNING?** The plan says INFO: the reset is
+   intentional and expected after a deliberate edit, so WARNING would cry wolf
+   on every record of a normal deploy. But #679 exists precisely because state
+   was destroyed quietly, and a fleet-wide reset triggered by an accidental edit
+   is exactly the event an operator would want at WARNING. A middle option — one
+   WARNING the first time per process per field, INFO thereafter — is more code
+   than a Small appetite wants.
+
+3. **Is the Risk 2 upgrade caveat acceptable as documentation only?** A
+   developer who upgrades popoto and edits `amplitude=` in the same deploy sees
+   the reported symptom once more, because the first save records a baseline
+   rather than detecting a change. The plan accepts this and documents it. The
+   only alternative that closes it is treating "no baseline" as "changed", which
+   resets every learned amplitude in the database on first save after upgrade —
+   materially worse. Confirming the acceptance is worth one sentence from the
+   maintainer, since it means the fix does not fully work for the very first
+   deploy that contains it.
