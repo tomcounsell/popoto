@@ -162,6 +162,8 @@ field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, 
 
 `rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
 
+It is also what `Query.top_by_decay()` and `composite_score()` use internally: since [#662](https://github.com/tomcounsell/popoto/issues/662) every decay `EVAL` in the library goes through this method, so each of the two `KEYS` layouts exists in exactly one place — this implementation and the `CyclicDecayField` override. Nothing in `models/query.py` or `recipes/` names a `KEYS` index any more.
+
 ```python
 field = Memory._meta.fields["relevance"]
 zkey = field.get_sortedset_db_key(Memory, "relevance").redis_key

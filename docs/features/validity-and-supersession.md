@@ -546,6 +546,16 @@ including `DefaultMemory`, does.
     `filter(validity__current=True)`. Pinned by
     `tests/test_validity_field.py::TestCyclicDecayGatingGap`, which fails
     loudly if the gate is ever added — update this entry then.
+
+    Where the gap lives changed in
+    [#662](https://github.com/tomcounsell/popoto/issues/662), though the gap
+    itself did not. `top_by_decay` no longer branches on field type to pick a
+    script; it passes the gate triple to `field.rank_decayed(...)`
+    unconditionally, and `CyclicDecayField.rank_decayed` accepts `validity=`
+    and **drops it**. So the omission is now a documented property of the
+    cyclic override rather than of a dispatch branch in the query builder —
+    read it there, and in the comment above the call site in
+    `models/query.py`.
 - **Gating costs up to two `ZSCORE`s per member inside the decay Lua**, and
   `DECAY_SCORE_LUA` full-scans its partition regardless of gating (a
   pre-existing property, not introduced here). Measured locally on a 20k-record
