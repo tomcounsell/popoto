@@ -19,6 +19,7 @@ import logging
 from typing import List, Optional
 
 from . import AbstractExtractionProvider, ExtractedFact
+from ._anthropic_compat import assert_messages_create_supported
 from ..fields.constants import Defaults
 
 try:
@@ -125,6 +126,14 @@ class ClaudeExtractionProvider(AbstractExtractionProvider):
     an empty list -- it never raises, so a flaky extraction call never
     crashes the caller's turn loop.
 
+    That blanket handling is why an SDK too old to accept
+    ``output_config`` is rejected *here*, at construction, rather than
+    being allowed to fail inside ``extract()``: there it would surface as
+    an empty fact list, indistinguishable from "this text contained no
+    facts" (#670). Constructing the provider is the last point before
+    that ambiguity exists. ``extract()``'s never-raises contract is
+    unchanged -- the version check runs strictly earlier.
+
     Args:
         api_key: Anthropic API key. If None, reads from the
             ``ANTHROPIC_API_KEY`` env var (via the anthropic SDK's normal
@@ -132,6 +141,9 @@ class ClaudeExtractionProvider(AbstractExtractionProvider):
 
     Raises:
         ImportError: If the ``anthropic`` package is not installed.
+        AnthropicVersionError: If the installed ``anthropic`` is too old
+            to accept the parameters ``extract()`` passes to
+            ``messages.create``.
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -141,6 +153,7 @@ class ClaudeExtractionProvider(AbstractExtractionProvider):
                 "Install it with: pip install popoto[anthropic]"
             )
         self._client = anthropic_module.Anthropic(api_key=api_key)
+        assert_messages_create_supported(self._client)
 
     def extract(self, text: str) -> List[ExtractedFact]:
         """Extract facts from text via one Claude API call.

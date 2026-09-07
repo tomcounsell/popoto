@@ -48,6 +48,8 @@ from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Optional
 
 from ..privacy.never_record import scan_never_record
 
+from ._anthropic_compat import assert_messages_create_supported
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .candidates import Candidate
 
@@ -271,13 +273,22 @@ free text or an out-of-vocabulary code into the decision log.
 
 
 def _default_client() -> Any:
-    """Build the default Anthropic client, or raise if unavailable."""
+    """Build the default Anthropic client, or raise if unavailable.
+
+    Also rejects an installed-but-too-old SDK, so a missing
+    ``output_config`` reads as a precise version error in the log rather
+    than as a bare ``TypeError`` from deep inside the request. The
+    caller's blanket handler still converts either into the same
+    ``LLM_UNAVAILABLE`` verdict, so no contract changes here (#670).
+    """
     if not _anthropic_available or anthropic_module is None:
         raise ImportError(
             "anthropic is required to use the LLM verdict stage. "
             "Install it with: pip install popoto[anthropic]"
         )
-    return anthropic_module.Anthropic()
+    client = anthropic_module.Anthropic()
+    assert_messages_create_supported(client)
+    return client
 
 
 def _request_verdict(client: Any, candidate: "Candidate") -> Optional[str]:
