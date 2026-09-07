@@ -344,15 +344,21 @@ class ExistenceFilter(Field):
     null: bool = True
     default = None
 
-    # Export/import: the Bloom filter's bit array is a function of save
-    # *history* (every fingerprint ever added), not of any single record's
-    # current value, so it cannot be reconstructed by replaying on_save()
-    # for the exported record set alone, nor practically carried as
-    # per-record state. Not addressed in v1 -- see #556.
+    # Export/import: the bit array is deliberately NOT carried, and #556
+    # settled that as a permanent contract rather than pending work. A bit is
+    # not decomposable to a record: hash collisions mean several records set
+    # the same bit, which is exactly why on_delete() is a no-op here. But
+    # unlike the mutation stream, the destination does not need the source's
+    # array -- importing a record calls on_save(), which sets that record's
+    # own bits. A filter rebuilt over the imported set is *more* accurate
+    # than a carried one, because it carries no bits for records that were
+    # never imported. Rebuild is the better answer, not the fallback.
     roundtrip_policy: str = "partial"
     roundtrip_note: str = (
-        "Bloom filter bit array reflects save history, not carried or "
-        "rebuilt by import; see #556"
+        "Bloom filter bits are not carried; the destination's filter is "
+        "rebuilt by the imported records' own saves, which is more accurate "
+        "than carrying bits set by records outside the export. Permanent "
+        "contract, not pending work."
     )
 
     def __init__(self, **kwargs):
@@ -643,15 +649,21 @@ class FrequencySketch(Field):
     null: bool = True
     default = None
 
-    # Export/import: the Count-Min Sketch counters accumulate across every
-    # save of every record (a function of save history), not of any single
-    # record's current value, so they cannot be reconstructed by import
-    # replay nor practically carried as per-record state. Not addressed in
-    # v1 -- see #556.
+    # Export/import: the sketch counters are deliberately NOT carried, and
+    # #556 settled that as a permanent contract rather than pending work.
+    # A counter is shared by every value that hashes to it, so no record's
+    # contribution can be isolated -- the same reason on_delete() is a no-op.
+    # What the destination gets instead is a sketch rebuilt from the imported
+    # saves: frequencies are lower than the source's, because the source
+    # counted saves the destination never received. That is the honest
+    # reading -- "how often has this been seen *here*" -- and it is why the
+    # counters are not carried rather than merely not yet carried.
     roundtrip_policy: str = "partial"
     roundtrip_note: str = (
-        "Count-Min Sketch counters reflect save history, not carried or "
-        "rebuilt by import; see #556"
+        "Count-Min Sketch counters are not carried; the destination's sketch "
+        "counts only the saves it observes, so frequencies restart from the "
+        "import rather than continuing the source's totals. Permanent "
+        "contract, not pending work."
     )
 
     def __init__(self, **kwargs):

@@ -610,6 +610,21 @@ lifecycle.PROMOTION_ACCESS_COUNT = 5
 lifecycle.FORGET_IDLE_SECONDS = 43200.0  # 12 hours
 ```
 
+!!! warning "A `FORGET_IDLE_SECONDS` of `0.0` excludes fresh records, not admits them"
+
+    The criterion is `idle_seconds > FORGET_IDLE_SECONDS`, a **strict**
+    inequality. A record that was just written reports an idle time of
+    essentially `0.0`, so a floor of `0.0` excludes it rather than admitting it —
+    the opposite of how the value reads. To make any idle time qualify, use a
+    negative floor such as `-1.0`.
+
+    This mostly bites in tests, where records are created moments before `tick()`
+    runs. Five tests in popoto's own suite set `0.0`, never reached the guard
+    they were written for, and passed while the guard was deleted
+    ([#674](https://github.com/tomcounsell/popoto/issues/674));
+    `tests/test_forget_idle_seconds_guard.py` now fails the suite on any
+    non-negative literal.
+
 Systematic tuning is done via the Tier 5 benchmark sweep:
 
 ```bash
