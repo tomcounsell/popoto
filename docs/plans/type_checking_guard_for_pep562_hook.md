@@ -6,6 +6,7 @@ owner: Dev (sdlc-651)
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/659
 last_comment_id:
+revision_applied: true
 ---
 
 # Hide the PEP 562 hook from mypy with a `TYPE_CHECKING` guard
@@ -27,7 +28,7 @@ Its cost, disclosed at the time: a module `__getattr__` annotated `-> Any` tells
 ## Prior Art
 
 - **PR #657 / issue #651** (merged `af227894`) — introduced the `__getattr__` this plan guards. Its review disclosed the mypy cost explicitly rather than hiding it; #659 was filed off that disclosure. Nothing here reverses it.
-- **PR #652 / issue #645** (merged `b7863500`) — the same defect one level up: `popoto.get_redis()` returned a package-level snapshot. Fixed by delegating to `redis_db.get_REDIS_DB()` on every call. Establishes the accessor-over-binding pattern this plan preserves.
+- **PR #652** (merged `b7863500`) — the same defect one level up: `popoto.get_redis()` returned a package-level snapshot, fixed by delegating to `redis_db.get_REDIS_DB()` on every call. Establishes the accessor-over-binding pattern this plan preserves. Note the attribution: issue #645 was filed purely as a *docs* defect (db-less `redis.from_url` in `confidence-field.md`); the `get_redis()` staleness fix was scope the PR widened into mid-review, after a critic challenged its premise. The code fix has no issue of its own.
 - **Issue #655** (open) — 33 `src/popoto/` modules still do `from popoto.redis_db import POPOTO_REDIS_DB`, which is a genuine binding and genuinely stale. Out of scope here; noted because it is the reason the name cannot simply be deleted.
 
 **Why previous fixes did not cover this:** there is no failed prior attempt. #651's fix was correct and complete for the runtime defect; the static-checking cost was a known, accepted trade at the time, deferred to this issue rather than rushed into that PR.
@@ -75,6 +76,8 @@ Making (1) live means `explicit_package_bases = True` + `mypy_path = src`. Measu
 
 This change is therefore the **prerequisite half**, not a no-op: under that future config *without* this guard, `popoto.Modle` still resolves to `Any` and the config change buys nothing. The guard is what makes it worth making.
 
+**The other half is tracked as #663**, filed during this plan's critique so the prerequisite does not sit permanently unpaired. It carries both measurements above and the `py.typed` decision, and names #659 as its prerequisite.
+
 ## No-Gos
 
 - Changing `setup.cfg` mypy configuration. Separate change, +21 errors, needs a re-bank.
@@ -98,11 +101,14 @@ The behavioral half is weak on its own — lifting `__getattr__` out of the `els
 2. `POPOTO_REDIS_DB` is a bare `AnnAssign` under the `if` — no value, and not an import.
 3. Runtime: `TYPE_CHECKING is False`, `__getattr__` is in `vars(popoto)`, `POPOTO_REDIS_DB` is not, and both `popoto.__getattr__("POPOTO_REDIS_DB")` and `popoto.POPOTO_REDIS_DB` are `redis_db.get_REDIS_DB()`.
 
+**The guard locator must not over-fit one spelling.** `if typing.TYPE_CHECKING:` is an `ast.Attribute`, not an `ast.Name`, and is semantically identical; matching only `ast.Name` would make the test fail with "found 0" on a legal refactor rather than exercising the invariant. Nor may it assume uniqueness — an unrelated second module-level `TYPE_CHECKING` block added later would break `len(guards) == 1` with a misleading message. Match on `ast.Name(id="TYPE_CHECKING")` **or** `ast.Attribute(attr="TYPE_CHECKING")`, and disambiguate by selecting the block whose body declares `POPOTO_REDIS_DB` rather than by count.
+
 Unchanged and must stay passing: `tests/test_popoto_redis_db_rebind.py` (5), `tests/test_get_redis_rebind.py` (2), `tests/test_pytest_plugin.py` (43).
 
 ## Risks
 
 - **A future editor collapses the distinction.** The `__init__.py` warning says the hook fires *only* because nothing above binds the name; a `TYPE_CHECKING` annotation does not bind, but that is exactly the nuance someone will flatten into an import. Mitigated by test (2) above and by comments at both the guard and the import block naming which test fails.
+- **The comments become their own liability.** `__init__.py` already carries this history in the import-block comment and the `__getattr__` docstring; a third full retelling at the guard would put three copies in one file that must stay synchronized, which works against the goal. The guard comment therefore states only what is unique to it — that an annotation is not a binding, that both halves must stay put, and which test fails otherwise — and does not re-narrate #651. The executable guarantee is the `ast` test, not the prose.
 - **`GuardedRedis` drifts.** If `redis_db` ever assigns a plain `redis.Redis`, the annotation becomes a lie mypy cannot catch (the global is unannotated). Accepted; all four current assignment sites construct `GuardedRedis`.
 
 ## Step by Step Tasks
@@ -113,6 +119,8 @@ Unchanged and must stay passing: `tests/test_popoto_redis_db_rebind.py` (5), `te
    - Validate: `POPOTO_TEST_DB=7 pytest tests/test_type_checking_guard.py -q`
 3. Run the regression net and the gates.
    - Validate: `POPOTO_TEST_DB=7 pytest tests/test_type_checking_guard.py tests/test_popoto_redis_db_rebind.py tests/test_get_redis_rebind.py tests/test_pytest_plugin.py -q`; `ruff check src/`; `black --check src/ tests/`; `scripts/mypy_ratchet.py --strict-ratchet`
+3b. Demonstrate the restored checking, since the gate cannot. The repo's own `mypy src/` will never exercise Success Criterion 1 (see *What this does NOT buy, today*), so verify it out-of-band against a throwaway probe and record the output in the PR body. This is evidence, not a gate — nothing in CI runs it, and #663 is what would make it enforceable.
+   - Validate: write `src/popoto/_zz_probe.py` containing `import popoto`, `reveal_type(popoto.POPOTO_REDIS_DB)`, `popoto.Modle`; run `MYPYPATH=src mypy --explicit-package-bases src/`; confirm `Revealed type is "popoto.redis_db.GuardedRedis"` and `Module has no attribute "Modle"`; **delete the probe**. Confirm the same probe under plain `mypy src/` reveals `Any` and raises no error, which is the fact #663 records.
 4. Docs cascade: record in `CLAUDE.md` (the `popoto.POPOTO_REDIS_DB` bullet) that the hook is `TYPE_CHECKING`-guarded and why both halves must stay put; `CHANGELOG.md` under Unreleased.
    - Validate: `mkdocs build --strict`
 
@@ -124,7 +132,7 @@ Unchanged and must stay passing: `tests/test_popoto_redis_db_rebind.py` (5), `te
 
 ## Success Criteria
 
-- [ ] `popoto.POPOTO_REDIS_DB` reveals `popoto.redis_db.GuardedRedis` and `popoto.Modle` is an `attr-defined` error, when the package resolves.
+- [ ] Verified by task 3b (out-of-band, recorded in the PR body — **not** checkable by any CI gate until #663 lands): under `MYPYPATH=src mypy --explicit-package-bases src/`, `popoto.POPOTO_REDIS_DB` reveals `popoto.redis_db.GuardedRedis` and `popoto.Modle` is an `attr-defined` error.
 - [ ] Runtime unchanged: name absent from `vars(popoto)`, present in `dir(popoto)`, resolves live.
 - [ ] `tests/test_popoto_redis_db_rebind.py` passes **unchanged**.
 - [ ] mypy ratchet flat at 1042 (Python 3.12.14, mypy 2.3.1, redis-py 8.1.0).
