@@ -201,6 +201,10 @@
          <lastmod>2026-09-07</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/tombstone-negative-prior/</loc>
+         <lastmod>2026-09-07</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/validity-and-supersession/</loc>
          <lastmod>2026-09-07</lastmod>
     </url>
@@ -434,6 +438,10 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/td_value_field/</loc>
+         <lastmod>2026-09-07</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/fields/tombstone_prior/</loc>
          <lastmod>2026-09-07</lastmod>
     </url>
     <url>

@@ -1516,6 +1516,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/tombstone-negative-prior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tombstone Negative Prior
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -4216,6 +4244,11 @@ it. The layout is unchanged and the keys stay deliberately <strong>outside</stro
 keyspace, so no query, index scan, or key-set walk can surface a tombstoned record. Use
 the store directly if you want the tombstone keyspace without the policy layer around it;
 <code>Tombstone</code> remains importable from <code>popoto.recipes.memory_lifecycle</code> as the same object.</p>
+<p>Tombstoning also records the death as <em>negative evidence</em>, so a future write carrying the
+same content is admitted at a drawn-down score instead of being relearned from scratch.
+This happens automatically for any model whose <code>ExistenceFilter</code> has a <code>fingerprint_fn</code>,
+and requires no changes to the lifecycle call. See
+<a href="../features/tombstone-negative-prior/">Tombstones as a Negative Prior</a>.</p>
 <h3 id="custom-policies">Custom policies<a class="headerlink" href="#custom-policies" title="Permanent link">&para;</a></h3>
 <p>Override the default promotion or forget logic at construction time:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">):</span>
