@@ -1,0 +1,7 @@
+{
+  "id": "popoto-memory",
+  "name": "Popoto Memory",
+  "description": "Recalls popoto memories before each prompt and captures the turn afterwards",
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false }
+}

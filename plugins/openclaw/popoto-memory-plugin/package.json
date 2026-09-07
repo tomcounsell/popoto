@@ -1,0 +1,17 @@
+{
+  "name": "openclaw-popoto-memory",
+  "version": "1.0.0",
+  "description": "Subconscious memory for OpenClaw, backed by popoto's popoto-memory hook executable",
+  "license": "MIT",
+  "type": "module",
+  "files": ["index.js", "openclaw.plugin.json"],
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2"
+    }
+  }
+}
