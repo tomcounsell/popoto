@@ -1212,6 +1212,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Adjusting Cycle Amplitudes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#learned-amplitudes-persist-across-saves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Learned amplitudes persist across saves
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3261,6 +3278,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Adjusting Cycle Amplitudes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#learned-amplitudes-persist-across-saves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Learned amplitudes persist across saves
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3528,9 +3562,36 @@ for the full accounting.</p>
 <li><strong>contradicted</strong> outcome calls <code>weaken_cycle(factor=0.5)</code> — aggressively dampening contradicted memories</li>
 </ul>
 <p>You can also call them directly for custom cycle management outside the ObservationProtocol.</p>
+<h4 id="learned-amplitudes-persist-across-saves">Learned amplitudes persist across saves<a class="headerlink" href="#learned-amplitudes-persist-across-saves" title="Permanent link">&para;</a></h4>
+<p>Adjusted amplitudes are <strong>per-record learned state</strong> and survive ordinary saves. A cycle's <code>period</code> and <code>phase</code> stay declarative — they are refreshed from the model's <code>cycles</code> declaration on every save — but its <code>amplitude</code> is carried over from what <code>strengthen_cycle()</code> / <code>weaken_cycle()</code> accumulated:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">directive</span><span class="o">.</span><span class="n">strengthen_cycle</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="s2">"revised"</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">directive</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>          <span class="c1"># amplitude stays at 1.5x, not reset to the default</span>
+</code></pre></div>
+<p>Stored cycles are matched to declared ones <strong>by period</strong>, so reordering or editing your <code>cycles</code> declaration keeps each period's learned amplitude with that period. Adding a period to the declaration gives it the declared amplitude (nothing has been learned for it yet); removing one drops it — the declaration is authoritative about <em>which</em> cycles exist, and learning is authoritative about how strong each one is.</p>
+<p>If you edit a declared amplitude for a period that has already learned a value, the learned value wins. Popoto does not store the declared baseline separately, so it cannot tell "the developer changed the default" from "learning diverged."</p>
+<div class="admonition warning">
+<p class="admonition-title">A cycle weakened to zero stays at zero</p>
+<p><code>weaken_cycle()</code> snaps amplitudes below <code>0.01</code> to <code>0.0</code>, and that zero is preserved like any other learned value — every future save keeps it. This is deliberate: a silenced cycle should stay silenced. There is no reset method; to restore the declared defaults for a record, delete its entry from the cycles companion hash, and the next <code>save()</code> will re-adopt them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">field</span> <span class="o">=</span> <span class="n">MyModel</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">"relevance"</span><span class="p">]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_cycles_hash_key</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">"relevance"</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">record</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>   <span class="c1"># declared amplitudes restored</span>
+</code></pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Pipeline ordering</p>
+<p>When a save and an amplitude adjustment share one pipeline, queue the <strong>save first</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">record</span><span class="o">.</span><span class="n">strengthen_cycle</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+</code></pre></div>
+<p>Both operations read directly but write through the pipeline, so queuing the adjustment first means the save's read runs before the adjustment's write executes, and the save's write lands last — silently discarding the adjustment.</p>
+</div>
 <h3 id="refreshing-the-decay-clock">Refreshing the Decay Clock<a class="headerlink" href="#refreshing-the-decay-clock" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Same as DecayingSortedField — updates the timestamp</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">touch</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Same as DecayingSortedField — updates the timestamp</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">touch</span><span class="p">(</span><span class="s2">"relevance"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="redis-data-model">Redis Data Model<a class="headerlink" href="#redis-data-model" title="Permanent link">&para;</a></h2>
 <p>CyclicDecayField stores data in three Redis structures:</p>
@@ -3545,11 +3606,11 @@ for the full accounting.</p>
 <p><code>FieldBase</code> assigns each field class its own <code>field_class_key</code>, so a
 subclass of <code>CyclicDecayField</code> writes and reads under <strong>its</strong> prefix, not
 the base class's:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">UrgencyField</span><span class="p">(</span><span class="n">CyclicDecayField</span><span class="p">):</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="k">pass</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># sorted set:   $UrgencyF:{Model}:{field}:{partitions}</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># cycles hash:  $UrgencyF:{Model}:{field}:{partitions}:cycles</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># pressure:     $UrgencyF:{Model}:{field}:{partitions}:pressure</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">UrgencyField</span><span class="p">(</span><span class="n">CyclicDecayField</span><span class="p">):</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="k">pass</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># sorted set:   $UrgencyF:{Model}:{field}:{partitions}</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># cycles hash:  $UrgencyF:{Model}:{field}:{partitions}:cycles</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># pressure:     $UrgencyF:{Model}:{field}:{partitions}:pressure</span>
 </code></pre></div>
 <p>The companion hashes are always the sorted-set key plus a <code>:cycles</code> /
 <code>:pressure</code> suffix, which is why <code>rank_decayed()</code> derives them from the
@@ -3564,19 +3625,19 @@ plain decay rather than raising, and is fixed in
 </div>
 <h2 id="scoring-formula">Scoring Formula<a class="headerlink" href="#scoring-formula" title="Permanent link">&para;</a></h2>
 <p>The extended Lua script computes per member:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>elapsed_days = max((now - last_updated) / 86400, 0.01)
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>decay = base_score * elapsed_days ^ (-decay_rate)
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>cyclic = sum(amplitude * cos(2 * pi * (now - phase) / period) for each cycle)
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>pressure = pressure_rate * max((now - last_resolved) / 86400, 0)
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>effective_score = decay + cyclic + pressure
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>elapsed_days = max((now - last_updated) / 86400, 0.01)
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>decay = base_score * elapsed_days ^ (-decay_rate)
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>cyclic = sum(amplitude * cos(2 * pi * (now - phase) / period) for each cycle)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>pressure = pressure_rate * max((now - last_resolved) / 86400, 0)
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>effective_score = decay + cyclic + pressure
 </code></pre></div>
 <p>When companion hashes return nil (no cycle/pressure data), the overhead is two nil HGET lookups per member.</p>
 <h2 id="confidence-modulated-decay">Confidence-Modulated Decay<a class="headerlink" href="#confidence-modulated-decay" title="Permanent link">&para;</a></h2>
 <p><code>CyclicDecayField</code> inherits confidence modulation from <code>DecayingSortedField</code> unchanged: the <code>decay</code>
 term above is computed with a per-record effective rate derived from the record's <code>ConfidenceField</code>
 value, while <code>cyclic</code> and <code>pressure</code> are untouched.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>decay = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>decay = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
 </code></pre></div>
 <p>Auto-detection, the <code>confidence_modulation_field</code> kwarg, the
 <code>Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED</code> kill switch, bit-exact neutrality, the <code>max(t, 1.0)</code>
