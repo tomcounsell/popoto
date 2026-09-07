@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready to Build
 type: chore
 appetite: Medium
 created: 2026-09-07
@@ -375,6 +375,38 @@ archival, site 15 needs it **decoded**.
   import from the recipe. Missing fields are absent from the returned dict
   (so `"tier" not in result` distinguishes "key gone" from "tier is None"),
   preserving the L1122 `if raw_tier is None` guard's meaning.
+
+  **Decode failure is a distinct third outcome and must not collapse into
+  either of the other two.** Site 15 today runs two *independent* try/excepts
+  (L1116–1131) whose failure paths diverge: a failed or absent `HGET`
+  (`raw_tier is None`) `continue`s and the record is **not** forgotten, while a
+  failed `decode_lazy_field` sets `live_tier = None`, which is not
+  `"semantic"`, so the record **is** forgotten. A `load_fields` that raised on
+  a bad decode — or that omitted an undecodable field from the dict — would
+  turn the second path into the first and silently stop forgetting records with
+  corrupt tier bytes. Both variants issue the identical `HGET` either way, so
+  the parity matrix cannot see this: it is a behavior change invisible to the
+  oracle. Contract, therefore:
+
+  - raw value is `None` (key or field absent) → **field omitted** from the dict.
+  - raw value present but `decode_lazy_field` raises → **field present, mapped
+    to `None`**. (A value that legitimately decodes to `None` maps to `None`
+    too; the two are indistinguishable in the dict and were already
+    indistinguishable at L1129, so no behavior is lost.)
+  - a Redis-level error → propagates; the recipe keeps its own `try/except`.
+
+  Site 15 therefore becomes, preserving all three of today's paths exactly:
+
+  ```python
+  try:
+      fetched = type(record).load_fields(live_key, self.tier_field)
+  except Exception:
+      fetched = {}
+  if self.tier_field not in fetched:
+      logger.debug("forget guard: key absent, skipping %s", live_key)
+      continue
+  live_tier = fetched[self.tier_field]
+  ```
 - **`Model.load_raw_hash(redis_key) -> dict[bytes, bytes]`** — one `HGETALL`,
   no decode, keys and values exactly as Redis returned them. Site 3 only.
   `restore()`'s round trip through `decode_popoto_model_hashmap` requires
@@ -485,20 +517,30 @@ New tests:
 
 - `tests/test_model_partial_load.py` — `load_fields` with one name emits
   `HGET`; with several emits `HMGET`; a missing field is absent from the dict;
-  values are decoded; `load_raw_hash` returns bytes keys and undecoded values
+  values are decoded; **a present-but-undecodable value maps the field to
+  `None` rather than omitting it or raising** (Decision 3's three-way
+  contract — the parity matrix cannot see this, so it needs its own test);
+  `load_raw_hash` returns bytes keys and undecoded values
   and round-trips through `decode_popoto_model_hashmap`; `idle_seconds()`
   returns a float on a live key and `None` for a missing key.
 - `tests/test_sorted_field_score.py` — `score()` returns the member's score,
-  `None` for a member not in the index, and resolves the partitioned key for a
-  `partition_by` field.
+  `None` for a member not in the index, resolves the partitioned key for a
+  `partition_by` field under the default `partitioned=True`, and reads the
+  bare unpartitioned key under `partitioned=False` (asserting the two resolve
+  to *different* keys when `partition_by` is set — that difference is the
+  whole of #658).
 - `tests/test_tombstone_store.py` — each store method against a real Redis:
   key naming, the `MULTI`/`EXEC` framing of the three transactions, eviction
   order (oldest first), `get_entries` preserving argument order including
   `None` holes, `purge` returning `False` for an absent key, and the re-export
   identity assertions (`memory_lifecycle.Tombstone is tombstone_store.Tombstone`).
 - `tests/test_memory_lifecycle.py` — additions only: an assertion that the
-  module no longer imports `POPOTO_REDIS_DB`, and that
-  `_tombstone_keys()` still returns the `$TOMB:{Model}:{data,index}` pair.
+  module no longer imports `POPOTO_REDIS_DB`; that `_tombstone_keys()` still
+  returns the `$TOMB:{Model}:{data,index}` pair; and a **corrupt-tier forget
+  guard** test that writes a non-msgpack raw value directly into the `tier`
+  hash field and asserts `tick()` still tombstones the record. That last one
+  locks in the divergence Decision 3 protects: no test covers it today, and
+  the wire diff is identical whether it is preserved or broken.
 
 **Parity matrix — the main deliverable.** A spy wrapping
 `POPOTO_REDIS_DB.execute_command`, `Pipeline.execute_command` and
@@ -641,7 +683,14 @@ window.
 - `load_fields`'s docstring states the `HGET`-for-one rule and why.
 - `idle_seconds`'s docstring states that it measures time since last access,
   not age, and names the LFU caveat.
-- `score`'s docstring notes it resolves the partitioned key, as `count`/`members` do.
+- `score`'s docstring notes that it resolves the partitioned key by default, as
+  `count`/`members` do, and that `partitioned=False` reads the bare
+  unpartitioned key — naming #474 and #658 so the escape hatch's only current
+  caller is documented rather than looking like an accident.
+- `load_fields`'s docstring states the three-way outcome contract from
+  Decision 3 (field omitted when absent, mapped to `None` when undecodable,
+  Redis errors propagate) — this is the part a later refactor is most likely
+  to flatten.
 
 ## Success Criteria
 
@@ -672,10 +721,16 @@ window.
 - `load_fields` emits `HGET` for exactly one name, `HMGET` for more.
 
 ### 2. Sorted-field score reader
-- Add `SortedFieldMixin.score(model_instance, field_name)` to
-  `src/popoto/fields/sorted_field_mixin.py`, beside `count()`/`members()`,
-  using `get_partitioned_sortedset_db_key` and resolving the client attribute
-  at call time.
+- Add `SortedFieldMixin.score(model_instance, field_name, partitioned=True)
+  -> Optional[float]` to `src/popoto/fields/sorted_field_mixin.py`, beside
+  `count()`/`members()`, resolving the client attribute at call time. **Both
+  key-resolution branches are required**: `partitioned=True` (the default, and
+  what `count()`/`members()` do) uses `get_partitioned_sortedset_db_key`;
+  `partitioned=False` uses the bare `get_special_use_field_db_key`. The
+  `False` branch is not decoration — it is the only thing that makes site 2
+  byte-identical to today's L330 read, and Risk 3 / No-Go 8 / #658 all depend
+  on it existing as a real parameter rather than a hardcoded key. See
+  Decision 4 for the full signature and rationale.
 
 ### 3. Tombstone store module
 - Create `src/popoto/fields/tombstone_store.py`: move `Tombstone`,
