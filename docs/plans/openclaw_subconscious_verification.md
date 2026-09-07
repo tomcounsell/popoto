@@ -2,7 +2,7 @@
 status: Ready
 revision_applied: true
 revision_applied_at: 2026-09-07
-critique_round: 2
+critique_round: 3
 type: feature
 appetite: Medium
 owner: valorengels
@@ -457,14 +457,12 @@ paths are asserted by the plugin's own behavior rather than by pytest:
   exactly as it treats the empty-prompt case above — `_first_string()` returns
   `""` and `handle_payload` emits nothing.
 - `event.messages` present but shaped differently than observed (**critique
-  round 2, C3**): the probe's capture recorded `messages: []` on a first turn,
-  so the *element* shape is unverified. `lastUserMessageText` therefore probes
-  candidates rather than hard-coding one pairing — `m.role ?? m.type` against
-  `("user", "human")`, `m.content ?? m.text` for the string — and returns `""`
-  on any shape it does not recognize. Task 2 captures a second turn in the same
-  session specifically to observe a non-empty `messages` and record the real
-  element shape in spike-2, so the candidate list is grounded rather than
-  guessed.
+  round 2, C3**, amended by round 3, C6): the probe's capture recorded
+  `messages: []` on a first turn, so the *element* shape is unverified. Task 2
+  captures a second turn in the same session specifically to observe a non-empty
+  `messages` and record the real element shape in spike-2. `lastUserMessageText`
+  reads exactly that shape and returns `""` on anything else — grounded, not
+  guessed, and never widened to key names nobody has seen.
 - `assistantTexts` empty array, or a list whose members are all empty or
   whitespace: `_first_string`'s list branch yields `""`, `_first_string` moves on
   to the next candidate field, and the write path stores nothing. Asserted in the
@@ -744,6 +742,9 @@ alongside the new automatic half.
       being weakened to a truthiness check.
 - [ ] `_provenance` on both OpenClaw fixtures begins with the literal
       `captured-from: a live turn through the shipped popoto OpenClaw plugin`.
+- [ ] spike-2 records the turn-2 `event.messages` element shape under the literal
+      marker `element shape (turn 2):`, and `lastUserMessageText` reads that
+      shape and no other.
 - [ ] No OpenClaw-specific branch is added to `src/popoto/`.
 - [ ] Tests pass (`/do-test`), narrow scope: `tests/test_integrations_hooks.py`.
 - [ ] Documentation updated (`/do-docs`).
@@ -769,9 +770,12 @@ alongside the new automatic half.
 - Resolve the query as `event.prompt || lastUserMessageText(event.messages) || ""`
   and always emit the key (**critique C2**, amended by round 2). A helper reading
   the last user-role entry of `event.messages` is the whole of it — no transcript
-  walking, no tool-result rendering. It probes `m.role ?? m.type` against
-  `("user", "human")` and `m.content ?? m.text`, against the element shape task 2
-  captures, and returns `""` on anything unrecognized.
+  walking, no tool-result rendering. Write it against the single `{role,
+  content}` pairing and return `""` on anything else — **do not** ship
+  speculative alternate key names (critique round 3, C6): task 2 observes the
+  real element shape and reconciles the helper against it before any fixture is
+  committed, so guessing here would reproduce, inside the plugin, the exact
+  fabricate-then-hope failure the fixtures are being replaced for.
 - Resolve the executable as `process.env.POPOTO_MEMORY_BIN || "popoto-memory"`
   (**critique C1**). This is a build requirement, not an incidental convenience:
   it is the seam the failure-path test in task 2 uses.
@@ -795,14 +799,25 @@ alongside the new automatic half.
   - **Turn 1** is the fixture turn. Drive it with a scripted prompt that contains
     the phrase *health checks* and asks for an answer mentioning *automatic
     rollback* — e.g. "Deploys are blue-green and roll back on failed health
-    checks; describe what happens on a failed check." This is not cosmetic: the
+    checks; describe what happens on a failed check, using the exact phrase
+    'automatic rollback' in your answer." This is not cosmetic: the
     shared parametrizations at `tests/test_integrations_hooks.py:153` and `:166`
     assert those two substrings across every fixture, so an unscripted prompt
     breaks four harnesses' tests at once (critique round 2, B1).
   - **Turn 2** exists only to observe a non-empty `event.messages`, since the
     probe saw `messages: []` on a first turn. Record one element's real shape in
-    spike-2; it is what grounds `lastUserMessageText`'s candidate keys (critique
-    round 2, C3). Turn 2 is not committed as a fixture.
+    spike-2 under the literal marker `element shape (turn 2):` followed by the
+    observed keys — the Verification row greps for that marker, so it cannot pass
+    before the capture happens (critique round 3, B2). Turn 2 is not committed as
+    a fixture.
+  - If the model's turn-1 answer does not contain the literal `automatic
+    rollback`, **re-run the turn**. Never hand-edit the captured text: a fixture
+    edited to satisfy an assertion is the fabricated-fixture failure this whole
+    plan exists to undo (critique round 3, C5).
+  - **Then** reconcile `lastUserMessageText` against the observed shape before
+    committing anything (critique round 3, C6). Task 1 writes it against the
+    single `{role, content}` pairing and nothing more; widening it to other key
+    names happens here, on evidence, or not at all.
 - Commit the two turn-1 envelopes verbatim, adding only `_provenance`. Its first
   line is exactly `captured-from: a live turn through the shipped popoto OpenClaw
   plugin`, followed by the OpenClaw version and the recapture command — the
@@ -873,7 +888,7 @@ alongside the new automatic half.
 | Old docs-derived provenance is gone | `grep -c "captured-from: the OpenClaw plugin hook reference" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json` | match count == 0 |
 | Fixtures are live-captured (positive) | `grep -l "captured-from: a live turn through the shipped popoto OpenClaw plugin" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json \| wc -l` | output contains 2 |
 | `cwd` assertion not weakened | `grep -c "CWDS" tests/test_integrations_hooks.py` | output > 0 |
-| `messages` element shape recorded | `grep -c "messages: \[\]" docs/plans/openclaw_subconscious_verification.md` | output > 0 |
+| `messages` element shape recorded | `grep -c "element shape (turn 2):" docs/plans/openclaw_subconscious_verification.md` | output > 0 |
 | Operator rollback documented | `grep -c "plugins uninstall" docs/guides/harness-openclaw.md` | output > 0 |
 | Query fallback exists | `grep -c "event.messages" plugins/openclaw/popoto-memory-plugin/index.js` | output > 0 |
 | Binary override exists | `grep -c "POPOTO_MEMORY_BIN" plugins/openclaw/popoto-memory-plugin/index.js` | output > 0 |
@@ -900,6 +915,9 @@ alongside the new automatic half.
 | CONCERN | Scope & Value (r2, C2b) | The round-1 C2 fix had the plugin omit the `prompt` key when the query resolved empty, to let the fixture distinguish "sent nothing" from "flattened to nothing". `_first_string()` returns `""` either way, so it bought a branch and a test case for a distinction nothing reads. | Data Flow recall step 2 + Task 1 + Failure Path | Dropped: always emit the key. `envelope.prompt = prompt;` unconditionally, never `if (prompt) envelope.prompt = prompt;`. |
 | CONCERN | Risk & Robustness (r2, C3) | C2's fallback reads `event.messages` elements, but the probe captured `messages: []` (a first turn), so the element shape is unverified. A hard-coded `{role, content}` pairing would return `""` forever — the same silent-empty-recall failure C2 exists to prevent, and indistinguishable from correct behavior. | spike-2 + Task 2 + Failure Path | Capture a second turn in the same session to observe a non-empty `messages` and record the element shape in spike-2. Implement `lastUserMessageText` to probe `m.role ?? m.type` against `("user","human")` and `m.content ?? m.text`, returning `""` on anything unrecognized. |
 | CONCERN | History & Consistency (r2, C4) | The new positive provenance Verification row greps a literal sentence no task or Success Criterion commits the builder to writing, so a correct live provenance phrased differently fails it — the invented-target pattern N1 flagged, mirrored to the positive side. | Task 2 + Success Criteria | Name the exact required first line in task 2 and repeat it in a Success Criterion: `captured-from: a live turn through the shipped popoto OpenClaw plugin`. |
+| CONCERN | Risk & Robustness **and** History & Consistency, independently (r3, B2) | The round-2 Verification row `grep -c "messages: \[\]"` matches the sentence describing the *unresolved gap*, which is already in the plan today. It passes before task 2 runs and would pass if the second-turn capture never happened — the same vacuity N1 and C4 were raised against, on a third row. | Verification table + Task 2 | Require task 2 to write the literal marker `element shape (turn 2):` followed by the observed keys into spike-2, and grep for that marker instead. A row whose target already exists in the file it greps is not a check. |
+| CONCERN | Risk & Robustness (r3, C5) | The scripted capture prompt asks the model to "describe what happens on a failed check" but never demands the literal phrase `automatic rollback`, which `tests/test_integrations_hooks.py:166` asserts as a substring of the free-form answer. A correct paraphrase satisfies the prompt and fails the test — B1's contradiction reappearing on the response text, with no sanctioned patch path since fixtures commit byte-for-byte. | Task 2 (capture-fixtures) | Put the exact phrase in the prompt, and re-run the turn if the model does not comply. Never hand-edit the captured text — an edited fixture is the fabricated fixture this plan exists to undo. |
+| CONCERN | Scope & Value (r3, C6) | Task 1 has no dependencies and runs first, yet the round-2 revision had it ship `lastUserMessageText` with speculative key probing (`m.role ?? m.type`, `m.content ?? m.text`) for an element shape task 2 observes only afterwards. That is fabricate-before-verify reproduced inside the plugin's own logic — the precise failure the fixture replacement is undoing. | Task 1 + Task 2 + Failure Path | Task 1 writes the single `{role, content}` read and returns `""` on anything else. Task 2 gains an explicit reconcile step: if the captured element shape differs, update the helper in the same PR before committing fixtures. The shipped code is never broader than what was observed. |
 | NIT | History & Consistency (r1, N1) | The "Fixtures are live-captured" row only asserted the old docs-derived sentence is gone; any replacement text, including a fabricated one, would pass. | Verification table | Split into a negative row (old provenance absent) and a positive row (new provenance present, count == 2). |
 | NIT | Risk & Robustness (r2, N1r2) | The tighter `execFile` timeout is justified against `before_prompt_build`'s 15s budget; whether it is load-bearing on `llm_output` is left unstated. | Technical Approach > Timeout | `llm_output` is Observe, has no runner timeout and a discarded return value, so nothing upstream reaps a hung child — the timeout is the only bound on resident capture processes. |
 
@@ -1058,6 +1076,28 @@ by re-auditing it.
 - **Resolution**: the Timeout paragraph now states it — `llm_output` is Observe,
   has no runner timeout and a discarded return value, so nothing upstream reaps a
   hung child and the timeout is the only bound on resident capture processes.
+
+---
+
+**Round 3** — 2026-09-07, same FULL roster, independent. Verdict: **READY TO
+BUILD (with concerns)** — 0 blockers, 3 concerns, 0 nits. B1, C2b, C3, C4 and
+N1r2 were each confirmed closed by two critics independently, citing the revised
+wording; History & Consistency additionally re-read the shipped test source and
+confirmed B1 fixed a real, still-present assertion rather than an imagined one.
+
+The three new concerns (B2, C5, C6 in the table above) were applied immediately
+and share one shape, worth naming because it is this change's characteristic
+failure mode: **a check whose target already exists passes without checking
+anything, and code written before the evidence arrives is a guess wearing the
+shape of a fix.** All three are instances — a grep pointing at the sentence
+describing the problem, a capture prompt that hopes for a phrase an assertion
+demands, and a helper written against a shape nobody has seen. Two critics
+reached the first independently, which is why it is recorded as convergent rather
+than one critic's opinion.
+
+The concern re-critique bound is exhausted at three rounds. Every finding raised
+across all three rounds has been applied to the plan text; none was accepted
+as-is or deferred. BUILD proceeds.
 
 ## Open Questions
 
