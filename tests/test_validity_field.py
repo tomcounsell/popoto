@@ -903,27 +903,25 @@ def _decay_eval_numkeys(source):
 
 class TestDecayEvalCallSites:
     def test_decay_eval_call_sites_pass_four_keys(self):
-        """All three production sites pass numkeys 4 (plan Risk 1).
+        """The one remaining production site passes numkeys 4 (plan Risk 1).
 
         Passing the two validity keys without bumping numkeys silently shunts
         them into ARGV, shifting ``base_score_field`` and the confidence
         parameters — a corruption that fails quietly, which is why this is a
         test and not a grep.
 
-        The third site used to be ``context_assembler._decayed_partition_scores``.
-        In #648 that recipe stopped building the KEYS array itself and now calls
-        ``DecayingSortedField.rank_decayed``, so the eval it is responsible for
-        lives there. The assertions below are unchanged; only the inventory of
-        *where* the evals live follows the code. Keeping the old entry would
-        require keeping the duplication #648 removed.
+        The inventory has shrunk twice, each time because a caller stopped
+        building the KEYS array itself. #648 retired
+        ``context_assembler._decayed_partition_scores``; #662 retired
+        ``QueryBuilder.top_by_decay`` and
+        ``QueryBuilder._materialize_decay_field``. All three now dispatch to
+        ``DecayingSortedField.rank_decayed`` (or the ``CyclicDecayField``
+        override), so that method is where the eval they are responsible for
+        lives. The assertions below are unchanged; only the inventory of
+        *where* the evals live follows the code. Keeping the old entries would
+        require keeping the duplication those issues removed.
         """
         sites = {
-            "query.QueryBuilder.top_by_decay": inspect.getsource(
-                QueryBuilder.top_by_decay
-            ),
-            "query.QueryBuilder._materialize_decay_field": inspect.getsource(
-                QueryBuilder._materialize_decay_field
-            ),
             "decaying_sorted_field.DecayingSortedField.rank_decayed": (
                 inspect.getsource(DecayingSortedField.rank_decayed)
             ),
@@ -945,15 +943,32 @@ class TestDecayEvalCallSites:
     def test_cyclic_decay_lua_sites_are_not_matched(self):
         """CYCLIC_DECAY_LUA is deliberately unmodified — never flag it.
 
-        ``top_by_decay`` still holds both scripts in one body. The assembler's
-        copy moved to the field layer in #648, where the two layouts are split
-        across ``DecayingSortedField.rank_decayed`` and the
-        ``CyclicDecayField.rank_decayed`` override — so the pairing is checked
-        across that pair rather than within one function.
+        ``top_by_decay`` used to hold both scripts in one body, selected by an
+        ``isinstance`` branch. #648 split the two layouts across
+        ``DecayingSortedField.rank_decayed`` and the
+        ``CyclicDecayField.rank_decayed`` override; #662 then made
+        ``top_by_decay`` dispatch through that seam, so it now evaluates
+        neither script itself and the pairing is checked across the two field
+        methods rather than within one function.
+
+        The claim below is *no eval site*, not *no mention*: ``top_by_decay``
+        still names both scripts in the comment that explains why the cyclic
+        path has no validity gate, and that comment is the only place a reader
+        of this method learns it. Asserting on the bare identifiers would
+        forbid documenting the hazard.
         """
-        assert "CYCLIC_DECAY_LUA" in inspect.getsource(QueryBuilder.top_by_decay)
-        assert (
-            len(_decay_eval_numkeys(inspect.getsource(QueryBuilder.top_by_decay))) == 1
+        top_source = inspect.getsource(QueryBuilder.top_by_decay)
+        assert _decay_eval_numkeys(top_source) == []
+        assert not re.search(r"\brun_lua\(", top_source), (
+            "top_by_decay must not build a decay KEYS array itself (#662) — "
+            "dispatch through field.rank_decayed"
+        )
+
+        materialize_source = inspect.getsource(QueryBuilder._materialize_decay_field)
+        assert _decay_eval_numkeys(materialize_source) == []
+        assert not re.search(r"\brun_lua\(", materialize_source), (
+            "_materialize_decay_field must not build a decay KEYS array "
+            "itself (#662) — dispatch through field.rank_decayed"
         )
 
         cyclic_source = inspect.getsource(CyclicDecayField.rank_decayed)
