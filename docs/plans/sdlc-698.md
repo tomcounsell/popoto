@@ -886,7 +886,201 @@ today**, which is its red-state proof: the sentence it forbids is currently
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Critics:** Risk & Robustness, Scope & Value, History & Consistency (FULL depth)
+**Mode:** independent roster (3 critics)
+**Findings:** 8 total (1 blocker, 6 concerns, 1 nit)
+**Verdict:** NEEDS REVISION
+
+### Blockers
+
+#### B1 — `strengthen_cycle()` / `weaken_cycle()` return shape widens; "no interface changes" is false
+
+- **Critics:** History & Consistency
+- **Location:** Architectural Impact ("Interface changes: none to any public Python API")
+- **Finding:** `_adjust_cycle_amplitudes` unpacks the stored payload
+  (`base.py:2743`), mutates only `cycle[1]` (`:2748-2751`), and **returns the
+  list it read** (`:2763`), surfaced through the public `strengthen_cycle` /
+  `weaken_cycle` (`:2673`, `:2693`), whose docstrings say "The updated cycles
+  list". Once `on_save` writes 4-element entries, those two public methods start
+  returning 4-element sublists for any already-saved record. The plan's Rabbit
+  Holes rule forbids `_adjust_cycle_amplitudes` from **writing** slot 3 but says
+  nothing about it **returning** slot 3, so the claim of no public interface
+  change is wrong as written.
+- **Suggestion:** Make an explicit choice and record it: either (a) document the
+  widened return shape in both docstrings and in Architectural Impact, or
+  (b) strip slot 3 on the way out of `_adjust_cycle_amplitudes` so the public
+  return contract stays 3-element. Add a task step and a test either way.
+- **Implementation Note:** If (b), truncate at the return sites only — `return
+  cycles` at `base.py:2763` becomes `return [cycle[:3] for cycle in cycles]`, and
+  the packed value written at `:2756-2762` must keep all four slots. Do **not**
+  truncate before `msgpack.packb`, which would make `_adjust_cycle_amplitudes` a
+  slot-3 writer and destroy the mechanism (the Rabbit Hole this plan already
+  names). The pipeline branch (`:2758-2760`) returns the pipeline and is
+  unaffected. `tests/test_observation_protocol.py:690` asserts only `result ==
+  []` on the no-entry path, so no existing test pins the arity — a new one must.
+
+### Concerns
+
+#### C1 — Open Question 1 is declared unresolvable by the plan, yet the tasks already implement one answer
+
+- **Critics:** Scope & Value
+- **Location:** Open Questions 1 / Step by Step Tasks (build-merge, build-tests)
+- **Finding:** OQ1 calls hard-reset-vs-proportional-rescale "a product call and
+  the one thing the plan cannot settle on its own", and Appetite budgets one PM
+  check-in for it — but Tasks 1 and 3 fully implement and pin hard reset, with no
+  task gated on the decision. A "rescale" answer rewrites the merge branch, its
+  log message, its docstring and most of the new test class after the code exists.
+- **Suggestion:** Resolve it in the plan text — state that hard reset ships and
+  rescale is deferred to a follow-up issue — or add an explicit decision
+  dependency ahead of `build-merge` / `build-tests`.
+- **Implementation Note:** If hard reset is confirmed, add one sentence to OQ1
+  ("Decided: hard reset ships; proportional rescale tracked separately") and drop
+  the "the plan cannot settle" framing, so `merge-builder` is not building against
+  an officially-open question. If rescale is chosen instead, the plan must also
+  answer `old_baseline == 0.0` (division by zero → fall back to the declared
+  value) before Task 1 starts.
+
+#### C2 — Cross-deployment import carries the *exporter's* baseline and can fire a spurious reset
+
+- **Critics:** History & Consistency
+- **Location:** Solution / Key Elements ("Transfer consistency"), Risk 2, Task 2
+- **Finding:** Risk 2 covers only the legacy no-baseline import. It does not
+  cover importing a record whose slot 3 was recorded under the *exporting*
+  deployment's declaration into a target whose `field.cycles` amplitude differs
+  for that period. The first `save()` after import sees `baseline != declared`
+  and resets — destroying exactly the learned amplitude
+  `roundtrip_policy = "carry"` exists to preserve, with no import-time signal.
+- **Suggestion:** Add this as a named Risk parallel to Risk 2 and either accept
+  it explicitly (cross-deployment transfer assumes matching declarations) or have
+  `import_state` re-baseline to the **importing** deployment's declared value.
+- **Implementation Note:** Task 2 currently says carry slot 3 through
+  normalization verbatim (`cyclic_decay_field.py:344-349`). Re-baselining instead
+  means deriving the baseline from `field.cycles` at import time rather than from
+  `cycle[3]` of the payload — which changes the assertion Task 2 adds to
+  `tests/test_transfer_fidelity_fields.py` from byte-identical carry to
+  re-baselining. Pick one before either task starts; the two are mutually
+  exclusive and both are currently written into the plan.
+
+#### C3 — Race 1's mitigation understates the new consequence: a spurious *delayed* reset
+
+- **Critics:** Risk & Robustness
+- **Location:** Race Conditions / Race 1
+- **Finding:** Race 1 says a lost baseline update means "one missed reset,
+  recovered on the next save." The actual new failure mode is worse: if
+  `_adjust_cycle_amplitudes` reads the pre-reset entry and its `hset`
+  (`base.py:2762`) lands after `on_save`'s, it repacks the **stale** slot 3
+  (spike-2: it preserves unknown slots). The stored baseline reverts to the
+  superseded value, and the *next, uncontended* save fires a second reset that
+  discards the learning applied in between.
+- **Suggestion:** Correct the Race 1 mitigation text to name this consequence, so
+  a maintainer investigating an unexplained reset knows where to look. No code
+  change — this remains inside Race 1's accepted scope and the No-Go for #699.
+- **Implementation Note:** Interleaving to record verbatim: (1) `on_save` reads
+  `baseline_old != declared`, writes `[period, declared, phase, declared]`;
+  (2) `_adjust_cycle_amplitudes` had already `hget`'d
+  `[period, learned_old, phase, baseline_old]` at `base.py:2736`; (3) it writes
+  `[period, learned_old*factor, phase, baseline_old]` at `:2762`, clobbering the
+  reset *and* restoring the stale baseline.
+
+#### C4 — Risk 2's "first deploy does not detect the edit" is buried
+
+- **Critics:** Scope & Value
+- **Location:** Problem / Desired outcome, Success Criteria, Risk 2, OQ3
+- **Finding:** Every currently-deployed record has a 3-element entry, so a
+  developer who upgrades and edits `amplitude=` in the same deploy reproduces the
+  reported symptom once more. Success Criterion 1 ("An edited declared amplitude
+  resets the learned amplitude on the next `save()`") reads as unconditional and
+  contradicts that, and the caveat appears only in Risk 2 / OQ3.
+- **Suggestion:** State the two-save requirement next to Desired Outcome and
+  qualify Success Criterion 1 ("...for every record that has a recorded
+  baseline"), rather than leaving it to be inferred from Risks.
+- **Implementation Note:** In `docs/features/cyclic-decay-field.md` (task
+  `document-feature`), give the operator the concrete remedy already documented
+  for a reset: `hdel` the member's cycles entry and re-save, or upgrade first and
+  let every record save once before editing the declaration.
+
+#### C5 — One INFO line per reset per record is an unbounded log burst
+
+- **Critics:** Risk & Robustness
+- **Location:** Solution / Key Elements ("A loud reset")
+- **Finding:** A single declaration edit resets every record that has learned an
+  amplitude for that period, one `logger.info` each, on their next save. On a hot
+  field at the 20k-record scale target that is a burst with no sampling,
+  aggregation or rate limit, and the plan never surfaces it.
+- **Suggestion:** Accept it explicitly as a per-record audit trail (the cheap
+  answer, and the reason INFO beats WARNING — see OQ2 below), and note the volume
+  next to the destructive-edit warning in the docs task.
+- **Implementation Note:** One sentence in `docs/features/cyclic-decay-field.md`
+  alongside the line-122 rewrite already scheduled for `cyclic-doc`. No code
+  change; do **not** add a per-process-per-field dedupe, which OQ2 already prices
+  as more code than a Small appetite wants.
+
+#### C6 — The editable-install prerequisite check is vacuous
+
+- **Critics:** structural check (Step 2d)
+- **Location:** Prerequisites, row 3
+- **Finding:** `python -c "import popoto, pathlib, sys; sys.exit(0 if 'popoto' in
+  str(pathlib.Path(popoto.__file__)) else 1)"` is true for *any* popoto
+  installation, including a stale one in another checkout — it cannot detect the
+  failure it cites (worktree gotcha 1). Run live at critique time it **passed**
+  while resolving to `/Users/valorengels/src/popoto/src/popoto/__init__.py`, the
+  **main** checkout, not `.worktrees/sdlc-698` — i.e. the exact condition the row
+  exists to catch is currently live and the check is green.
+- **Suggestion:** Compare against the checkout root, not the substring `popoto`.
+- **Implementation Note:** Replace with
+  `python -c "import popoto,pathlib,sys; sys.exit(0 if
+  pathlib.Path(popoto.__file__).resolve().is_relative_to(pathlib.Path.cwd().resolve())
+  else 1)"` run from the worktree root, or simply
+  `python -c "import popoto; print(popoto.__file__)"` and eyeball it against
+  `git rev-parse --show-toplevel`. `scripts/ci-local.sh` already performs this
+  check — deferring to it is also acceptable, but the row as written must not
+  stay, because it reports green on the failure.
+
+### Nits
+
+#### N1 — Success Criteria says "four clarifying updates"; Test Impact lists five
+
+- **Critics:** History & Consistency (first pass), structural check (Step 2e)
+- **Location:** Success Criteria, bullet 2
+- **Finding:** Test Impact names five UPDATE dispositions inside
+  `TestLearnedAmplitudePreservedOnSave` (`test_cycle_added_to_declaration_uses_declared_amplitude`,
+  `test_phase_refreshes_from_declaration_while_amplitude_persists`,
+  `test_cycle_removed_from_declaration_is_dropped`,
+  `test_corrupt_stored_entry_falls_back_to_declared`,
+  `test_duplicate_periods_pair_fifo_and_keep_order`), plus the module-level
+  `_read_cycles` helper. Success Criteria says four.
+- **Suggestion:** Say five, or enumerate them, so `final-validator` is not
+  checking against the wrong count.
+
+### Open Questions — critique disposition
+
+1. **Hard reset vs. proportional rescale** — **ESCALATED, unresolved.** No critic
+   found a technical objection to hard reset, and rescale adds an
+   `old_baseline == 0.0` case, but this is a semantics choice for the maintainer.
+   It must be answered in the plan text before build (C1), not left open while the
+   tasks implement one side of it.
+2. **INFO vs WARNING for the reset log** — **RESOLVED: INFO, as planned.** C5 is
+   the argument: a single edit resets every learned record, so WARNING would be a
+   fleet-wide alarm burst on an intentional, expected event. The per-record INFO
+   line is the audit trail; the volume gets one documented sentence.
+3. **Risk 2 upgrade caveat as documentation only** — **RESOLVED: acceptable as
+   documentation.** The only alternative (treat "no baseline" as "changed")
+   resets every learned amplitude in the database on first save, which is
+   strictly worse. But the caveat's *placement* is a real defect (C4): it belongs
+   next to Desired Outcome and must qualify Success Criterion 1, not sit only in
+   Risks.
+
+### Structural check results
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections | PASS | All plan sections present and non-empty |
+| Task numbering | PASS | Tasks 1-6, no gaps |
+| Dependencies valid | PASS | `build-merge`, `build-transfer`, `build-tests`, `validate-merge`, `document-feature` all resolve; no cycles |
+| File paths exist | PASS | 12 of 12 referenced paths exist |
+| Prerequisites met | PARTIAL | Redis DB 12 PONG; extras import; editable-install row passes **vacuously** (C6) |
+| Cross-references | FAIL | Success Criteria "four" vs Test Impact five (N1) |
+| Verification rows reproduce | PASS | Re-ran at plan time on unmodified tree: `TestLearnedAmplitudePreservedOnSave`=1, stale-doc-claim=1 (red as documented), numkeys=1, `logger.info`=0, new class=0 — all match the plan's stated smoke test |
 
 ---
 
