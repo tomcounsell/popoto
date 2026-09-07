@@ -1,7 +1,9 @@
 # popoto-memory: OpenClaw wiring
 
-**OpenClaw gets the MCP tools this cycle. It does not get automatic
-injection or capture.** That is the honest state, not a soft launch.
+OpenClaw gets both halves: the MCP tools the model elects to call, and per-turn
+recall and capture that run whether it elects to or not.
+
+## The MCP tools
 
 Merge `openclaw.json.fragment` into `~/.openclaw/openclaw.json` under
 `mcp.servers`:
@@ -12,25 +14,41 @@ popoto-memory doctor
 ```
 
 That gives you `memory_search`, `memory_save`, `memory_feedback`, and
-`memory_status`. The model calls them when it decides to, which means memory
-is something it elects to use rather than something that happens every turn.
+`memory_status`.
 
-## Why the automatic half is missing
+## The plugin
 
-OpenClaw's per-turn hooks (`before_prompt_build`, `llm_output`) live in
-TypeScript plugins, not in a command string. A thin plugin that shells out
-to `popoto-memory hook` is the right shape -- the adapter already speaks
-OpenClaw's `appendContext` response, and
-`tests/fixtures/harness_payloads/openclaw_*.json` round-trip through it --
-but whether an OpenClaw plugin may spawn a subprocess is unverified.
-Plugins load as in-process Node modules, so `child_process` should be
-reachable, and no documentation says otherwise. "Should be" is not a
-verification, and OpenClaw is not installed on any machine this repo is
-developed on, so the plugin is not shipped.
+`popoto-memory-plugin/` is a shippable OpenClaw plugin — hand-written ESM, no npm
+dependencies beyond OpenClaw's own peer SDK import. It registers
+`before_prompt_build` (Modify, returns `appendContext`) and `llm_output`
+(Observe), turns each `(event, ctx)` pair into the JSON envelope
+`popoto-memory hook` reads on stdin, and returns what that command prints.
 
-The alternative -- reimplementing the memory path in TypeScript -- is a
-second implementation of the core and is out of scope at any price.
+Install and rollback steps, the four operator gates, and the failure diagnostics
+are in [the guide](../../docs/guides/harness-openclaw.md). Three details are
+worth stating here, next to the code they explain:
 
-Resolving this needs one person with OpenClaw installed to run a plugin that
-calls `child_process.execFile`. When that lands, the plugin is thin: pass the
-event through to `popoto-memory hook` and return its JSON.
+- **`session_id`, `cwd` and `turn_id` come from the second argument.** OpenClaw
+  puts them on `ctx` as `sessionId`, `workspaceDir` and `runId`, not on the
+  event. Reading any of the three off `event` yields `undefined`.
+- **`assistantTexts` is passed through as an array, unflattened.** The adapter's
+  `_first_string()` reduces it. Joining it here would move the one non-trivial
+  transformation on this path into untested JavaScript, and would make the
+  committed fixture stop documenting what OpenClaw actually sends.
+- **Both handlers fail silent.** A failed shell-out injects nothing and never
+  fails the turn.
+
+## Why there is no TypeScript reimplementation
+
+Reimplementing the memory path in TypeScript would be a second implementation of
+the core, and is out of scope at any price. That is a standing architectural
+boundary, not a deferral: the plugin depends on popoto only through the
+`popoto-memory` executable — no Python import, no shared schema beyond the JSON
+envelope.
+
+Whether an OpenClaw plugin may spawn a subprocess was the open question that kept
+this half unshipped. It is settled by execution, not by reasoning about module
+loading: on OpenClaw 2026.9.2 the shipped plugin spawned `popoto-memory hook`
+from inside `before_prompt_build` during a live turn, and the model answered from
+a fact that existed only in Redis. The fixtures in
+`tests/fixtures/harness_payloads/openclaw_*.json` are what that run wrote.

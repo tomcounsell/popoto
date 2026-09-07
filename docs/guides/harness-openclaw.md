@@ -1,8 +1,16 @@
 # Add Memory to OpenClaw
 
-**OpenClaw gets the MCP tools. It does not get automatic injection or
-automatic capture.** That is the current state, stated plainly rather than
-buried: on OpenClaw this is instructed memory, not subconscious memory.
+OpenClaw gets both halves: the four MCP tools the model can call on purpose,
+and — since the `popoto-memory` plugin shipped — per-turn recall and capture
+that happen whether the model thinks to ask or not.
+
+The automatic half runs on two OpenClaw hooks. `before_prompt_build` returns
+`appendContext`, which is injected into the user turn before the model sees it;
+`llm_output` reports the turn's outcome afterwards. The plugin is a translation
+layer and nothing else: it turns OpenClaw's `(event, ctx)` arguments into the
+JSON that `popoto-memory hook` reads on stdin, and hands back what that command
+prints. Everything that decides what a memory is lives in Python, the same code
+Claude Code, Codex, and Hermes reach.
 
 !!! note "Pre-release"
     `popoto[mcp]` is not on PyPI yet. Until a release ships, install from a
@@ -14,6 +22,12 @@ buried: on OpenClaw this is instructed memory, not subconscious memory.
 pip install 'popoto[mcp]'
 popoto-memory doctor
 ```
+
+`popoto-memory` must be on the `PATH` of the process that runs OpenClaw. If it
+is not — a virtualenv OpenClaw does not inherit is the usual reason — set
+`POPOTO_MEMORY_BIN` to its absolute path instead.
+
+### The MCP tools (the discretionary half)
 
 Add to `~/.openclaw/openclaw.json` under `mcp.servers`:
 
@@ -39,60 +53,116 @@ Restart OpenClaw. You get four tools:
 | `memory_feedback` | Mark a memory `contradicted` or `acted` |
 | `memory_status` | Connection, scope, retrieval mode, record count |
 
-## What you are missing, and why
+### The plugin (the subconscious half)
 
-On Claude Code, Codex, and Hermes, memory runs on every turn because the
-harness fires a hook that this package handles. The model is never asked.
-That is the property that makes memory reliable: a memory system is only
-worth having if things were actually recorded to recall later, and a model
-that must choose to record will not choose consistently.
+The plugin ships as source under `plugins/openclaw/popoto-memory-plugin/` in the
+popoto checkout. It is not published to npm or ClawHub, so you install it from a
+local archive:
 
-On OpenClaw the model has to call `memory_save` and `memory_search`. It will
-sometimes. It will often not.
+```bash
+cd plugins/openclaw/popoto-memory-plugin
+npm pack --pack-destination /tmp
 
-OpenClaw's per-turn hooks -- `before_prompt_build`, which returns
-`appendContext`, and `llm_output` -- live in TypeScript plugins rather than
-in a command string. The adapter here already speaks that contract:
-`tests/fixtures/harness_payloads/openclaw_*.json` round-trip through it and
-produce `{"appendContext": "..."}`. A thin plugin that shells out to
-`popoto-memory hook` is all that is missing.
-
-Whether an OpenClaw plugin may spawn a subprocess is unverified. Plugins
-load as in-process Node modules, so `child_process` should be reachable, and
-no documentation says otherwise. "Should be" is not verification, and
-OpenClaw is not installed on any machine this integration is developed on,
-so the plugin is not shipped.
-
-The alternative -- reimplementing the memory path in TypeScript -- would be
-a second implementation of the core, and is not going to happen.
-
-Resolving this takes one person with OpenClaw installed running a plugin
-that calls `child_process.execFile`. If that works, the plugin is a dozen
-lines: pass the event through to `popoto-memory hook`, return its JSON.
-
-## Getting more out of the tools in the meantime
-
-Because recall is model-elected here, telling the agent when to search
-actually helps, which is not true on the other harnesses. Something like
-this in your instructions:
-
-```
-Before answering a question about how this project works, call
-memory_search. After learning something durable about the project, call
-memory_save.
+openclaw plugins install npm-pack:/tmp/openclaw-popoto-memory-1.0.0.tgz \
+    --accept-capabilities --force
+openclaw config set \
+    plugins.entries.popoto-memory.hooks.allowConversationAccess true
 ```
 
-That is a workaround for a missing hook surface, not the intended design.
+Then restart the gateway (or start a new `openclaw agent --local` run).
+
+Both flags on the install are required and neither is optional politeness:
+`--accept-capabilities` acknowledges the surface the plugin registers, and
+`--force` acknowledges that a local archive is outside ClawHub's review and trust
+metadata. Without them the install is refused — loudly, which makes this the
+easiest of the four gates below.
+
+The plugin's config key is `popoto-memory`, from its `openclaw.plugin.json`
+manifest id, **not** `openclaw-popoto-memory`, its npm package name. The install
+output says so; the `config set` line above uses the manifest id.
 
 ## Verify
 
 ```bash
-popoto-memory doctor
+openclaw plugins inspect popoto-memory --runtime --json
 ```
 
-`records` climbing means `memory_save` is being called. If `records` stays
-at 0 across a long session, the model is not electing to use the tools --
-which is the whole problem described above, not a bug in the setup.
+A working install reports:
+
+```json
+{
+  "plugin": { "status": "loaded", "enabled": true, "activated": true,
+              "hookCount": 2 },
+  "diagnostics": []
+}
+```
+
+`hookCount: 2` is the load-bearing number. Check it positively rather than
+looking for an error, because the two ways this setup fails do not produce one.
+
+## Troubleshooting
+
+### `openclaw agent exec` loads no external plugins
+
+This is the expensive one, and it is worth reading before anything else on this
+page. A verification run through `openclaw agent exec` completes normally,
+produces a perfectly good answer, and fires none of your plugin's hooks. Nothing
+reports an error, because from `exec`'s point of view nothing went wrong. The
+result looks exactly like "this capability does not exist" — it cost a full false
+negative during popoto's own verification of this feature.
+
+Verify with `openclaw agent --local` or through the gateway. Never with
+`agent exec`.
+
+### `status: "loaded"` with `hookCount: 0`
+
+Hooks are blocked for non-bundled plugins unless the operator opts in. The plugin
+still reports `enabled: true`, `activated: true`, and `status: "loaded"` — it did
+load; it just was not allowed to register hooks. The reason appears only under
+`diagnostics` in `openclaw plugins inspect popoto-memory --runtime --json`.
+
+The fix is the config key from the install steps:
+
+```bash
+openclaw config set \
+    plugins.entries.popoto-memory.hooks.allowConversationAccess true
+```
+
+### Memory is silent
+
+The plugin fails silent by design: if `popoto-memory` cannot be reached, the
+`before_prompt_build` handler injects nothing and the turn proceeds without
+memory. That is deliberate — a memory outage should degrade to an agent without
+memory, never to an agent that cannot answer — but it means a broken `PATH` looks
+identical to an empty memory store.
+
+To tell them apart, set `POPOTO_HOOK_CAPTURE` to a writable directory and run one
+turn. The plugin tees every envelope it sends to `<dir>/before_prompt_build.json`
+and `<dir>/llm_output.json`, and appends any handler failure to
+`<dir>/errors.log`:
+
+```
+before_prompt_build: Error: spawnSync popoto-memory ENOENT
+```
+
+If the envelopes are there and `errors.log` is not, the plugin is working and the
+store is simply empty; `popoto-memory doctor` will confirm the record count.
+
+## Uninstall / rollback
+
+Two steps, because the config key survives the uninstall:
+
+```bash
+openclaw plugins uninstall popoto-memory
+openclaw config set \
+    plugins.entries.popoto-memory.hooks.allowConversationAccess false
+```
+
+Removing the plugin leaves the MCP tools in place; the model can still call
+`memory_search` and `memory_save`. To remove those too, delete the
+`mcp.servers.popoto-memory` entry from `openclaw.json`. Nothing stored in Redis
+is touched by either — uninstalling stops new memories being written, it does not
+delete the ones you have.
 
 ## Configuration
 

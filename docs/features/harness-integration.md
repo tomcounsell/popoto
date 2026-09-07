@@ -51,7 +51,7 @@ means the turn is stored with no tool call.
 | Claude Code | yes (`UserPromptSubmit`) | yes (`Stop`, async) | yes (MCP) | 2 commands, or 8 config lines |
 | Codex | yes (`UserPromptSubmit`) | yes (`Stop`) | yes (MCP) | config + feature flag + `/hooks` trust review |
 | Hermes | yes (`pre_llm_call`) | yes (`post_llm_call`) | yes (MCP) | 2-file hook directory |
-| OpenClaw | no, plugin required | no, plugin required | yes (MCP) | MCP config only |
+| OpenClaw | yes (`before_prompt_build`) | yes (`llm_output`) | yes (MCP) | MCP config + plugin install + hook opt-in |
 
 Verification is not uniform either, and the difference matters more than the
 capability table:
@@ -61,7 +61,7 @@ capability table:
 | Claude Code | a live `claude` 2.1.220 run; payloads captured and committed as test fixtures |
 | Codex | the `codex-cli` 0.144.4 binary's own hook-input schema, not a live turn |
 | Hermes | vendor documentation only |
-| OpenClaw | vendor documentation only |
+| OpenClaw | a live OpenClaw 2026.9.2 run through the shipped plugin; payloads captured and committed as test fixtures |
 
 Guides: [Claude Code](../guides/harness-claude-code.md) (the reference),
 [Codex](../guides/harness-codex.md), [Hermes](../guides/harness-hermes.md),
@@ -118,8 +118,14 @@ read no longer shifts every later pairing by one. A second report for a turn
 already resolved resolves nothing, and a turn id that matches no staged entry
 resolves nothing rather than falling back to the head of the queue.
 
-Hermes and OpenClaw send no turn identifier. Those sessions keep the
-positional FIFO pairing, which is correct for them because their hooks are
+OpenClaw sends one, though not on the event: its hooks take a second
+`ctx` argument whose `runId` is identical across a turn's
+`before_prompt_build` and `llm_output`, and the plugin forwards it as
+`turn_id`. That matters more there than elsewhere, because `llm_output` is an
+Observe hook whose handlers run concurrently and may overlap the next turn --
+keyed pairing makes the overlap correct by construction. Hermes sends no turn
+identifier in the payloads popoto sees (#688), so those sessions keep the
+positional FIFO pairing, which is correct for it because its hooks are
 synchronous. A queue written entirely before this behavior shipped is also
 claimed positionally, so an in-flight upgrade loses no pending turn. Both
 paths are bounded by `MAX_PENDING_TURNS` (32) per session and a one-hour TTL.
