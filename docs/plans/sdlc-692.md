@@ -246,23 +246,216 @@ are not compared.
 
 ## Spike Results
 
-<!-- skeleton -->
+Two spikes, both resolved. Appetite is Medium (cap 4); two sufficed.
+
+### spike-1: Declaring `ValidityField` on the harness models is inert on the existing path
+
+- **Assumption**: adding `validity = ValidityField()` to the four benchmark
+  model variants does not perturb the committed lexical/hybrid/vector/graph
+  behavior, and `Defaults.VALIDITY_GATING_ENABLED` is a usable ablation switch
+  reaching *all* gating layers.
+- **Method**: code-read.
+- **Result / Confidence: high.**
+  1. `on_save` (`validity_field.py:1133-1190`) queues one extra
+     `EVAL SUPERSEDE_LUA` (mode `"open"`: three `ZADD NX`) onto the *same*
+     internal pipeline `Model.save()` already executes
+     (`models/base.py:1614-1629`). **Zero extra round trips per save.**
+     `pre_save_validate` does an eager `ZSCORE` only when the caller passes a
+     non-`None` `validity=` value (`:1215-1216`); the harness never does, so it
+     returns immediately.
+  2. `ContextAssembler` auto-mode resolution (`context_assembler.py:1499-1582`)
+     branches purely on BM25/embedding field presence. `_validity_field_name` is
+     detected separately at `:1401`/`:1437-1438` and never enters mode
+     resolution. **Mode resolution is unchanged** — lexical stays lexical,
+     hybrid stays hybrid.
+  3. The kill switch reaches both layers and is read **at call time** at exactly
+     two sites, neither memoized: `decaying_sorted_field.py:602` (in
+     `validity_gate_args`, which returns the empty-string triple → `gate = false`
+     inside `DECAY_SCORE_LUA`, byte-identical to pre-#580) and
+     `context_assembler.py:1683` (in `_resolve_excluded_keys`, returning `None`,
+     which makes `_scope_by_validity` a passthrough at `:1724-1725`).
+     Note the correction to the issue's mental model: `validity_gate_args` lives
+     in `fields/decaying_sorted_field.py:576-616`, not in the assembler.
+  4. `warn_if_ttl` (`:1099-1127`) fires only when `model._meta.ttl is not None`.
+     The harness models declare no `Meta`, so **no per-item log noise**.
+  5. With gating on, `assemble()` costs **two extra `ZRANGEBYSCORE` round
+     trips**, and `record.delete()` costs five extra `ZREM`/`HDEL` plus one
+     `SCAN {prefix}:open:*`.
+- **Impact if false**: would have forced a separate model variant per arm
+  instead of one variant plus a flag. It is not false.
+
+### spike-2: `save_and_supersede` works on the harness model shape, and the gate then excludes
+
+- **Assumption**: `SupersessionProtocol.save_and_supersede` composes with
+  `AutoKeyField` + `KeyField` + `DecayingSortedField(partition_by=...)` +
+  `ConfidenceField` + `BM25Field`, and the assembler actually drops the
+  superseded record.
+- **Method**: prototype, against a model built to the exact shape of
+  `_build_external_model_class(with_bm25=True, with_embedding=False)` plus a
+  `ValidityField`.
+- **Environment**: Python 3.12.14, redis-py **7.1.1**, Darwin 25.6.0 arm64,
+  Redis **DB 11**, git HEAD `4ac805f0`. (Note the redis-py version differs from
+  the 8.1.0 the issue's own probe used; nothing measured here is version
+  sensitive, but per doctrine it is stated rather than elided.)
+- **Result / Confidence: high.**
+  1. Five plain `.save()`s → `resolve_excluded_keys` returns `set()`, **size 0**.
+     Reproduces the issue's baseline exactly.
+  2. **The first claim must also go through the protocol.** `a1.save()` then
+     `save_and_supersede(a2, identity_key=…)` returns `closed_key=None` and the
+     exclusion set stays **0** — `a1` was never registered as the incumbent.
+     `save_and_supersede(b1, …)` then `save_and_supersede(b2, …)` returns
+     `closed_key=None` on the first (correct: first claim opens) and
+     `closed_key=<b1 key>` on the second, exclusion set **1**. This is the single
+     most load-bearing finding for the implementation: **every member of an
+     identity group, including the first, routes through `save_and_supersede`.**
+  3. `ContextAssembler(retrieval_mode="auto").assemble()` on the correctly
+     registered pair returned **only `b2`**; `b1` absent. `_effective_mode`
+     resolved to `"lexical"` as expected.
+  4. With `Defaults.VALIDITY_GATING_ENABLED = False`, `b1` **came back**. The
+     three-arm design above is therefore executable as a runtime flag rather
+     than a second code path.
+  5. No exceptions or warnings on any path. Save overhead with vs. without the
+     field, 100 saves × 3 trials: 1.264–1.613 ms/save vs. 0.884–1.062 ms/save.
+     Treat as order-of-magnitude only (no warmup, small N); direction is
+     consistent — roughly +20–50% per save.
+- **Impact if false**: would have blocked the whole approach. It is not false.
+
+### spike-2 side finding — a real hazard this plan must handle
+
+The spike surfaced something not asked for, and it changes the implementation:
+**`_build_external_model_class`'s per-item key isolation does not hold for
+special-use field keys.** The builders rename `__name__`/`__qualname__` *after*
+the class body, but `_meta.db_class_key` is captured by the metaclass at class
+creation from the original name `ExternalBenchmarkMemory`, and
+`Field.get_special_use_field_db_key` (`fields/field.py:630`) builds from
+`model._meta.db_class_key`. Only `BM25Field` reads `cls.__name__` lazily and so
+actually picks up the rename.
+
+Verified against the source: the validity keys for *every* item in a run would
+collapse onto the same six key names —
+
+```
+$ValidityF:ExternalBenchmarkMemory:validity:valid_from   (and :invalid_at,
+    :ingested_at, :chain:fwd, :chain:rev, :open:{digest})
+```
+
+For the pre-existing fields this is masked, because `DecayingSortedField` and
+`KeyField` are `partition_by`/value scoped and every query filters on
+`agent_id`. **`ValidityField` is deliberately not a `SortedFieldMixin` and has
+no `partition_by`**, so it is not masked: `resolve_excluded_keys` reads the
+whole ZSET and would return every record superseded by every *previous item* in
+the run. And the harness's `teardown()` cannot clean it — its two `SCAN`
+patterns are `"{class_name}:*"` (anchored at the start, while these keys start
+`$ValidityF:`) and `"*{agent_prefix}*"` (the agent id appears nowhere in them).
+
+Consequences if unhandled, in order of severity: the exclusion set grows
+linearly across a 500-item run, inflating `retrieval_ms` monotonically and
+making the latency figure an artifact of item order; the ZSETs grow to O(all
+records in the run) — on the order of 10^5 members — with no bound; and the keys
+survive the run. The plan's answer is in Technical Approach step 5: teardown
+explicitly deletes `ValidityField.get_all_keys(...)` plus a `SCAN` of the
+`:open:*` pointers. The deeper defect — a docstring claiming per-item isolation
+that only one field type honors — is out of scope here and gets filed
+separately (see No-Gos).
 
 ## Data Flow
 
-<!-- skeleton -->
+```
+run_external.py --dataset longmemeval-s --supersession {none|content-identity}
+  │
+  ├─ datasets/longmemeval_s.py::_parse_record
+  │     NEW: parse haystack_dates → per-turn `session_date` (epoch float)
+  │          carried on each history entry, parallel to session_id/turn_id.
+  │          question_type continues to land in metadata (reporting only).
+  │
+  ├─ scenarios/external_base.py::ExternalScenario.setup()
+  │     builds the per-item model class (NEW: + `validity = ValidityField()`
+  │       when the supersession arm is not "none")
+  │     for each turn → _extract_units() → for each unit:
+  │        ├─ arm "none":             instance.save()          [today's path]
+  │        └─ arm "content-identity": supersession_axis.route_write(...)
+  │              ├─ identity = identity_of(unit_text)   ← label-blind
+  │              ├─ identity is None (no group)  → instance.save()
+  │              └─ identity is not None         →
+  │                     SupersessionProtocol.save_and_supersede(
+  │                         instance, identity_key=identity,
+  │                         at=session_date)
+  │        (session_key_map / turn_key_map updated identically in both arms)
+  │
+  ├─ ExternalScenario.run()
+  │     ContextAssembler.assemble(query_cues={"topic": query}, agent_id=…)
+  │        ├─ server-side layer: validity_gate_args → DECAY_SCORE_LUA
+  │        └─ client-side layer: _resolve_excluded_keys → _scope_by_validity
+  │     both no-ops when Defaults.VALIDITY_GATING_ENABLED is False (arm B)
+  │     NEW metadata: n_supersessions, n_excluded_keys, exclusion_hit_count
+  │
+  └─ ExternalScenario.teardown()
+        record.delete() loop  (now also ZREMs this record's intervals)
+        NEW: delete ValidityField.get_all_keys(cls, "validity").values()
+             + SCAN/DEL "{validity_prefix}:open:*"
+```
+
+The write ordering matters and is the one race-shaped concern: within an
+identity group the writes must reach `save_and_supersede` in ascending
+`session_date` order, or a later-dated claim gets closed by an earlier-dated one
+(and `ValidityCloseBeforeStartError` may raise). Turns arrive from
+`_parse_record` in haystack order, which is *not* guaranteed to be date-ordered.
+See Race Conditions.
 
 ## Architectural Impact
 
-<!-- skeleton -->
+Confined to `tests/benchmarks/`. No `src/` change. Specifically:
+
+- **New module** `tests/benchmarks/supersession_axis.py`, structured as a direct
+  sibling of `extraction_axis.py`: `ARM_CHOICES`, a stats dataclass, the
+  identity function, and the write router. Keeping it out of
+  `external_base.py` is deliberate — the identity heuristic is the part most
+  likely to be revised, and it should be revisable and testable without
+  touching the ingest loop.
+- **`external_base.py`**: one new constructor kwarg, one conditional field
+  declaration, one branch at the write site (`:479`), teardown additions, and
+  new result metadata.
+- **`datasets/longmemeval_s.py`**: `_parse_record` gains `session_date`. This is
+  additive on a dict that already carries `role`/`content`/`turn_id`/`session_id`,
+  so LoCoMo and every existing consumer are untouched (LoCoMo simply never sets
+  it).
+- **`run_external.py`**: one CLI flag pair, arm-labelled output filenames,
+  new aggregate reporting rows.
+- **No public API change**, no `src/` behavior change, no mypy-ratchet exposure
+  (`tests/` is not in `mypy src/`), no new dependency.
+
+The one architectural claim worth stating: this deliberately does **not** add a
+producer to `src/`. A shipped auto-producer is #693's question, and answering it
+inside a benchmark harness would be the wrong place and the wrong evidence.
 
 ## Appetite
 
-<!-- skeleton -->
+**Medium.** The producer, the axis module, the dates parse, the teardown fix,
+the three-arm flag, tests, and one *small-n demonstration run* with its
+write-up. That is a coherent, shippable unit.
+
+What Medium explicitly excludes: the full n=500 three-arm run and its published
+report. That is #586's job and its cost is hours of wall clock plus an
+embedding provider. This issue's job is to make that run *mean something*, and
+its acceptance criterion 2 is satisfied by a demonstrated non-empty exclusion
+set, not by a corpus-scale publication.
 
 ## Prerequisites
 
-<!-- skeleton -->
+None blocking. All of the following are already merged and verified present:
+
+- `ValidityField` + `SupersessionProtocol` (#580 / PR #582).
+- `save_and_supersede` as a single atomic entry point (#588 / PR #601).
+- The three-layer gate and its call-time kill switch (spike-1).
+- The `--extraction` axis as a structural template (#489).
+- A committed LongMemEval-S fixture carrying `haystack_dates`
+  (`tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json`).
+
+One **non-blocking gap**: that fixture's three records are all
+`single-session-user`, so it contains no `knowledge-update` item and — more to
+the point — no two sessions asserting the same fact at different dates. A
+fixture item that exercises the producer must be added (Task 6). This does not
+block anything; it is work inside this plan.
 
 ## Solution
 
