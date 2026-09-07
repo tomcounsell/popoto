@@ -1385,6 +1385,13 @@ class TestLearnedAmplitudePreservedOnSave:
         assert [c[1] for c in stored] == [2.0, 3.0]
 
     # TC4 — declaration is authoritative about WHICH cycles exist.
+    #
+    # #698 note: under the three-way merge, DAILY's *declared* amplitude is
+    # unchanged (2.0 -> 2.0) across this swap, so its baseline still matches
+    # and learning is preserved for the reason the merge intends -- not
+    # because the added-cycle case is exempt from it. See
+    # TestDeclaredAmplitudeOverridesLearned for the case where the declared
+    # amplitude itself changes.
     def test_cycle_added_to_declaration_uses_declared_amplitude(self):
         item = CyclicLearned.create(name="tc4a")
         item.strengthen_cycle("relevance", factor=3.0)  # DAILY -> 6.0
@@ -1405,6 +1412,9 @@ class TestLearnedAmplitudePreservedOnSave:
         assert by_period[TemporalPeriod.DAILY] == pytest.approx(6.0)
         assert by_period[TemporalPeriod.WEEKLY] == pytest.approx(9.0)
 
+    # #698 note: DAILY's declared amplitude is held at 2.0 across this save,
+    # so the baseline matches and learning survives; the point of this test is
+    # the *removal* of WEEKLY, not the merge rule.
     def test_cycle_removed_from_declaration_is_dropped(self):
         item = CyclicLearnedMulti.create(name="tc4b")
         item.strengthen_cycle("relevance", factor=2.0)
@@ -1422,6 +1432,10 @@ class TestLearnedAmplitudePreservedOnSave:
         assert stored[0][1] == pytest.approx(4.0)
 
     # TC5 — declared parameters refresh; learned amplitude does not.
+    #
+    # #698 note: the amplitude is deliberately held constant at 2.0 across the
+    # swap so this test isolates `phase` -- it is not exercising the
+    # declared-vs-learned merge (see TestDeclaredAmplitudeOverridesLearned).
     def test_phase_refreshes_from_declaration_while_amplitude_persists(self):
         item = CyclicLearned.create(name="tc5")
         item.strengthen_cycle("relevance", factor=2.0)
@@ -1442,6 +1456,9 @@ class TestLearnedAmplitudePreservedOnSave:
         item = CyclicLearnedDup.create(name="tc5b")
         stored = _read_cycles(CyclicLearnedDup, item)
         assert [c[1] for c in stored] == [1.0, 4.0]
+        # #698: the first save also records a declared baseline per entry,
+        # FIFO-paired with its amplitude just like the amplitude itself.
+        assert [c[3] for c in stored] == [1.0, 4.0]
 
         item.strengthen_cycle("relevance", factor=2.0)
         item.save()
@@ -1450,6 +1467,9 @@ class TestLearnedAmplitudePreservedOnSave:
         assert [c[0] for c in stored] == [TemporalPeriod.DAILY] * 2
         assert [c[1] for c in stored] == [pytest.approx(2.0), pytest.approx(8.0)]
         assert [c[2] for c in stored] == [0, 100]
+        # Declaration unchanged, so each entry's baseline is unchanged too --
+        # pinned separately per period to catch cross-period baseline bleed.
+        assert [c[3] for c in stored] == [1.0, 4.0]
 
     # TC6 — the empty-cycles branch is unchanged.
     def test_empty_cycles_still_deletes_stale_entry(self):
@@ -1474,6 +1494,10 @@ class TestLearnedAmplitudePreservedOnSave:
 
         stored = _read_cycles(CyclicLearned, item)
         assert stored[0][1] == 2.0
+        # #698: the widened guard also clears the baseline bucket on this
+        # path, so the fallback save records the declared amplitude as the
+        # new baseline -- not a stale or half-read one.
+        assert stored[0][3] == 2.0
         assert any("Could not decode cycles" in r.message for r in caplog.records)
 
     def test_stored_entry_of_wrong_shape_falls_back_to_declared(self):
@@ -1660,6 +1684,238 @@ class TestLearnedAmplitudePreservedOnSave:
         item.save()
 
         assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
+
+
+class TestDeclaredAmplitudeOverridesLearned:
+    """The three-way merge: baseline vs. declared decides who wins (#698).
+
+    Regression cover for the defect #698 reports: before this change,
+    ``on_save`` compared only *declared* and *learned* amplitudes, so an
+    edited declaration could never be told apart from ordinary learning
+    drift and the learned value always won (#679's fix, applied
+    unconditionally). These tests pin the three-way rule: baseline absent or
+    equal to the declared amplitude preserves learning; baseline different
+    from the declared amplitude resets to the declared amplitude, loudly.
+    """
+
+    def setup_method(self):
+        CyclicLearned.delete_all()
+        CyclicLearnedMulti.delete_all()
+        CyclicLearnedDup.delete_all()
+
+    def teardown_method(self):
+        CyclicLearned.delete_all()
+        CyclicLearnedMulti.delete_all()
+        CyclicLearnedDup.delete_all()
+
+    # 1. The defect itself: an edited declaration resets learned state.
+    def test_edited_declaration_resets_learned_amplitude(self, caplog):
+        item = CyclicLearned.create(name="reset1")  # baseline recorded: 2.0
+        item.strengthen_cycle("relevance", factor=3.0)  # learned -> 6.0
+        assert _read_cycles(CyclicLearned, item)[0][1] == pytest.approx(6.0)
+
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 1.0, 0)]  # declared edited
+            with caplog.at_level("INFO", logger="POPOTO.CyclicDecayField"):
+                item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(
+            1.0
+        ), "an edited declaration must reset the learned amplitude"
+        assert stored[3] == pytest.approx(1.0), "the new baseline is the edit"
+
+    # 2. A learned 0.0 is reset just like any other value.
+    def test_edited_declaration_resets_learned_zero(self, caplog):
+        item = CyclicLearned.create(name="reset2")
+        item.weaken_cycle("relevance", factor=0.0001)  # learned -> 0.0
+        assert _read_cycles(CyclicLearned, item)[0][1] == 0.0
+
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 5.0, 0)]
+            with caplog.at_level("INFO", logger="POPOTO.CyclicDecayField"):
+                item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(5.0)
+        assert stored[3] == pytest.approx(5.0)
+
+    # 3. Unedited declaration: #679 unregressed.
+    def test_unedited_declaration_preserves_learned_amplitude(self):
+        item = CyclicLearned.create(name="noreset1")
+        item.strengthen_cycle("relevance", factor=2.0)  # learned -> 4.0
+        item.save()  # declaration unchanged
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(4.0)
+        assert stored[3] == pytest.approx(2.0), "baseline stays the declaration"
+
+    # 4. Declared 0.0 baseline compares as a value, not a falsy sentinel.
+    def test_declared_zero_baseline_compares_equal_and_preserves_learning(self):
+        item = CyclicLearnedMulti.create(name="zerobaseline")
+        field = CyclicLearnedMulti._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            # First give DAILY a declared amplitude of 0.0 and let it save,
+            # so the recorded baseline is 0.0.
+            field.cycles = [
+                (TemporalPeriod.DAILY, 0.0, 0),
+                (TemporalPeriod.WEEKLY, 3.0, 0),
+            ]
+            item.save()
+            stored = {c[0]: c for c in _read_cycles(CyclicLearnedMulti, item)}
+            assert stored[TemporalPeriod.DAILY][3] == 0.0
+
+            item.strengthen_cycle("relevance", factor=1.0)  # no-op multiply
+            item.weaken_cycle("relevance", factor=1.0)  # still learned, not None
+
+            # Re-save with the SAME declared amplitude (0.0): baseline == 0.0
+            # must be treated as "declaration unchanged", not "no baseline".
+            item.save()
+        finally:
+            field.cycles = original
+
+        stored = {c[0]: c for c in _read_cycles(CyclicLearnedMulti, item)}
+        assert stored[TemporalPeriod.DAILY][1] == 0.0
+        assert stored[TemporalPeriod.DAILY][3] == 0.0
+
+    # 5. A legacy 3-element entry preserves learning and acquires a baseline.
+    def test_legacy_three_element_entry_preserves_learning_and_acquires_baseline(
+        self,
+    ):
+        item = CyclicLearned.create(name="legacy1")
+        # Overwrite with a pre-#698 3-element entry carrying a "learned" 9.0.
+        _write_cycles_raw(
+            CyclicLearned, item, msgpack.packb([[TemporalPeriod.DAILY, 9.0, 0]])
+        )
+
+        item.save()  # declaration unchanged (2.0) -- but baseline is unknown
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(
+            9.0
+        ), "baseline unknown must preserve learning, matching #679"
+        assert stored[3] == pytest.approx(
+            2.0
+        ), "this save must record a baseline from the current declaration"
+
+    # 6. A non-numeric slot 3 is treated as absent, without raising.
+    def test_non_numeric_baseline_treated_as_absent(self):
+        item = CyclicLearned.create(name="badbaseline")
+        _write_cycles_raw(
+            CyclicLearned,
+            item,
+            msgpack.packb([[TemporalPeriod.DAILY, 7.0, 0, "not-a-number"]]),
+        )
+
+        item.save()  # must not raise
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(7.0), "non-numeric baseline -> preserve"
+        assert stored[3] == pytest.approx(2.0), "and acquire a real baseline"
+
+    # 7. The reset emits exactly one INFO log naming old/new values and the
+    #    member key (critique C8) -- the per-record audit trail.
+    def test_reset_emits_one_info_log_naming_member_and_values(self, caplog):
+        item = CyclicLearned.create(name="logtarget")
+        item.strengthen_cycle("relevance", factor=4.0)  # learned -> 8.0
+
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 3.0, 0)]
+            with caplog.at_level("INFO", logger="POPOTO.CyclicDecayField"):
+                item.save()
+        finally:
+            field.cycles = original
+
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert len(info_records) == 1, "exactly one INFO line per reset"
+        message = info_records[0].message
+        assert item.db_key.redis_key in message, "the member key is the audit trail"
+        assert "2.0" in message, "old declared baseline"
+        assert "3.0" in message, "new declared value"
+        assert "8.0" in message, "discarded learned amplitude"
+
+    # 8. Duplicate periods reset independently and in FIFO order.
+    def test_duplicate_periods_reset_independently_in_fifo_order(self, caplog):
+        item = CyclicLearnedDup.create(name="dupreset")  # baselines [1.0, 4.0]
+        item.strengthen_cycle("relevance", factor=2.0)  # learned -> [2.0, 8.0]
+
+        field = CyclicLearnedDup._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            # Edit only the FIRST DAILY entry's declared amplitude.
+            field.cycles = [
+                (TemporalPeriod.DAILY, 9.0, 0),
+                (TemporalPeriod.DAILY, 4.0, 100),
+            ]
+            with caplog.at_level("INFO", logger="POPOTO.CyclicDecayField"):
+                item.save()
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearnedDup, item)
+        # First entry: declared changed 1.0 -> 9.0, so it resets to 9.0.
+        assert stored[0][1] == pytest.approx(9.0)
+        assert stored[0][3] == pytest.approx(9.0)
+        # Second entry: declared unchanged (4.0), so learning is preserved.
+        assert stored[1][1] == pytest.approx(8.0)
+        assert stored[1][3] == pytest.approx(4.0)
+
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert len(info_records) == 1, "only the changed period resets and logs"
+
+    # 9. strengthen_cycle after a reset learns from the NEW declared value.
+    def test_strengthen_after_reset_learns_from_new_declared_value(self):
+        item = CyclicLearned.create(name="afterreset")
+        item.strengthen_cycle("relevance", factor=10.0)  # learned -> 20.0
+
+        field = CyclicLearned._meta.fields["relevance"]
+        original = field.cycles
+        try:
+            field.cycles = [(TemporalPeriod.DAILY, 1.0, 0)]
+            item.save()  # resets to 1.0, baseline 1.0
+        finally:
+            field.cycles = original
+
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(1.0)
+
+        # field.cycles is back to declaring 2.0, but the stored baseline is
+        # still 1.0 (recorded by the reset save above) until the NEXT save.
+        item.strengthen_cycle("relevance", factor=3.0)
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(
+            3.0
+        ), "strengthen_cycle learns from the just-reset value, not re-declared"
+
+    # 10. strengthen_cycle()/weaken_cycle() return 3-element sublists even
+    #     when the stored entry carries a baseline (critique B1), and the
+    #     stored entry itself keeps all four slots.
+    def test_strengthen_cycle_return_omits_baseline_slot(self):
+        item = CyclicLearned.create(name="returnarity")  # baseline recorded: 2.0
+
+        returned = item.strengthen_cycle("relevance", factor=2.0)
+        assert all(len(c) == 3 for c in returned), "public return stays 3-element"
+
+        stored = _read_cycles(CyclicLearned, item)
+        assert all(
+            len(c) == 4 for c in stored
+        ), "the stored payload keeps its baseline slot"
+
+        returned = item.weaken_cycle("relevance", factor=0.9)
+        assert all(len(c) == 3 for c in returned)
+        stored = _read_cycles(CyclicLearned, item)
+        assert all(len(c) == 4 for c in stored)
 
 
 # --- Export tests ---

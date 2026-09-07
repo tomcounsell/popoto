@@ -2664,7 +2664,11 @@ class Model(metaclass=ModelBase):
             pipeline: Optional Redis pipeline for batched operations.
 
         Returns:
-            The updated cycles list, or the pipeline if one was provided.
+            The updated cycles list (``[period, amplitude, phase]`` sublists),
+            or the pipeline if one was provided. The stored entry may carry an
+            additional, internal declared-baseline slot (#698;
+            ``CyclicDecayField.on_save``) which is deliberately not exposed
+            through this return value.
 
         Raises:
             TypeError: If model is unsaved or field is not a CyclicDecayField.
@@ -2684,7 +2688,11 @@ class Model(metaclass=ModelBase):
             pipeline: Optional Redis pipeline for batched operations.
 
         Returns:
-            The updated cycles list, or the pipeline if one was provided.
+            The updated cycles list (``[period, amplitude, phase]`` sublists),
+            or the pipeline if one was provided. The stored entry may carry an
+            additional, internal declared-baseline slot (#698;
+            ``CyclicDecayField.on_save``) which is deliberately not exposed
+            through this return value.
 
         Raises:
             TypeError: If model is unsaved or field is not a CyclicDecayField.
@@ -2705,7 +2713,12 @@ class Model(metaclass=ModelBase):
             pipeline: Optional Redis pipeline for batched operations.
 
         Returns:
-            The updated cycles list, or the pipeline if one was provided.
+            The updated cycles list truncated to 3-element sublists
+            (``[period, amplitude, phase]``), or the pipeline if one was
+            provided. The value packed to Redis keeps any 4th (declared
+            baseline, #698) slot the stored entry already carried — this
+            method never writes or strips it, only truncates the public
+            return.
         """
         from ..fields.cyclic_decay_field import CyclicDecayField
 
@@ -2746,13 +2759,22 @@ class Model(metaclass=ModelBase):
         max_amplitude = 100.0
         min_threshold = 0.01
         for cycle in cycles:
-            # cycle = [period, amplitude, phase]
+            # cycle = [period, amplitude, phase] or, once a member has saved
+            # (#698), [period, amplitude, phase, declared_baseline]. Only
+            # index 1 is mutated; any 4th slot is repacked untouched below.
             new_amp = cycle[1] * factor
             new_amp = max(0.0, min(new_amp, max_amplitude))
             if new_amp < min_threshold:
                 new_amp = 0.0
             cycle[1] = new_amp
 
+        # Pack with whatever arity is stored — a cycle entry may carry an
+        # optional 4th slot, the declared-baseline value ``on_save`` uses
+        # (#698). This method never writes or strips that slot; it mutates
+        # only index 1 and repacks the same list objects, so an unknown slot
+        # survives the write untouched. Truncating here (before packb) would
+        # turn this method into a slot-3 writer/deleter and destroy the
+        # baseline mechanism — see CyclicDecayField.on_save.
         packed = msgpack.packb(cycles)
 
         if isinstance(pipeline, redis.client.Pipeline):
@@ -2760,7 +2782,12 @@ class Model(metaclass=ModelBase):
             return pipeline
         else:
             get_REDIS_DB().hset(cycles_hash_key, member_key, packed)
-            return cycles
+            # Truncate at the return site only (#698, critique B1): the
+            # public return contract of strengthen_cycle()/weaken_cycle() is
+            # "[period, amplitude, phase]" and must stay 3-element even once
+            # stored entries carry a 4th, internal baseline slot. The packed
+            # value above keeps all four slots.
+            return [cycle[:3] for cycle in cycles]
 
     @classmethod
     def get_info(cls) -> dict:
