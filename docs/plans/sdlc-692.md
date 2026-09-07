@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Medium
 owner: Valor Engels
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/692
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-07T12:04:34Z
 ---
 
 # #692 — A label-blind supersession producer for the LongMemEval-S ingest arm
@@ -1053,6 +1055,21 @@ Additionally:
 (3 critics: Risk & Robustness, Scope & Value, History & Consistency).
 0 blockers, 3 concerns, 2 nits.
 
+### Resolution status (revision pass, 2026-09-07)
+
+All five findings are resolved **in the plan body**; the sections below are kept
+verbatim as the critique record. Where the body and this record differ, **the
+body is authoritative** — that is the point of the revision.
+
+| # | Finding | Resolved where | Disposition |
+|---|---|---|---|
+| C1 | Contradictory teardown shapes | Technical Approach step 5 (rewritten, marked authoritative); Task 4 (restated to match) | **Fixed.** One shape: guard on `"validity" in self._model_class._meta.fields`, wrapped in the existing `except Exception: pass` idiom, `get_REDIS_DB()` not `POPOTO_REDIS_DB`. Explicitly **not** unconditional, with the reason (a vacuous `DEL` would make Verification row 1 unable to detect a real leak). New tests: Test Impact "arm-`none` teardown" bullet, Verification row 8b. |
+| C2 | Reordering not scoped to the active arm | Task 3 (both qualifiers made explicit) | **Fixed.** Implemented as a single `_ordered_history()` helper that returns `self.item.history` unchanged on arm `none`; the guarded loop is named (`external_base.py:447`) with the consequence (DecayingSortedField / BM25 insertion order). New test: Test Impact ordering bullet, Verification row 8c. |
+| C3 | Task 8 ships #586's surface under a Medium appetite | Appetite → "Scope decision" subsection; Task 8 preamble | **Accepted as an intended scope decision, and now stated as one**, with three grounds (artifact collision is a correctness bug, not convenience; it copies #489's convention rather than inventing one; the aggregate rows are this issue's own AC2 deliverable). What stays #586's is enumerated. |
+| N1 | Tied `haystack_dates` unaddressed | Race 1 → "Tied dates" paragraph; Task 6; Verification row 7b | **Fixed, and the open question answered from source rather than left open:** the `SUPERSEDE_LUA` guard is `close_at < start_num` (`validity_field.py:368-370`), a *strict* comparison — an equal `at` does **not** raise, it stores a zero-length interval, which membership (`valid_from <= t AND invalid_at > t`) can never satisfy, so the tied loser is excluded. Tie-break by list position is arbitrary but outcome-neutral. Pinned by a new fixture case. |
+| N2 | Graph-mode re-save is a second write path | Task 3 → "graph-mode re-save" paragraph | **Fixed by statement, as the critique asked.** `:522` deliberately stays outside `route_write` (it re-saves an existing record, so it is not a new claim); safe because `on_save` mode `"open"` uses `ZADD NX` gated on `invalid_at` absent-or-`+inf` (`validity_field.py:403-410`), so it can neither shift nor resurrect an interval. A code comment at `:522` carries this. |
+| — | `context_assembler.py` path | spike-1 item 2 | **Fixed.** Corrected to `src/popoto/recipes/context_assembler.py`, with a note that all bare citations in the plan resolve there. |
+
 ### C1 — Task 4 and Technical Approach step 5 give contradictory teardown shapes
 
 *Flagged independently by Risk & Robustness and History & Consistency.*
@@ -1138,20 +1155,23 @@ than leave a reader to derive it.
 - Tasks are numbered 1-12 with no gaps, no `Depends On` references, and no cycles.
   Per-task validation lives in the Verification table rather than on each task.
 
-## Open Questions
+## Open Questions — settled
 
-1. **Is a Medium appetite that stops short of the n=500 run acceptable to the
-   PM?** This plan draws the line at "the gate demonstrably has state and the
-   attribution language exists"; #586 keeps the corpus-scale publication. The
-   alternative is folding #586 into this issue and paying hours of wall clock
-   plus an embedding provider here.
-2. **Which extraction arm should the eventual #586 run use?** If the producer's
-   firing rate on `--extraction raw` turns out near zero (Risk 1), the
-   meaningful before/after lives on `heuristic` or `claude`, which changes
-   #586's baseline comparability — the committed n=500 artifact was produced
-   under `raw`. Flagging now because it affects #586's framing, not this
-   issue's deliverable.
-3. **Should the follow-up key-isolation issue (Task 11) block #586?** The
-   defect is contained here by explicit teardown, but the underlying claim in
-   `external_base.py`'s docstring is false for every non-BM25 field, which may
-   matter for other axes. Filed either way; the question is priority.
+None block the build. Dispositions, for the record:
+
+1. ~~**Is a Medium appetite that stops short of the n=500 run acceptable?**~~
+   **Settled.** The critique reviewed the boundary and returned READY TO BUILD;
+   C3's resolution states the line explicitly (see "Scope decision" under
+   Appetite). This issue delivers the producer, the axis, the three-arm toggles,
+   the observability, and a small-n demonstration; #586 keeps the corpus-scale
+   run and its publication.
+2. **Which extraction arm should the eventual #586 run use?** Still open, and
+   deliberately so — it is **#586's question, not this plan's**, and it cannot be
+   answered before this issue measures the identity firing rate on
+   `--extraction raw` (Risk 1). Task 12 hands #586 that number. Nothing in this
+   plan's build depends on the answer.
+3. **Should the follow-up key-isolation issue (Task 11) block #586?** Still
+   open, and again a **#586 prioritization call**, not a build input. The defect
+   is contained here by the explicit teardown (Technical Approach step 5); the
+   issue gets filed regardless (Task 11) with the evidence, and whoever schedules
+   #586 decides. Not a prerequisite for this issue's completion.
