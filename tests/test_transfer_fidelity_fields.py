@@ -542,6 +542,53 @@ class TestCyclicDecayStatePreserved:
         assert manifest["fields"]["relevance"]["policy"] == "carry"
         assert "relevance" in records[0]["state"]
 
+    def test_declared_baseline_slot_exports_but_import_drops_it(self):
+        """#698 / critique C2 -- the declared-baseline slot is deployment-
+        local and ``import_state`` deliberately does not carry it, so the
+        imported entry re-baselines against the *importing* deployment on its
+        next ordinary save rather than firing a spurious reset from the
+        exporter's declaration.
+        """
+        doc = CyclicDoc(name="cyc3")
+        doc.save()  # stored entry now carries a 4th slot: the declared
+        # baseline, recorded by this save.
+        doc.strengthen_cycle("relevance", factor=1.5)
+
+        stored_before = self._cycles(doc)
+        assert stored_before is not None
+        assert len(stored_before[0]) == 4, "on_save must have recorded a baseline"
+        learned_amplitude = stored_before[0][1]
+
+        exported = _export_text(CyclicDoc)
+        manifest, records = _parse(exported.data)
+        exported_cycles = records[0]["state"]["relevance"]["cycles"]
+        assert (
+            len(exported_cycles[0]) == 4
+        ), "export_state copies whatever arity is stored, baseline included"
+
+        _wipe_model(CyclicDoc)
+        report = _import_text(CyclicDoc, exported.data)
+        assert report.count("landed") == 1, report.summary()
+
+        restored = CyclicDoc.query.get(name="cyc3")
+        after_import = self._cycles(restored)
+        assert after_import is not None
+        assert (
+            len(after_import[0]) == 3
+        ), "import_state deliberately normalizes to 3 elements (no baseline)"
+        assert after_import[0][1] == pytest.approx(
+            learned_amplitude
+        ), "the learned amplitude itself must round-trip unchanged"
+
+        # The first post-import save must preserve the learned amplitude
+        # (baseline was unknown) and record a fresh baseline from the
+        # importing deployment's current declaration.
+        restored.save()
+        after_first_save = self._cycles(restored)
+        assert after_first_save[0][1] == pytest.approx(learned_amplitude)
+        declared_now = CyclicDoc._meta.fields["relevance"].cycles[0][1]
+        assert after_first_save[0][3] == pytest.approx(declared_now)
+
 
 # --- EmbeddingField: vector carry + provenance fingerprint ---------------
 
