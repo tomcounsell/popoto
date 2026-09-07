@@ -629,7 +629,8 @@ class MemoryService:
         aborted turn, a crashed session, or a ``SubagentStop``-configured
         session popping more than it pushed shift every later pairing by one
         and report an outcome against the wrong turn's records (#574).
-        Harnesses that send no turn id (Hermes, OpenClaw) and sessions with
+        OpenClaw's plugin forwards ``ctx.runId`` as ``turn_id``, so it is
+        keyed too. Harnesses that send no turn id (Hermes) and sessions with
         ``POPOTO_MEMORY_TURN_KEYED=0`` keep writing the bare key array and
         keep the positional pairing. The ``RPUSH``/``LTRIM``/``EXPIRE``
         pipeline, the key name, the cap, and the TTL are unchanged either

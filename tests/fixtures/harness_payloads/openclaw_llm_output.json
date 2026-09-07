@@ -1,7 +1,10 @@
 {
-  "_provenance": "captured-from: the OpenClaw plugin hook reference (docs.openclaw.ai/plugins/hooks, read 2026-08-07), not from a live turn. Recapture: see openclaw_before_prompt_build.json.",
-  "event": "llm_output",
-  "session_id": "openclaw-7f2b",
-  "cwd": "/Users/dev/src/demo",
-  "text": "A failed health check triggers an automatic rollback to the previous green environment, and the deploy is marked failed in the pipeline."
+  "_provenance": "captured-from: a live turn through the shipped popoto OpenClaw plugin (plugins/openclaw/popoto-memory-plugin), OpenClaw 2026.9.2 (3928bad), anthropic/claude-haiku-4-5-20251001, 2026-09-07. This file is byte-for-byte the JSON the plugin wrote to `popoto-memory hook` on stdin, with only this _provenance key added. Recapture: install the plugin per docs/guides/harness-openclaw.md, export POPOTO_HOOK_CAPTURE=<dir>, and run one turn with `openclaw agent --local` (never `agent exec`, which loads no external plugins); the envelopes land in <dir>/before_prompt_build.json and <dir>/llm_output.json.",
+  "hook_event_name": "llm_output",
+  "assistantTexts": [
+    "When a health check fails during a blue-green deployment, here's what happens:\n\n1. **Detection** \u2013 The health check monitoring detects that the new blue environment is not responding as expected or is returning error states.\n\n2. **Automatic Rollback** \u2013 An automatic rollback is triggered, immediately switching traffic back to the previous green environment that was running before the deployment attempt.\n\n3. **Pipeline Failure** \u2013 The deploy is marked as failed in the CI/CD pipeline, halting the rollout and preventing any further traffic shift to the problematic blue environment.\n\n4. **Recovery** \u2013 The previous stable green environment continues serving traffic while the failed deployment is logged for investigation.\n\nThis strategy ensures minimal downtime\u2014the automatic rollback is instantaneous since the previous environment is already running and healthy, allowing you to investigate the root cause without impacting users."
+  ],
+  "session_id": "14714e30-1ec9-40d0-a842-dbbc8750cb65",
+  "cwd": "/Users/valorengels/.openclaw-popotoprobe/.openclaw/workspace",
+  "turn_id": "59a6ac21-e27c-4b80-a837-f714168ad16c"
 }

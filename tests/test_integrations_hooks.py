@@ -50,21 +50,46 @@ TURN_IDS = {
     # The exact per-turn identifier each fixture carries, read off the
     # fixture files rather than restated: Claude Code sends ``prompt_id``
     # and Codex sends ``turn_id``, both on the read event and the write
-    # event of the same turn. Hermes and OpenClaw send neither, which is
-    # what keeps them on the session-wide FIFO.
+    # event of the same turn. OpenClaw sends one too -- ``ctx.runId``,
+    # which its plugin forwards as ``turn_id`` -- so the pair below is one
+    # live turn's real id on both hooks. Hermes sends none in the payloads
+    # popoto sees, which is what keeps it on the session-wide FIFO (#688).
     "claude_code_user_prompt_submit.json": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
     "claude_code_stop.json": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
     "codex_user_prompt_submit.json": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
     "codex_stop.json": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
     "hermes_pre_llm_call.json": None,
     "hermes_post_llm_call.json": None,
-    "openclaw_before_prompt_build.json": None,
-    "openclaw_llm_output.json": None,
+    "openclaw_before_prompt_build.json": "59a6ac21-e27c-4b80-a837-f714168ad16c",
+    "openclaw_llm_output.json": "59a6ac21-e27c-4b80-a837-f714168ad16c",
 }
 """Expected ``NormalizedEvent.turn_id`` per fixture."""
 
-SENDS_A_TURN_ID = ("claude_code", "codex")
+SENDS_A_TURN_ID = ("claude_code", "codex", "openclaw")
 """Fixture-name prefixes for the harnesses that send a per-turn id."""
+
+CWDS = {
+    # The working directory each fixture reports. The five doc-derived
+    # fixtures name a synthetic demo path; the two OpenClaw fixtures were
+    # captured from a live run and carry that machine's real
+    # ``ctx.workspaceDir``. Asserting the exact value per fixture rather
+    # than merely that one is present is what keeps the assertion
+    # falsifiable -- a truthiness check would pass against any string,
+    # including a wrong one.
+    "claude_code_user_prompt_submit.json": "/Users/dev/src/demo",
+    "claude_code_stop.json": "/Users/dev/src/demo",
+    "codex_user_prompt_submit.json": "/Users/dev/src/demo",
+    "codex_stop.json": "/Users/dev/src/demo",
+    "hermes_pre_llm_call.json": "/Users/dev/src/demo",
+    "hermes_post_llm_call.json": "/Users/dev/src/demo",
+    "openclaw_before_prompt_build.json": (
+        "/Users/valorengels/.openclaw-popotoprobe/.openclaw/workspace"
+    ),
+    "openclaw_llm_output.json": (
+        "/Users/valorengels/.openclaw-popotoprobe/.openclaw/workspace"
+    ),
+}
+"""Expected ``NormalizedEvent.cwd`` per fixture."""
 
 
 def load(name):
@@ -152,7 +177,7 @@ def test_read_fixtures_normalize_to_the_prompt(name):
     assert event.kind == "read"
     assert "health checks" in event.text
     assert event.session_id
-    assert event.cwd == "/Users/dev/src/demo"
+    assert event.cwd == CWDS[name]
     if name.startswith(SENDS_A_TURN_ID):
         assert event.turn_id
     else:
@@ -175,6 +200,54 @@ def test_write_fixtures_normalize_to_the_assistant_message(name):
 def test_turn_id_is_normalized_from_every_harness(name, expected):
     """One id per turn, whatever the harness calls it -- or None."""
     assert hooks.normalize(load(name)).turn_id == expected
+
+
+# --- the list branch of _reduce_value ------------------------------------------
+#
+# OpenClaw's plugin passes ``assistantTexts`` through as an array rather than
+# flattening it in JavaScript, so this reduction is the one non-trivial
+# transformation on that path and the only place the rule itself is pinned.
+# These go through _first_string directly rather than through a fixture.
+
+
+def test_a_list_of_strings_reduces_to_the_strings():
+    payload = {"assistantTexts": ["first line", "second line"]}
+    assert (
+        hooks._first_string(payload, hooks._RESPONSE_FIELDS)
+        == "first line\nsecond line"
+    )
+
+
+def test_an_all_empty_list_is_not_a_value():
+    """It falls through to the next candidate field rather than winning."""
+    payload = {"assistantTexts": ["", "   "], "text": "the real answer"}
+    assert hooks._first_string(payload, hooks._RESPONSE_FIELDS) == "the real answer"
+
+
+def test_a_mixed_list_drops_the_empties_without_a_stray_newline():
+    payload = {"assistantTexts": ["", "the only real one", "  "]}
+    assert hooks._first_string(payload, hooks._RESPONSE_FIELDS) == "the only real one"
+
+
+def test_a_non_string_member_is_skipped_not_raised():
+    """Same tolerance the scalar path already shows a non-string value."""
+    payload = {"assistantTexts": [None, 7, {"nope": 1}, "the survivor"]}
+    assert hooks._first_string(payload, hooks._RESPONSE_FIELDS) == "the survivor"
+
+
+def test_an_absent_list_leaves_the_other_fields_alone():
+    payload = {"text": "the real answer"}
+    assert hooks._first_string(payload, hooks._RESPONSE_FIELDS) == "the real answer"
+
+
+def test_an_openclaw_write_without_a_turn_id_falls_back_to_none():
+    """A runtime that does not populate ctx.runId keeps the session FIFO."""
+    payload = load("openclaw_llm_output.json")
+    del payload["turn_id"]
+    event = hooks.normalize(payload)
+    assert event.kind == "write"
+    assert event.turn_id is None
+    assert "automatic rollback" in event.text
 
 
 def test_write_path_never_reads_the_transcript():

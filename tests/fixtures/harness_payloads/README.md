@@ -12,13 +12,23 @@ Read it before trusting a fixture: the four harnesses are not equally verified.
 | `codex_stop.json` | `codex-cli` 0.144.4 binary hook-input schema | binary, not a live turn |
 | `hermes_pre_llm_call.json` | Nous Research Hermes hook docs | docs only |
 | `hermes_post_llm_call.json` | Nous Research Hermes hook docs | docs only |
-| `openclaw_before_prompt_build.json` | OpenClaw plugin hook docs | docs only |
-| `openclaw_llm_output.json` | OpenClaw plugin hook docs | docs only |
+| `openclaw_before_prompt_build.json` | live OpenClaw 2026.9.2 turn through the shipped plugin, 2026-09-07 | yes, live |
+| `openclaw_llm_output.json` | same live run | yes, live |
 
 A docs-derived fixture tests our reading of the documentation, not the harness.
-The Claude Code pair is the one that tests the harness, and it is the reference
-path for exactly that reason. Replacing the other six with live captures is part
-of the maintainer's acceptance pass; each file records the command to do it.
+Two pairs now test the harness -- Claude Code and OpenClaw -- and the remaining
+four are still the maintainer's acceptance pass; each file records the command to
+replace it.
+
+The OpenClaw pair is worth reading as a warning about the other four. Its
+predecessors round-tripped through `hooks.normalize()` perfectly well and were
+still fiction: they named `message` and `text` where OpenClaw sends `prompt` and
+`assistantTexts`, and they put `session_id` and `cwd` on the event when OpenClaw
+puts them on a second `ctx` argument. Round-tripping proves the adapter is
+self-consistent, not that anything sends what the fixture claims. Note also that
+these fixtures are the envelope popoto's *plugin* emits rather than OpenClaw's
+raw event -- a raw OpenClaw event carries no event-name field at all and could
+never be normalized.
 
 The live Codex attempt is worth recording because it failed informatively: with
 `.codex/hooks.json` in the project and

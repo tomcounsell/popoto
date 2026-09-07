@@ -91,6 +91,10 @@ _RESPONSE_FIELDS = (
     "response",
     "output",
     "text",
+    # OpenClaw's ``llm_output`` carries the turn's text as a *list* of
+    # strings, which its plugin passes through unflattened;
+    # ``_reduce_value`` is what turns it back into one string.
+    "assistantTexts",
 )
 
 
@@ -110,8 +114,12 @@ class NormalizedEvent:
             Code sends ``prompt_id`` and Codex sends ``turn_id``, both on the
             read event *and* the write event of the same turn, which is what
             lets the service pair an outcome report with the read that staged
-            it. Hermes and OpenClaw send neither, so this is ``None`` for them
-            and the service falls back to its session-wide FIFO. Populated on
+            it. OpenClaw sends one too, but not on the event: its hooks take a
+            second ``ctx`` argument carrying ``runId``, identical across the
+            ``before_prompt_build`` and ``llm_output`` of one turn, which the
+            plugin forwards as ``turn_id``. Hermes sends none in the payloads
+            popoto sees, so this is ``None`` there and the service falls back
+            to its session-wide FIFO (see #688). Populated on
             read, write and ignore events alike: it is a fact about the
             payload, not about the branch.
     """
@@ -135,9 +143,31 @@ class NormalizedEvent:
         self.turn_id = turn_id
 
 
+def _reduce_value(value: Any) -> str:
+    """Reduce one payload value to the text it carries, or ``""``.
+
+    A non-empty string is that string. A list is its non-empty string members
+    rejoined with newlines, and non-string members are skipped rather than
+    raising -- the same tolerance the scalar path already shows a non-string
+    ``prompt_id``. Anything else carries no text.
+
+    This is a general rule about payload *values*, deliberately not a rule
+    about any one harness: a harness that sends the turn's text as a list of
+    strings is describing the same fact as one that sends a single string, and
+    the adapter should not need a name branch to see it.
+    """
+    if isinstance(value, str):
+        return value if value.strip() else ""
+    if isinstance(value, list):
+        parts = [item for item in value if isinstance(item, str) and item.strip()]
+        return "\n".join(parts)
+    return ""
+
+
 def _first_string(payload: Dict[str, Any], names: Tuple[str, ...]) -> str:
-    """Return the first non-empty string among ``names``, searching one level
-    into an ``extra``/``context``/``data`` sub-object (Hermes nests there)."""
+    """Return the first non-empty value among ``names``, reduced to text by
+    :func:`_reduce_value`, searching one level into an
+    ``extra``/``context``/``data`` sub-object (Hermes nests there)."""
     sources = [payload]
     for nested in ("extra", "context", "data", "input"):
         value = payload.get(nested)
@@ -145,9 +175,9 @@ def _first_string(payload: Dict[str, Any], names: Tuple[str, ...]) -> str:
             sources.append(value)
     for source in sources:
         for name in names:
-            value = source.get(name)
-            if isinstance(value, str) and value.strip():
-                return value
+            reduced = _reduce_value(source.get(name))
+            if reduced:
+                return reduced
     return ""
 
 
