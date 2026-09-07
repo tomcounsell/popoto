@@ -42,7 +42,7 @@ import pytest
 from popoto.fields import constants as constants_module
 from popoto.recipes import default_memory as dm_module
 from popoto.recipes.default_memory import EVICTION_COUNTER_PREFIX, DefaultMemory
-from popoto.redis_db import POPOTO_REDIS_DB
+from popoto.redis_db import get_REDIS_DB
 
 ENV_VAR = "POPOTO_DEFAULT_MEMORY_MAX_RECORDS"
 DM_LOGGER = "POPOTO.DefaultMemory"
@@ -64,7 +64,7 @@ def _counter_key(agent):
 
 
 def _counter(agent):
-    raw = POPOTO_REDIS_DB.get(_counter_key(agent))
+    raw = get_REDIS_DB().get(_counter_key(agent))
     return int(raw) if raw else 0
 
 
@@ -88,9 +88,9 @@ def _count(agent):
 
 
 def _purge(agent):
-    for key in POPOTO_REDIS_DB.scan_iter(match=f"*{agent}*"):
-        POPOTO_REDIS_DB.delete(key)
-    POPOTO_REDIS_DB.delete(_counter_key(agent))
+    for key in get_REDIS_DB().scan_iter(match=f"*{agent}*"):
+        get_REDIS_DB().delete(key)
+    get_REDIS_DB().delete(_counter_key(agent))
 
 
 class _ZcardSpy:
@@ -98,13 +98,13 @@ class _ZcardSpy:
 
     def __init__(self, monkeypatch):
         self.keys = []
-        real = POPOTO_REDIS_DB.zcard
+        real = get_REDIS_DB().zcard
 
         def spy(key, *args, **kwargs):
             self.keys.append(key if isinstance(key, str) else str(key))
             return real(key, *args, **kwargs)
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "zcard", spy)
+        monkeypatch.setattr(get_REDIS_DB(), "zcard", spy)
 
     def saw(self, key):
         return key in self.keys
@@ -318,7 +318,7 @@ class TestFirstEvictionNotice:
         monkeypatch.setenv(ENV_VAR, "1")
         caplog.set_level(logging.WARNING, logger=DM_LOGGER)
 
-        real_zrange = POPOTO_REDIS_DB.zrange
+        real_zrange = get_REDIS_DB().zrange
         armed = {"on": True}
 
         def boom(key, *args, **kwargs):
@@ -326,7 +326,7 @@ class TestFirstEvictionNotice:
                 raise RuntimeError("zrange exploded")
             return real_zrange(key, *args, **kwargs)
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "zrange", boom)
+        monkeypatch.setattr(get_REDIS_DB(), "zrange", boom)
         DefaultMemory(agent_id=agent, content="last", importance=1.0).save()
         armed["on"] = False
 
@@ -377,7 +377,7 @@ class TestEvictionCounter:
         monkeypatch.setenv(ENV_VAR, "0")
         seeded = _seed(agent, 3)
         zset_key = _zset_key(seeded[0])
-        real_zrange = POPOTO_REDIS_DB.zrange
+        real_zrange = get_REDIS_DB().zrange
         armed = {"on": True}
 
         def rotated(key, start, end, *args, **kwargs):
@@ -387,7 +387,7 @@ class TestEvictionCounter:
                 return members[start : end + 1]
             return real_zrange(key, start, end, *args, **kwargs)
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "zrange", rotated)
+        monkeypatch.setattr(get_REDIS_DB(), "zrange", rotated)
         monkeypatch.setenv(ENV_VAR, "1")
         DefaultMemory(agent_id=agent, content="trigger", importance=1.0).save()
         armed["on"] = False
@@ -407,7 +407,7 @@ class TestEvictionCounter:
         _seed(agent, 4)
         monkeypatch.setenv(ENV_VAR, "1")
 
-        real_hgetall = POPOTO_REDIS_DB.hgetall
+        real_hgetall = get_REDIS_DB().hgetall
         state = {"calls": 0, "armed": True}
 
         def flaky(key, *args, **kwargs):
@@ -417,7 +417,7 @@ class TestEvictionCounter:
                     raise RuntimeError("hgetall exploded mid-loop")
             return real_hgetall(key, *args, **kwargs)
 
-        monkeypatch.setattr(POPOTO_REDIS_DB, "hgetall", flaky)
+        monkeypatch.setattr(get_REDIS_DB(), "hgetall", flaky)
         DefaultMemory(agent_id=agent, content="trigger", importance=1.0).save()
         state["armed"] = False
 
@@ -473,7 +473,7 @@ def test_env_var_disables_eviction_in_subprocess(agent):
     # a hardcoded 15: DB 0 is the live agent store (CLAUDE.md, #577), and a
     # hardcoded 15 would both write a database this session is not using and
     # leave ``_purge`` below cleaning the wrong one.
-    db = POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db")
+    db = get_REDIS_DB().connection_pool.connection_kwargs.get("db")
     assert db, f"refusing to spawn a child against DB {db!r}"
     env = {
         **os.environ,

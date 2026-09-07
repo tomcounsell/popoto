@@ -104,13 +104,15 @@ class TestSampleRelatedKeys:
 
     def test_no_exception_handling_of_its_own(self, hub, monkeypatch):
         """Failures propagate — degradation policy belongs to the caller."""
-        from src.popoto.fields import relationship as relationship_module
+        from src.popoto import redis_db
 
         class Boom:
             def srandmember(self, *args, **kwargs):
                 raise RuntimeError("redis down")
 
-        monkeypatch.setattr(relationship_module, "POPOTO_REDIS_DB", Boom())
+        # Since #655 the module resolves the client through get_REDIS_DB()
+        # on each call, so the substitution goes on the global it reads.
+        monkeypatch.setattr(redis_db, "POPOTO_REDIS_DB", Boom())
         target, _ = hub
         with pytest.raises(RuntimeError, match="redis down"):
             Relationship.sample_related_keys(

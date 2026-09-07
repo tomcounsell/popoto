@@ -658,8 +658,9 @@ def collect_model_level_mixins():
 
     Per the plan: a class that is not a ``Field`` subclass but maintains Redis
     state of its own -- it defines ``on_save``, ``_check_write_filter``, a
-    ``$``-prefixed key builder, or otherwise touches ``POPOTO_REDIS_DB``
-    directly. (The literal ``on_save``/``$``-builder triple misses
+    ``$``-prefixed key builder, or otherwise touches the Redis client
+    directly (``get_REDIS_DB()`` since #655, or the older
+    ``POPOTO_REDIS_DB`` snapshot). (The literal ``on_save``/``$``-builder triple misses
     ``EventStreamMixin``, which writes streams through its own key helper, so
     the direct-Redis-access clause is included to catch it.)
 
@@ -691,6 +692,7 @@ def collect_model_level_mixins():
                 or "_check_write_filter" in own
                 or "$" in source
                 or "POPOTO_REDIS_DB" in source
+                or "get_REDIS_DB" in source
             )
             if not is_stateful:
                 continue
