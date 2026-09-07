@@ -3442,10 +3442,10 @@ means the turn is stored with no tool call.</p>
 </tr>
 <tr>
 <td>OpenClaw</td>
-<td>no, plugin required</td>
-<td>no, plugin required</td>
+<td>yes (<code>before_prompt_build</code>)</td>
+<td>yes (<code>llm_output</code>)</td>
 <td>yes (MCP)</td>
-<td>MCP config only</td>
+<td>MCP config + plugin install + hook opt-in</td>
 </tr>
 </tbody>
 </table>
@@ -3473,7 +3473,7 @@ capability table:</p>
 </tr>
 <tr>
 <td>OpenClaw</td>
-<td>vendor documentation only</td>
+<td>a live OpenClaw 2026.9.2 run through the shipped plugin; payloads captured and committed as test fixtures</td>
 </tr>
 </tbody>
 </table>
@@ -3525,8 +3525,14 @@ session, or a <code>SubagentStop</code>-configured session reporting more often 
 read no longer shifts every later pairing by one. A second report for a turn
 already resolved resolves nothing, and a turn id that matches no staged entry
 resolves nothing rather than falling back to the head of the queue.</p>
-<p>Hermes and OpenClaw send no turn identifier. Those sessions keep the
-positional FIFO pairing, which is correct for them because their hooks are
+<p>OpenClaw sends one, though not on the event: its hooks take a second
+<code>ctx</code> argument whose <code>runId</code> is identical across a turn's
+<code>before_prompt_build</code> and <code>llm_output</code>, and the plugin forwards it as
+<code>turn_id</code>. That matters more there than elsewhere, because <code>llm_output</code> is an
+Observe hook whose handlers run concurrently and may overlap the next turn --
+keyed pairing makes the overlap correct by construction. Hermes sends no turn
+identifier in the payloads popoto sees (#688), so those sessions keep the
+positional FIFO pairing, which is correct for it because its hooks are
 synchronous. A queue written entirely before this behavior shipped is also
 claimed positionally, so an in-flight upgrade loses no pending turn. Both
 paths are bounded by <code>MAX_PENDING_TURNS</code> (32) per session and a one-hour TTL.
