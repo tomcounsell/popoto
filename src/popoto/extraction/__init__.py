@@ -27,6 +27,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+# Imported eagerly rather than through the lazy hook below: _anthropic_compat
+# depends on nothing but the standard library, so it does not reach for the
+# optional `anthropic` package and cannot break this module's contract.
+from ._anthropic_compat import (  # noqa: F401
+    MINIMUM_ANTHROPIC_VERSION,
+    AnthropicVersionError,
+)
+
 DEFAULT_MIN_LENGTH = 10
 """Minimum sentence length (chars) to be considered a fact worth saving.
 
@@ -262,6 +270,9 @@ __all__ = [
     "AbstractExtractionProvider",
     "HeuristicExtractionProvider",
     "RawTurnExtractionProvider",
+    # anthropic SDK floor enforcement (#670).
+    "AnthropicVersionError",
+    "MINIMUM_ANTHROPIC_VERSION",
     # Auditable extraction (#562). Imported lazily by name below so that
     # `import popoto.extraction` stays free of the optional anthropic
     # probe in verdict.py.

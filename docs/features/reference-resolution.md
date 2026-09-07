@@ -156,7 +156,9 @@ join.
 
 **The fifth literal, `res:degraded`, takes precedence over the status
 literal.** `degraded` is set whenever the resolution stage failed open — a
-missing `anthropic` client, a raising client, a malformed reply, or the
+missing `anthropic` client, an `anthropic` too old to accept
+`output_config` (below 0.77.0, which raises `AnthropicVersionError` when
+the default client is built), a raising client, a malformed reply, or the
 `M4_RESOLUTION_ENABLED` kill switch — and in every one of those cases the
 model never actually rendered a verdict. Without a separate literal, a
 degraded run and a genuine model abstention would both tag
@@ -264,10 +266,11 @@ print(resolution.subject_tag)       # "res:resolved"
 print(resolution.valid_from)        # epoch float for 2026-03-01 in America/Los_Angeles
 ```
 
-`resolve_references` requires the optional `anthropic` package and an API
-key to produce a non-degraded result; without either it returns the same
-degraded `Resolution` the kill switch produces, matching M3's fail-open
-contract.
+`resolve_references` requires the optional `anthropic` package (**0.77.0
+or newer** — older releases do not accept the `output_config` parameter
+this stage passes) and an API key to produce a non-degraded result;
+without either it returns the same degraded `Resolution` the kill switch
+produces, matching M3's fail-open contract.
 
 ## See Also
 
