@@ -858,6 +858,14 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
 
 ## Verification
 
+The `git diff origin/main` rows need a fetched remote — run `git fetch origin`
+first. Every grep row below was smoke-tested against the unmodified tree at
+`c046e1bd` at plan time: the four anti-criteria all returned `0` (green on a
+no-op diff), `numkeys still 4` returned `1`, the `#679` regression class
+returned `1`, and `Stale doc claim removed` returned **`1` — i.e. it FAILS
+today**, which is its red-state proof: the sentence it forbids is currently
+`docs/features/cyclic-decay-field.md:122`.
+
 | Check | Command | Expected |
 |-------|---------|----------|
 | Touched suites pass | `POPOTO_TEST_DB=12 pytest tests/test_cyclic_decay_field.py tests/test_transfer_fidelity_fields.py tests/test_cyclic_subclass_companion_keys.py tests/test_validity_field.py -q` | exit code 0 |
@@ -871,7 +879,7 @@ Per the standard roster (`builder`, `validator`, `code-reviewer`,
 | Reset is logged | `grep -c "logger.info" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
 | Stale doc claim removed | `grep -c "the learned value wins" docs/features/cyclic-decay-field.md` | match count == 0 |
 | Anti-criterion — Lua untouched (No-Go #699) | `git diff origin/main -- src/popoto/fields/cyclic_decay_field.py \| grep -c "^[+-].*redis\.call"` | match count == 0 |
-| Anti-criterion — numkeys still 4 | `grep -A3 "CYCLIC_DECAY_LUA," src/popoto/fields/cyclic_decay_field.py \| grep -c "^ *4,"` | output > 0 |
+| Anti-criterion — numkeys still 4 | `grep -A7 "CYCLIC_DECAY_LUA," src/popoto/fields/cyclic_decay_field.py \| grep -c "^ *4,"` | output > 0 |
 | Anti-criterion — no new companion Redis key | `git diff origin/main -- src/popoto/ \| grep -c "^+.*:cycle_baselines\|^+.*:baselines"` | match count == 0 |
 | Anti-criterion — no migration script added | `git diff --name-only origin/main -- scripts/ \| grep -c .` | match count == 0 |
 | Anti-criterion — #655 sweep not pre-empted | `git diff origin/main -- src/popoto/fields/cyclic_decay_field.py \| grep -c "^-.*POPOTO_REDIS_DB"` | match count == 0 |
