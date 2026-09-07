@@ -31,6 +31,7 @@ Caching:
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -38,6 +39,28 @@ from . import BenchmarkItem
 from .sampling import sample_items
 
 logger = logging.getLogger("POPOTO.Benchmark.LongMemEvalS")
+
+#: strptime format of ``haystack_dates`` entries, e.g. "2023/05/20 (Sat) 02:21".
+#: Minute precision — two sessions in one haystack can share a timestamp; see
+#: docs/plans/sdlc-692.md, Race 1 "Tied dates".
+HAYSTACK_DATE_FORMAT = "%Y/%m/%d (%a) %H:%M"
+
+
+def _parse_session_date(raw: Optional[str]) -> Optional[float]:
+    """Parse one ``haystack_dates`` entry to an epoch float, or ``None``.
+
+    Never raises and never substitutes a timestamp (#692) — a missing or
+    unparseable date must disable the supersession producer for that turn
+    rather than inventing a value it would then treat as ground truth.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        return time.mktime(time.strptime(raw, HAYSTACK_DATE_FORMAT))
+    except ValueError:
+        logger.debug("Unparseable haystack_dates entry: %r", raw)
+        return None
+
 
 CACHE_DIR = Path.home() / ".cache" / "popoto_benchmarks"
 CACHED_FILE = CACHE_DIR / "longmemeval_s_cleaned.json"
@@ -102,7 +125,10 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
         "question_date": "...",
         "answer": "...",
         "answer_session_ids": ["session_id", ...],   # ground truth
-        "haystack_dates": ["...", ...],               # parallel to sessions
+        "haystack_dates": ["...", ...],               # parallel to sessions;
+                                                        # parsed (#692) into a
+                                                        # per-turn epoch float
+                                                        # "session_date"
         "haystack_session_ids": ["session_id", ...],  # parallel to sessions
         "haystack_sessions": [                         # parallel to ids
             [ {"role": "user"|"assistant", "content": "..."}, ... ],
@@ -136,6 +162,9 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
     query = record["question"]
     sessions = record["haystack_sessions"]
     session_ids = record["haystack_session_ids"]
+    raw_dates = record.get("haystack_dates", [])
+    if not isinstance(raw_dates, list):
+        raw_dates = []
 
     if not isinstance(sessions, list):
         raise ValueError(
@@ -152,7 +181,14 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
     # Flatten parallel session arrays into a list of turns with session_id
     # metadata. Each session is itself a list of {role, content} turn dicts.
     history = []
-    for session_id, turns in zip(session_ids, sessions):
+    for session_idx, (session_id, turns) in enumerate(zip(session_ids, sessions)):
+        # Missing / short haystack_dates -> None for every turn of that
+        # session, never a substituted timestamp (#692).
+        session_date = (
+            _parse_session_date(raw_dates[session_idx])
+            if session_idx < len(raw_dates)
+            else None
+        )
         for turn_idx, turn in enumerate(turns):
             history.append(
                 {
@@ -160,6 +196,7 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
                     "content": turn.get("content", ""),
                     "turn_id": f"{session_id}::{turn_idx}",
                     "session_id": session_id,
+                    "session_date": session_date,
                 }
             )
 
