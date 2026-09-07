@@ -4302,6 +4302,20 @@ in one burst.</p>
 <a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span> <span class="o">=</span> <span class="mi">5</span>
 <a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span> <span class="o">=</span> <span class="mf">43200.0</span>  <span class="c1"># 12 hours</span>
 </code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">A <code>FORGET_IDLE_SECONDS</code> of <code>0.0</code> excludes fresh records, not admits them</p>
+<p>The criterion is <code>idle_seconds &gt; FORGET_IDLE_SECONDS</code>, a <strong>strict</strong>
+inequality. A record that was just written reports an idle time of
+essentially <code>0.0</code>, so a floor of <code>0.0</code> excludes it rather than admitting it —
+the opposite of how the value reads. To make any idle time qualify, use a
+negative floor such as <code>-1.0</code>.</p>
+<p>This mostly bites in tests, where records are created moments before <code>tick()</code>
+runs. Five tests in popoto's own suite set <code>0.0</code>, never reached the guard
+they were written for, and passed while the guard was deleted
+(<a href="https://github.com/tomcounsell/popoto/issues/674">#674</a>);
+<code>tests/test_forget_idle_seconds_guard.py</code> now fails the suite on any
+non-negative literal.</p>
+</div>
 <p>Systematic tuning is done via the Tier 5 benchmark sweep:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_sweeps<span class="w"> </span>--tier<span class="w"> </span><span class="m">5</span>
 </code></pre></div>
