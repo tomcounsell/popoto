@@ -24,6 +24,14 @@ Its cost, disclosed at the time: a module `__getattr__` annotated `-> Any` tells
 **Issue filed at:** 2026-09-07, off the back of PR #657
 **Disposition:** Unchanged — the issue was filed hours ago against the commit this branch is based on.
 
+## Prior Art
+
+- **PR #657 / issue #651** (merged `af227894`) — introduced the `__getattr__` this plan guards. Its review disclosed the mypy cost explicitly rather than hiding it; #659 was filed off that disclosure. Nothing here reverses it.
+- **PR #652 / issue #645** (merged `b7863500`) — the same defect one level up: `popoto.get_redis()` returned a package-level snapshot. Fixed by delegating to `redis_db.get_REDIS_DB()` on every call. Establishes the accessor-over-binding pattern this plan preserves.
+- **Issue #655** (open) — 33 `src/popoto/` modules still do `from popoto.redis_db import POPOTO_REDIS_DB`, which is a genuine binding and genuinely stale. Out of scope here; noted because it is the reason the name cannot simply be deleted.
+
+**Why previous fixes did not cover this:** there is no failed prior attempt. #651's fix was correct and complete for the runtime defect; the static-checking cost was a known, accepted trade at the time, deferred to this issue rather than rushed into that PR.
+
 ## Solution
 
 ```python
