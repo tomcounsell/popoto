@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: Dev (sdlc-651)
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/651
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-09-07T02:35:44Z
 ---
 
 # `popoto.POPOTO_REDIS_DB` tracks reconfiguration instead of freezing at import
@@ -53,7 +55,7 @@ redis_db.get_REDIS_DB()     db = 8
 
 - **#645 / PR #652** — *Docs: stop teaching a db-less Redis client; make get_redis() rebind-safe*. Fixed the identical defect one level up: `popoto.get_redis()` now delegates to `redis_db.get_REDIS_DB()` on every call instead of returning the frozen package global. Added `tests/test_get_redis_rebind.py`. That lane deliberately left the `POPOTO_REDIS_DB` re-export alone because changing a public name is an API decision outside a docs lane's appetite — which is exactly this issue. **This plan matches that PR's test shape and its delegation idiom.**
 - **#655** (filed during this plan's recon) — the same defect in 33 `src/popoto/` modules that import `POPOTO_REDIS_DB` at module scope. Confirmed by reproduction. Out of scope here; see No-Gos.
-- **#527 / PR #527** — *swap to the test DB before collection, not on first test*. Context for why `pytest_plugin._swap_db()` mutates the pool on the existing client instead of rebinding the name. That workaround is the reason the defect has never broken the test suite; it is not evidence the defect is absent, and per the issue it must not be "fixed".
+- **#522 / PR #527** — *swap to the test DB before collection, not on first test*. Context for why `pytest_plugin._swap_db()` mutates the pool on the existing client instead of rebinding the name. That workaround is the reason the defect has never broken the test suite; it is not evidence the defect is absent. `_swap_db()` stays untouched in this lane — a constraint from this lane's routed task, not a mandate written in #522 or #651, both of which only observe that it is unaffected.
 - **#577** — the `REDIS_URL`-before-import discipline this defect undermines. No code overlap.
 
 No prior attempt to change the `POPOTO_REDIS_DB` re-export exists, so there is no **Why Previous Fixes Failed** section.
@@ -144,7 +146,15 @@ After the fix, step 1 binds no package global at all; step 5 resolves through `r
 Implementation, three parts:
 
 1. **`src/popoto/__init__.py:115`** — drop `POPOTO_REDIS_DB` from the import, keeping `from .redis_db import get_async_redis_db`. This is what makes normal attribute lookup fail so the hook can run; leaving the import in place would leave a real attribute that shadows `__getattr__` forever.
-2. **`src/popoto/__init__.py:137`** — `get_redis()` currently does `return POPOTO_REDIS_DB`, an unqualified global read. PEP 562 explicitly does **not** route module-global reads through `__getattr__`, so after step 1 this raises `NameError`. Change it to `return redis_db.get_REDIS_DB()` — the identical delegation PR #652 introduces, so the two lanes converge rather than conflict semantically.
+2. **`src/popoto/__init__.py:137`** — `get_redis()` currently does `return POPOTO_REDIS_DB`, an unqualified global read. PEP 562 explicitly does **not** route module-global reads through `__getattr__`, so after step 1 this raises `NameError`. Change it to a **function-local** delegation, written byte-identical to PR #652's version:
+
+   ```python
+   from .redis_db import get_REDIS_DB
+
+   return get_REDIS_DB()
+   ```
+
+   Matching #652 exactly is deliberate: it confines the eventual rebase conflict to the import line, where the two lanes genuinely disagree (see Risk 1). Do not spell it `redis_db.get_REDIS_DB()` even though that would also work — a cosmetic divergence here buys a second conflict hunk for nothing.
 3. **Add `__getattr__` and `__dir__` at module scope**, after `__all__`:
    - `__getattr__(name)` returns `redis_db.get_REDIS_DB()` for `"POPOTO_REDIS_DB"` and otherwise raises `AttributeError(f"module {__name__!r} has no attribute {name!r}")` — matching the message CPython produces, so nothing that pattern-matches on it regresses.
    - `__dir__()` returns `sorted({*globals(), "POPOTO_REDIS_DB"})`.
@@ -181,16 +191,30 @@ No existing test expectation is modified by this plan. The PM authorized changin
 ## Risks
 
 ### Risk 1: Conflict with the open PR #652 on `src/popoto/__init__.py`
-**Impact:** Both PRs edit `get_redis()`'s return statement and the region around line 115. Whichever merges second hits a textual conflict.
-**Mitigation:** The two changes are semantically *identical* on that line (both become `return redis_db.get_REDIS_DB()`), so the conflict is textual and trivially resolvable. Rebase onto `origin/main` immediately before merge and re-run the narrow test set. Do not import or duplicate `tests/test_get_redis_rebind.py`. If #652 lands first, step 2 of the Technical Approach becomes a no-op and the plan is otherwise unchanged.
+**Impact:** Both PRs edit the same two regions — the import block around line 115 and `get_redis()`'s body. Whichever merges second hits a textual conflict. The critique corrected an earlier, wrong reading of this risk: the two changes are **not** identical.
+
+The real #652 diff (`git diff origin/main...origin/session/sdlc-645 -- src/popoto/__init__.py`, read in this lane):
+
+- It **keeps** the import, as `from .redis_db import POPOTO_REDIS_DB, get_async_redis_db  # noqa: F401`, under a new 6-line comment block explaining that the name is a snapshot and pointing at #651 for the decision this plan makes.
+- It rewrites `get_redis()` to a **function-local** import: `from .redis_db import get_REDIS_DB` then `return get_REDIS_DB()`.
+
+So the line this plan must delete is exactly the line #652 preserves and annotates, and the comment block above it is *obsoleted* by this plan rather than merged with it.
+
+**Mitigation:**
+1. Write `get_redis()` byte-identical to #652's version (function-local import, same body). That confines any post-merge reconciliation to the import line alone.
+2. Rebase onto `origin/main` immediately before merge. If #652 has landed, the delta to re-apply is: delete the `# noqa: F401` import line **and its 6-line comment block**, keep #652's `get_redis()` untouched, keep this plan's `__getattr__`/`__dir__`. `get_redis()` needs no further edit — its function-local import already bypasses the deleted global.
+3. Re-run the narrow test set after the rebase.
+4. Do not import, duplicate, or re-create `tests/test_get_redis_rebind.py` — it belongs to #652.
 
 ### Risk 2: The module `__getattr__` suppresses mypy `attr-defined` for every `popoto.<attr>` access
 **Impact:** mypy stops flagging typos like `popoto.POPOTO_REDIS_DBB` in modules that `import popoto`. Measured behavior, not a guess (spike-1).
-**Mitigation:** Blast radius measured and small — four `src/` files import the package, all at function scope, and none reads a package-level Redis attribute; the 3 consumer test files are not in the mypy gate. The Verification table asserts the ratchet does not *drop*, which is how a suppression would show up (`scripts/mypy_ratchet.py` warns on a below-baseline count). State the resulting count with its environment. Accepted as the cost of option 2; option 1 and option 3 were rejected on stronger grounds.
+**Mitigation:** Blast radius measured and small — four `src/` files import the package, all at function scope, and none reads a package-level Redis attribute; the 3 consumer test files are not in the mypy gate. The Verification table runs `scripts/mypy_ratchet.py --strict-ratchet`, which fails on a count that is under baseline as well as over — a suppression shows up as a *drop*, and the bare invocation only prints a warning for that case (corrected during critique). Exact equality is the right assertion for a three-line diff that should not move the type count in either direction. State the resulting count with its environment. Accepted as the cost of option 2; option 1 and option 3 were rejected on stronger grounds.
 
 ### Risk 3: A test or downstream caller assigns to `popoto.POPOTO_REDIS_DB`
 **Impact:** An assignment would create a real module global that permanently shadows `__getattr__`, silently restoring the stale-snapshot bug for the rest of the process.
 **Mitigation:** spike-2 grepped `src/`, `tests/`, `docs/`, `examples/`, `scripts/` and found **zero** assignment sites. The Verification table carries this as an anti-criterion so a future PR reintroducing one is caught. Note `tests/test_get_redis_rebind.py` restores via `redis_db.POPOTO_REDIS_DB = original_client` — the *submodule* attribute, which is correct and unaffected; the new test uses the same spelling.
+
+**Residual exposure, accepted:** the grep covers this repo only, not downstream PyPI consumers. The critique proposed closing that hole with a `ModuleType` subclass carrying a `__setattr__` guard; it is **deliberately not adopted**. Such a subclass intercepts every attribute write on the package, including those the import system performs while the package is still initializing, and interacts with `importlib.reload()` and module pickling — a materially larger and riskier change than the defect it guards, for a caller with zero observed instances in-repo and none reported downstream. If such a report ever arrives, the guard belongs in #655, where the same mechanism would protect all 34 sites rather than one.
 
 ### Risk 4: Running an ad-hoc repro against DB 0
 **Impact:** DB 0 is a live agent store on this machine; two prior incidents (#577).
@@ -301,24 +325,31 @@ Small appetite, one file of source plus one test file. Executed directly by the 
 | Check | Command | Expected |
 |-------|---------|----------|
 | Rebind regression test | `.venv/bin/python -m pytest tests/test_popoto_redis_db_rebind.py -q` | exit code 0 |
-| Existing consumers unmodified | `git diff --name-only origin/main... -- tests/test_atomic_increment.py tests/test_cyclic_decay_field.py tests/test_decaying_sorted_field.py` | output does not contain `tests/` |
+| Existing consumers unmodified | `git diff --name-only origin/main... -- tests/test_atomic_increment.py tests/test_cyclic_decay_field.py tests/test_decaying_sorted_field.py \| wc -l` | output contains 0 |
 | Existing consumers pass | `.venv/bin/python -m pytest tests/test_atomic_increment.py tests/test_cyclic_decay_field.py tests/test_decaying_sorted_field.py -q` | exit code 0 |
 | Connection-sensitive suite passes | `.venv/bin/python -m pytest tests/test_pytest_plugin.py -q` | exit code 0 |
 | No package global remains | `grep -c '^from \.redis_db import POPOTO_REDIS_DB' src/popoto/__init__.py` | match count == 0 |
 | No assignment to the package attribute (anti-criterion, Risk 3) | `grep -rn 'popoto\.POPOTO_REDIS_DB[[:space:]]*=' src/ tests/ docs/ examples/ scripts/` | exit code 1 |
-| Internal snapshots untouched (anti-criterion, No-Go #655) | `git diff --name-only origin/main... -- src/popoto/fields src/popoto/models src/popoto/recipes src/popoto/pubsub` | output does not contain `src/popoto` |
-| `_swap_db` untouched (issue says do not "fix" it) | `git diff --name-only origin/main... -- src/popoto/pytest_plugin.py` | output does not contain `pytest_plugin` |
-| mypy ratchet | `scripts/mypy_ratchet.py` | exit code 0 |
+| Internal snapshots untouched (anti-criterion, No-Go #655) | `git diff --name-only origin/main... -- src/popoto/fields src/popoto/models src/popoto/recipes src/popoto/pubsub \| wc -l` | output contains 0 |
+| `_swap_db` untouched (must not be "fixed") | `git diff --name-only origin/main... -- src/popoto/pytest_plugin.py \| wc -l` | output contains 0 |
+| mypy ratchet, exact (catches Risk 2's suppression as a *drop*) | `scripts/mypy_ratchet.py --strict-ratchet` | exit code 0 |
 | Lint clean | `.venv/bin/python -m ruff check src/` | exit code 0 |
 | Format clean | `.venv/bin/python -m black --check src/ tests/` | exit code 0 |
 | No stale xfails | `grep -rn 'pytest.mark.xfail\|pytest.xfail(' tests/` | exit code 1 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+FULL depth, independent roster (3 critics): Risk & Robustness, Scope & Value, History & Consistency. Roster 3/3 complete. Scope & Value returned **No findings** — it independently re-ran the 70-occurrence grep and confirmed it exactly, and confirmed the `get_redis()` edit is forced rather than scope creep. Every finding below was re-verified against ground truth by the lane dev before being accepted (CLAUDE.md: reproduce a subagent's metric before relaying it).
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | Risk & Robustness | Risk 1 claimed this plan's `get_redis()` change and PR #652's are "semantically identical", making the rebase trivial. **False.** The real diff (`git diff origin/main...origin/session/sdlc-645 -- src/popoto/__init__.py`) shows #652 **keeps** the import as `from .redis_db import POPOTO_REDIS_DB, get_async_redis_db  # noqa: F401` under a new 6-line comment block, and delegates via a **function-local** `from .redis_db import get_REDIS_DB`. The import line this plan must delete is the line #652 preserves and annotates. | Risk 1 rewritten with the real diff; Technical Approach points 1-2 restated; rebase procedure made explicit. | Verified by the lane dev. On a rebase onto merged #652 the delta is: **delete** the `# noqa: F401` import line **and its 6-line comment block** (which itself says "See #651 for making it live or removing it" — it is obsoleted by this change, not merged with it), then add `__getattr__`/`__dir__`. `get_redis()` needs **no further edit** once #652 has landed: its function-local `from .redis_db import get_REDIS_DB` already bypasses the deleted global. Write `get_redis()` byte-identical to #652's version now, so the post-merge reconciliation is confined to the import line. |
+| CONCERN | Risk & Robustness | Risk 3's only defense against `popoto.POPOTO_REDIS_DB = x` (which would create a real global that permanently shadows `__getattr__` and silently restore the bug) is a `grep` over this repo, which cannot see downstream PyPI consumers. Suggested a `ModuleType` subclass with a `__setattr__` guard. | Acknowledged; **suggestion deliberately not adopted**. Risk 3 updated to record the rejection and its reasoning. | Rejected on cost, not on correctness of the observation. Installing a `ModuleType` subclass over `sys.modules["popoto"]` intercepts **every** attribute write on the package — including the ones the import system itself performs while the package is still initializing — and interacts with `importlib.reload()` and module pickling. That is a materially larger and riskier change than the defect it guards, aimed at a caller with zero observed instances in-repo and no reported instance downstream. The in-repo grep stays as a Verification anti-criterion. If a downstream report ever appears, the guard belongs in #655's design discussion, where the same mechanism would protect all 34 sites rather than one. |
+| CONCERN | History & Consistency | Risk 2's mitigation claimed the Verification table "asserts the ratchet does not drop", but the row ran bare `scripts/mypy_ratchet.py`, whose `--help` confirms a below-baseline count only fails under `--strict-ratchet`. As written the row could not catch the mypy suppression Risk 2 exists to detect. | Verification row changed to `scripts/mypy_ratchet.py --strict-ratchet`. | Verified by the lane dev against `scripts/mypy_ratchet.py --help`: `--strict-ratchet` = "also fail when the count is UNDER baseline (exact equality)". Exact equality is the correct assertion here — this diff touches three lines of one module and must not move the type count in **either** direction. The lane venv (mypy 2.3.1, redis-py 8.1.0, Python 3.12.14) matches the recorded baseline environment, so the script will compare rather than refuse. |
+| NIT | History & Consistency | The Prior Art bullet for #527 attributed the "must not be 'fixed'" instruction about `_swap_db()` to that issue; neither #527/#522 nor #651 contains such a mandate. | Bullet corrected — the instruction comes from this lane's routed task, not from the issues. | n/a (NIT) |
 
 ---
 
 ## Open Questions
 
-None. The one API decision the PM flagged — options 1/2/3 — is settled in Technical Approach on spike-2's usage evidence, and reported to the PM before build.
+None. The one API decision the PM flagged — options 1/2/3 — is settled in Technical Approach on spike-2's usage evidence, independently re-verified by the Scope & Value critic, and reported to the PM before build.
