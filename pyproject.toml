@@ -128,6 +128,15 @@ markers = [
 addopts = "-v"
 popoto_test_db = "15"
 
+# The library suite lives in tests/. examples/ is a separate uv project with its
+# own pyproject, its own dependencies (textual), and its own Redis database, run
+# by .github/workflows/examples.yml — a bare `pytest` from the repo root would
+# otherwise collect examples/tests/ and fail on ModuleNotFoundError: textual
+# (#611). testpaths applies only when no path argument is given, so
+# `pytest examples/tests/` still works if you ask for it explicitly.
+testpaths = ["tests"]
+norecursedirs = ["examples", ".worktrees", "*.egg", ".*", "build", "dist", "venv"]
+
 [tool.isort]
 multi_line_output = 3
 include_trailing_comma = true
