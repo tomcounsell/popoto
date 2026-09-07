@@ -106,17 +106,25 @@ set_REDIS_DB_settings("", "localhost", 6379)
 
 ## Accessing the Connection Directly
 
-If you need to run raw Redis commands, you can access the connection object:
+If you need to run raw Redis commands, use `popoto.get_redis()`:
 
 ```python
-from popoto.redis_db import get_REDIS_DB
+import popoto
 
-redis_db = get_REDIS_DB()
+redis_db = popoto.get_redis()
 
 # Run raw Redis commands
 redis_db.ping()
 redis_db.info()
 ```
+
+`popoto.get_redis()` is the public spelling of `popoto.redis_db.get_REDIS_DB()`;
+either works. Both re-read the global on every call, so they keep returning the
+current connection after `set_REDIS_DB_settings()` replaces it.
+
+Prefer this over building your own client. A hand-built `redis.from_url(...)`
+opens a *different* connection, and unless its URL names the same database, reads
+and writes land somewhere Popoto never touched — with no error to say so.
 
 ## Debugging
 
