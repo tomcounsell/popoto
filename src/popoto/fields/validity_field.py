@@ -860,6 +860,77 @@ class ValidityField(Field):
         return {_as_str(m) for m in started} & {_as_str(m) for m in still_open}
 
     @classmethod
+    def resolve_excluded_keys(
+        cls,
+        model: "ModelLike",
+        field_name: str,
+        as_of: Optional[float] = None,
+    ) -> "set[str]":
+        """Return the record keys to DROP as of ``as_of`` (#648).
+
+        The subtractive counterpart to :meth:`resolve_valid_keys`, and the one
+        every retrieval path actually wants. Two read-only ``ZRANGEBYSCORE``s,
+        unioned: ``invalid_at <= as_of`` (already closed) and
+        ``valid_from > as_of`` (not yet started) — the exact mirror of the two
+        ranges :meth:`resolve_valid_keys` intersects.
+
+        .. warning::
+
+           **This returns an exclusion set, not a whitelist, and that is
+           deliberate.** A record with no entry in either interval ZSET is
+           *unmanaged* and stays fully retrievable. Resolving the valid set
+           instead — via :meth:`resolve_valid_keys`, whose own warning is the
+           other half of this one — would silently hide every record that
+           predates the day a ``ValidityField`` was added to an existing model,
+           since none of those has an interval until it is next saved. That is a
+           data-visibility regression, not a stricter gate. Do not "simplify"
+           this into a valid-key intersection.
+
+           This method lives beside ``resolve_valid_keys`` precisely so the
+           warning and the trap it warns about are read together. It used to
+           live in ``ContextAssembler._resolve_excluded_keys``, a different file
+           from the method it forbids.
+
+        The exclusive lower bound on ``valid_from`` is spelled ``f"({t}"``,
+        while the ``invalid_at`` upper bound is inclusive. Redis renders the
+        ``+inf`` open sentinel such that an open record never matches
+        ``<= as_of``. Both bound conventions are this method's business, not a
+        caller's.
+
+        Callers own the *policy* questions this does not answer: whether the
+        model declares a ``ValidityField`` at all, and whether the
+        ``Defaults.VALIDITY_GATING_ENABLED`` kill switch is on (which must be
+        read at call time, never captured at import, so a deploy-level switch
+        takes effect for adopters who cannot edit model code).
+
+        Args:
+            model: The model class (or instance) owning the field.
+            field_name: Name of the ``ValidityField`` on that model.
+            as_of: Epoch seconds to evaluate membership at. ``None`` = now.
+
+        Returns:
+            ``set[str]`` of decoded record keys to drop. An empty set means
+            gating ran and excluded nothing — which is **not** the same as a
+            caller's ``None`` for "gating did not run at all".
+
+        Note:
+            A point-in-time snapshot of a live store. A supersession landing
+            after the read is not reflected until the next call.
+        """
+        t = time.time() if as_of is None else float(as_of)
+        valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
+        # invalid_at <= t: already closed. The +inf open sentinel never matches.
+        # Read before valid_from, the order the assembler established.
+        closed = cast(
+            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, "-inf", t)
+        )
+        # valid_from > t: not yet started.
+        future = cast(
+            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(valid_from_key, f"({t}", "+inf")
+        )
+        return {_as_str(m) for m in closed + future}
+
+    @classmethod
     def is_valid_at(
         cls,
         model: "ModelLike",

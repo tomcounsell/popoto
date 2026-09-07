@@ -34,6 +34,7 @@ import logging
 from typing import Any, Optional
 
 from ..exceptions import ModelException
+from ..redis_db import POPOTO_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 from .sorted_field_mixin import SortedFieldMixin
@@ -297,6 +298,91 @@ class DecayingSortedField(SortedFieldMixin, Field):
         kwargs["auto_now"] = True
         kwargs["sorted"] = True
         super().__init__(**kwargs)
+
+    def rank_decayed(
+        self,
+        zset_key: str,
+        *,
+        now: float,
+        n: Optional[int] = None,
+        confidence: Optional[tuple[str, str, str]] = None,
+        validity: Optional[tuple[str, str, str]] = None,
+        decay_rate: Optional[float] = None,
+        base_score_field: Optional[str] = None,
+    ) -> "list[Any]":
+        """Evaluate this field's decay script over one sorted set (#648).
+
+        **This method owns the KEYS array so that callers do not.** Before it
+        existed, every ``EVAL`` of a decay script was assembled by a caller --
+        ``models/query.py`` and ``recipes/context_assembler.py`` each held their
+        own copy of both layouts, four copies in total of a mapping whose
+        misapplication corrupts silently rather than erroring (see the ``do not
+        "unify" them`` note inside :data:`DECAY_SCORE_LUA`).
+
+        The two layouts are deliberately **not** unified into a single body with
+        a flag. :class:`CyclicDecayField` overrides this method with its own,
+        so neither implementation contains an index it must not use: this one
+        knows confidence is ``KEYS[2]`` and knows nothing about cycles; the
+        override knows cycles/pressure are ``KEYS[2]``/``KEYS[3]`` and knows
+        nothing about the validity gate. The rule the script comments ask
+        readers to respect is enforced by the class boundary instead.
+
+        Args:
+            zset_key: The (already partition-resolved) sorted set to rank.
+            now: Current epoch seconds, passed as ``ARGV[1]``.
+            n: Max members to return. ``None`` means *every* member, which
+                costs one extra ``ZCARD`` -- issued here, before the ``EVAL``,
+                so the wire order is ``ZCARD`` then ``EVAL``. An empty set
+                short-circuits to ``[]`` with **no** ``EVAL`` issued at all.
+            confidence: ``(hash_key, s, c0)`` from
+                :func:`confidence_modulation_args`. Defaults to
+                :data:`MODULATION_DISABLED`.
+            validity: ``(invalid_at_key, valid_from_key, as_of)`` from
+                :func:`validity_gate_args`. Defaults to
+                :data:`VALIDITY_GATE_DISABLED`.
+            decay_rate: Override ``self.decay_rate`` (the query path resolves
+                an effective rate per call).
+            base_score_field: Override ``self.base_score_field``.
+
+        Returns:
+            The script's raw flat reply, ``[member, score, member, score, ...]``,
+            **undecoded**. Callers already differ in how they decode and
+            normalizing it here would change what their parsing loops receive.
+        """
+        conf_hash_key, conf_s, conf_c0 = (
+            MODULATION_DISABLED if confidence is None else confidence
+        )
+        gate_invalid_key, gate_valid_key, gate_as_of = (
+            VALIDITY_GATE_DISABLED if validity is None else validity
+        )
+        if n is None:
+            n = int(POPOTO_REDIS_DB.zcard(zset_key))
+            if not n:
+                return []
+        effective_rate = self.decay_rate if decay_rate is None else decay_rate
+        if base_score_field is None:
+            base_score_field = self.base_score_field or ""
+
+        return run_lua(
+            POPOTO_REDIS_DB,
+            DECAY_SCORE_LUA,
+            # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
+            # valid_from (KEYS[4]). Passing the validity keys without bumping
+            # this would shunt them into ARGV and silently corrupt
+            # base_score_field / the confidence params.
+            4,
+            zset_key,
+            conf_hash_key,
+            gate_invalid_key,
+            gate_valid_key,
+            str(now),
+            str(effective_rate),
+            str(n),
+            base_score_field,
+            conf_s,
+            conf_c0,
+            gate_as_of,  # ARGV[7]
+        )
 
 
 # --- Confidence-modulated decay wiring (issue #491) -------------------------
