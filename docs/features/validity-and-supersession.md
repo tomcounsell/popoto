@@ -195,6 +195,14 @@ regression dressed up as "stricter" behavior.
     `ContextAssembler._resolve_excluded_keys` (assembler path); both compute
     exclusion sets, not whitelists.
 
+    Its subtractive counterpart is **`ValidityField.resolve_excluded_keys(model,
+    field_name, as_of=None)`**, which sits directly beside it and returns the
+    *exclusion* set: the union of `invalid_at <= as_of` (already closed) and
+    `valid_from > as_of` (not yet started), as a `set[str]` of Redis keys, in two
+    read-only `ZRANGEBYSCORE`s. A record absent from both interval ZSETs appears
+    in neither result and stays retrievable. When you want gating, this is the
+    method — `resolve_valid_keys` is not the one to reach for.
+
 ## `SupersessionProtocol`
 
 `SupersessionProtocol` is a stateless coordinator of `@staticmethod`s —
@@ -469,7 +477,11 @@ arms, none of which route through `composite_score`'s `ZUNIONSTORE` or
 consult the `filters` dict at all. Two read-only `ZRANGEBYSCORE`s per
 `assemble()` call produce an exclusion set; `_scope_by_validity` drops any
 candidate record whose key is in it. Mirrors the tag-scoping pattern
-(`_scope_by_tags`) already established for issue #492.
+(`_scope_by_tags`) already established for issue #492. Since
+[#648](https://github.com/tomcounsell/popoto/issues/648) those two reads live in
+`ValidityField.resolve_excluded_keys` (see "The exclusion rule"); the assembler
+method keeps only what is assembler *policy* — whether the model has a validity
+axis at all, and the kill-switch check.
 
 No layer is load-bearing for a path another layer already covers — Layer 1 is
 the only mechanism for `top_by_decay` on a plain `DecayingSortedField`; Layer 2

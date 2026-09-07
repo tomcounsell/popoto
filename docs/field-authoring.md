@@ -81,10 +81,22 @@ A field that needs atomicity should run its script through
 `popoto.redis_db.run_lua`, which takes the same arguments `client.eval` does:
 
 ```python
-from popoto.redis_db import POPOTO_REDIS_DB, run_lua
+import popoto
+from popoto.redis_db import run_lua
 
-run_lua(pipeline or POPOTO_REDIS_DB, MY_LUA, 2, key_a, key_b, arg_1)
+run_lua(pipeline or popoto.get_redis(), MY_LUA, 2, key_a, key_b, arg_1)
 ```
+
+!!! warning "Resolve the client at the point of use"
+    `from popoto.redis_db import POPOTO_REDIS_DB` binds a copy of that name in
+    your module, frozen at import time. `set_REDIS_DB_settings()` rebinds the
+    original and Python does not propagate a rebind to a copy, so a field
+    holding one keeps writing to the pre-reconfiguration database while the rest
+    of the ORM has moved on — silently. `popoto.get_redis()` re-reads the global
+    on every call. Fields shipped before this was understood still hold
+    module-level imports;
+    [#655](https://github.com/tomcounsell/popoto/issues/655) tracks converting
+    them.
 
 `run_lua` caches a redis-py `Script` per script text and sends `EVALSHA`,
 falling back to loading the source only when the server does not know the
@@ -150,13 +162,19 @@ enforced by that test, but the obligation is the same: if your field holds state
   what is lost and why — typically citing a tracking issue for future work.
 
 ```python
+import popoto
+from popoto import Field
+
+
 class LearnedScoreField(Field):
     roundtrip_policy = "carry"
 
     @classmethod
     def export_state(cls, model_instance, field_name, field_value, **kwargs):
         """Return this field's auxiliary state, or None if there is nothing to carry."""
-        raw = POPOTO_REDIS_DB.hget(cls._data_hash_key(model_instance), field_name)
+        raw = popoto.get_redis().hget(
+            cls._data_hash_key(model_instance), field_name
+        )
         if raw is None:
             return None
         return {"score": float(raw)}
@@ -166,7 +184,7 @@ class LearnedScoreField(Field):
         """Restore state after the record has been constructed and saved."""
         if state is None:
             return
-        POPOTO_REDIS_DB.hset(
+        popoto.get_redis().hset(
             cls._data_hash_key(model_instance), field_name, state["score"]
         )
 ```

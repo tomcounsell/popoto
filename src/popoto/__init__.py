@@ -1,4 +1,5 @@
 from importlib.metadata import PackageNotFoundError, version as _get_version
+from typing import Any
 
 try:
     __version__ = _get_version("popoto")
@@ -113,13 +114,12 @@ from .transfer import (
     import_records,
 )
 
-# POPOTO_REDIS_DB was previously "used" by get_redis()'s body; now that
-# get_redis() delegates to redis_db.get_REDIS_DB() (#645) nothing here reads it.
-# The name is kept importable for back-compat but deliberately NOT added to
-# __all__: it is an import-time snapshot that set_REDIS_DB_settings() does not
-# update, so promoting it to declared public API would endorse a stale value.
-# See #651 for making it live or removing it.
-from .redis_db import POPOTO_REDIS_DB, get_async_redis_db  # noqa: F401
+# ``POPOTO_REDIS_DB`` is deliberately NOT imported here. Importing it would bind
+# a second copy of the name in this namespace, frozen at import time, which
+# ``set_REDIS_DB_settings()`` would never update (#651). It is served by the
+# module ``__getattr__`` at the bottom of this file instead, so the attribute
+# stays live. A real binding here would shadow that hook permanently.
+from .redis_db import get_async_redis_db
 from .batch import batch
 from ._error_reporting import enable_error_reporting
 
@@ -141,13 +141,18 @@ def get_redis():
         redis.sadd("my_set", "value")
         redis.rpush("my_queue", "item")
 
-    Always returns the *current* connection. The module-level
-    ``POPOTO_REDIS_DB`` imported above is an import-time snapshot, and
-    ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s own global rather than
-    this one — so returning the snapshot handed callers a stale client after any
-    reconfiguration (#645). Delegating re-reads the live global on every call.
-    (The pytest plugin's ``_swap_db()`` is unaffected either way: it mutates the
-    pool on the existing object instead of rebinding the name.)
+    Always returns the *current* connection. ``set_REDIS_DB_settings()``
+    rebinds ``redis_db``'s own module global, and Python does not propagate a
+    rebind to a name imported elsewhere — so returning a package-level snapshot
+    handed callers a stale client after any reconfiguration (#645). Delegating
+    re-reads the live global on every call. (The pytest plugin's ``_swap_db()``
+    is unaffected either way: it mutates the pool on the existing object instead
+    of rebinding the name.)
+
+    This must stay a *local* import. A bare ``return POPOTO_REDIS_DB`` would be
+    an unqualified module-global read, and PEP 562 explicitly does not route
+    those through the module ``__getattr__`` below — it would raise
+    ``NameError``, not resolve live.
     """
     from .redis_db import get_REDIS_DB
 
@@ -295,3 +300,42 @@ __all__ = [
     "ImportReport",
     "RecordOutcome",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve ``popoto.POPOTO_REDIS_DB`` live, per PEP 562.
+
+    ``redis_db`` owns the current connection in a module global that
+    ``set_REDIS_DB_settings()`` *rebinds*. Python does not propagate a rebind to
+    a name imported elsewhere, so the plain ``from .redis_db import
+    POPOTO_REDIS_DB`` this replaces froze the client that existed at import
+    time: after any reconfiguration ``popoto.POPOTO_REDIS_DB`` pointed at the
+    previous database while ``redis_db.get_REDIS_DB()`` pointed at the new one,
+    and a caller using it wrote to one database and read from another in
+    silence (#651).
+
+    This hook only fires because nothing above binds the name in this module's
+    namespace. Re-adding that import would shadow the hook permanently and
+    restore the bug — see the comment at the import block.
+
+    Note that PEP 562 does *not* route unqualified module-global reads through
+    this hook, only attribute access on the module object. Code inside this file
+    must therefore call ``redis_db.get_REDIS_DB()`` rather than referring to a
+    bare ``POPOTO_REDIS_DB``; ``get_redis()`` documents the same constraint.
+    """
+    if name == "POPOTO_REDIS_DB":
+        from .redis_db import get_REDIS_DB
+
+        return get_REDIS_DB()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    """Keep ``POPOTO_REDIS_DB`` visible to ``dir(popoto)``.
+
+    A PEP 562 name lives in no module ``__dict__``, so it disappears from
+    ``dir()`` unless listed here. The plain re-export this replaces provided
+    that for free; without this hook the fix for #651 would silently regress
+    introspection.
+    """
+    return sorted({*globals(), "POPOTO_REDIS_DB"})

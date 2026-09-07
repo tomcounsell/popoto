@@ -122,6 +122,20 @@ redis_db.info()
 either works. Both re-read the global on every call, so they keep returning the
 current connection after `set_REDIS_DB_settings()` replaces it.
 
+The attribute `popoto.POPOTO_REDIS_DB` does too. It is not an ordinary
+attribute: the package resolves it through a module `__getattr__` that
+calls `get_REDIS_DB()` on each access, precisely so it cannot go stale. Reading
+it is equivalent to calling `popoto.get_redis()`.
+
+!!! warning "`from popoto.redis_db import POPOTO_REDIS_DB` is a snapshot"
+    Importing the name binds a *copy* of it in your module, taken at import
+    time. `set_REDIS_DB_settings()` rebinds the original, and Python does not
+    propagate a rebind to a copy — so after any reconfiguration your copy still
+    points at the old database, and reads and writes land in different places
+    with no error. Call `popoto.get_redis()` at the point of use instead. (The
+    package-level `popoto.POPOTO_REDIS_DB` above is exempt because it is served
+    by a hook rather than bound by an import.)
+
 Prefer this over building your own client. A hand-built `redis.from_url(...)`
 opens a *different* connection, and unless its URL names the same database, reads
 and writes land somewhere Popoto never touched — with no error to say so.

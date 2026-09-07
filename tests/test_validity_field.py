@@ -71,7 +71,6 @@ from src.popoto.fields.decaying_sorted_field import (
 )
 from src.popoto.fields.observation import ObservationProtocol
 from src.popoto.models.query import Query, QueryBuilder
-from src.popoto.recipes import context_assembler as assembler_module
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB, run_lua
 from src.popoto.transfer import export_records, import_records
@@ -910,6 +909,13 @@ class TestDecayEvalCallSites:
         them into ARGV, shifting ``base_score_field`` and the confidence
         parameters — a corruption that fails quietly, which is why this is a
         test and not a grep.
+
+        The third site used to be ``context_assembler._decayed_partition_scores``.
+        In #648 that recipe stopped building the KEYS array itself and now calls
+        ``DecayingSortedField.rank_decayed``, so the eval it is responsible for
+        lives there. The assertions below are unchanged; only the inventory of
+        *where* the evals live follows the code. Keeping the old entry would
+        require keeping the duplication #648 removed.
         """
         sites = {
             "query.QueryBuilder.top_by_decay": inspect.getsource(
@@ -918,8 +924,8 @@ class TestDecayEvalCallSites:
             "query.QueryBuilder._materialize_decay_field": inspect.getsource(
                 QueryBuilder._materialize_decay_field
             ),
-            "context_assembler._decayed_partition_scores": inspect.getsource(
-                assembler_module._decayed_partition_scores
+            "decaying_sorted_field.DecayingSortedField.rank_decayed": (
+                inspect.getsource(DecayingSortedField.rank_decayed)
             ),
         }
         for name, source in sites.items():
@@ -937,13 +943,25 @@ class TestDecayEvalCallSites:
         assert _decay_eval_numkeys(bad) == ["2"]
 
     def test_cyclic_decay_lua_sites_are_not_matched(self):
-        """CYCLIC_DECAY_LUA is deliberately unmodified — never flag it."""
-        for source in (
-            inspect.getsource(assembler_module._decayed_partition_scores),
-            inspect.getsource(QueryBuilder.top_by_decay),
-        ):
-            assert "CYCLIC_DECAY_LUA" in source
-            assert len(_decay_eval_numkeys(source)) == 1
+        """CYCLIC_DECAY_LUA is deliberately unmodified — never flag it.
+
+        ``top_by_decay`` still holds both scripts in one body. The assembler's
+        copy moved to the field layer in #648, where the two layouts are split
+        across ``DecayingSortedField.rank_decayed`` and the
+        ``CyclicDecayField.rank_decayed`` override — so the pairing is checked
+        across that pair rather than within one function.
+        """
+        assert "CYCLIC_DECAY_LUA" in inspect.getsource(QueryBuilder.top_by_decay)
+        assert (
+            len(_decay_eval_numkeys(inspect.getsource(QueryBuilder.top_by_decay))) == 1
+        )
+
+        cyclic_source = inspect.getsource(CyclicDecayField.rank_decayed)
+        assert "CYCLIC_DECAY_LUA" in cyclic_source
+        # The cyclic override must never eval DECAY_SCORE_LUA: that is the
+        # "do not unify KEYS[2]" hazard the split exists to make unavailable.
+        assert _decay_eval_numkeys(cyclic_source) == []
+        assert "DECAY_SCORE_LUA" not in cyclic_source
 
     def test_query_top_by_decay_delegates_rather_than_evaluating(self):
         """``Query.top_by_decay`` is a thin wrapper; the EVAL lives on the
