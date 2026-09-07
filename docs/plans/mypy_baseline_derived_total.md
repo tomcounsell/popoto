@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 tracking: https://github.com/tomcounsell/popoto/issues/677
@@ -257,8 +257,79 @@ and say **why** the total is not stored, so the next person does not helpfully a
 
 ## Step by Step Tasks
 
+1. **Validate `packages` in `load_baseline()`** (`scripts/mypy_ratchet.py:146-164`). Require a
+   non-empty dict of `str` → non-negative `int`; raise `RatchetError` naming the offending key
+   otherwise. Mirror the existing message style of the `total` and `clean` validators.
+2. **Derive the total in `load_baseline()`.** Compute `sum(packages.values())` and set it on the
+   returned dict's `"total"` key so all five downstream read sites stay unchanged.
+3. **Make a stored `total` optional and cross-checked.** Absent → derive. Present and equal → accept.
+   Present and unequal → `RatchetError` quoting both the stored value and the derived sum, and naming
+   the merge hazard so the message is actionable rather than arithmetic trivia. Replace the existing
+   `:154-158` type validation with this (a present-but-malformed `total` should still be rejected).
+4. **Stop writing `total` in `write_baseline()`** (`:187-194`) and `pop` it from the carried-forward
+   `data` dict so an `--update` on an old file migrates it.
+5. **Migrate the committed `scripts/mypy_baseline.json`**: remove the `"total": 1038` line by hand.
+   No re-measurement, no other value changes. Rewrite `_comment` to state that the ceiling is the sum
+   of `packages` and that the total is deliberately not stored because a stored copy merges wrong.
+6. **Rework `tests/test_mypy_ratchet.py:344`** (`test_committed_baseline_is_well_formed`). The
+   `sum(...) == data["total"]` assertion becomes tautological once the total is derived, so replace
+   it with an assertion that the committed file does **not** store a `total` key, plus a comment
+   naming #677 and #675 and stating what the absence is guarding against — satisfying acceptance
+   criterion 4 for whichever detector survives.
+7. **Add regression tests** for the three new paths (see Success Criteria): derived total, rejected
+   inconsistent stored total, rejected malformed `packages`.
+8. **Add the merge-scenario test** — the one that would have caught #675. Construct a baseline with
+   the post-merge package counts and no total, assert the gate compares against 1038 and not 1040.
+9. **Audit the existing tests** that construct `{"total": N, "packages": {...}}` fixtures
+   (`:60`, `:93`, `:106`, `:118`, `:186-190`, `:205-345`). Most stay meaningful unchanged; `:186-190`
+   (`test_bad_total_fails`) tests validation of a field that is becoming optional and must be
+   rewritten against the new contract. Do **not** weaken `:137`
+   (`test_parse_disagreement_between_parser_and_summary_is_a_failure`) — it pins the parse-time
+   cross-check that must survive.
+10. **Update `CLAUDE.md`.** Its ratchet paragraph describes the baseline file and says the gate
+    "fails only when the total rises above the baseline in `scripts/mypy_baseline.json`". Add that
+    the total is derived from `packages` and why, so the next contributor does not re-add it.
+11. **Add a CHANGELOG entry** under `[Unreleased]`.
+12. **Run the gates**: `scripts/mypy_ratchet.py` (must report the same count as before the change),
+    `ruff check src/`, `black --check src/ tests/`, and the ratchet test file.
+
 ## Success Criteria
+
+- [ ] `scripts/mypy_baseline.json` no longer contains a `total` key.
+- [ ] `scripts/mypy_ratchet.py` reports the **same** total (1038) and the same pass/fail outcome
+      before and after the change, on the same tree — proving the diff is schema-only.
+- [ ] **The #675 merge scenario is caught.** A test replays base/main/branch package counts merged
+      without a total and asserts the derived ceiling is 1038, not 1040 — the number that made the
+      real merge a silent pass.
+- [ ] A baseline whose stored `total` disagrees with `sum(packages)` is rejected **by the ratchet
+      script**, not only by the test suite (acceptance criterion 3), with a message naming both
+      numbers.
+- [ ] A baseline with a missing, empty, or non-integer `packages` is rejected with a clear error.
+- [ ] `tests/test_mypy_ratchet.py:137` still passes unmodified — the parse-time cross-check between
+      mypy's summary and `len(error_lines)` is intact.
+- [ ] The detector that remains at `test_committed_baseline_is_well_formed` carries a comment naming
+      #677 and what it guards (acceptance criterion 4).
+- [ ] `ruff check src/` exits 0; `black --check src/ tests/` passes.
+- [ ] Full `tests/test_mypy_ratchet.py` passes; environment stated alongside any count.
 
 ## No-Gos
 
+- No re-banking of the baseline; no `--update` run committed. The count must not move.
+- No change to what the ceiling *means* — above fails, below warns.
+- No per-package gating (see Rabbit Holes); note as a follow-up only.
+- No `.gitattributes` merge driver.
+- No edits to the `reference` block, the `clean` allowlist, `setup.cfg`, or any file under `src/`.
+- No changes to `lint.yml` or `ci-local.sh` — both invoke the script and never parse the JSON.
+
 ## Open Questions
+
+None blocking. Two judgment calls made in the plan, flagged for the critique to challenge rather than
+to hold up the build:
+
+1. **A consistent stored `total` is accepted rather than rejected outright.** The stricter
+   alternative — reject the key's presence entirely — would give a cleaner post-migration invariant,
+   at the cost of hard-failing every in-flight branch that forked before this lands. Chose the
+   lenient reading for the transition; the field stops being written either way.
+2. **Migrating the committed JSON by hand rather than by `--update`.** Keeps the diff provably
+   schema-only, at the cost of the file briefly not being byte-identical to what `--update` would
+   emit. Task 12 verifies the count is unchanged, which is the property that actually matters.
