@@ -27,7 +27,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 import msgpack
 
 from ..batch import batch as _batch
-from ..redis_db import POPOTO_REDIS_DB
+
+# The accessor, not ``from ..redis_db import POPOTO_REDIS_DB``: that plain
+# import captures a snapshot, and ``set_REDIS_DB_settings()`` rebinds
+# ``redis_db``'s global without updating it, so the importer keeps issuing
+# commands against the pre-reconfiguration client (#655). This module is new
+# code, so it takes the safe shape from the start.
+from ..redis_db import get_REDIS_DB
 
 # Rebound to the EXACT SAME logger name as the original recipe code. Do not
 # derive this from the new module's __name__ — tests/test_memory_lifecycle.py
@@ -94,8 +100,8 @@ def _sync(reply: Any) -> Any:
     """Narrow a redis-py reply out of its ``Awaitable[T] | T`` union.
 
     redis-py shares one set of command stubs between its sync and asyncio
-    clients, so every command is typed as possibly-awaitable. ``POPOTO_REDIS_DB``
-    is always the sync client, so these replies are never awaitable. Which
+    clients, so every command is typed as possibly-awaitable. ``get_REDIS_DB()``
+    always returns the sync client, so these replies are never awaitable. Which
     call sites this affects varies by redis-py version (7.x flags several that
     8.x does not), so the narrowing is centralized here rather than sprinkled
     as per-site ``type: ignore`` comments that would go stale in either
@@ -201,18 +207,18 @@ class TombstoneStore:
     def count(self) -> int:
         """Return the number of retained tombstones (``ZCARD`` on the index)."""
         _, index_key = self.keys()
-        return int(_sync(POPOTO_REDIS_DB.zcard(index_key)))
+        return int(_sync(get_REDIS_DB().zcard(index_key)))
 
     def oldest_keys(self, n: int) -> List[str]:
         """Return up to ``n`` oldest tombstoned keys (``ZRANGE`` 0..n-1)."""
         _, index_key = self.keys()
-        raw = POPOTO_REDIS_DB.zrange(index_key, 0, n - 1)
+        raw = get_REDIS_DB().zrange(index_key, 0, n - 1)
         return _decoded_members(raw)
 
     def newest_keys(self, stop: int) -> List[str]:
         """Return keys newest-death-first up to ``stop`` (``ZREVRANGE`` 0..stop)."""
         _, index_key = self.keys()
-        raw = POPOTO_REDIS_DB.zrevrange(index_key, 0, stop)
+        raw = get_REDIS_DB().zrevrange(index_key, 0, stop)
         return _decoded_members(raw)
 
     def evict(self, keys: List[str]) -> None:
@@ -230,7 +236,7 @@ class TombstoneStore:
     def get_entry(self, redis_key: str) -> Any:
         """Return the raw stored entry bytes for one key (``HGET``), or None."""
         data_key, _ = self.keys()
-        return POPOTO_REDIS_DB.hget(data_key, redis_key)
+        return get_REDIS_DB().hget(data_key, redis_key)
 
     def get_entries(self, keys: List[str]) -> List[Any]:
         """Return raw stored entry bytes for ``keys`` (``HMGET``).
@@ -239,7 +245,7 @@ class TombstoneStore:
         callers rely on positional correspondence with ``keys``.
         """
         data_key, _ = self.keys()
-        return _sync(POPOTO_REDIS_DB.hmget(data_key, keys))
+        return _sync(get_REDIS_DB().hmget(data_key, keys))
 
     def purge(self, redis_key: str) -> bool:
         """Drop one tombstone permanently: ``HDEL`` data + ``ZREM`` index.
@@ -267,5 +273,5 @@ class TombstoneStore:
             count = self.count()
         except Exception:
             count = 0
-        POPOTO_REDIS_DB.delete(*self.keys())
+        get_REDIS_DB().delete(*self.keys())
         return count

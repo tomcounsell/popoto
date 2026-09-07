@@ -61,7 +61,7 @@ from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
-from ..redis_db import POPOTO_REDIS_DB, run_lua
+from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB, run_lua
 from ..exceptions import (
     CorruptFieldError,
     ModelException,
@@ -2128,7 +2128,7 @@ class Model(metaclass=ModelBase):
         # from (recipes/memory_lifecycle.py) sends lowercase "idletime", and
         # #649's contract is a byte-identical command sequence. Upper-casing
         # it here shows up as a real diff in that PR's parity capture.
-        reply = POPOTO_REDIS_DB.object("idletime", key)
+        reply = get_REDIS_DB().object("idletime", key)
         return None if reply is None else float(reply)
 
     @classmethod
@@ -2168,9 +2168,9 @@ class Model(metaclass=ModelBase):
         # wire trace and break the byte-identical-behavior contract this PR
         # is gated on. Do not "simplify" this to always-HMGET.
         if len(names) == 1:
-            raw_values: Iterable[Any] = [POPOTO_REDIS_DB.hget(redis_key, names[0])]
+            raw_values: Iterable[Any] = [get_REDIS_DB().hget(redis_key, names[0])]
         else:
-            raw_values = POPOTO_REDIS_DB.hmget(redis_key, list(names))
+            raw_values = get_REDIS_DB().hmget(redis_key, list(names))
         result: Dict[str, Any] = {}
         for name, raw_value in zip(names, raw_values):
             if raw_value is None:
@@ -2201,7 +2201,7 @@ class Model(metaclass=ModelBase):
             ``dict[bytes, bytes]`` as returned by ``HGETALL``. Empty dict
             when the key does not exist.
         """
-        return POPOTO_REDIS_DB.hgetall(redis_key)
+        return get_REDIS_DB().hgetall(redis_key)
 
     def delete(
         self,

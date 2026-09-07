@@ -142,3 +142,38 @@ def test_idle_seconds_sends_the_lowercase_idletime_subcommand(widget, monkeypatc
     Widget.idle_seconds(redis_key=widget.db_key.redis_key)
 
     assert seen == ["idletime"], f"expected lowercase 'idletime', got {seen}"
+
+
+def test_partial_load_apis_follow_a_rebound_global_client(monkeypatch, widget):
+    """``idle_seconds``/``load_fields``/``load_raw_hash`` read the client per call.
+
+    Same contract as ``test_store_follows_a_rebound_global_client`` in
+    ``tests/test_tombstone_store.py``: a name imported from ``redis_db`` is a
+    snapshot that ``set_REDIS_DB_settings()`` never updates (#655), so these
+    new classmethods resolve the client through the accessor instead.
+    """
+    seen = []
+    real = popoto.get_redis()
+
+    class RecordingClient:
+        def __getattr__(self, name):
+            attr = getattr(real, name)
+            if not callable(attr):
+                return attr
+
+            def wrapper(*args, **kwargs):
+                seen.append(name.upper())
+                return attr(*args, **kwargs)
+
+            return wrapper
+
+    monkeypatch.setattr(
+        popoto.redis_db, "POPOTO_REDIS_DB", RecordingClient(), raising=True
+    )
+
+    redis_key = widget.db_key.redis_key
+    Widget.idle_seconds(redis_key=redis_key)
+    Widget.load_fields(redis_key, "name")
+    Widget.load_raw_hash(redis_key)
+
+    assert seen == ["OBJECT", "HGET", "HGETALL"]

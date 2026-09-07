@@ -142,3 +142,38 @@ def test_score_uses_pk_not_a_recomputed_key_for_a_mutated_instance():
     assert record.pk != record.db_key.redis_key
 
     assert popoto.SortedField.score(record, "score") == 7.5
+
+
+def test_score_follows_a_rebound_global_client(monkeypatch):
+    """``score()`` resolves the client per call, not from an import snapshot.
+
+    Its sibling readers in the same mixin still hold the module-level name
+    imported at load time, which ``set_REDIS_DB_settings()`` rebinds without
+    updating (#655, which tracks the remaining call sites). This method is
+    new, so it takes the accessor and this test pins that choice.
+    """
+    record = ScorePlainSorted(name="p", score=3.5)
+    record.save()
+    field = ScorePlainSorted._meta.fields["score"]
+
+    seen = []
+    real = popoto.get_redis()
+
+    class RecordingClient:
+        def __getattr__(self, name):
+            attr = getattr(real, name)
+            if not callable(attr):
+                return attr
+
+            def wrapper(*args, **kwargs):
+                seen.append(name.upper())
+                return attr(*args, **kwargs)
+
+            return wrapper
+
+    monkeypatch.setattr(
+        popoto.redis_db, "POPOTO_REDIS_DB", RecordingClient(), raising=True
+    )
+
+    assert field.score(record, "score") == 3.5
+    assert seen == ["ZSCORE"]

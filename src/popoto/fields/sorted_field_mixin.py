@@ -56,7 +56,7 @@ import redis
 from ..models.canonical_key import canonical_key_str
 from ..models.db_key import DB_key
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -614,9 +614,14 @@ class SortedFieldMixin:
         # pair it with ``obsolete_redis_key`` for the old one. A read has no
         # such pairing, so it must ask for where the member is now.
         member = model_instance.pk
-        # Resolve the client attribute at call time so test spies and fault
-        # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
-        reply = POPOTO_REDIS_DB.zscore(key, member)
+        # The accessor, not the module-level ``POPOTO_REDIS_DB`` its sibling
+        # readers above use: that name is a snapshot this module took at
+        # import, and ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s
+        # global without updating it, so a rebound process reads from the
+        # pre-reconfiguration client (#655). Spies and fault injectors
+        # patched onto the client object still intercept, since the accessor
+        # hands back that same object.
+        reply = get_REDIS_DB().zscore(key, member)
         return None if reply is None else float(reply)
 
     @classmethod

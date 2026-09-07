@@ -374,3 +374,44 @@ def test_purge_all_deletes_even_when_the_count_read_fails(monkeypatch):
     redis_client = popoto.get_redis()
     assert redis_client.exists(data_key) == 0
     assert redis_client.exists(index_key) == 0
+
+
+def test_store_follows_a_rebound_global_client(monkeypatch):
+    """The store must read the client per call, not a snapshot from import.
+
+    ``set_REDIS_DB_settings()`` *rebinds* ``redis_db``'s module global, and
+    Python does not propagate a rebind to a name already imported elsewhere
+    (#655). A module that does ``from ..redis_db import POPOTO_REDIS_DB``
+    therefore keeps issuing commands against the pre-reconfiguration client
+    -- writing to one database and reading from another, with no error.
+
+    This is not hypothetical here: ``tests/test_connection.py`` performs
+    exactly that rebind, so before this module moved to ``get_REDIS_DB()``
+    every command-sequence test below passed in isolation and failed in a
+    full-suite run, where the spy landed on the post-rebind client and the
+    store still held the pre-rebind one.
+    """
+    store = _store()
+    store.archive("Widget:1", _pack(), 100.0)
+
+    seen = []
+    real = popoto.get_redis()
+
+    class RecordingClient:
+        def __getattr__(self, name):
+            attr = getattr(real, name)
+            if not callable(attr):
+                return attr
+
+            def wrapper(*args, **kwargs):
+                seen.append(name.upper())
+                return attr(*args, **kwargs)
+
+            return wrapper
+
+    monkeypatch.setattr(
+        popoto.redis_db, "POPOTO_REDIS_DB", RecordingClient(), raising=True
+    )
+
+    assert store.count() == 1
+    assert seen == ["ZCARD"]
