@@ -1087,6 +1087,30 @@ class TestSessionDateParsing:
 
         assert _parse_session_date("1000/01/01 (Mon) 00:00") is None
 
+    def test_out_of_range_year_is_none_on_platforms_mktime_accepts(self):
+        """Regression (#692 review round 2): the year check must not delegate
+        to ``time.mktime``'s tolerance, which is platform-dependent. Year 1000
+        raises OverflowError on macOS but returns -30610224000.0 on glibc, so
+        the case above passed locally and failed in CI. These two years are
+        accepted by ``mktime`` on Linux (and 9999 on macOS too) and must still
+        be rejected by the explicit window, on every platform."""
+        from tests.benchmarks.datasets.longmemeval_s import (
+            MAX_SESSION_YEAR,
+            MIN_SESSION_YEAR,
+            _parse_session_date,
+        )
+
+        assert _parse_session_date("1800/06/15 (Sun) 12:00") is None
+        assert _parse_session_date("9999/12/31 (Fri) 23:59") is None
+        # Non-vacuous: the window's own edges parse, so the two rejections
+        # above are the year check firing and not a broken format string.
+        assert isinstance(
+            _parse_session_date(f"{MIN_SESSION_YEAR}/06/15 (Sun) 12:00"), float
+        )
+        assert isinstance(
+            _parse_session_date(f"{MAX_SESSION_YEAR}/06/15 (Sun) 12:00"), float
+        )
+
     def test_parse_session_date_handles_valid_and_invalid_inputs(self):
         from tests.benchmarks.datasets.longmemeval_s import _parse_session_date
 

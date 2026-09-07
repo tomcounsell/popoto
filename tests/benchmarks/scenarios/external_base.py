@@ -842,7 +842,8 @@ class ExternalScenario(Scenario):
                 )
             )
             if Defaults.VALIDITY_GATING_ENABLED:
-                prev_gating = Defaults.VALIDITY_GATING_ENABLED
+                # Unconditionally True inside this branch (#692 review, nit 1).
+                prev_gating = True
                 Defaults.VALIDITY_GATING_ENABLED = False
                 ungated_result = None
                 try:

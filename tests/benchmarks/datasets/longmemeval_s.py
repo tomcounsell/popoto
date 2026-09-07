@@ -46,20 +46,39 @@ logger = logging.getLogger("POPOTO.Benchmark.LongMemEvalS")
 HAYSTACK_DATE_FORMAT = "%Y/%m/%d (%a) %H:%M"
 
 
+#: Window of years this parser will accept. ``haystack_dates`` are ordinary
+#: conversation timestamps, so anything outside this range is corrupt input,
+#: not a date to key bitemporal ordering off. The bound is explicit because
+#: ``time.mktime``'s own tolerance is PLATFORM-DEPENDENT (#692 review round 2):
+#: for year 1000, macOS raises OverflowError while glibc happily returns
+#: -30610224000.0, so a parser that relies on mktime to reject out-of-range
+#: years has different behavior on a developer laptop and in CI. Checking the
+#: year ourselves makes "out of range -> None" true on both.
+MIN_SESSION_YEAR = 1900
+MAX_SESSION_YEAR = 2200
+
+
 def _parse_session_date(raw: Optional[str]) -> Optional[float]:
     """Parse one ``haystack_dates`` entry to an epoch float, or ``None``.
 
-    Never raises and never substitutes a timestamp (#692) — a missing or
-    unparseable date must disable the supersession producer for that turn
-    rather than inventing a value it would then treat as ground truth.
+    Never raises and never substitutes a timestamp (#692) — a missing,
+    unparseable, or out-of-range date must disable the supersession producer
+    for that turn rather than inventing a value it would then treat as ground
+    truth. A year outside ``[MIN_SESSION_YEAR, MAX_SESSION_YEAR]`` is treated
+    as unparseable on every platform, independently of whether the local
+    ``time.mktime`` would accept it.
     """
     if not raw or not isinstance(raw, str):
         return None
     try:
-        # time.strptime accepts years time.mktime then rejects (e.g. year
-        # 1000), raising OverflowError rather than ValueError -- both are
-        # "unparseable" from this function's contract (#692 review).
-        return time.mktime(time.strptime(raw, HAYSTACK_DATE_FORMAT))
+        parsed = time.strptime(raw, HAYSTACK_DATE_FORMAT)
+        if not MIN_SESSION_YEAR <= parsed.tm_year <= MAX_SESSION_YEAR:
+            logger.debug("Out-of-range haystack_dates entry: %r", raw)
+            return None
+        # time.strptime also accepts in-window values that mktime can still
+        # reject on some platforms; OverflowError is "unparseable" under this
+        # function's contract just as ValueError is (#692 review).
+        return time.mktime(parsed)
     except (ValueError, OverflowError):
         logger.debug("Unparseable haystack_dates entry: %r", raw)
         return None
