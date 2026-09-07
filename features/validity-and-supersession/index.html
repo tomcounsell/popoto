@@ -3946,7 +3946,16 @@ straight to <code>top_by_decay</code> on a cyclic field sees the gap; such a cal
 should use <code>composite_score</code>, or intersect with
 <code>filter(validity__current=True)</code>. Pinned by
 <code>tests/test_validity_field.py::TestCyclicDecayGatingGap</code>, which fails
-loudly if the gate is ever added — update this entry then.
+loudly if the gate is ever added — update this entry then.</p>
+<p>Where the gap lives changed in
+<a href="https://github.com/tomcounsell/popoto/issues/662">#662</a>, though the gap
+itself did not. <code>top_by_decay</code> no longer branches on field type to pick a
+script; it passes the gate triple to <code>field.rank_decayed(...)</code>
+unconditionally, and <code>CyclicDecayField.rank_decayed</code> accepts <code>validity=</code>
+and <strong>drops it</strong>. So the omission is now a documented property of the
+cyclic override rather than of a dispatch branch in the query builder —
+read it there, and in the comment above the call site in
+<code>models/query.py</code>.
 - <strong>Gating costs up to two <code>ZSCORE</code>s per member inside the decay Lua</strong>, and
   <code>DECAY_SCORE_LUA</code> full-scans its partition regardless of gating (a
   pre-existing property, not introduced here). Measured locally on a 20k-record

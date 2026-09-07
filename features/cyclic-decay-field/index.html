@@ -3512,21 +3512,43 @@ for the full accounting.</p>
 <li><strong>Pressure hash</strong>: <code>$CyclicDecayF:{Model}:{field}:{partitions}:pressure</code> — per-member <code>{rate, last_resolved}</code> (msgpack)</li>
 </ol>
 <p>All three structures are maintained automatically by <code>on_save()</code> and <code>on_delete()</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">The <code>$CyclicDecayF:</code> prefix follows the <em>field's own class</em></p>
+<p><code>FieldBase</code> assigns each field class its own <code>field_class_key</code>, so a
+subclass of <code>CyclicDecayField</code> writes and reads under <strong>its</strong> prefix, not
+the base class's:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">UrgencyField</span><span class="p">(</span><span class="n">CyclicDecayField</span><span class="p">):</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="k">pass</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># sorted set:   $UrgencyF:{Model}:{field}:{partitions}</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># cycles hash:  $UrgencyF:{Model}:{field}:{partitions}:cycles</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># pressure:     $UrgencyF:{Model}:{field}:{partitions}:pressure</span>
+</code></pre></div>
+<p>The companion hashes are always the sorted-set key plus a <code>:cycles</code> /
+<code>:pressure</code> suffix, which is why <code>rank_decayed()</code> derives them from the
+ZSET key it is handed rather than rebuilding them. The classmethod forms —
+<code>get_cycles_hash_key_from_parts()</code> / <code>get_pressure_hash_key_from_parts()</code> —
+resolve against <strong>the class you call them on</strong>, so call them on the field's
+own class (<code>type(field)</code> or <code>field.__class__</code>), never on <code>CyclicDecayField</code>
+when the field might be a subclass. Doing the latter is what made a
+subclassed field read hashes nothing had written; it degraded silently to
+plain decay rather than raising, and is fixed in
+<a href="https://github.com/tomcounsell/popoto/issues/662">#662</a>.</p>
+</div>
 <h2 id="scoring-formula">Scoring Formula<a class="headerlink" href="#scoring-formula" title="Permanent link">&para;</a></h2>
 <p>The extended Lua script computes per member:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>elapsed_days = max((now - last_updated) / 86400, 0.01)
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>decay = base_score * elapsed_days ^ (-decay_rate)
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>cyclic = sum(amplitude * cos(2 * pi * (now - phase) / period) for each cycle)
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>pressure = pressure_rate * max((now - last_resolved) / 86400, 0)
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>effective_score = decay + cyclic + pressure
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>elapsed_days = max((now - last_updated) / 86400, 0.01)
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>decay = base_score * elapsed_days ^ (-decay_rate)
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>cyclic = sum(amplitude * cos(2 * pi * (now - phase) / period) for each cycle)
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>pressure = pressure_rate * max((now - last_resolved) / 86400, 0)
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>effective_score = decay + cyclic + pressure
 </code></pre></div>
 <p>When companion hashes return nil (no cycle/pressure data), the overhead is two nil HGET lookups per member.</p>
 <h2 id="confidence-modulated-decay">Confidence-Modulated Decay<a class="headerlink" href="#confidence-modulated-decay" title="Permanent link">&para;</a></h2>
 <p><code>CyclicDecayField</code> inherits confidence modulation from <code>DecayingSortedField</code> unchanged: the <code>decay</code>
 term above is computed with a per-record effective rate derived from the record's <code>ConfidenceField</code>
 value, while <code>cyclic</code> and <code>pressure</code> are untouched.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>decay = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>decay = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
 </code></pre></div>
 <p>Auto-detection, the <code>confidence_modulation_field</code> kwarg, the
 <code>Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED</code> kill switch, bit-exact neutrality, the <code>max(t, 1.0)</code>
