@@ -124,6 +124,30 @@ CyclicDecayField stores data in three Redis structures:
 
 All three structures are maintained automatically by `on_save()` and `on_delete()`.
 
+!!! note "The `$CyclicDecayF:` prefix follows the *field's own class*"
+    `FieldBase` assigns each field class its own `field_class_key`, so a
+    subclass of `CyclicDecayField` writes and reads under **its** prefix, not
+    the base class's:
+
+    ```python
+    class UrgencyField(CyclicDecayField):
+        pass
+    # sorted set:   $UrgencyF:{Model}:{field}:{partitions}
+    # cycles hash:  $UrgencyF:{Model}:{field}:{partitions}:cycles
+    # pressure:     $UrgencyF:{Model}:{field}:{partitions}:pressure
+    ```
+
+    The companion hashes are always the sorted-set key plus a `:cycles` /
+    `:pressure` suffix, which is why `rank_decayed()` derives them from the
+    ZSET key it is handed rather than rebuilding them. The classmethod forms —
+    `get_cycles_hash_key_from_parts()` / `get_pressure_hash_key_from_parts()` —
+    resolve against **the class you call them on**, so call them on the field's
+    own class (`type(field)` or `field.__class__`), never on `CyclicDecayField`
+    when the field might be a subclass. Doing the latter is what made a
+    subclassed field read hashes nothing had written; it degraded silently to
+    plain decay rather than raising, and is fixed in
+    [#662](https://github.com/tomcounsell/popoto/issues/662).
+
 ## Scoring Formula
 
 The extended Lua script computes per member:
