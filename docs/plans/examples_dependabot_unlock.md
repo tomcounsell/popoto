@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Small
 owner: Dev (sdlc-611)
 created: 2026-09-07
 tracking: https://github.com/tomcounsell/popoto/issues/611
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-07T10:34:00Z
 ---
 
 # examples/: unlock the demo project so Dependabot can cover it
@@ -104,7 +106,7 @@ Internal API references confirmed by reading source:
 - **Method**: prototype
 - **Finding**: Yes. `UV_INSTALL_DIR` + `UV_NO_MODIFY_PATH=1` installs a pinned
   standalone build. Reports `uv 0.12.2 (46ead6098 2026-08-05 aarch64-apple-darwin)`,
-  matching `.github/workflows/lock-check.yml:33` exactly. Global uv (0.6.10)
+  matching `.github/workflows/lock-check.yml:34` exactly. Global uv (0.6.10)
   untouched. **The binary must live outside the worktree** — `.uvbin/` is not
   gitignored and a 40MB binary is a staging accident waiting to happen.
 - **Confidence**: high
@@ -174,8 +176,9 @@ Internal API references confirmed by reading source:
 The smoke test's assertion path, which is the novel part of this work:
 
 1. **Entry point**: pytest fixture seeds Redis (bounded counts) via
-   `popoto_kitchen.seed`, with `REDIS_URL` bound to a non-zero DB *before*
-   `import popoto`.
+   `popoto_kitchen.seed`. **`REDIS_URL` must already be bound in the process
+   environment** — see the binding contract below; the fixture only *asserts*
+   the binding, it cannot establish it.
 2. **App construction**: a `PopotoKitchen` subclass overrides the public
    `notify()` to append `(severity, message)` to a list, then delegates to `super()`.
 3. **Pilot**: `async with app.run_test()` mounts the app; the test sets
@@ -188,6 +191,28 @@ The smoke test's assertion path, which is the novel part of this work:
 
 Step 4 is why (a) matters: without it, a screen whose every query fails still
 mounts and renders, and a naive "does it mount" test passes green.
+
+**Redis binding contract (critique finding — this is a safety requirement, not a
+style note).** `REDIS_URL` **cannot** be bound from a fixture or `conftest.py`.
+popoto ships a `pytest11` entry point, and because popoto is an installed
+dependency of `examples/`, that plugin loads. Its `pytest_configure`
+(`src/popoto/pytest_plugin.py:81-89`) calls `_collapse_src_popoto()`, which does
+`import popoto` and `importlib.import_module("popoto.redis_db")` — **before
+collection, and therefore before any fixture body runs**. `popoto_kitchen.seed`
+also imports popoto at module scope. By the time a fixture executes, the
+connection is already bound, and `DEFAULT_URL` is `redis://localhost:6379/0` —
+the LIVE agent store.
+
+Therefore:
+
+- The CI step and every documented local invocation set `REDIS_URL` as a
+  **process environment variable ahead of the `pytest` command**, exactly as the
+  Verification table does.
+- `examples/tests/conftest.py` MUST NOT contain `os.environ["REDIS_URL"] = ...`.
+  It is a no-op for safety and would give a false sense of protection.
+- The session fixture's only safety job is to **assert** the binding and fail
+  loudly otherwise:
+  `assert not os.environ.get("REDIS_URL", DEFAULT).rstrip("/").endswith("/0")`.
 
 ## Architectural Impact
 
@@ -217,7 +242,7 @@ The remaining work is ~25 lines of source repair plus a new test and a CI job.
 
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
-| uv 0.12.2 available | `"$UV_012" --version \| grep -q '0\.12\.2'` | Lock must match `lock-check.yml:33` |
+| uv 0.12.2 available | `"$UV_012" --version \| grep -q '0\.12\.2'` | Lock must match `lock-check.yml:34` |
 | Redis reachable | `redis-cli -n 13 ping` | Smoke test and seeding need a live server |
 | Non-zero test DB bound | `[ "${REDIS_URL##*/}" != "0" ]` | DB 0 is a LIVE agent store (#577) |
 
@@ -369,17 +394,22 @@ press — this settles Textual's message queue. Verified across all five spikes.
 
 ## No-Gos (Out of Scope)
 
-- [SEPARATE-SLUG #611] Root `uv.lock` refresh. #611 folds it in as "whichever
+- [SEPARATE-SLUG #660] Root `uv.lock` refresh. #611 folds it in as "whichever
   comes first — the scheduled PR or a deliberate refresh here". No Dependabot PR
   exists yet, but the schedule is Monday 06:00 UTC and today *is* Monday
   2026-09-07, so the scheduled run is due now. Doing it by hand would collide
   with that PR and discard the per-package changelogs that make a
   dozens-of-pins diff reviewable. Leaving it to Dependabot is the issue's own
-  stated preference and keeps this PR's config change readable. #611 stays open
-  on this point only if the scheduled run does not produce it.
-- [SEPARATE-SLUG #611] Modernizing `popoto_kitchen`'s Textual idiom (real
-  `Screen`s, reactive attributes, current layout patterns). Out of scope: the
-  demo works, and restyling would swamp the migration diff.
+  stated preference and keeps this PR's config change readable.
+
+  Filed as **#660** during critique. The original draft tagged this
+  `[SEPARATE-SLUG #611]`, which was wrong: #611 is this plan's own tracking
+  issue and this PR carries `Closes #611`, so the deferral would have had
+  nowhere to land the moment the PR merged.
+
+Modernizing `popoto_kitchen`'s Textual idiom is not listed here — it is not
+deferred work with a home, it is simply not being done. It is recorded under
+Rabbit Holes, which is the correct place for a tempting avenue we are declining.
 
 ## Update System
 
@@ -421,7 +451,12 @@ with no MCP or tool surface.
 - [ ] All five screens drive headlessly with zero error notifications
 - [ ] Rename, move-category, and price-filter paths work and are exercised by the test
 - [ ] `.github/dependabot.yml` has a `uv` entry for `/examples`; deferral paragraph gone
-- [ ] The smoke job runs in CI
+- [ ] The smoke job runs in CI and includes an `examples/` lockfile-sync check
+- [ ] **Manual TUI check** (the issue's own acceptance bar, retained alongside
+      the automated signal): launch `popoto-kitchen` against a non-zero Redis DB
+      and visually confirm the price-filter explanation text and the rename /
+      move-category flows render as intended. The headless test asserts these
+      paths do not error; only a human confirms they read well.
 - [ ] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
@@ -489,11 +524,32 @@ lines in shared files would only risk interleaved commits.
 - **Depends On**: build-smoke
 - **Parallel**: false
 - Add a separate lightweight workflow job: `redis` service, install
-  `examples/[dev]`, run the smoke test with a non-zero `REDIS_URL`.
-- Trigger on changes to `examples/**` and `src/**` — a library change that
-  breaks the demo must fail too, which is the whole point.
+  `examples/[dev]`, run the smoke test.
+- Set `REDIS_URL` on the **job/step env**, not in a fixture (see the Redis
+  binding contract in Data Flow). Use a non-zero DB.
+- **Add a lockfile-sync step to the same job**: `cd examples && uv lock --check`,
+  using `astral-sh/setup-uv@v7` with `version: "0.12.2"` to match the pin at
+  `.github/workflows/lock-check.yml:34`. This closes a real gap — `lock-check.yml`
+  filters on root `pyproject.toml`/`uv.lock` only, so without this step a
+  Dependabot PR editing `examples/uv.lock` would have no sync gate at all,
+  which is precisely the drift `#523` created that workflow to prevent.
+- Trigger on changes to `examples/**`, `src/popoto/**`, and the workflow file.
+  The `src/popoto/**` trigger is deliberate and was challenged in critique —
+  see the rationale note below.
 - Add the `/examples` `uv` entry to `.github/dependabot.yml`; remove the
   deferral paragraph.
+
+**Rationale for the `src/popoto/**` trigger (critique CONCERN, accepted with
+justification).** Scoping the job to `examples/**` alone would be cheaper and
+would keep library PRs off a Redis-backed job. It was rejected because it
+catches only half the documented failure mode: of the five defects spike-4
+found, **three were caused by popoto's own API evolving** (`migrate_key`,
+SortedField partitioning) — changes that land under `src/popoto/` and never
+touch `examples/`. An `examples/**`-only trigger would have caught none of them,
+and the demo would rot exactly as it already did. The cost is one short job
+(seeded counts are small; the main `tests.yml` already runs a Redis service, so
+no new infrastructure). Narrowed from `src/**` to `src/popoto/**` so unrelated
+tree changes do not trigger it.
 
 ### 6. Review
 - **Task ID**: review-pr
@@ -522,12 +578,22 @@ lines in shared files would only risk interleaved commits.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique. -->
+FULL roster, independent (3 critics), one round. 0 blockers, 5 concerns — all
+addressed in the revision pass below.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | Risk & Robustness (Skeptic) | `REDIS_URL` cannot be bound from a fixture — popoto's `pytest11` plugin imports `popoto.redis_db` in `pytest_configure`, before collection, so the connection is already bound (to DB 0 by default) before any fixture runs | Added the **Redis binding contract** to Data Flow; task 5 sets `REDIS_URL` on the job env | Never write `os.environ["REDIS_URL"]` in `conftest.py` — it is a no-op that gives false confidence. Bind as a process env var ahead of `pytest`; the fixture only asserts the DB is not 0. Verified at `src/popoto/pytest_plugin.py:81-89` |
+| CONCERN | Risk & Robustness (Operator) | `lock-check.yml` filters on root `pyproject.toml`/`uv.lock` only, so after this lands a Dependabot PR editing `examples/uv.lock` would have **no** lock-sync gate | Added a `uv lock --check` step to the new job in task 5 | `cd examples && uv lock --check` with `setup-uv@v7` `version: "0.12.2"`, matching the pin at `lock-check.yml:34`. Reuses the existing version-pin rationale instead of creating a second format-skew surface. Confirmed: `lock-check.yml` `on.*.paths` has no `examples/` entry |
+| CONCERN | Scope & Value (Simplifier) | Triggering the new job on `src/**` puts a Redis-backed job on every library PR — scope beyond the ask | **Accepted with justification, not dropped.** Narrowed `src/**` → `src/popoto/**`; rationale recorded inline in task 5 | Three of the five defects originated in popoto's own API (`migrate_key`, SortedField partitioning) and touch only `src/popoto/`. An `examples/**`-only trigger catches none of them, which is the rot this plan exists to stop |
+| CONCERN | Scope & Value (User) | All success criteria are automated; the issue's own stated bar is a manual TUI look, and this plan changes user-visible text | Added a manual-TUI Success Criterion alongside the automated signal | The headless test proves these paths do not error; only a human confirms the new price-filter explanation and rename flows *read* well. Costs nothing — the dev runs the app during tasks 3-4 anyway |
+| CONCERN | History & Consistency | Both No-Gos were tagged `[SEPARATE-SLUG #611]`, but #611 is this plan's own tracking issue and the PR carries `Closes #611` — the deferrals would have had nowhere to land | Filed **#660** for the root-lock deferral and retagged; moved the Textual-idiom item out of No-Gos entirely | A No-Go tag must point at an issue that *survives* this PR. The Textual-idiom entry was never deferred work with a home — it duplicated an existing Rabbit Hole, which is the right section for a declined avenue |
 
 ---
 
 ## Open Questions
 
-None outstanding. The two decisions that needed judgment — how to fix the three
+None outstanding. The decisions that needed judgment — how to fix the three
 popoto defects, and whether to hand-refresh the root `uv.lock` — were resolved
-with the PM before this plan was finalized.
+with the PM before this plan was finalized, and the five critique concerns were
+resolved in the revision pass above.
