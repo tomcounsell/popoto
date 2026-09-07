@@ -803,7 +803,7 @@ are unchanged, so no wiring moves.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/cyclic-decay-field.md`. The load-bearing edit is
+- [x] Update `docs/features/cyclic-decay-field.md`. The load-bearing edit is
       **line 122**, which currently states the exact behavior this plan removes:
       *"If you edit a declared amplitude for a period that has already learned a
       value, the learned value wins. Popoto does not store the declared baseline
@@ -828,27 +828,29 @@ are unchanged, so no wiring moves.
         export and the first post-import save is not detected. State that the
         public return of `strengthen_cycle` / `weaken_cycle` stays
         `[period, amplitude, phase]` (B1) — the baseline is internal.
-- [ ] `docs/features/README.md` index needs no new entry (no new feature page).
-- [ ] Check `docs/fields.md` and `docs/field-authoring.md` for any statement of
-      the cycles payload shape; update if present.
+- [x] `docs/features/README.md` index needs no new entry (no new feature page).
+- [x] Check `docs/fields.md` and `docs/field-authoring.md` for any statement of
+      the cycles payload shape; update if present. (Neither states the storage
+      shape — `docs/fields.md:940` documents only the public 3-tuple
+      constructor arg, which this change does not touch — so no edit needed.)
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes.
+- [x] `mkdocs build --strict` passes.
 
 ### Inline Documentation
-- [ ] `CyclicDecayField.on_save` docstring — currently documents the two-way
+- [x] `CyclicDecayField.on_save` docstring — currently documents the two-way
       rule (`:514-536`). Rewrite the cycles paragraph for the three-way rule,
       keeping the pipeline caveat verbatim.
-- [ ] Module docstring companion-hash description (`:17-19`) — note slot 3.
-- [ ] `import_state` docstring — record that it **deliberately drops** the
+- [x] Module docstring companion-hash description (`:17-19`) — note slot 3.
+- [x] `import_state` docstring — record that it **deliberately drops** the
       optional baseline and why (C2 / Risk 5).
-- [ ] `strengthen_cycle` / `weaken_cycle` docstrings (`base.py:2665-2671`,
+- [x] `strengthen_cycle` / `weaken_cycle` docstrings (`base.py:2665-2671`,
       `:2685-2691`) — state the returned shape is `[period, amplitude, phase]`
       and that an internal slot is not exposed (B1).
-- [ ] A comment at the merge site explaining why the baseline is compared
+- [x] A comment at the merge site explaining why the baseline is compared
       against the **declared** value and never against the learned one, and why
       `_adjust_cycle_amplitudes` must never write slot 3.
-- [ ] `CHANGELOG.md` entry recording the semantics change.
+- [x] `CHANGELOG.md` entry recording the semantics change.
 
 ## Success Criteria
 
