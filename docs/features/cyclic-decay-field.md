@@ -122,8 +122,34 @@ Stored cycles are matched to declared ones **by period**, so reordering or editi
 If you edit a declared amplitude for a period that has already learned a value, Popoto tries to tell "the developer changed the default" from "learning diverged" apart, by remembering the declared amplitude that was in effect the last time the record was saved (its *declared baseline*):
 
 - **Baseline unchanged** (you haven't touched the `cycles` declaration for that period since the last save): the learned amplitude wins, same as before.
-- **Baseline changed** (you edited the declared amplitude for that period): your new declared amplitude wins, and the previously learned amplitude for that period is discarded. This is a **destructive, non-recoverable reset** — there is no way to get the discarded learned amplitude back. Popoto logs one `INFO`-level line per reset naming the model, field, member key, period, old/new declared values, and the discarded learned amplitude, so this is auditable after the fact even though it can't be undone.
+- **Baseline changed** (you edited the declared amplitude for that period): your new declared amplitude wins, and the previously learned amplitude for that period is discarded. This is a **destructive, non-recoverable reset** — there is no way to get the discarded learned amplitude back. Popoto logs one `INFO`-level line per reset naming the model, field, member key, period, old/new declared values, and the discarded learned amplitude, so this is auditable after the fact even though it can't be undone. This logging is deliberately unsampled and undeduplicated: editing a declared amplitude that every record has learned emits one INFO line **per reset per record**, so the log volume is proportional to how many records had learned that period — a one-shot burst bounded by the number of affected records, not an ongoing rate.
 - **No baseline recorded** (a legacy record saved before this behavior existed, or a record whose cycles entry was written directly rather than through `on_save()`): treated the same as "unchanged" — the learned amplitude is preserved rather than reset, so upgrading to this version never silently discards existing learning.
+
+!!! warning "Upgrading and editing in the same deploy swallows the edit once"
+
+    A record written before this behavior existed has no recorded baseline. Its
+    first save after upgrading adopts the *current* declared amplitude as that
+    baseline rather than comparing against anything — so if you also edit
+    `amplitude=` in that same deploy, the first save cannot tell the edit apart
+    from "no baseline recorded" and preserves the learned value instead of
+    resetting it. The edit appears to do nothing; a second save (with no further
+    declaration change) is required before a reset is detected. This is
+    accepted, not fixed — treating "no baseline" as "declaration changed" would
+    instead reset *every* learned amplitude in the database on the first save
+    after upgrade, which is strictly worse. Two remedies:
+
+    - **Upgrade first, edit later**: let every record save at least once on the
+      new version before editing the declared amplitude, so each one has a
+      recorded baseline to compare against.
+    - **Force the reset directly**: `hdel` the member's entry from the cycles
+      companion hash and re-save, using the same procedure as the manual reset
+      below — this discards the learned amplitude immediately regardless of
+      baseline state.
+
+    The same one-save swallow applies to a record restored via `import_state`
+    (it normalizes to "baseline unknown," the same shape as a legacy record) and
+    to a rolling deploy where old- and new-version processes save the same
+    record with different in-process declarations.
 
 If you want to intentionally discard learning for a period without changing its declared amplitude, use the zero-then-restore procedure below (delete the cycles hash entry) rather than round-tripping the declared value, since a no-op edit that doesn't change the declared value will not trigger a reset.
 
