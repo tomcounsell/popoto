@@ -192,9 +192,13 @@ The `KEYS` arrays exist in exactly one place each afterwards.
 
 ## Appetite
 
-Small. Two call sites, a mechanical substitution whose correctness argument is
-already made, one comment rewrite, one inventory test update, one new regression
-test for the subclass fix.
+Small, with a caveat worth stating (critique NIT-1). The refactor proper is two
+call sites and a mechanical substitution whose correctness argument is already
+made. The size is inflated above a typical Small by the spike-2 bug fix riding
+along — it brings its own regression test, its own parity path, a `### Fixed`
+changelog entry, and a doc update. Kept at Small because the *risk* profile is
+Small (no new abstraction, no signature change, an existing seam), not because
+the file count is.
 
 ## Prerequisites
 
@@ -222,6 +226,37 @@ test for the subclass fix.
 4. **Update `TestDecayEvalCallSites`** — the inventory should list the two
    `rank_decayed` implementations, not the retired `query.py` copies. This is
    the inventory following the code, the same relocation #648 made.
+
+   **Both tests in the class break, not one** (critique BLOCKER-1). Precisely:
+
+   - `test_decay_eval_call_sites_pass_four_keys` (`tests/test_validity_field.py:920-938`)
+     builds a `sites` dict containing `QueryBuilder.top_by_decay` and
+     `QueryBuilder._materialize_decay_field`, and asserts
+     `len(numkeys) == 1` for each. After the substitution both sources contain
+     zero `run_lua(DECAY_SCORE_LUA, ...)` matches, so both assertions fail.
+     Fix: drop the two `query.py` entries, keep
+     `DecayingSortedField.rank_decayed`. The numkeys assertions themselves are
+     untouched.
+   - `test_cyclic_decay_lua_sites_are_not_matched` (`:945-964`) opens with
+     `assert "CYCLIC_DECAY_LUA" in inspect.getsource(QueryBuilder.top_by_decay)`
+     followed by `assert len(_decay_eval_numkeys(...top_by_decay...)) == 1`.
+     Both invert. Fix: replace that pair with the **absence** claim — neither
+     script literal appears in `top_by_decay` any more — and keep the existing
+     `CyclicDecayField.rank_decayed` half (`:959-964`, including
+     `assert _decay_eval_numkeys(cyclic_source) == []` and
+     `assert "DECAY_SCORE_LUA" not in cyclic_source`) **exactly as is**. That
+     half is the executable form of the "do not unify" rule and must not weaken.
+   - That test's **docstring is also stale**: it says "``top_by_decay`` still
+     holds both scripts in one body." Rewrite it, or the test documents the
+     opposite of what it now asserts.
+
+   Note the distinction this makes from #648: there, the change was purely a
+   relocation of an inventory row. Here one assertion genuinely **inverts**
+   (presence becomes absence) because the thing it asserted the presence of is
+   what the issue exists to delete. That is still the inventory following the
+   code, but it is a stronger claim and is called out rather than glossed.
+   `test_query_top_by_decay_delegates_rather_than_evaluating` (`:966-969`)
+   targets `Query.top_by_decay`, the thin wrapper, and is unaffected.
 5. **Add a regression test for the subclass companion-key fix**, so the spike-2
    defect cannot come back.
 
@@ -234,8 +269,13 @@ it would be evidence the design was wrong.
 
 ## Test Impact
 
-- `tests/test_validity_field.py::TestDecayEvalCallSites` — inventory updated to
-  the two `rank_decayed` implementations. Assertions on numkeys unchanged.
+- `tests/test_validity_field.py::TestDecayEvalCallSites` — **both** tests in the
+  class need edits; see Key Elements item 4 for the exact assertions and line
+  numbers. `test_decay_eval_call_sites_pass_four_keys` loses its two `query.py`
+  inventory entries (numkeys assertions unchanged);
+  `test_cyclic_decay_lua_sites_are_not_matched` has its first two assertions
+  inverted from presence to absence and its docstring rewritten, while its
+  `CyclicDecayField.rank_decayed` half stays byte-identical.
 - `tests/test_validity_field.py::TestCyclicDecayGatingGap` — **must not change.**
   If it needs changing, the No-Go was violated.
 - New: `tests/test_cyclic_subclass_companion_keys.py` — asserts a
@@ -351,13 +391,22 @@ all four sites pass `n` explicitly.
 
 ## Step by Step Tasks
 
+Commit boundaries are load-bearing here (critique CONCERN-1): the mechanical
+substitution and the spike-2 behavior fix ship in the same PR but as **separate
+commits**, so `git bisect` and `git revert` can isolate the user-visible fix from
+the no-op refactor if either misbehaves after merge.
+
 1. Substitute `top_by_decay` (both branches → one call); rewrite the gating-gap
    comment. Validate: parity A, B, C, F.
 2. Substitute `_materialize_decay_field` with `n=999999`. Validate: parity D, E.
 3. Remove now-dead imports and locals. Validate: `ruff check src/`.
-4. Update `TestDecayEvalCallSites` inventory. Validate: `test_validity_field.py`.
-5. Add the subclass companion-key regression test; confirm it fails on base.
+4. Update **both** tests in `TestDecayEvalCallSites` per Key Elements item 4,
+   including the stale docstring. Validate: `pytest tests/test_validity_field.py`.
+   — *Commit 1 ends here: the mechanical refactor, green on its own.*
+5. Add the subclass companion-key regression test and the `### Fixed` changelog
+   entry; confirm the test fails on `42e800e6` and passes on the branch.
    Validate: parity G non-empty.
+   — *Commit 2: the behavior fix's evidence, separable in history.*
 6. Narrow regression scope + mypy ratchet + lint + docs build.
 
 ## Pipeline Sequencing (#642)
