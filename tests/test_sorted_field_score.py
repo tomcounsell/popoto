@@ -144,7 +144,7 @@ def test_score_uses_pk_not_a_recomputed_key_for_a_mutated_instance():
     assert popoto.SortedField.score(record, "score") == 7.5
 
 
-def test_score_follows_a_rebound_global_client(monkeypatch):
+def test_score_follows_a_rebound_global_client(monkeypatch, assert_captured):
     """``score()`` resolves the client per call, not from an import snapshot.
 
     Its sibling readers in the same mixin still hold the module-level name
@@ -176,4 +176,4 @@ def test_score_follows_a_rebound_global_client(monkeypatch):
     )
 
     assert field.score(record, "score") == 3.5
-    assert seen == ["ZSCORE"]
+    assert_captured(seen, ["ZSCORE"])

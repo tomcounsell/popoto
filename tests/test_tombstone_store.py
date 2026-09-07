@@ -114,21 +114,21 @@ def test_keys_returns_expected_names():
 # ---------------------------------------------------------------------------
 
 
-def test_archive_issues_hset_then_zadd_in_one_transaction(monkeypatch):
+def test_archive_issues_hset_then_zadd_in_one_transaction(monkeypatch, assert_captured):
     recorder = _Recorder()
     _spy_pipeline_execute(monkeypatch, recorder)
 
     store = _store()
     store.archive("Widget:1", _pack(), time.time())
 
-    assert recorder.names() == ["HSET", "ZADD"]
+    assert_captured(recorder.names(), ["HSET", "ZADD"])
 
     data_key, index_key = store.keys()
     assert popoto.get_redis().hexists(data_key, "Widget:1")
     assert popoto.get_redis().zscore(index_key, "Widget:1") is not None
 
 
-def test_count_issues_zcard(monkeypatch):
+def test_count_issues_zcard(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), time.time())
 
@@ -136,10 +136,10 @@ def test_count_issues_zcard(monkeypatch):
     _spy_client_methods(monkeypatch, popoto.get_redis(), recorder, ["zcard"])
 
     assert store.count() == 1
-    assert recorder.names() == ["ZCARD"]
+    assert_captured(recorder.names(), ["ZCARD"])
 
 
-def test_oldest_keys_issues_zrange(monkeypatch):
+def test_oldest_keys_issues_zrange(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
     store.archive("Widget:2", _pack(), 200.0)
@@ -149,10 +149,10 @@ def test_oldest_keys_issues_zrange(monkeypatch):
 
     result = store.oldest_keys(1)
     assert result == ["Widget:1"]
-    assert recorder.names() == ["ZRANGE"]
+    assert_captured(recorder.names(), ["ZRANGE"])
 
 
-def test_newest_keys_issues_zrevrange(monkeypatch):
+def test_newest_keys_issues_zrevrange(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
     store.archive("Widget:2", _pack(), 200.0)
@@ -162,10 +162,10 @@ def test_newest_keys_issues_zrevrange(monkeypatch):
 
     result = store.newest_keys(-1)
     assert result == ["Widget:2", "Widget:1"]
-    assert recorder.names() == ["ZREVRANGE"]
+    assert_captured(recorder.names(), ["ZREVRANGE"])
 
 
-def test_evict_issues_hdel_then_zrem_in_one_transaction(monkeypatch):
+def test_evict_issues_hdel_then_zrem_in_one_transaction(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
 
@@ -174,11 +174,11 @@ def test_evict_issues_hdel_then_zrem_in_one_transaction(monkeypatch):
 
     store.evict(["Widget:1"])
 
-    assert recorder.names() == ["HDEL", "ZREM"]
+    assert_captured(recorder.names(), ["HDEL", "ZREM"])
     assert store.count() == 0
 
 
-def test_get_entry_issues_hget(monkeypatch):
+def test_get_entry_issues_hget(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
 
@@ -187,10 +187,10 @@ def test_get_entry_issues_hget(monkeypatch):
 
     raw = store.get_entry("Widget:1")
     assert raw is not None
-    assert recorder.names() == ["HGET"]
+    assert_captured(recorder.names(), ["HGET"])
 
 
-def test_get_entries_issues_hmget(monkeypatch):
+def test_get_entries_issues_hmget(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
 
@@ -199,10 +199,10 @@ def test_get_entries_issues_hmget(monkeypatch):
 
     raws = store.get_entries(["Widget:1"])
     assert len(raws) == 1
-    assert recorder.names() == ["HMGET"]
+    assert_captured(recorder.names(), ["HMGET"])
 
 
-def test_purge_issues_hdel_then_zrem_in_one_transaction(monkeypatch):
+def test_purge_issues_hdel_then_zrem_in_one_transaction(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
 
@@ -210,11 +210,11 @@ def test_purge_issues_hdel_then_zrem_in_one_transaction(monkeypatch):
     _spy_pipeline_execute(monkeypatch, recorder)
 
     assert store.purge("Widget:1") is True
-    assert recorder.names() == ["HDEL", "ZREM"]
+    assert_captured(recorder.names(), ["HDEL", "ZREM"])
     assert store.count() == 0
 
 
-def test_purge_all_issues_single_del_over_both_keys(monkeypatch):
+def test_purge_all_issues_single_del_over_both_keys(monkeypatch, assert_captured):
     store = _store()
     store.archive("Widget:1", _pack(), 100.0)
     data_key, index_key = store.keys()
@@ -224,7 +224,7 @@ def test_purge_all_issues_single_del_over_both_keys(monkeypatch):
 
     removed = store.purge_all()
     assert removed == 1
-    assert recorder.names() == ["DELETE"]
+    assert_captured(recorder.names(), ["DELETE"])
 
     redis_client = popoto.get_redis()
     assert redis_client.exists(data_key) == 0
@@ -376,7 +376,7 @@ def test_purge_all_deletes_even_when_the_count_read_fails(monkeypatch):
     assert redis_client.exists(index_key) == 0
 
 
-def test_store_follows_a_rebound_global_client(monkeypatch):
+def test_store_follows_a_rebound_global_client(monkeypatch, assert_captured):
     """The store must read the client per call, not a snapshot from import.
 
     ``set_REDIS_DB_settings()`` *rebinds* ``redis_db``'s module global, and
@@ -414,4 +414,4 @@ def test_store_follows_a_rebound_global_client(monkeypatch):
     )
 
     assert store.count() == 1
-    assert seen == ["ZCARD"]
+    assert_captured(seen, ["ZCARD"])
