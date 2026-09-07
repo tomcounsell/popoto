@@ -555,23 +555,122 @@ two are always the same vintage.
 
 ## No-Gos (Out of Scope)
 
-_(placeholder)_
+- [SEPARATE-SLUG #699] Making the cycles-hash read-modify-write atomic. Both
+  `on_save` and `_adjust_cycle_amplitudes` do a client-side `hget` → merge →
+  `hset` on the same hash field, so concurrent calls lose one update. This
+  predates #679 and is not widened by this plan (Race 1). Fixing it means moving
+  both merges into Lua — a structurally larger change with its own plan. Filed
+  as #699.
+- [SEPARATE-SLUG #699] Auditing the pressure companion hash for the same
+  read-modify-write shape (`on_save` vs `resolve_pressure`). Named as an open
+  question inside #699 rather than answered here.
+
+**Answered, not deferred** — the issue listed four open questions for the plan;
+three are settled above and one is escalated:
+
+1. *Where the declared baseline lives* → in the cycles entry as an optional 4th
+   slot (Solution / spike-1).
+2. *What happens on a detected declaration change* → reset that member's learned
+   amplitude, loudly. Whether it should instead be a proportional rescale is
+   Open Question 1 — a product call, not a deferral.
+3. *Whether the same gap exists for `phase`* → **checked, and it does not.**
+   `phase` is fully declarative: `on_save` writes it from `field.cycles` on
+   every save (`cyclic_decay_field.py:592,599`) and **nothing in the codebase
+   ever mutates a stored phase** — `_adjust_cycle_amplitudes` touches only slot
+   1 (`base.py:2745-2751`), and it is the sole writer besides `on_save` and
+   `import_state`. With no learned phase there is no learned-vs-declared
+   ambiguity, so a phase baseline would record a value that can never disagree.
+   `period` is the match key and is declarative by the same argument. Verified
+   rather than assumed, per the issue's request.
+4. *Whether a deployment needs a migration* → **no**, and one is actively
+   unwanted. A legacy 3-element entry is a valid input meaning "baseline
+   unknown"; it acquires a baseline on its next ordinary save. The cost is
+   Risk 2 (an upgrade-and-edit in the same deploy is swallowed once), which is
+   strictly cheaper than the alternative of resetting every learned amplitude in
+   the database on first save.
 
 ## Update System
 
-_(placeholder)_
+No update-system changes required. This is a pure library-internal change: no
+new dependency, no new config file, no new Redis key, no deployment step. The
+stored-payload extension is self-adopting on ordinary saves and needs no
+migration or backfill (see No-Gos item 4).
+
+The one deploy-visible consequence is behavioral, not procedural, and belongs in
+the CHANGELOG rather than in a deploy runbook: **after this ships, editing a
+declared `amplitude=` destroys the learned amplitudes for that period on every
+record that saves afterward.** That is the intended fix, and it must be stated
+in the release notes as a semantics change so an operator is not surprised by it.
 
 ## Agent Integration
 
-_(placeholder)_
+No agent integration required. `CyclicDecayField` is a popoto field, reached
+through the ordinary model API; there is no MCP surface, tool wrapper, or bridge
+entry point involved. The nearest agent-facing consumer is
+`ObservationProtocol` (`src/popoto/fields/observation.py:294,343,406`), which
+calls `strengthen_cycle` / `weaken_cycle` — those signatures and their behavior
+are unchanged, so no wiring moves.
 
 ## Documentation
 
-_(placeholder)_
+### Feature Documentation
+- [ ] Update `docs/features/cyclic-decay-field.md`. The load-bearing edit is
+      **line 122**, which currently states the exact behavior this plan removes:
+      *"If you edit a declared amplitude for a period that has already learned a
+      value, the learned value wins. Popoto does not store the declared baseline
+      separately, so it cannot tell 'the developer changed the default' from
+      'learning diverged.'"* Replace with the three-way rule, and add:
+      - a warning that editing a declared amplitude is **destructive** to
+        learned state for that period;
+      - the upgrade caveat (Risk 2): the first save after upgrading records a
+        baseline, so an edit made in the same deploy is not detected;
+      - a note that the stored entry is now
+        `[period, amplitude, phase, declared_baseline]`, with the 4th slot
+        optional, updating the storage description around line 160.
+- [ ] `docs/features/README.md` index needs no new entry (no new feature page).
+- [ ] Check `docs/fields.md` and `docs/field-authoring.md` for any statement of
+      the cycles payload shape; update if present.
+
+### External Documentation Site
+- [ ] `mkdocs build --strict` passes.
+
+### Inline Documentation
+- [ ] `CyclicDecayField.on_save` docstring — currently documents the two-way
+      rule (`:514-536`). Rewrite the cycles paragraph for the three-way rule,
+      keeping the pipeline caveat verbatim.
+- [ ] Module docstring companion-hash description (`:17-19`) — note the 4th slot.
+- [ ] `import_state` docstring — note that it carries the optional baseline.
+- [ ] A comment at the merge site explaining why the baseline is compared
+      against the **declared** value and never against the learned one, and why
+      `_adjust_cycle_amplitudes` must never write slot 3.
+- [ ] `CHANGELOG.md` entry recording the semantics change.
 
 ## Success Criteria
 
-_(placeholder)_
+- [ ] An edited declared amplitude resets the learned amplitude on the next
+      `save()`, for every record that had learned one.
+- [ ] An unedited declaration still preserves the learned amplitude — the whole
+      of `TestLearnedAmplitudePreservedOnSave` stays green, unmodified except
+      for the four clarifying updates named in Test Impact.
+- [ ] A declared amplitude of `0.0` is compared as a value, not as a falsy
+      sentinel.
+- [ ] A record written before this change (3-element entry) preserves its
+      learned amplitude on the next save and acquires a baseline from it.
+- [ ] A malformed 4th slot does not raise out of `save()`.
+- [ ] Each reset emits exactly one INFO log naming the model, field, period, old
+      declared value, new declared value and discarded learned amplitude.
+- [ ] `export_state` → `import_state` round-trips the baseline
+      (`tests/test_transfer_fidelity_fields.py`).
+- [ ] `CYCLIC_DECAY_LUA` is unmodified and `numkeys` stays 4 — the read path is
+      untouched.
+- [ ] No new Redis key and no migration script.
+- [ ] Tests pass (`/do-test`), on a stated environment (`POPOTO_TEST_DB=12`).
+      `tests/test_version.py::test_version_matches_pyproject` failing on a stale
+      editable install is expected noise, not a regression.
+- [ ] `scripts/mypy_ratchet.py` does not rise above the ceiling.
+- [ ] `ruff check src/` and `black --check src/ tests/` clean.
+- [ ] Documentation updated (`/do-docs`), including
+      `docs/features/cyclic-decay-field.md:122`.
 
 ## Team Orchestration
 
