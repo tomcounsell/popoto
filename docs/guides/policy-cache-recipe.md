@@ -41,7 +41,7 @@ PolicyEntry composes these primitives:
 |-----------|-------------------|
 | `AutoKeyField` | Unique entry ID |
 | `KeyField` | Agent partitioning, state fingerprinting, action type |
-| `DecimalField` (`q_value`) | Learned Q-value stored in the model hash |
+| `TDValueField` (`q_value`) | Learned Q-value stored in the model hash; owns the atomic TD(0) update |
 | `DecayingSortedField` (`expected_value`) | Pure recency clock; uses `q_value` as base magnitude via `base_score_field` |
 | `ConfidenceField` | Capped-evidence confidence from outcome history |
 | `CoOccurrenceField` | Weighted graph between related policies |
@@ -87,7 +87,10 @@ Calendar-accurate monthly or yearly discovery (e.g. via variable-length bucketin
 
 ## Q-Value Updates
 
-The `update_q_value` function performs atomic TD(0) updates via Lua script:
+`TDValueField` owns the TD(0) update. It is a `DecimalField` subclass that
+stores the learned value in the model hash exactly as a plain `DecimalField`
+does, and adds one operation the ordinary save path cannot express — an atomic
+read-modify-write of that single hash field:
 
 ```
 Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
@@ -96,6 +99,17 @@ Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
 - **alpha** (learning rate): How much new information overrides old (default: 0.1)
 - **gamma** (discount factor): Importance of future rewards (default: 0.95)
 - Returns TD error (positive = better than expected)
+
+The read and the write happen inside one Lua script, so concurrent updates to
+the same entry serialize at the server instead of racing through a client-side
+`HGET` / compute / `HSET` round trip.
+
+`update_q_value()` is a convenience wrapper over
+`TDValueField.td_update(entry, "q_value", ...)` — it keeps the recipe's
+signature and defaults, and the field owns the script. Use the recipe function
+when you are working with `PolicyEntry`; reach for the field directly when you
+want TD updates on a model of your own. See
+[TDValueField](../features/td-value-field.md).
 
 ### Storage architecture
 

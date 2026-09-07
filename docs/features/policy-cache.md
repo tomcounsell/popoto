@@ -38,7 +38,7 @@ policy.save()
 
 | Field | Storage | Role |
 |-------|---------|------|
-| `q_value` | Model hash (`DecimalField`) | Learned Q-value; updated by TD(0) |
+| `q_value` | Model hash (`TDValueField`) | Learned Q-value; updated by TD(0) |
 | `expected_value` | Sorted set (score) | Pure recency clock; decays with time |
 
 `expected_value` is a `DecayingSortedField(partition_by="agent_id", base_score_field="q_value")`. The sorted-set score is the decay-weighted access timestamp; `q_value` supplies the base magnitude. Because the two slots are independent, a `save()`, `touch()`, or `"acted"` outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to `q_value` does not alter the recency clock.
@@ -69,10 +69,15 @@ Temporal difference learning for policy refinement:
 from popoto.recipes.policy_cache import update_q_value
 
 # After observing reward from taking an action
-update_q_value(policy, reward=0.8, next_max_q=0.6)
+update_q_value(policy, reward=0.8, max_future_q=0.6)
 ```
 
-The update uses: `Q_new = Q_old + alpha * (reward + gamma * next_max_q - Q_old)`
+The update uses: `Q_new = Q_old + alpha * (reward + gamma * max_future_q - Q_old)`
+
+`update_q_value()` is a thin wrapper: the script and the arithmetic belong to
+[`TDValueField`](td-value-field.md), the `DecimalField` subclass `q_value` is
+declared as. Call `TDValueField.td_update()` directly to get the same atomic
+update on a model that is not a `PolicyEntry`.
 
 ### Temporal Discovery
 

@@ -52,6 +52,7 @@ from .privacy.never_record import (
 from .fields.event_stream import EventStreamMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.confidence_field import ConfidenceField
+from .fields.td_value_field import TDValueField
 from .fields.co_occurrence_field import CoOccurrenceField
 from .fields.existence_filter import ExistenceFilter, FrequencySketch
 from .fields.bm25_field import BM25Field
@@ -220,6 +221,7 @@ __all__ = [
     "scan_never_record",
     "CyclicDecayField",
     "ConfidenceField",
+    "TDValueField",
     "CoOccurrenceField",
     "ExistenceFilter",
     "FrequencySketch",

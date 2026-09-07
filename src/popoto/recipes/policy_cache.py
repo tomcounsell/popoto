@@ -10,7 +10,7 @@ Components:
     - PolicyEntry: Model composing DecayingSortedField, ConfidenceField,
       CoOccurrenceField, ExistenceFilter, EventStreamMixin, AccessTrackerMixin,
       and PredictionLedgerMixin.
-    - update_q_value(): Atomic Q-value TD update via Lua script.
+    - update_q_value(): Atomic Q-value TD update via TDValueField.
     - compute_fingerprint(): Stable state fingerprint from feature dicts.
     - wilson_ci_lower(): Wilson score confidence interval lower bound.
     - chi_squared_uniform(): Chi-squared test against uniform distribution.
@@ -56,6 +56,7 @@ import json
 import logging
 import time
 from decimal import Decimal
+from typing import cast
 
 
 from ..fields.access_tracker import AccessTrackerMixin
@@ -67,9 +68,14 @@ from ..fields.event_stream import EventStreamMixin
 from ..fields.existence_filter import ExistenceFilter
 from ..fields.field import Field
 from ..fields.prediction_ledger import PredictionLedgerMixin
-from ..fields.shortcuts import AutoKeyField, DecimalField, KeyField
+from ..fields.shortcuts import AutoKeyField, KeyField
+
+# TD_UPDATE_LUA is imported for re-export only: it lived in this module until
+# #647 moved it to the field that owns it, and downstream code (plus the recipe
+# guide) still imports the name from here.
+from ..fields.td_value_field import TD_UPDATE_LUA  # noqa: F401
+from ..fields.td_value_field import TDValueField
 from ..models.base import Model
-from ..redis_db import POPOTO_REDIS_DB, run_lua
 
 logger = logging.getLogger("POPOTO.PolicyCache")
 
@@ -126,53 +132,6 @@ If the test statistic exceeds the critical value, the null hypothesis
 
 
 # ---------------------------------------------------------------------------
-# Lua Scripts
-# ---------------------------------------------------------------------------
-
-TD_UPDATE_LUA = """
--- td_update.lua: Temporal difference Q-value update
--- KEYS[1] = model hash key (instance redis_key, e.g. PolicyEntry:agent-1:fp:action)
--- ARGV[1] = reward (float)
--- ARGV[2] = alpha (learning rate)
--- ARGV[3] = gamma (discount factor)
--- ARGV[4] = max_future_q (float)
---
--- Q-value is stored in the model hash under field "q_value" as a
--- cmsgpack-encoded __Decimal__ tagged dict (byte-interchangeable with
--- Python msgpack encoding of Decimal).
---
--- Returns: td_error as string
-
-local hash_key = KEYS[1]
-local reward = tonumber(ARGV[1])
-local alpha = tonumber(ARGV[2])
-local gamma = tonumber(ARGV[3])
-local max_future_q = tonumber(ARGV[4])
-
--- Read current Q from model hash
-local current_q = 0
-local raw = redis.call('HGET', hash_key, 'q_value')
-if raw then
-    local ok, decoded = pcall(cmsgpack.unpack, raw)
-    if ok and type(decoded) == 'number' then
-        current_q = decoded
-    elseif ok and type(decoded) == 'table' and decoded['as_encodable'] then
-        -- __Decimal__ tagged dict encoding
-        current_q = tonumber(decoded['as_encodable']) or 0
-    end
-end
-
-local td_error = reward + gamma * max_future_q - current_q
-local new_q = current_q + alpha * td_error
-
--- Write new Q as __Decimal__ tagged dict (byte-interchangeable with Python msgpack Decimal)
-local encoded = cmsgpack.pack({['__Decimal__']=true, ['as_encodable']=tostring(new_q)})
-redis.call('HSET', hash_key, 'q_value', encoded)
-return tostring(td_error)
-"""
-
-
-# ---------------------------------------------------------------------------
 # PolicyEntry Model
 # ---------------------------------------------------------------------------
 
@@ -192,9 +151,10 @@ class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, M
         state_features: Original state feature dict (JSON-serializable).
         action_type: Category of the action (e.g., "run_playbook").
         action_spec: Full action specification dict (JSON-serializable).
-        q_value: Learned Q-value stored as a DecimalField in the model hash.
+        q_value: Learned Q-value stored as a TDValueField (a DecimalField
+            that carries the atomic TD(0) update) in the model hash.
             Survives save(), touch(), and "acted" outcomes unchanged.
-            Updated atomically by update_q_value() via TD(0) Lua script.
+            Updated atomically by update_q_value().
         expected_value: Pure recency clock implemented as a DecayingSortedField
             with base_score_field="q_value". The sorted-set score is the
             decay-weighted access timestamp; q_value supplies the base
@@ -222,7 +182,7 @@ class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, M
     action_type = KeyField()
     action_spec = Field()  # JSON dict
 
-    q_value = DecimalField(default=Decimal("0"))
+    q_value = TDValueField(default=Decimal("0"))
     expected_value = DecayingSortedField(
         partition_by="agent_id",
         base_score_field="q_value",
@@ -351,7 +311,7 @@ def update_q_value(
 
         Q(s,a) ← Q(s,a) + α [r + γ max Q(s',a') - Q(s,a)]
 
-    The Q-value is stored as a DecimalField in the model hash (HGET/HSET on
+    The Q-value is stored as a TDValueField in the model hash (HGET/HSET on
     the ``q_value`` field). This is independent of the ``expected_value``
     sorted-set score, which is a pure recency/decay clock. Updating the
     Q-value does not alter the decay timestamp, and a save() or touch() call
@@ -371,27 +331,33 @@ def update_q_value(
 
     Raises:
         ValueError: If the instance has no redis_key (unsaved).
+
+    Note:
+        This is a thin wrapper over
+        :meth:`popoto.fields.td_value_field.TDValueField.td_update`, which owns
+        the script. Call the field method directly if you need to queue the
+        update on a pipeline.
     """
-    redis_key = _get_redis_key(instance)
-
-    td_error = run_lua(
-        POPOTO_REDIS_DB,
-        TD_UPDATE_LUA,
-        1,  # num keys
-        redis_key,  # KEYS[1] — model hash key
-        str(reward),  # ARGV[1]
-        str(alpha),  # ARGV[2]
-        str(gamma),  # ARGV[3]
-        str(max_future_q),  # ARGV[4]
+    # No pipeline is passed, so td_update always returns a float here; the
+    # Optional in its signature covers the queued-on-a-pipeline branch only.
+    td_error = cast(
+        float,
+        TDValueField.td_update(
+            instance,
+            "q_value",
+            reward=reward,
+            max_future_q=max_future_q,
+            alpha=alpha,
+            gamma=gamma,
+        ),
     )
-
-    return float(td_error)
+    return td_error
 
 
 def initialize_q_value(instance, initial_q: float = 0.0) -> None:
     """Set the initial Q-value for a PolicyEntry.
 
-    Writes ``initial_q`` into the ``q_value`` DecimalField on the model hash
+    Writes ``initial_q`` into the ``q_value`` TDValueField on the model hash
     and calls ``save()``. The ``expected_value`` sorted-set score (the recency
     decay clock) is left unchanged — the two storage slots are independent.
 
