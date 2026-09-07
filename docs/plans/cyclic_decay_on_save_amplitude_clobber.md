@@ -184,6 +184,12 @@ if field.cycles:
         try:
             stored = msgpack.unpackb(existing_raw, raw=False)
         except Exception:
+            # Mirror export_state's handler (:284-291) — #679 exists because
+            # this state was destroyed silently; do not add a second mute path.
+            logger.warning(
+                f"Could not decode cycles data for {member_key}; "
+                f"falling back to declared defaults"
+            )
             stored = None
         if isinstance(stored, list):
             for entry in stored:
@@ -254,7 +260,8 @@ pre-pipeline state). Mirroring precedent rather than inventing new semantics.
 |---|---|---|
 | **In-place save semantics change for existing users.** The precise concern #554 and #556 cited when deferring. A deployment relying on save-resets-amplitudes would change behavior. | Low | That reliance would be reliance on a documented bug that erases the field's own advertised feature. No test encodes it (spike-3). Called out in CHANGELOG as a behavior fix. **This is a deliberate behavior change, not a pure defect repair** — see the note below; it needs a named approver on the record before merge, not a self-authorized reversal. |
 | **Extra `HGET` per save per cyclic field.** | Certain | One additional round trip, only for `CyclicDecayField`s **that declare a non-empty `cycles`** — the read is gated on `field.cycles`, so a pressure-only field pays nothing. The pressure branch directly below already pays exactly this cost unconditionally. Acceptable and symmetric. |
-| **Lost update between a concurrent `save()` and `strengthen_cycle` / `weaken_cycle`.** The fix turns the cycles write into a read-modify-write, and `_adjust_cycle_amplitudes` (`models/base.py:2725-2763`) is already an unguarded `HGET`→`HSET` on the *same* key and member. Interleaving `read(save) → read(adjust) → write(adjust) → write(save)` drops the adjustment. | Low | **Accepted, documented limitation** — not closed by this plan. Today's behavior is *deterministic* loss (save always clobbers); after the fix it is *nondeterministic* loss under a narrow concurrent window, which is strictly less data lost overall but less predictable. Closing it properly means moving both call sites into one Lua script or `WATCH`/`MULTI`, which is a larger change than this appetite and would also have to cover the identical pre-existing shape in the pressure branch. Recorded here so the next reader sees it was priced, not missed; filed forward rather than silently inherited. |
+| **(a) Cross-connection lost update** between a concurrent `save()` and `strengthen_cycle` / `weaken_cycle`. The fix makes the cycles write a read-modify-write, and `_adjust_cycle_amplitudes` (`models/base.py:2734-2762`) is already an unguarded `HGET`→`HSET` on the *same* key and member. Interleaving `read(save) → read(adjust) → write(adjust) → write(save)` drops the adjustment. | Low | **Accepted, documented limitation.** Today's behavior is *deterministic* loss (save always clobbers); after the fix it is *nondeterministic* loss inside a narrow window — strictly less data lost, less predictable. Closing it means moving both call sites into one Lua script or `WATCH`/`MULTI`, a larger change than this appetite that would also have to cover the identical pre-existing shape in the pressure branch. Priced, not missed. |
+| **(b) Same-pipeline call-order loss.** Distinct from (a) and *worse*: `_adjust_cycle_amplitudes` reads **direct** (`POPOTO_REDIS_DB.hget`, `models/base.py:2736`) but writes **through** the caller's pipeline (`:2758`). So `instance.weaken_cycle(f, pipeline=p)` queued before `instance.save(pipeline=p)` on one pipeline loses the adjustment **deterministically, every time** — `save()`'s read runs before `p.execute()` and so never sees the queued `HSET`, and `save()`'s own `HSET` is queued last and wins. No timing dependency. Reachable through the library's own batching idiom, including `observation.py:343`'s `apply_outcome(..., pipeline=p)`. | Medium | **Not a regression** — the unconditional clobber loses this ordering today too, so the fix neither creates nor worsens it; it simply does not reach it. Scoped out here because closing it requires routing the adjust read through the pipeline, which is not expressible without executing mid-batch. **Mitigated by documenting the safe order** (`save()` first, adjust second, when sharing one pipeline) in both feature docs, and by TC8 asserting the non-pipelined case works. Named explicitly so a reader cannot mistake the fix for covering it. |
 | **Declaration edits behave surprisingly** (learned amplitude survives a changed default). | Medium | Documented explicitly in the fidelity table above and in the feature doc. The alternative — resetting learning whenever a developer edits a default — is strictly worse for the feature's purpose. |
 | **Corrupt hash entry crashes `save()`.** | Low | Explicit try/except falling back to declared defaults. Test TC7 covers it. |
 | **Duplicate declared periods mis-pair.** | Very low | FIFO within a period bucket keeps pairing stable and order-preserving. Test TC5 covers ordering. |
@@ -262,12 +269,18 @@ pre-pipeline state). Mirroring precedent rather than inventing new semantics.
 ### On overriding the #554 / #556 No-Go
 
 Two prior plans declared fixing this out of scope, both citing the in-place
-save-semantics change. This plan proceeds, and the distinction that makes that
-legitimate is the same one drawn for #557's anti-criteria: those were
+save-semantics change. This plan proceeds. #554's wording lives in that plan's
+**Rabbit Holes** section (`generic_export_import_roundtrip.md:722`), which is
+where a deferral belongs; its No-Gos section paraphrases at `:833-835` rather
+than repeating it.
+
+The reading that makes proceeding legitimate is that these were
 **point-in-time scope guards** — "not in *this* PR" — and #679 was filed
-precisely as the place the work would land. #554's wording lives in that plan's
-**Rabbit Holes** section, which is where a deferral belongs; its No-Gos section
-paraphrases rather than repeating it.
+precisely as the place the work would land. That is a **weaker** case than the
+analogous #557 reasoning, and the difference matters: #557's anti-criteria
+recorded that no consumer had been identified, whereas #554's stated reason is
+a backward-compatibility risk, which does not expire just because the work
+moved to its own issue.
 
 What that reasoning does *not* by itself supply is authorization for the
 observable behavior change. The evidence in spike-3 is stronger than what #554
@@ -286,7 +299,11 @@ at merge, not at build.
   persistence note so it is discoverable without reading source.
 - `docs/features/observation-protocol.md` — the outcome hooks that call
   `strengthen_cycle` / `weaken_cycle` now have durable effect; remove any
-  wording implying otherwise.
+  wording implying otherwise. **Document the safe pipeline order** (Risks row
+  b): when `save()` and an amplitude adjustment share one pipeline, `save()`
+  must be queued first, or the adjustment is lost on `execute()`.
+- `docs/features/cyclic-decay-field.md` — carry the same pipeline-ordering note,
+  since the hazard belongs to the field, not only to the observation protocol.
 - `src/popoto/fields/cyclic_decay_field.py:319-329` — rewrite the `import_state`
   ordering docstring. The ordering stays correct, but the *reason* changes: it
   is no longer "on_save clobbers, so we land on top." Do not delete the
@@ -346,7 +363,11 @@ at merge, not at build.
      just hash bytes)
    - TC10 a `CyclicDecayField` with `cycles=[]` (pressure-only) issues **no**
      cycles `HGET` on save — assert via a spy on the client, so the Risks
-     table's cost claim is enforced rather than asserted
+     table's cost claim is enforced rather than asserted. The spy pins a
+     mechanism, not a behavior, so its docstring must say so explicitly
+     ("implementation-pinning: update deliberately on refactor") — the
+     invariant it protects is that deleting the `if field.cycles:` gate fails
+     the suite.
    - TC11 an amplitude weakened to `0.0` survives a subsequent save
      (Decision 2), and deleting the hash member restores declared defaults on
      the next save (the documented recovery path)
