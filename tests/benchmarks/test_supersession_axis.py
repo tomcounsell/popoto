@@ -21,7 +21,6 @@ from src.popoto.fields.validity_field import (
 )
 from tests.benchmarks import supersession_axis as sa
 
-
 # ---------------------------------------------------------------------------
 # Label-blindness (AC1, Verification row 3)
 # ---------------------------------------------------------------------------
@@ -145,9 +144,7 @@ class TestRouteWriteFirstClaim:
         )
         stats = sa.SupersessionStats()
         instance = _FakeInstance()
-        ok = sa.route_write(
-            instance, identity=("i", "work_at"), at=1.0, stats=stats
-        )
+        ok = sa.route_write(instance, identity=("i", "work_at"), at=1.0, stats=stats)
         assert ok is True
         assert len(calls) == 1
         assert stats.identity_writes == 1

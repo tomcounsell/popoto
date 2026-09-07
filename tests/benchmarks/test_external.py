@@ -1096,9 +1096,7 @@ class TestSupersessionArm:
         tied ``haystack_dates`` relative to haystack order (Task 6)."""
         items = list(iter_longmemeval(fixture_path=LME_FIXTURE))
         return next(
-            i
-            for i in items
-            if i.metadata.get("question_type") == "knowledge-update"
+            i for i in items if i.metadata.get("question_type") == "knowledge-update"
         )
 
     def test_arm_none_is_byte_identical(self):
@@ -1107,9 +1105,7 @@ class TestSupersessionArm:
         from src.popoto.redis_db import get_REDIS_DB
         from tests.benchmarks.scenarios.external_base import ExternalScenario
 
-        scenario = ExternalScenario(
-            item=self._update_item(), retrieval_mode="lexical"
-        )
+        scenario = ExternalScenario(item=self._update_item(), retrieval_mode="lexical")
         result = scenario.execute()
         assert result.status == "ok"
         assert "validity" not in scenario._model_class._meta.fields
@@ -1117,9 +1113,7 @@ class TestSupersessionArm:
         cursor = 0
         found: list = []
         while True:
-            cursor, keys = get_REDIS_DB().scan(
-                cursor, match="$ValidityF:*", count=200
-            )
+            cursor, keys = get_REDIS_DB().scan(cursor, match="$ValidityF:*", count=200)
             found.extend(keys)
             if cursor == 0:
                 break
@@ -1182,9 +1176,7 @@ class TestSupersessionArm:
         cursor = 0
         found: list = []
         while True:
-            cursor, keys = get_REDIS_DB().scan(
-                cursor, match="$ValidityF:*", count=200
-            )
+            cursor, keys = get_REDIS_DB().scan(cursor, match="$ValidityF:*", count=200)
             found.extend(keys)
             if cursor == 0:
                 break
@@ -1201,9 +1193,7 @@ class TestSupersessionArm:
             _build_external_model_class,
         )
 
-        validity_cls = _build_external_model_class(
-            "teardownchk", with_validity=True
-        )
+        validity_cls = _build_external_model_class("teardownchk", with_validity=True)
         keys = ValidityField.get_all_keys(validity_cls, "validity")
         sentinel_key = next(iter(keys.values()))
         get_REDIS_DB().zadd(sentinel_key, {"sentinel-member": 1})
@@ -1232,9 +1222,7 @@ class TestSupersessionArm:
         )
         ordered = ci_scenario._ordered_history()
         dates = [
-            t.get("session_date")
-            for t in ordered
-            if t.get("session_date") is not None
+            t.get("session_date") for t in ordered if t.get("session_date") is not None
         ]
         assert dates == sorted(dates)
 

@@ -1517,8 +1517,10 @@ def _run_benchmark(args, bench_db):
             f"{_sup['units_seen']})"
         )
         print(f"    supersessions     : {_sup['n_supersessions']}")
-        print(f"    excluded keys/hits: {_sup['n_excluded_keys_total']} / "
-              f"{_sup['n_excluded_hits_total']}")
+        print(
+            f"    excluded keys/hits: {_sup['n_excluded_keys_total']} / "
+            f"{_sup['n_excluded_hits_total']}"
+        )
         # producer_failures is printed unconditionally, even at zero
         # (Verification row 10) -- "nothing to report" vs "producer errored
         # on everything" must never look the same in the output.

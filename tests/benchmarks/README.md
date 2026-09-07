@@ -168,6 +168,111 @@ done
 Use `valkey-cli` in place of `redis-cli` for Valkey; adjust `-n 0` if the
 pollution is on another DB.
 
+## External-harness supersession axis (#692)
+
+`run_external.py` accepts an optional **supersession producer** axis, orthogonal
+to `--extraction` and `--retrieval-mode`. It exists to make bitemporal validity
+gating (`ValidityField` / `SupersessionProtocol.save_and_supersede`) *measurable*
+on a real benchmark corpus: without a producer that calls it, the exclusion set
+is always empty and the gate has nothing to subtract.
+
+```bash
+# Arm A — baseline (default; byte-identical to every prior committed artifact):
+python -m tests.benchmarks.run_external --dataset longmemeval-s --supersession none
+
+# Arm B — producer runs, read-time gating OFF (isolates the write-side cost):
+python -m tests.benchmarks.run_external --dataset longmemeval-s \
+    --supersession content-identity --no-validity-gating
+
+# Arm C — producer runs, read-time gating ON (the default when the arm is active):
+python -m tests.benchmarks.run_external --dataset longmemeval-s \
+    --supersession content-identity
+```
+
+The producer (`tests/benchmarks/supersession_axis.py`) is a harness-local,
+**label-blind** heuristic — `identity_of(unit_text)` takes exactly one
+positional (text-only) parameter, so `relevant_ids`/`question_type` structurally
+cannot reach it, mirroring #514's `collapse_to_ranking_unit` gold-blindness. It
+recognizes a narrow "I `<verb>` [`<preposition>`] ..." sentence pattern (e.g. "I
+work at Acme Corp.") as an identity claim; every identity-bearing write —
+including the first claim of a group — routes through
+`SupersessionProtocol.save_and_supersede`, closing any prior claim with the same
+identity key. It is a measurement device, not a library recommendation; nothing
+in `src/` uses it.
+
+| Arm | Model declares `ValidityField` | Producer runs | `Defaults.VALIDITY_GATING_ENABLED` |
+|---|---|---|---|
+| **A — baseline** (`--supersession none`) | no | no | n/a |
+| **B — producer, gate off** (`--supersession content-identity --no-validity-gating`) | yes | yes | `False` |
+| **C — producer, gate on** (`--supersession content-identity`) | yes | yes | `True` (default) |
+
+Non-`none` arms compose `_sup-{arm}[_nogate]` into the artifact filename
+(alongside the existing mode/extraction/judged suffixes), so a supersession run
+can never clobber the committed `--supersession none` baseline. The aggregate
+report gains a `supersession` block (`identity_writes`, `identity_groups`,
+`n_supersessions`, `n_excluded_keys_total`, `n_excluded_hits_total`,
+`producer_failures` — printed even when zero, so "producer found nothing" is
+never confused with "producer errored on everything").
+
+### What the resulting delta does and does not establish
+
+A two-arm (baseline vs. producer+gating) comparison cannot attribute its delta,
+because the producer and the gate are two changes shipped together — hence
+three arms, not two.
+
+- **A → B** isolates everything the change does *other than gate*: the extra
+  per-save Lua command, the field declaration, the producer's write ordering.
+  On a recall metric this should be ~0; a non-zero A→B is a finding about the
+  harness, not about validity, and must be reported before C is read at all.
+- **B → C** is the only pair that isolates the gate. Both arms have identical
+  stored state; they differ only in whether the three gating layers subtract.
+
+**What C − B does establish:** that V0's gating machinery, on a real corpus at
+real scale, subtracts the records a producer closed and does not subtract
+records it did not — i.e. the gate is live and its effect is measurable rather
+than structurally nil. The *sign and magnitude of the retrieval cost or benefit
+of subtracting superseded records*, **conditional on this producer**. If C − B
+is negative, the gate is removing records the retriever wanted; that is a real
+finding about subtractive gating and must be published. Operational facts worth
+having regardless of sign: exclusion-set cardinality per item, per-item
+supersession counts, and the retrieval-latency cost of the two extra
+`ZRANGEBYSCORE` reads per `assemble()`.
+
+**What it does not establish:**
+
+- **It is not "V0 validity gating improves LongMemEval-S by X".** V0 ships no
+  producer. Every number here is a property of the pair (this heuristic, V0's
+  gate), and the heuristic is a harness artifact that nothing in `src/` uses.
+  Attributing the delta to V0 alone is the metric-attribution error this axis
+  exists to avoid.
+- **It is not an upper bound, or a lower bound.** A better identity function
+  would produce a different number in an unknown direction. Nothing here
+  brackets the achievable effect.
+- **It says nothing about the `knowledge-update` category specifically** beyond
+  what a per-category breakdown with n too small to exclude noise can show.
+  Report the breakdown; draw no category-level conclusion without an interval
+  that excludes zero.
+- **It is not comparable to any judged-accuracy number.** Metric-family
+  doctrine: the committed n=500 LongMemEval-S baseline is recall-family. The
+  three arms are compared to each other within that family and to nothing else.
+  `--judged` is not supported in combination with `--supersession`.
+- **It does not resolve #693.** Whether save-only inertness is the right
+  library default is untouched by this work; the producer here is an explicit
+  imperative caller, which is exactly the shape #693 questions.
+
+Every number produced under this axis carries Python version, redis-py
+version, platform, Redis DB, and the baseline commit SHA, per repo doctrine.
+Numbers from different redis-py versions are not compared.
+
+**Known limitation (tracked separately, not fixed by this axis):** every
+externally-built model class shares one Redis key namespace for `ValidityField`
+regardless of its per-item `safe_prefix`, because `_meta.db_class_key` is
+captured at class-creation time, before `_build_external_model_class`'s
+post-hoc `__name__`/`__qualname__` rename reaches it. `ExternalScenario.teardown()`
+explicitly deletes the shared keys after every item specifically to contain
+this, so cross-item contamination does not leak into results — but a true
+per-item namespace is still open work. See the follow-up issue filed from #692.
+
 ## Adding a New Constant
 
 1. Add it to `VALID_RANGES` in `overrides.py`
