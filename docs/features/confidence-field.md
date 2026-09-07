@@ -157,7 +157,7 @@ for debugging, monitoring, or direct Redis inspection without reverse-engineerin
 suffix conventions.
 
 ```python
-import redis
+import popoto
 from popoto import Model, UniqueKeyField, StringField
 from popoto.fields.confidence_field import ConfidenceField
 
@@ -177,11 +177,17 @@ print(hash_key)
 # => "$ConfidencF:Memory:certainty:data"
 
 # Inspect the raw companion hash in Redis
-r = redis.from_url("redis://localhost:6379")
+r = popoto.get_redis()
 raw_data = r.hgetall(hash_key)
 print(raw_data)
 # Shows all members and their msgpack-encoded confidence metadata
 ```
+
+`popoto.get_redis()` returns the connection Popoto is actually bound to. Building a
+client by hand — `redis.from_url(...)` — opens a *different* connection, and unless its
+URL names the same database, `hgetall` reads a database the write never touched and
+quietly returns `{}` with nothing to indicate why. A URL with no `/database` component
+names database 0, which is rarely where your data is.
 
 When you do not have an instance loaded, use `get_data_hash_key_from_values` to build
 the key from explicit values:

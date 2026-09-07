@@ -112,7 +112,14 @@ from .transfer import (
     export_records,
     import_records,
 )
-from .redis_db import POPOTO_REDIS_DB, get_async_redis_db
+
+# POPOTO_REDIS_DB was previously "used" by get_redis()'s body; now that
+# get_redis() delegates to redis_db.get_REDIS_DB() (#645) nothing here reads it.
+# The name is kept importable for back-compat but deliberately NOT added to
+# __all__: it is an import-time snapshot that set_REDIS_DB_settings() does not
+# update, so promoting it to declared public API would endorse a stale value.
+# See #651 for making it live or removing it.
+from .redis_db import POPOTO_REDIS_DB, get_async_redis_db  # noqa: F401
 from .batch import batch
 from ._error_reporting import enable_error_reporting
 
@@ -133,8 +140,18 @@ def get_redis():
         redis = popoto.get_redis()
         redis.sadd("my_set", "value")
         redis.rpush("my_queue", "item")
+
+    Always returns the *current* connection. The module-level
+    ``POPOTO_REDIS_DB`` imported above is an import-time snapshot, and
+    ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s own global rather than
+    this one — so returning the snapshot handed callers a stale client after any
+    reconfiguration (#645). Delegating re-reads the live global on every call.
+    (The pytest plugin's ``_swap_db()`` is unaffected either way: it mutates the
+    pool on the existing object instead of rebinding the name.)
     """
-    return POPOTO_REDIS_DB
+    from .redis_db import get_REDIS_DB
+
+    return get_REDIS_DB()
 
 
 def configure(
