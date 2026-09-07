@@ -3936,7 +3936,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-142" name="__codelineno-0-142"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-143" name="__codelineno-0-143"></a>
 <a id="__codelineno-0-144" name="__codelineno-0-144"></a>        <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-146" name="__codelineno-0-146"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">raw</span><span class="p">:</span>
 <a id="__codelineno-0-147" name="__codelineno-0-147"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-148" name="__codelineno-0-148"></a>
@@ -3984,14 +3984,14 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="p">)</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="n">error</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"prediction_error"</span><span class="p">)</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a>        <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"resolved"</span><span class="p">)</span> <span class="ow">and</span> <span class="n">error</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-199" name="__codelineno-0-199"></a>            <span class="n">partition</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"partition"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">"default"</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span>
 <a id="__codelineno-0-201" name="__codelineno-0-201"></a>                <span class="bp">cls</span><span class="o">.</span><span class="n">_error_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">partition</span><span class="p">),</span>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a>                <span class="p">{</span><span class="n">member_key</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">error</span><span class="p">))},</span>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a>            <span class="p">)</span>
@@ -4123,7 +4123,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"record_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a>            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"record_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
@@ -4136,7 +4136,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>            <span class="s2">"recorded_at"</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="p">}</span>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="n">db</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
 <a id="__codelineno-0-347" name="__codelineno-0-347"></a>
 <a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="nd">@classmethod</span>
@@ -4167,12 +4167,12 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"resolve_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"resolve_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>        <span class="c1"># Read current prediction to compute error</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>        <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>
@@ -4190,7 +4190,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a>        <span class="c1"># Atomic resolution via Lua</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a>            <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>            <span class="n">RESOLVE_PREDICTION_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a>            <span class="mi">2</span><span class="p">,</span>  <span class="c1"># number of KEYS</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>            <span class="n">meta_key</span><span class="p">,</span>
@@ -4247,12 +4247,12 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>        <span class="c1"># Check if prediction exists and is unresolved</span>
 <a id="__codelineno-0-460" name="__codelineno-0-460"></a>        <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>
@@ -4267,7 +4267,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="c1"># Atomic resolution via Lua</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>            <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="n">RESOLVE_PREDICTION_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>            <span class="mi">2</span><span class="p">,</span>  <span class="c1"># number of KEYS</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>            <span class="n">meta_key</span><span class="p">,</span>
@@ -4305,7 +4305,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a>        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>
@@ -4325,7 +4325,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">                descending error.</span>
 <a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">        """</span>
 <a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="n">error_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_error_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">error_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">error_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="k">return</span> <span class="p">[</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a>        <span class="p">]</span>
@@ -4471,7 +4471,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>
 <a id="__codelineno-0-678" name="__codelineno-0-678"></a>        <span class="c1"># Optional large-set warning per plan Risk 4.</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>            <span class="n">cardinality</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">error_key</span><span class="p">)</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a>            <span class="n">cardinality</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">error_key</span><span class="p">)</span>
 <a id="__codelineno-0-681" name="__codelineno-0-681"></a>            <span class="k">if</span> <span class="n">cardinality</span> <span class="o">&gt;</span> <span class="mi">10_000</span> <span class="ow">and</span> <span class="n">limit</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-682" name="__codelineno-0-682"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
 <a id="__codelineno-0-683" name="__codelineno-0-683"></a>                    <span class="s2">"error_summary over </span><span class="si">%d</span><span class="s2"> errors with unbounded limit — "</span>
@@ -4485,7 +4485,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-691" name="__codelineno-0-691"></a>        <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>            <span class="n">raw_results</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-693" name="__codelineno-0-693"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a>            <span class="n">raw_results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>            <span class="n">raw_results</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span>
 <a id="__codelineno-0-695" name="__codelineno-0-695"></a>                <span class="n">error_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a>            <span class="p">)</span>
 <a id="__codelineno-0-697" name="__codelineno-0-697"></a>
@@ -4516,7 +4516,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>        <span class="c1"># Pipelined HGETs. Each PL instance has its own meta hash keyed by</span>
 <a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="c1"># $PL:{ClassName}:meta:{pk}, so we do one HGET per member — NOT a</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a>        <span class="c1"># single HMGET over one hash (there is no such shared hash).</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>        <span class="n">pipe</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>        <span class="n">pipe</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="k">for</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">decoded</span><span class="p">:</span>
 <a id="__codelineno-0-727" name="__codelineno-0-727"></a>            <span class="n">meta_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$PL:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:meta:</span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-728" name="__codelineno-0-728"></a>            <span class="n">pipe</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
@@ -4762,7 +4762,7 @@ signature carries no <code>field_name</code>.</p>
 <a id="__codelineno-0-142" name="__codelineno-0-142"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-143" name="__codelineno-0-143"></a>
 <a id="__codelineno-0-144" name="__codelineno-0-144"></a>    <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">)</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-146" name="__codelineno-0-146"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">raw</span><span class="p">:</span>
 <a id="__codelineno-0-147" name="__codelineno-0-147"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-148" name="__codelineno-0-148"></a>
@@ -4885,14 +4885,14 @@ writing it is derivation rather than fabrication.</p>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">),</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="p">)</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">error</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"prediction_error"</span><span class="p">)</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"resolved"</span><span class="p">)</span> <span class="ow">and</span> <span class="n">error</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="n">partition</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"partition"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">"default"</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span>
 <a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">_error_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">partition</span><span class="p">),</span>
 <a id="__codelineno-0-202" name="__codelineno-0-202"></a>            <span class="p">{</span><span class="n">member_key</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">error</span><span class="p">))},</span>
 <a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="p">)</span>
@@ -5259,7 +5259,7 @@ be resolved with resolve_prediction() or auto_resolve().</p>
 <a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"record_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-331" name="__codelineno-0-331"></a>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
 <a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"record_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-334" name="__codelineno-0-334"></a>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
@@ -5272,7 +5272,7 @@ be resolved with resolve_prediction() or auto_resolve().</p>
 <a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="s2">"recorded_at"</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="p">}</span>
 <a id="__codelineno-0-344" name="__codelineno-0-344"></a>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
 <a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="n">db</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -5517,12 +5517,12 @@ exists or already resolved.</p>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"resolve_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-375" name="__codelineno-0-375"></a>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"resolve_prediction() requires a saved model instance"</span><span class="p">)</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>    <span class="c1"># Read current prediction to compute error</span>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a>    <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>    <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>
@@ -5540,7 +5540,7 @@ exists or already resolved.</p>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="c1"># Atomic resolution via Lua</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a>        <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-400" name="__codelineno-0-400"></a>        <span class="n">RESOLVE_PREDICTION_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="mi">2</span><span class="p">,</span>  <span class="c1"># number of KEYS</span>
 <a id="__codelineno-0-402" name="__codelineno-0-402"></a>        <span class="n">meta_key</span><span class="p">,</span>
@@ -5805,12 +5805,12 @@ exists or already resolved.</p>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
 <a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-455" name="__codelineno-0-455"></a>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">member_key</span><span class="p">):</span>
 <a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-458" name="__codelineno-0-458"></a>
 <a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="c1"># Check if prediction exists and is unresolved</span>
 <a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-462" name="__codelineno-0-462"></a>    <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-463" name="__codelineno-0-463"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>
@@ -5825,7 +5825,7 @@ exists or already resolved.</p>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>
 <a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="c1"># Atomic resolution via Lua</span>
 <a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a>        <span class="n">RESOLVE_PREDICTION_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a>        <span class="mi">2</span><span class="p">,</span>  <span class="c1"># number of KEYS</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>        <span class="n">meta_key</span><span class="p">,</span>
@@ -5960,7 +5960,7 @@ exists or already resolved.</p>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="n">meta_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_meta_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>
@@ -6105,7 +6105,7 @@ descending error.</p>
 <a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">            descending error.</span>
 <a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    """</span>
 <a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="n">error_key</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_error_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">partition</span><span class="p">)</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">error_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">error_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-535" name="__codelineno-0-535"></a>    <span class="k">return</span> <span class="p">[</span>
 <a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">results</span>
 <a id="__codelineno-0-537" name="__codelineno-0-537"></a>    <span class="p">]</span>
@@ -6490,7 +6490,7 @@ scan.</p>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>
 <a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="c1"># Optional large-set warning per plan Risk 4.</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="n">cardinality</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">error_key</span><span class="p">)</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="n">cardinality</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">error_key</span><span class="p">)</span>
 <a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="k">if</span> <span class="n">cardinality</span> <span class="o">&gt;</span> <span class="mi">10_000</span> <span class="ow">and</span> <span class="n">limit</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-682" name="__codelineno-0-682"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
 <a id="__codelineno-0-683" name="__codelineno-0-683"></a>                <span class="s2">"error_summary over </span><span class="si">%d</span><span class="s2"> errors with unbounded limit — "</span>
@@ -6504,7 +6504,7 @@ scan.</p>
 <a id="__codelineno-0-691" name="__codelineno-0-691"></a>    <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="n">raw_results</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-0-693" name="__codelineno-0-693"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a>        <span class="n">raw_results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>        <span class="n">raw_results</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span>
 <a id="__codelineno-0-695" name="__codelineno-0-695"></a>            <span class="n">error_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="p">)</span>
 <a id="__codelineno-0-697" name="__codelineno-0-697"></a>
@@ -6535,7 +6535,7 @@ scan.</p>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>    <span class="c1"># Pipelined HGETs. Each PL instance has its own meta hash keyed by</span>
 <a id="__codelineno-0-723" name="__codelineno-0-723"></a>    <span class="c1"># $PL:{ClassName}:meta:{pk}, so we do one HGET per member — NOT a</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a>    <span class="c1"># single HMGET over one hash (there is no such shared hash).</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="n">pipe</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="n">pipe</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a>    <span class="k">for</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">decoded</span><span class="p">:</span>
 <a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="n">meta_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"$PL:</span><span class="si">{</span><span class="n">class_name</span><span class="si">}</span><span class="s2">:meta:</span><span class="si">{</span><span class="n">member_key</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">meta_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>

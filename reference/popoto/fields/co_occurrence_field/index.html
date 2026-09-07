@@ -3985,7 +3985,7 @@ Default 500.</p>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="s2">"list[tuple[Any, float]]"</span><span class="p">,</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>            <span class="p">),</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="p">)</span>
@@ -4073,8 +4073,8 @@ Default 500.</p>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>        <span class="p">)[:</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">max_edges</span><span class="p">))]</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>        <span class="n">edge_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ranked</span><span class="p">))</span>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ranked</span><span class="p">))</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>        <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-383" name="__codelineno-0-383"></a>
 <a id="__codelineno-0-384" name="__codelineno-0-384"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
@@ -4188,7 +4188,7 @@ Default 500.</p>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>            <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>            <span class="n">LINK_WITH_PRUNE_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a>            <span class="n">source_key</span><span class="p">,</span>
@@ -4200,7 +4200,7 @@ Default 500.</p>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">symmetric</span><span class="p">:</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>            <span class="n">target_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>            <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>                <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>                <span class="n">LINK_WITH_PRUNE_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>                <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>                <span class="n">target_key</span><span class="p">,</span>
@@ -4250,7 +4250,7 @@ Default 500.</p>
 <a id="__codelineno-0-554" name="__codelineno-0-554"></a>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>        <span class="n">cap</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a>        <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
 <a id="__codelineno-0-558" name="__codelineno-0-558"></a>        <span class="n">new_weight</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a>            <span class="n">db</span><span class="p">,</span>
 <a id="__codelineno-0-560" name="__codelineno-0-560"></a>            <span class="n">STRENGTHEN_CLAMP_LUA</span><span class="p">,</span>
@@ -4302,7 +4302,7 @@ Default 500.</p>
 <a id="__codelineno-0-606" name="__codelineno-0-606"></a>                    <span class="s2">"target_pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">),</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>                    <span class="s2">"delta"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a>                <span class="p">}</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
 <a id="__codelineno-0-610" name="__codelineno-0-610"></a>                    <span class="n">stream_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="n">max_length</span><span class="p">,</span> <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-611" name="__codelineno-0-611"></a>                <span class="p">)</span>
 <a id="__codelineno-0-612" name="__codelineno-0-612"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
@@ -4327,7 +4327,7 @@ Default 500.</p>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-632" name="__codelineno-0-632"></a>
 <a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>        <span class="n">db</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">source_key</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>
 <a id="__codelineno-0-637" name="__codelineno-0-637"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">symmetric</span><span class="p">:</span>
@@ -4364,14 +4364,14 @@ Default 500.</p>
 <a id="__codelineno-0-668" name="__codelineno-0-668"></a>
 <a id="__codelineno-0-669" name="__codelineno-0-669"></a>        <span class="k">if</span> <span class="n">factor</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-670" name="__codelineno-0-670"></a>            <span class="c1"># Special case: remove all edges</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a>            <span class="n">count</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a>            <span class="n">count</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-673" name="__codelineno-0-673"></a>            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>
 <a id="__codelineno-0-674" name="__codelineno-0-674"></a>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a>        <span class="c1"># Use threshold of 0.001 for pruning</span>
 <a id="__codelineno-0-676" name="__codelineno-0-676"></a>        <span class="n">threshold</span> <span class="o">=</span> <span class="mf">0.001</span>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>            <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a>            <span class="n">WEAKEN_ALL_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-680" name="__codelineno-0-680"></a>            <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-681" name="__codelineno-0-681"></a>            <span class="n">edge_key</span><span class="p">,</span>
@@ -4397,7 +4397,7 @@ Default 500.</p>
 <a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="n">edge_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-702" name="__codelineno-0-702"></a>
 <a id="__codelineno-0-703" name="__codelineno-0-703"></a>        <span class="c1"># ZREVRANGEBYSCORE: highest to lowest, with score filter</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrangebyscore</span><span class="p">(</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="n">results</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrangebyscore</span><span class="p">(</span>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>            <span class="n">edge_key</span><span class="p">,</span>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a>            <span class="s2">"+inf"</span><span class="p">,</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">min_weight</span><span class="p">),</span>
@@ -4475,7 +4475,7 @@ Default 500.</p>
 <a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="n">key_prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
 <a id="__codelineno-0-780" name="__codelineno-0-780"></a>
 <a id="__codelineno-0-781" name="__codelineno-0-781"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-783" name="__codelineno-0-783"></a>            <span class="n">PROPAGATE_BFS_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-784" name="__codelineno-0-784"></a>            <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-785" name="__codelineno-0-785"></a>            <span class="n">key_prefix</span><span class="p">,</span>
@@ -4534,7 +4534,7 @@ Default 500.</p>
 <a id="__codelineno-0-838" name="__codelineno-0-838"></a>
 <a id="__codelineno-0-839" name="__codelineno-0-839"></a>        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">symmetric</span><span class="p">:</span>
 <a id="__codelineno-0-840" name="__codelineno-0-840"></a>            <span class="c1"># Get all linked PKs so we can remove reverse edges</span>
-<a id="__codelineno-0-841" name="__codelineno-0-841"></a>            <span class="n">linked</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a>            <span class="n">linked</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-842" name="__codelineno-0-842"></a>            <span class="k">for</span> <span class="n">target_pk</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">:</span>
 <a id="__codelineno-0-843" name="__codelineno-0-843"></a>                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_pk</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
 <a id="__codelineno-0-844" name="__codelineno-0-844"></a>                    <span class="n">target_pk</span> <span class="o">=</span> <span class="n">target_pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
@@ -4542,13 +4542,13 @@ Default 500.</p>
 <a id="__codelineno-0-846" name="__codelineno-0-846"></a>                <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-847" name="__codelineno-0-847"></a>                    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-848" name="__codelineno-0-848"></a>                <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a>                    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>                    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-850" name="__codelineno-0-850"></a>
 <a id="__codelineno-0-851" name="__codelineno-0-851"></a>        <span class="c1"># Delete this instance's edge sorted set</span>
 <a id="__codelineno-0-852" name="__codelineno-0-852"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-853" name="__codelineno-0-853"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-854" name="__codelineno-0-854"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-855" name="__codelineno-0-855"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a>            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-856" name="__codelineno-0-856"></a>
 <a id="__codelineno-0-857" name="__codelineno-0-857"></a>        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-858" name="__codelineno-0-858"></a>            <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
@@ -4692,7 +4692,7 @@ Default 500.</p>
 <a id="__codelineno-0-289" name="__codelineno-0-289"></a>
 <a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span>
 <a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="s2">"list[tuple[Any, float]]"</span><span class="p">,</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span>
 <a id="__codelineno-0-293" name="__codelineno-0-293"></a>            <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">withscores</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="p">),</span>
 <a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="p">)</span>
@@ -4897,8 +4897,8 @@ both are load-bearing rather than cosmetic:</p>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="p">)[:</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">max_edges</span><span class="p">))]</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a>
 <a id="__codelineno-0-379" name="__codelineno-0-379"></a>    <span class="n">edge_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ranked</span><span class="p">))</span>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ranked</span><span class="p">))</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a>    <span class="k">return</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -5416,7 +5416,7 @@ Lua script to handle ZADD + ZCARD + conditional pruning.</p>
 <a id="__codelineno-0-492" name="__codelineno-0-492"></a>
 <a id="__codelineno-0-493" name="__codelineno-0-493"></a>    <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
 <a id="__codelineno-0-494" name="__codelineno-0-494"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="n">LINK_WITH_PRUNE_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-497" name="__codelineno-0-497"></a>        <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-498" name="__codelineno-0-498"></a>        <span class="n">source_key</span><span class="p">,</span>
@@ -5428,7 +5428,7 @@ Lua script to handle ZADD + ZCARD + conditional pruning.</p>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">symmetric</span><span class="p">:</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="n">target_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a>            <span class="n">LINK_WITH_PRUNE_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a>            <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-510" name="__codelineno-0-510"></a>            <span class="n">target_key</span><span class="p">,</span>
@@ -5740,7 +5740,7 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-554" name="__codelineno-0-554"></a>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="n">cap</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CO_OCCURRENCE_WEIGHT_CAP</span>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a>    <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
 <a id="__codelineno-0-558" name="__codelineno-0-558"></a>    <span class="n">new_weight</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a>        <span class="n">db</span><span class="p">,</span>
 <a id="__codelineno-0-560" name="__codelineno-0-560"></a>        <span class="n">STRENGTHEN_CLAMP_LUA</span><span class="p">,</span>
@@ -5792,7 +5792,7 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-606" name="__codelineno-0-606"></a>                <span class="s2">"target_pk"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">),</span>
 <a id="__codelineno-0-607" name="__codelineno-0-607"></a>                <span class="s2">"delta"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span>
 <a id="__codelineno-0-608" name="__codelineno-0-608"></a>            <span class="p">}</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
 <a id="__codelineno-0-610" name="__codelineno-0-610"></a>                <span class="n">stream_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="n">max_length</span><span class="p">,</span> <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-0-611" name="__codelineno-0-611"></a>            <span class="p">)</span>
 <a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
@@ -5934,7 +5934,7 @@ called with a pipeline (execution deferred).</p>
 <a id="__codelineno-0-631" name="__codelineno-0-631"></a>    <span class="n">target_pk</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-632" name="__codelineno-0-632"></a>
 <a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="n">source_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">source_pk</span><span class="p">)</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>    <span class="n">db</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="n">get_REDIS_DB</span><span class="p">()</span>
 <a id="__codelineno-0-635" name="__codelineno-0-635"></a>    <span class="n">db</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">source_key</span><span class="p">,</span> <span class="n">target_pk</span><span class="p">)</span>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>
 <a id="__codelineno-0-637" name="__codelineno-0-637"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">symmetric</span><span class="p">:</span>
@@ -6159,14 +6159,14 @@ factor=0 removes all edges.</p>
 <a id="__codelineno-0-668" name="__codelineno-0-668"></a>
 <a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="k">if</span> <span class="n">factor</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-670" name="__codelineno-0-670"></a>        <span class="c1"># Special case: remove all edges</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a>        <span class="n">count</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a>        <span class="n">count</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-673" name="__codelineno-0-673"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>
 <a id="__codelineno-0-674" name="__codelineno-0-674"></a>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="c1"># Use threshold of 0.001 for pruning</span>
 <a id="__codelineno-0-676" name="__codelineno-0-676"></a>    <span class="n">threshold</span> <span class="o">=</span> <span class="mf">0.001</span>
 <a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>        <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="n">WEAKEN_ALL_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="n">edge_key</span><span class="p">,</span>
@@ -6343,7 +6343,7 @@ sorted by weight descending.</p>
 <a id="__codelineno-0-701" name="__codelineno-0-701"></a>    <span class="n">edge_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
 <a id="__codelineno-0-702" name="__codelineno-0-702"></a>
 <a id="__codelineno-0-703" name="__codelineno-0-703"></a>    <span class="c1"># ZREVRANGEBYSCORE: highest to lowest, with score filter</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrevrangebyscore</span><span class="p">(</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrangebyscore</span><span class="p">(</span>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>        <span class="n">edge_key</span><span class="p">,</span>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="s2">"+inf"</span><span class="p">,</span>
 <a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">min_weight</span><span class="p">),</span>
@@ -6671,7 +6671,7 @@ weights. Seeds are not included in results (except for depth=0).</p>
 <a id="__codelineno-0-779" name="__codelineno-0-779"></a>    <span class="n">key_prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_edge_key_prefix</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
 <a id="__codelineno-0-780" name="__codelineno-0-780"></a>
 <a id="__codelineno-0-781" name="__codelineno-0-781"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="p">,</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>        <span class="n">get_REDIS_DB</span><span class="p">(),</span>
 <a id="__codelineno-0-783" name="__codelineno-0-783"></a>        <span class="n">PROPAGATE_BFS_LUA</span><span class="p">,</span>
 <a id="__codelineno-0-784" name="__codelineno-0-784"></a>        <span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-785" name="__codelineno-0-785"></a>        <span class="n">key_prefix</span><span class="p">,</span>
@@ -6900,7 +6900,7 @@ all other instances' edge sorted sets via SCAN + ZREM.</p>
 <a id="__codelineno-0-838" name="__codelineno-0-838"></a>
 <a id="__codelineno-0-839" name="__codelineno-0-839"></a>    <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">symmetric</span><span class="p">:</span>
 <a id="__codelineno-0-840" name="__codelineno-0-840"></a>        <span class="c1"># Get all linked PKs so we can remove reverse edges</span>
-<a id="__codelineno-0-841" name="__codelineno-0-841"></a>        <span class="n">linked</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a>        <span class="n">linked</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">edge_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-0-842" name="__codelineno-0-842"></a>        <span class="k">for</span> <span class="n">target_pk</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">:</span>
 <a id="__codelineno-0-843" name="__codelineno-0-843"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_pk</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
 <a id="__codelineno-0-844" name="__codelineno-0-844"></a>                <span class="n">target_pk</span> <span class="o">=</span> <span class="n">target_pk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
@@ -6908,13 +6908,13 @@ all other instances' edge sorted sets via SCAN + ZREM.</p>
 <a id="__codelineno-0-846" name="__codelineno-0-846"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-847" name="__codelineno-0-847"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-848" name="__codelineno-0-848"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">target_edge_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-850" name="__codelineno-0-850"></a>
 <a id="__codelineno-0-851" name="__codelineno-0-851"></a>    <span class="c1"># Delete this instance's edge sorted set</span>
 <a id="__codelineno-0-852" name="__codelineno-0-852"></a>    <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-853" name="__codelineno-0-853"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-854" name="__codelineno-0-854"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-855" name="__codelineno-0-855"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">edge_key</span><span class="p">)</span>
 <a id="__codelineno-0-856" name="__codelineno-0-856"></a>
 <a id="__codelineno-0-857" name="__codelineno-0-857"></a>    <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_delete</span><span class="p">(</span>
 <a id="__codelineno-0-858" name="__codelineno-0-858"></a>        <span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>

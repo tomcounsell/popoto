@@ -3802,7 +3802,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-309" name="__codelineno-0-309"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">old_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">old_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">old_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="n">unique_set_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
 <a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span> <span class="n">field_value</span>
@@ -3812,7 +3812,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>            <span class="p">)</span>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">sadd</span><span class="p">(</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>            <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">sadd</span><span class="p">(</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a>                <span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="p">)</span>
 <a id="__codelineno-0-324" name="__codelineno-0-324"></a>
@@ -3866,7 +3866,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="k">return</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_filter_query_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="w">        </span><span class="sd">"""</span>
@@ -3993,7 +3993,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-499" name="__codelineno-0-499"></a>                    <span class="k">for</span> <span class="n">query_value_elem</span> <span class="ow">in</span> <span class="n">query_value</span>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>                <span class="p">]</span>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>                <span class="k">if</span> <span class="n">set_keys</span><span class="p">:</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">sunion</span><span class="p">(</span><span class="n">set_keys</span><span class="p">))</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">sunion</span><span class="p">(</span><span class="n">set_keys</span><span class="p">))</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>                <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>
@@ -4006,7 +4006,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>                    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>                        <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>                                <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>                            <span class="p">)</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>                        <span class="p">)</span>
@@ -4014,7 +4014,7 @@ shortcuts.KeyField: The concrete class combining this mixin with Field.</p>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>                <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__isnull"</span><span class="p">):</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>                    <span class="k">if</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>                        <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>                            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>                            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a>                                <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a>                            <span class="p">)</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>                        <span class="p">)</span>
@@ -4495,7 +4495,7 @@ batched into a single round-trip to Redis.</p>
 <a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-309" name="__codelineno-0-309"></a>            <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">old_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">old_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>            <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">old_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-312" name="__codelineno-0-312"></a>
 <a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="n">unique_set_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
 <a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span> <span class="n">field_value</span>
@@ -4505,7 +4505,7 @@ batched into a single round-trip to Redis.</p>
 <a id="__codelineno-0-318" name="__codelineno-0-318"></a>            <span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="p">)</span>
 <a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>        <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">sadd</span><span class="p">(</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>        <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">sadd</span><span class="p">(</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a>            <span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -4746,7 +4746,7 @@ they don't maintain index Sets.</p>
 <a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
 <a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="k">return</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 <a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srem</span><span class="p">(</span><span class="n">unique_set_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5305,7 +5305,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-499" name="__codelineno-0-499"></a>                <span class="k">for</span> <span class="n">query_value_elem</span> <span class="ow">in</span> <span class="n">query_value</span>
 <a id="__codelineno-0-500" name="__codelineno-0-500"></a>            <span class="p">]</span>
 <a id="__codelineno-0-501" name="__codelineno-0-501"></a>            <span class="k">if</span> <span class="n">set_keys</span><span class="p">:</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">sunion</span><span class="p">(</span><span class="n">set_keys</span><span class="p">))</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">sunion</span><span class="p">(</span><span class="n">set_keys</span><span class="p">))</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>            <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-504" name="__codelineno-0-504"></a>                <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a>
@@ -5318,7 +5318,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a>                <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-514" name="__codelineno-0-514"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
 <a id="__codelineno-0-516" name="__codelineno-0-516"></a>                            <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="n">query_value</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-517" name="__codelineno-0-517"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-518" name="__codelineno-0-518"></a>                    <span class="p">)</span>
@@ -5326,7 +5326,7 @@ passed to Query.get_many_objects() to fetch the actual instances.</p>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>            <span class="k">elif</span> <span class="n">query_param</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"__isnull"</span><span class="p">):</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>                <span class="k">if</span> <span class="n">query_value</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>                    <span class="n">keys_lists_to_intersect</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>                        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>                        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">smembers</span><span class="p">(</span>
 <a id="__codelineno-0-524" name="__codelineno-0-524"></a>                            <span class="n">DB_key</span><span class="p">(</span><span class="n">redis_set_key_prefix</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a>                        <span class="p">)</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a>                    <span class="p">)</span>

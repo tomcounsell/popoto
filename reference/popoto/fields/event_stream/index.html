@@ -3391,7 +3391,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>                    <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>                <span class="p">)</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a>                    <span class="n">stream_key</span><span class="p">,</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a>                    <span class="n">entry</span><span class="p">,</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>                    <span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
@@ -3434,7 +3434,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-233" name="__codelineno-0-233"></a>                    <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-234" name="__codelineno-0-234"></a>                <span class="p">)</span>
 <a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
 <a id="__codelineno-0-237" name="__codelineno-0-237"></a>                    <span class="n">stream_key</span><span class="p">,</span>
 <a id="__codelineno-0-238" name="__codelineno-0-238"></a>                    <span class="n">entry</span><span class="p">,</span>
 <a id="__codelineno-0-239" name="__codelineno-0-239"></a>                    <span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>

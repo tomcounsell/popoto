@@ -3113,7 +3113,7 @@ annotate-and-close paths refuse such a pipeline.</p>
 <a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">        passing it as ``pipeline=`` to Popoto model and recipe calls), then</span>
 <a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">        call ``execute()``.</span>
 <a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">    """</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a>    <span class="k">return</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">(</span><span class="n">transaction</span><span class="o">=</span><span class="n">transaction</span><span class="p">)</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a>    <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">pipeline</span><span class="p">(</span><span class="n">transaction</span><span class="o">=</span><span class="n">transaction</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

@@ -3184,7 +3184,12 @@ to work; see :data:<code>TD_UPDATE_HASH_FIELD</code>.</p>
 <span class="normal"><a href="#__codelineno-0-227">227</a></span>
 <span class="normal"><a href="#__codelineno-0-228">228</a></span>
 <span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="k">class</span><span class="w"> </span><span class="nc">TDValueField</span><span class="p">(</span><span class="n">DecimalField</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="k">class</span><span class="w"> </span><span class="nc">TDValueField</span><span class="p">(</span><span class="n">DecimalField</span><span class="p">):</span>
 <a id="__codelineno-0-116" name="__codelineno-0-116"></a><span class="w">    </span><span class="sd">"""A ``Decimal`` column supporting atomic temporal-difference updates.</span>
 <a id="__codelineno-0-117" name="__codelineno-0-117"></a>
 <a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="sd">    Declares no storage of its own and takes no extra constructor arguments —</span>
@@ -3283,23 +3288,28 @@ to work; see :data:<code>TD_UPDATE_HASH_FIELD</code>.</p>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a>        <span class="c1"># Client resolved at call time (module attribute, not an import-time</span>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="c1"># binding) so a rebound connection or a test spy still intercepts.</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="n">client</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">redis_db</span><span class="o">.</span><span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="n">td_error</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>            <span class="n">client</span><span class="p">,</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>            <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>            <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>            <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># KEYS[1] — model hash key</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="p">)</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="c1"># This is already immune to the #655 staleness bug by the same</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="c1"># mechanism ``pytest_plugin`` relies on: the attribute is read on each</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="c1"># call, so ``set_REDIS_DB_settings()``'s rebind is observed. It reads</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="c1"># like a missed site only if you grep for the *import statement*</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="c1"># rather than the access — do not "convert" it.</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="n">client</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">redis_db</span><span class="o">.</span><span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="n">td_error</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>            <span class="n">client</span><span class="p">,</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>            <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>            <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>            <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># KEYS[1] — model hash key</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="p">)</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3650,7 +3660,12 @@ TDValueField named <code>q_value</code>.</p>
 <span class="normal"><a href="#__codelineno-0-227">227</a></span>
 <span class="normal"><a href="#__codelineno-0-228">228</a></span>
 <span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="nd">@classmethod</span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="k">def</span><span class="w"> </span><span class="nf">td_update</span><span class="p">(</span>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a>    <span class="bp">cls</span><span class="p">,</span>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
@@ -3732,23 +3747,28 @@ TDValueField named <code>q_value</code>.</p>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="c1"># Client resolved at call time (module attribute, not an import-time</span>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="c1"># binding) so a rebound connection or a test spy still intercepts.</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="n">client</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">redis_db</span><span class="o">.</span><span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="n">td_error</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="n">client</span><span class="p">,</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># KEYS[1] — model hash key</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="p">)</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="c1"># This is already immune to the #655 staleness bug by the same</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="c1"># mechanism ``pytest_plugin`` relies on: the attribute is read on each</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="c1"># call, so ``set_REDIS_DB_settings()``'s rebind is observed. It reads</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="c1"># like a missed site only if you grep for the *import statement*</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="c1"># rather than the access — do not "convert" it.</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="n">client</span> <span class="o">=</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">redis_db</span><span class="o">.</span><span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="n">td_error</span> <span class="o">=</span> <span class="n">run_lua</span><span class="p">(</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="n">client</span><span class="p">,</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># KEYS[1] — model hash key</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="p">)</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>    <span class="k">if</span> <span class="n">pipeline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
