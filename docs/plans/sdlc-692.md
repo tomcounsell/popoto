@@ -461,25 +461,381 @@ block anything; it is work inside this plan.
 
 ### Key Elements
 
+1. **`tests/benchmarks/supersession_axis.py`** — new. Owns `ARM_CHOICES`, the
+   label-blind identity function, the write router, and per-run stats. Sibling
+   in shape to `extraction_axis.py`.
+2. **`session_date` on parsed turns** — `_parse_record` reads `haystack_dates`
+   and attaches a parsed epoch to each history entry.
+3. **Conditional `ValidityField` + branched write site** in `external_base.py`.
+4. **Teardown that actually cleans the validity keyspace** — required by the
+   spike-2 side finding, not optional.
+5. **`--supersession` CLI axis + arm-labelled artifacts** in `run_external.py`,
+   plus `--no-validity-gating` for arm B.
+6. **Observability**: exclusion-set cardinality and supersession counts reach
+   `ScenarioResult.metadata` and the aggregate report, so acceptance criterion 2
+   is *demonstrated by an emitted number*.
+
 ### Flow
+
+Per benchmark item: parse turns (now with dates) → build model class (with
+`ValidityField` iff the arm is active) → for each written unit, ask the identity
+function for an identity; no identity means a plain `.save()`, an identity means
+`save_and_supersede` at that session's date → retrieve through the assembler,
+which gates or does not gate per the runtime flag → emit result metadata
+including exclusion-set size → teardown deletes records *and* the six validity
+keys *and* the open pointers.
 
 ### Technical Approach
 
+**1. `supersession_axis.ARM_CHOICES = ("none", "content-identity")`**, default
+`"none"`. `"none"` is byte-identical to today: no `ValidityField` declared, no
+protocol call, so every committed artifact remains the baseline it was produced
+under — the same contract `--extraction raw` holds.
+
+**2. The identity function — the whole heuristic, isolated and label-blind.**
+
+```python
+def identity_of(unit_text: str) -> Optional[tuple[str, str]]:
+    """Return a (subject, predicate) identity, or None to write plainly.
+
+    Label-blind by construction: takes text and nothing else. The caller has
+    the answer key and the question_type; this function's signature makes it
+    impossible for either to arrive here.
+    """
+```
+
+Rule, deliberately high-precision / low-recall:
+
+- Split `unit_text` into sentences with a pinned stdlib-only splitter (no new
+  dependency). Take the **first** sentence matching the pattern below; at most
+  one identity per written unit, so a unit can join at most one group.
+- Match first-person stateful assertions only: a leading `I` (case-folded)
+  followed by a verb drawn from a **pinned** state-verb set, optionally followed
+  by a pinned preposition. The predicate token is `verb` or `verb_prep`
+  (`"I now work at Acme"` → `("i", "work_at")`; `"I live in Boston"` →
+  `("i", "live_in")`). Everything else returns `None`.
+- The subject is the literal `"i"` — per-item namespaces are already
+  agent-scoped, so no cross-speaker collision is possible within an item.
+- The returned pair is handed to `SupersessionProtocol.save_and_supersede` as
+  `identity_key=`, which normalizes and hashes it to a 16-hex digest itself
+  (#580 plan D7) — raw text never reaches the keyspace.
+
+Why this shape and not something cleverer: the gate is subtractive, so identity
+*recall* costs nothing but identity *precision* errors delete live records and
+can only depress the measured number. A rule that fires on a slot ("where I
+work") and treats the latest dated claim as current is the narrowest thing that
+still models a genuine update. It will be wrong sometimes (a person can hold two
+jobs); that is a stated property of the heuristic, reported alongside the number,
+not a bug to be patched by widening it.
+
+The verb and preposition sets are **magic numbers in the CLAUDE.md sense** —
+pinned in-repo for experimental tuning, not exposed as constructor kwargs or
+CLI options. They live in `supersession_axis.py`, **not** in
+`popoto.fields.constants.Defaults`: they are harness-local, and adding them to
+`Defaults` would both leak a benchmark artifact into the library surface and
+trip the `tests/benchmarks/test_defaults_sync.py` registration gate for no
+benefit.
+
+**3. The write router.**
+
+```python
+def route_write(instance, *, identity, at, stats) -> bool:
+    if identity is None:
+        stats.plain_writes += 1
+        return bool(instance.save())
+    result = SupersessionProtocol.save_and_supersede(
+        instance, identity_key=identity, at=at
+    )
+    stats.identity_writes += 1
+    if result.closed_key:
+        stats.supersessions += 1
+    return True
+```
+
+Two non-obvious requirements, both from spike-2:
+
+- **The first claim of a group also goes through `save_and_supersede`.** A plain
+  `.save()` never registers an incumbent, so a first-claim-plain / second-claim-
+  supersede sequence closes nothing and produces an exclusion set of 0 — the
+  exact defect this issue exists to fix, reintroduced one level down. There is
+  no branch on "is this the first"; every identity-bearing write takes the same
+  call, and `closed_key is None` on the first is the expected, counted outcome.
+- **`at=` must be the session's date, not `time.time()`.** Passing wall-clock
+  now would make every interval open-and-close within the same run second,
+  which both destroys the bitemporal structure and risks
+  `ValidityCloseBeforeStartError` on ties.
+
+Exceptions from the protocol (`SupersedeDeclinedError`,
+`ValidityMemberAbsentError`, `ValidityCloseBeforeStartError`) are caught per
+unit, counted in `stats.failures`, and logged — matching how the ingest loop
+already treats a failed save — but the count is **reported in the run artifact**,
+so a producer that is silently failing cannot masquerade as a producer that
+found nothing.
+
+**4. Date parsing and ordering.** `_parse_record` parses `haystack_dates[i]`
+(format `"%Y/%m/%d (%a) %H:%M"`) into an epoch float and attaches it to each turn
+of session `i` as `session_date`. A missing or unparseable date yields `None`,
+and a `None` date disables the producer for that turn (it falls back to a plain
+`.save()`) — the producer never invents a timestamp. The ingest loop then writes
+identity-bearing units **in ascending `session_date` order**; see Race
+Conditions for why the corpus order is not sufficient.
+
+**5. Teardown.** After the per-record delete loop and before the existing SCANs:
+
+```python
+if self._supersession_arm != "none":
+    keys = ValidityField.get_all_keys(self._model_class, "validity")
+    get_REDIS_DB().delete(*keys.values())
+    # open-claim pointers are per-digest; SCAN the prefix
+    prefix = ValidityField.get_prefix_db_key(self._model_class, "validity").redis_key
+    # SCAN f"{prefix}:open:*" → DEL in batches
+```
+
+This is mandatory, not hygiene: per the spike-2 side finding these six keys are
+**shared across every item in a run** (the post-hoc `__name__` rename does not
+reach `_meta.db_class_key`), and the harness's existing two SCAN patterns cannot
+match them. Without this the exclusion set grows monotonically across the run.
+
+**6. CLI and reporting.** `--supersession {none,content-identity}` (default
+`none`) and `--no-validity-gating` (sets `Defaults.VALIDITY_GATING_ENABLED =
+False` once at startup, before any assemble — spike-1 confirms both layers read
+it at call time). Arm C is `--supersession content-identity`; arm B adds
+`--no-validity-gating`; arm A is the flagless default. Artifacts gain a
+`_sup-{arm}` / `_nogate` filename label exactly as `--extraction` does, so the
+three arms cannot overwrite each other.
+
+The report gains, per item and in aggregate: `units_seen`,
+`units_with_identity`, `identity_groups`, `supersessions`, `producer_failures`,
+`n_excluded_keys` (cardinality of the gate's exclusion set at retrieval time),
+and `n_excluded_hits` (how many of *this item's* retrieved candidates the gate
+actually removed). The last two are what turn acceptance criterion 2 from an
+assertion into an observation, and `n_excluded_hits` is the one that
+distinguishes "the gate had state" from "the gate did something".
+
+A **firing-rate caveat that must be measured, not assumed**: under
+`--extraction raw` (the committed baseline arm) a written unit is an entire
+conversational turn, so the sentence-level identity rule may match rarely. Under
+`--extraction heuristic`/`claude` the units are atomic facts and it should match
+far more often. The demonstration run therefore reports the firing rate
+explicitly; a near-zero rate on the raw arm is a publishable finding about the
+raw arm, and it is precisely why Task 6's fixture item exists as an independent
+proof that the mechanism works.
+
 ## Failure Path Test Strategy
+
+### Exception Handling Coverage
+
+- `save_and_supersede` raising `SupersedeDeclinedError` mid-item: assert the
+  item completes, `stats.failures` increments, and the remaining turns still
+  write — one failed unit never aborts an item (mirrors the existing
+  `except Exception` around `.save()` at `external_base.py:479`).
+- `ValidityCloseBeforeStartError` from an out-of-order `at`: assert the ordering
+  guarantee prevents it, by constructing a fixture whose `haystack_dates` are
+  deliberately non-monotonic relative to haystack order and asserting the run
+  completes with the *latest-dated* claim open.
+- Teardown key-deletion failing (Redis error) must not abort teardown of
+  subsequent items.
+
+### Empty/Invalid Input Handling
+
+- `haystack_dates` absent, shorter than `haystack_sessions`, or unparseable →
+  `session_date is None` → producer disabled for those turns, run completes,
+  arm degrades to plain saves. Assert no exception and a counted stat.
+- Empty / whitespace unit text → `identity_of` returns `None`.
+- An item where no unit yields an identity → zero supersessions, exclusion set
+  0, result still `ok`. This is a legitimate outcome, not an error.
+
+### Error State Rendering
+
+- The aggregate report must print `producer_failures` even when zero, so a
+  reader can distinguish "producer found nothing" from "producer errored on
+  everything". A run with `supersessions == 0` must say so prominently rather
+  than reporting a flat delta as if it were a measurement.
 
 ## Test Impact
 
+New, in `tests/benchmarks/`:
+
+- `test_supersession_axis.py`
+  - `identity_of` signature takes exactly one positional parameter — the
+    structural label-blindness assertion, in the spirit of #514's gold-blind
+    test. Also assert by `inspect.signature` that neither `relevant_ids` nor
+    `question_type` appears in `identity_of` or `route_write`.
+  - Identity rule table: positive cases, negative cases, at-most-one-identity
+    per unit, `None` on empty text.
+  - `route_write` sends the **first** claim of a group through
+    `save_and_supersede` (regression guard for the spike-2 finding — a test that
+    asserts an exclusion set of ≥1 after two identity-bearing writes, which the
+    plain-first-save bug would fail).
+- `test_external.py` additions
+  - `_parse_record` attaches `session_date` to every turn; LoCoMo items are
+    unaffected (no `session_date` key required).
+  - A fixture-driven end-to-end item under arm `content-identity` produces a
+    **non-empty** exclusion set and the superseded record is absent from the
+    assembled records while the successor is present.
+  - Arm `none` is byte-identical to today: no `ValidityField` on the model
+    class, no validity keys in Redis after setup.
+  - `--no-validity-gating` restores the superseded record.
+  - Teardown leaves no `$ValidityF:*` key behind for the model — the direct
+    regression test for the key-leak hazard.
+
+Existing tests expected unchanged: all of `test_external.py`'s current cases,
+`test_harness.py`, `test_gold_blind_scoring.py`. Arm `none` being the default is
+what makes that a real expectation rather than a hope.
+
+Suite run under `POPOTO_TEST_DB` per lane; environment stated with every count.
+
 ## Rabbit Holes
+
+- **Building a real fact extractor.** The temptation is to reach for an LLM to
+  get true (subject, predicate) identities. That is #489's axis, already shipped,
+  and this producer composes with it — it is not this issue's job to improve it.
+- **Fixing the per-item key-isolation defect properly.** The right fix is
+  probably making the model builders set `_meta.db_class_key` (or constructing
+  the class with the right name), which touches every field type's keyspace and
+  invalidates comparability with committed artifacts. Out of scope; file it.
+- **Widening the identity rule until the delta gets big.** Tuning a heuristic
+  against the number it produces is the teaching-to-the-test failure re-entering
+  through the back door. The rule is fixed before the demonstration run and any
+  later change is a separate, disclosed revision.
+- **Running the n=500 three-arm comparison inside this issue.** That is #586.
+- **Answering #693.** Tempting, since the producer makes the inertness vivid.
+  Not this issue.
+- **Reconciling with `ProvenanceJournal`'s `supersede()`.** Two producer
+  surfaces exist; #606/PR #638 already converged them onto
+  `SupersessionProtocol`. Using the protocol directly is correct and choosing
+  between them is not a live question.
 
 ## Risks
 
+### Risk 1: The producer fires too rarely on the raw arm to move any number
+
+Most likely outcome, and the one to plan for. Mitigation: the firing rate is a
+reported statistic, Task 6's fixture proves the mechanism independently of
+corpus firing rate, and a near-zero rate is written up as a finding about
+verbatim-turn ingestion rather than hidden. #586 can then choose to run its
+before/after on an extraction arm where units are atomic.
+
+### Risk 2: A false supersession deletes a gold session's only evidence
+
+The gate is subtractive, so precision errors cost recall directly. Mitigations:
+the conservative rule; `n_excluded_hits` makes every actual removal countable;
+and the A→B→C decomposition means a recall drop is attributable to the gate
+rather than smeared across the whole change.
+
+### Risk 3: Cross-item validity key sharing corrupts the measurement
+
+Addressed by Technical Approach step 5. The residual risk is a *crashed* run
+leaving keys behind for the next run to inherit. Mitigation: the demonstration
+must run on a dedicated DB and report `n_excluded_keys` at the first item, which
+must be 0 — a non-zero first-item exclusion set is proof of contamination.
+
+### Risk 4: Per-save overhead distorts the latency figures
+
+Spike-2 measured +20–50% per save (rough). Ingestion latency is not the reported
+metric (`retrieval_ms` is), but the run gets slower. Stated, not mitigated.
+
+### Risk 5: `Defaults.VALIDITY_GATING_ENABLED` is process-global
+
+Setting it mutates a module-level default for the whole process. Safe because
+one arm runs per process invocation. Mitigation: set it once in `main()` before
+any scenario is constructed, never per item, and echo its value into the report
+header so an artifact always states which arm produced it.
+
 ## Race Conditions
+
+### Race 1: Corpus order is not date order
+
+`_parse_record` flattens `zip(haystack_session_ids, haystack_sessions)` in
+haystack order. Nothing guarantees `haystack_dates` is ascending in that order —
+the fixture's three records happen to be ascending, which is exactly the kind of
+sample-of-three that should not be generalized from. If a later-dated claim is
+written before an earlier-dated one, the earlier write supersedes the later, the
+*stale* claim ends up open, and `save_and_supersede` may raise
+`ValidityCloseBeforeStartError` on the close.
+
+**Prevention:** the ingest loop must not rely on corpus order. Identity-bearing
+writes are ordered by `session_date` ascending before being routed. Because
+`session_key_map`/`turn_key_map` are keyed by id rather than position, and graph
+mode's adjacency edges are built per session from `prev_by_session`, reordering
+*across* sessions is safe; reordering must never occur *within* a session, since
+graph adjacency is positional. Implementation: sort sessions by date, preserve
+turn order inside each session.
+
+### Race 2: Reading the exclusion set after retrieval
+
+`resolve_excluded_keys` is documented as a point-in-time snapshot. The harness is
+single-threaded and ingest fully precedes retrieval per item, so there is no
+concurrent writer. The reported `n_excluded_keys` must be read *at the same
+`as_of`* the assembler used, not at a later wall-clock instant, or the reported
+cardinality will not be the one that gated.
+
+### Race 3: Concurrent worktree lanes on one Redis DB
+
+Standing repo hazard, made worse here because the validity keys are not
+agent-scoped and not model-name-isolated (spike-2 side finding): a second
+concurrent run writes into *the same six keys*. The demonstration run must pin
+its own `POPOTO_TEST_DB` / `REDIS_URL` database and say which one in the report.
 
 ## No-Gos (Out of Scope)
 
+- **The n=500 three-arm before/after run and its published report** — #586.
+- **Any `src/` change**, including any auto-producer or warning for the inert
+  save-only case — #693 owns that decision. This plan is written to stay correct
+  under all three of #693's outcomes: if save-only stays inert the producer is
+  required as designed; if it gains auto-detection the producer becomes
+  redundant and the arm is deleted; if it gains a warning nothing here changes.
+- **Fixing per-item key isolation across all field types** — file a separate
+  investigation issue with the spike-2 side finding (`_meta.db_class_key`
+  captured pre-rename; only `BM25Field` honors the rename; the docstring at
+  `external_base.py:202-220` claims isolation that does not hold).
+- **`--judged` interaction.** Judged mode is a different metric family; mixing
+  it in would invite exactly the cross-family comparison doctrine forbids.
+- **LoCoMo.** The producer is dataset-agnostic in principle, but LoCoMo carries
+  no per-session dates and is scored at turn granularity. Not measured here.
+- **Tuning the identity rule against observed deltas.**
+
 ## Documentation
 
+- `tests/benchmarks/README.md`: a `--supersession` axis section mirroring the
+  existing `--extraction` section, including the three-arm table and the
+  verbatim "what the delta does and does not establish" paragraph.
+- Module docstring in `supersession_axis.py` carrying the design decision and
+  its justification, so a reader of the code meets the reasoning at the code.
+- A comment at the `ValidityField` declaration in `external_base.py` pointing at
+  this plan and at #693.
+- No user-facing `docs/` change: this is harness-internal. `mkdocs build
+  --strict` must still pass.
+
 ## Success Criteria
+
+Mapped to #692's four acceptance criteria.
+
+1. **AC1 — reading stated.** The Design Decision section above states
+   faithful-modeling, label-blind, with the three-step justification. Enforced
+   in code by `identity_of`'s signature and asserted by a test.
+2. **AC2 — non-empty exclusion state demonstrated, not asserted.** A run on the
+   extended fixture under `--supersession content-identity` emits
+   `n_excluded_keys >= 1` and `n_excluded_hits >= 1` into the result artifact,
+   and the superseded record is verifiably absent from the assembled records
+   while its successor is present. The emitted numbers are pasted into the PR
+   description, not paraphrased.
+3. **AC3 — the write-up exists.** The "does and does not establish" section is
+   in this plan, in `tests/benchmarks/README.md`, and quoted in the PR body,
+   ready for #586 to copy verbatim.
+4. **AC4 — environment with every number.** Python version, redis-py version,
+   platform, Redis DB, and baseline SHA accompany every figure in the spikes
+   above, in the demonstration run, and in the PR body.
+
+Additionally:
+
+5. Arm `none` (the default) is byte-identical to the committed baseline path —
+   no `ValidityField` declared, no validity keys created, existing tests green.
+6. `--no-validity-gating` demonstrably restores superseded records (arm B is
+   executable).
+7. No `$ValidityF:*` keys survive teardown.
+8. Full suite green; `ruff check src/` clean; `black --check src/ tests/` clean;
+   `scripts/mypy_ratchet.py` unchanged (no `src/` change).
 
 ## Step by Step Tasks
 
