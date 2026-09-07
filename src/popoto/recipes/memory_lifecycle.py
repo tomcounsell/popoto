@@ -235,22 +235,17 @@ def _get_importance_score(record, importance_field: str) -> float:
     field = record._meta.fields.get(importance_field)
     if isinstance(field, SortedFieldMixin):
         try:
-            # partitioned=False reproduces this call site's pre-#649 read
-            # EXACTLY: it resolved the bare `get_special_use_field_db_key`,
-            # not the partition-specific key that count()/members() use.
-            #
-            # For a field WITH partition_by set, the bare key cannot contain
-            # the member, so this ZSCORE always returns None and the function
-            # falls through to the attribute read below. That is the #474
-            # defect class over again — the same bug, same cause, already
-            # fixed once in recipes/context_assembler.py (see its docstring at
-            # L589-596). It is preserved verbatim here on purpose: #649's
-            # contract is a byte-identical command sequence, and changing the
-            # key would silently change retention and forgetting decisions for
-            # exactly the users who cannot see it coming. The fix is tracked
-            # as its own issue, #658, where it can get the test it needs; the
-            # migration there is this one keyword argument.
-            raw_score = field.score(record, importance_field, partitioned=False)
+            # score()'s default, partitioned=True, resolves the same key
+            # on_save writes to. It must: this call site read the bare
+            # unpartitioned key until #658, so for any importance field
+            # declared with partition_by the member was never in the set the
+            # ZSCORE named, the guard below always failed, and the function
+            # silently degraded to the attribute read — the #474 defect class,
+            # already fixed once in recipes/context_assembler.py (see its
+            # docstring at L589-596). Do not reintroduce partitioned=False
+            # here; it makes the sorted-set path dead for partitioned models
+            # and moves real retention decisions via _default_should_forget.
+            raw_score = field.score(record, importance_field)
             if raw_score is not None:
                 # Normalize: score is a timestamp; use recency as proxy for importance.
                 # A score older than FORGET_IDLE_SECONDS has low importance.
