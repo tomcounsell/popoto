@@ -2,7 +2,7 @@
 status: Ready
 revision_applied: true
 revision_applied_at: 2026-09-07
-critique_round: 1
+critique_round: 2
 type: feature
 appetite: Medium
 owner: valorengels
@@ -151,6 +151,12 @@ npm into a scratch directory, driving one live
   | `before_prompt_build` | `{event, session_id, cwd, message}` | `{prompt, messages}` |
   | `llm_output` | `{event, session_id, cwd, text}` | `{runId, sessionId, provider, model, contextTokenBudget, contextWindowSource, resolvedRef, harnessId, assistantTexts: string[], lastAssistant, usage}` |
 
+  **What the capture did *not* establish** (surfaced by critique round 2): the
+  probe turn was a first turn, so `messages` was `[]`. The array's *element*
+  shape is therefore unverified, and `lastUserMessageText` must not hard-code a
+  single `{role, content}` pairing on the strength of this spike. Task 2 captures
+  a second turn to close that gap and records the real shape here.
+
   Three specific divergences matter: the assistant text is an **array**
   (`assistantTexts`) not a string, and `hooks._RESPONSE_FIELDS` has no
   `assistantTexts` entry; there is **no event-name field at all** on either
@@ -257,9 +263,11 @@ the Python side changes.
    tool-result-driven turn may populate only the array. No `_QUERY_FIELDS` name
    matches the plural `messages`, so without this fallback recall would emit
    nothing and say nothing —
-   `const prompt = event.prompt || lastUserMessageText(event.messages) || "";`
-   with the envelope key omitted entirely when the result is empty, so the
-   adapter sees an absent field rather than an empty one.
+   `const prompt = event.prompt || lastUserMessageText(event.messages) || "";`,
+   the key always emitted (**critique round 2, C2b** — an earlier revision had
+   the plugin omit the key when the result was empty, which the adapter cannot
+   distinguish from `""`; it was branching in service of fixture prose and is
+   dropped).
 3. **Plugin**: `execFile(bin, ["hook"])`, writing that JSON to stdin, where
    `bin` is `process.env.POPOTO_MEMORY_BIN || "popoto-memory"` (**critique C1** —
    the failure-path test depends on that override existing).
@@ -417,7 +425,11 @@ rather than to a broken agent.
 **Timeout.** `before_prompt_build` has a 15-second default per-handler budget,
 and a timed-out handler is skipped but **not cancelled**. The plugin therefore
 sets its own tighter `execFile` timeout so the subprocess cannot outlive the
-budget that would ignore it.
+budget that would ignore it. The same timeout goes on the `llm_output` shell-out
+for a different reason (critique round 2, N1): that hook is Observe, has no
+runner timeout, and its return value is discarded, so nothing upstream would ever
+reap a hung child — the timeout is the only bound on how many capture processes a
+rapid sequence of turns can leave resident.
 
 ## Failure Path Test Strategy
 
@@ -441,11 +453,18 @@ paths are asserted by the plugin's own behavior rather than by pytest:
   round-trip test asserts the empty-prompt envelope normalizes to a read event
   with `text == ""`.
 - `event.prompt` absent **and** `event.messages` yielding no user text
-  (**critique C2**): the plugin omits the `prompt` key entirely rather than
-  sending `""`, so the adapter's `_QUERY_FIELDS` probe misses it and falls
-  through to the same empty-context path above. The distinction matters only for
-  the fixture: an omitted key documents "OpenClaw sent nothing", an empty string
-  documents "the plugin flattened something to nothing".
+  (**critique C2**): the plugin sends `prompt: ""`, which the adapter treats
+  exactly as it treats the empty-prompt case above — `_first_string()` returns
+  `""` and `handle_payload` emits nothing.
+- `event.messages` present but shaped differently than observed (**critique
+  round 2, C3**): the probe's capture recorded `messages: []` on a first turn,
+  so the *element* shape is unverified. `lastUserMessageText` therefore probes
+  candidates rather than hard-coding one pairing — `m.role ?? m.type` against
+  `("user", "human")`, `m.content ?? m.text` for the string — and returns `""`
+  on any shape it does not recognize. Task 2 captures a second turn in the same
+  session specifically to observe a non-empty `messages` and record the real
+  element shape in spike-2, so the candidate list is grounded rather than
+  guessed.
 - `assistantTexts` empty array, or a list whose members are all empty or
   whitespace: `_first_string`'s list branch yields `""`, `_first_string` moves on
   to the next candidate field, and the write path stores nothing. Asserted in the
@@ -481,10 +500,24 @@ model's prompt. Covered by the empty-context path already tested in
       fixture still normalizes.
 - [ ] `tests/fixtures/harness_payloads/README.md` — UPDATE: the OpenClaw rows
       describing the fixtures as docs-derived.
-- [ ] `tests/test_integrations_hooks.py` read/write fixture round-trip
-      parametrizations — no change needed; they are name-driven and pick up the
-      replaced files automatically. This is the reason the fixture swap is
-      low-risk.
+- [ ] `tests/test_integrations_hooks.py:150-171`
+      (`test_read_fixtures_normalize_to_the_prompt`,
+      `test_write_fixtures_normalize_to_the_assistant_message`) — **UPDATE, and
+      this is the one genuinely risky edit in the change** (critique round 2,
+      B1). These are name-driven parametrizations, but they are not
+      content-neutral: they assert `"health checks" in event.text`,
+      `"automatic rollback" in event.text`, and
+      `event.cwd == "/Users/dev/src/demo"`. The first two are satisfiable by
+      **driving the live capture with a scripted prompt** (see task 2), so no
+      test edit is needed for them. The third is not: `cwd` comes from
+      `ctx.workspaceDir`, a real directory on the capturing machine, and no live
+      capture can produce the synthetic demo path. Replace the shared equality
+      with a per-fixture `CWDS` dict mirroring the existing `TURN_IDS` pattern —
+      the three doc-derived fixtures keep `/Users/dev/src/demo`, the two OpenClaw
+      fixtures carry the captured workspace path. Do **not** weaken it to a
+      truthiness check: that would make the assertion unfalsifiable and the
+      mutation proof vacuous, which is the exact failure this plan exists to
+      avoid.
 - [ ] `tests/test_integrations_hooks.py` — ADD: direct unit tests for
       `_first_string`'s new list branch (all-empty list, mixed list, list with a
       non-string member, list absent entirely). These do not go through a fixture
@@ -705,6 +738,12 @@ alongside the new automatic half.
       in the captured payload, confirm the test **fails**, restore, confirm it
       passes. The table goes in the PR body. A fixture test that would still pass
       against the old wrong shape is vacuous and does not count.
+- [ ] The shared fixture parametrizations still assert real content: the scripted
+      capture prompt keeps `"health checks"`/`"automatic rollback"` true for all
+      eight fixtures, and `cwd` moves to a per-fixture `CWDS` dict rather than
+      being weakened to a truthiness check.
+- [ ] `_provenance` on both OpenClaw fixtures begins with the literal
+      `captured-from: a live turn through the shipped popoto OpenClaw plugin`.
 - [ ] No OpenClaw-specific branch is added to `src/popoto/`.
 - [ ] Tests pass (`/do-test`), narrow scope: `tests/test_integrations_hooks.py`.
 - [ ] Documentation updated (`/do-docs`).
@@ -728,9 +767,11 @@ alongside the new automatic half.
   `assistantTexts` through as an array (the adapter reduces it); carry `turn_id`
   from `ctx.runId`.
 - Resolve the query as `event.prompt || lastUserMessageText(event.messages) || ""`
-  and omit the `prompt` key when the result is empty (**critique C2**). A helper
-  reading the last user-role entry of `event.messages` is the whole of it — no
-  transcript walking, no tool-result rendering.
+  and always emit the key (**critique C2**, amended by round 2). A helper reading
+  the last user-role entry of `event.messages` is the whole of it — no transcript
+  walking, no tool-result rendering. It probes `m.role ?? m.type` against
+  `("user", "human")` and `m.content ?? m.text`, against the element shape task 2
+  captures, and returns `""` on anything unrecognized.
 - Resolve the executable as `process.env.POPOTO_MEMORY_BIN || "popoto-memory"`
   (**critique C1**). This is a build requirement, not an incidental convenience:
   it is the seam the failure-path test in task 2 uses.
@@ -749,9 +790,26 @@ alongside the new automatic half.
 - **Parallel**: false
 - Install the shipped plugin the way the guide will tell a user to, including
   both operator gates.
-- Run one turn via `openclaw agent --local` (**not** `agent exec` — spike-6
-  gate 3).
-- Commit the two teed envelopes verbatim, adding only `_provenance`.
+- Run the capture via `openclaw agent --local` (**not** `agent exec` — spike-6
+  gate 3), as **two turns in one session**:
+  - **Turn 1** is the fixture turn. Drive it with a scripted prompt that contains
+    the phrase *health checks* and asks for an answer mentioning *automatic
+    rollback* — e.g. "Deploys are blue-green and roll back on failed health
+    checks; describe what happens on a failed check." This is not cosmetic: the
+    shared parametrizations at `tests/test_integrations_hooks.py:153` and `:166`
+    assert those two substrings across every fixture, so an unscripted prompt
+    breaks four harnesses' tests at once (critique round 2, B1).
+  - **Turn 2** exists only to observe a non-empty `event.messages`, since the
+    probe saw `messages: []` on a first turn. Record one element's real shape in
+    spike-2; it is what grounds `lastUserMessageText`'s candidate keys (critique
+    round 2, C3). Turn 2 is not committed as a fixture.
+- Commit the two turn-1 envelopes verbatim, adding only `_provenance`. Its first
+  line is exactly `captured-from: a live turn through the shipped popoto OpenClaw
+  plugin`, followed by the OpenClaw version and the recapture command — the
+  Verification table greps for that literal, so task and check agree by
+  construction rather than by luck (critique round 2, C4).
+- Record the captured `ctx.workspaceDir` — it becomes the OpenClaw entries in the
+  new `CWDS` dict (see Test Impact).
 - Exercise the failure path once (`POPOTO_MEMORY_BIN` pointed at a nonexistent
   binary), confirm the turn completes with no injection, and record the output
   for the PR body.
@@ -814,6 +872,8 @@ alongside the new automatic half.
 | Docs build | `./.venv/bin/python -m mkdocs build --strict` | exit code 0 |
 | Old docs-derived provenance is gone | `grep -c "captured-from: the OpenClaw plugin hook reference" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json` | match count == 0 |
 | Fixtures are live-captured (positive) | `grep -l "captured-from: a live turn through the shipped popoto OpenClaw plugin" tests/fixtures/harness_payloads/openclaw_before_prompt_build.json tests/fixtures/harness_payloads/openclaw_llm_output.json \| wc -l` | output contains 2 |
+| `cwd` assertion not weakened | `grep -c "CWDS" tests/test_integrations_hooks.py` | output > 0 |
+| `messages` element shape recorded | `grep -c "messages: \[\]" docs/plans/openclaw_subconscious_verification.md` | output > 0 |
 | Operator rollback documented | `grep -c "plugins uninstall" docs/guides/harness-openclaw.md` | output > 0 |
 | Query fallback exists | `grep -c "event.messages" plugins/openclaw/popoto-memory-plugin/index.js` | output > 0 |
 | Binary override exists | `grep -c "POPOTO_MEMORY_BIN" plugins/openclaw/popoto-memory-plugin/index.js` | output > 0 |
@@ -916,6 +976,75 @@ one-line table change. Nothing was deferred or accepted-as-is.
 - **N1** — the "Fixtures are live-captured" Verification row split into a
   negative row (old provenance gone) and a positive one (new provenance names the
   shipped plugin, count == 2).
+
+---
+
+**Round 2** — 2026-09-07, same FULL roster re-run against the revised plan,
+independent roster (3 critics). Two critics independently confirmed C1-C4 and N1
+resolved in the plan text, citing the revised wording. Verdict: **NEEDS
+REVISION** — 1 blocker, 3 concerns, 1 nit, all newly surfaced by the revision or
+by re-auditing it.
+
+### B1 — The fixture swap breaks the shared parametrizations (BLOCKER)
+
+- **Critic**: History & Consistency (Consistency Auditor); severity elevated from
+  CONCERN during aggregation after verifying the assertions directly.
+- **Location**: Test Impact ("no change needed… this is the reason the fixture
+  swap is low-risk")
+- **Finding**: `test_read_fixtures_normalize_to_the_prompt` and
+  `test_write_fixtures_normalize_to_the_assistant_message` are name-driven but
+  **not content-neutral**: `tests/test_integrations_hooks.py:153` asserts
+  `"health checks" in event.text`, `:166` asserts `"automatic rollback" in
+  event.text`, and `:154` asserts `event.cwd == "/Users/dev/src/demo"` across
+  every fixture. The plan claimed these need no change. The text assertions are
+  satisfiable by scripting the capture prompt; the `cwd` equality is not, because
+  `cwd` comes from `ctx.workspaceDir` — a real path on the capturing machine. The
+  probe observed `/Users/valorengels/.openclaw-popotoprobe/workspace`. Left
+  unaddressed, the "byte-for-byte captured fixture" Success Criterion and this
+  assertion are in direct contradiction and BUILD discovers it the hard way.
+- **Resolution**: task 2 now scripts the capture prompt; Test Impact now requires
+  a per-fixture `CWDS` dict on the `TURN_IDS` pattern, and explicitly forbids
+  weakening the assertion to a truthiness check (which would pass while asserting
+  nothing).
+
+### C2b — Key omission was complexity in service of fixture prose (CONCERN)
+
+- **Critic**: Scope & Value (Simplifier) — its first finding of either round.
+- **Finding**: the round-1 C2 fix had the plugin omit the `prompt` key when the
+  resolved query was empty, so the fixture could distinguish "OpenClaw sent
+  nothing" from "the plugin flattened to nothing". The adapter cannot observe the
+  difference — `_first_string()` returns `""` either way — so it was a branch, a
+  test case, and an unstated mechanism bought for a distinction nothing reads.
+- **Resolution**: dropped. The key is always emitted.
+
+### C3 — `event.messages` element shape was never captured (CONCERN)
+
+- **Critic**: Risk & Robustness (Skeptic)
+- **Finding**: C2's fallback reads the last user-role entry of `event.messages`,
+  but the probe's capture shows `messages: []` — a first turn. The element shape
+  is unverified, so a hard-coded `{role, content}` pairing would silently return
+  `""` forever, reproducing exactly the silent-empty-recall failure C2 existed to
+  prevent, and indistinguishable from correct behavior.
+- **Resolution**: spike-2 now records what the capture did *not* establish; task 2
+  captures a second turn to observe a non-empty `messages`; the helper probes
+  candidate keys and returns `""` on anything unrecognized.
+
+### C4 — The new positive provenance grep invented its own wording (CONCERN)
+
+- **Critic**: History & Consistency (Consistency Auditor)
+- **Finding**: the N1 fix greps for a literal provenance sentence that no task or
+  Success Criterion commits the builder to writing. A correct, genuinely live
+  provenance phrased differently would fail the row — the same invented-target
+  pattern N1 flagged, mirrored onto the positive side.
+- **Resolution**: task 2 now names the exact required first line, and a Success
+  Criterion repeats it, so task, criterion, and grep agree by construction.
+
+### N1r2 — `llm_output` timeout rationale unstated (NIT)
+
+- **Critic**: Risk & Robustness (Operator)
+- **Resolution**: the Timeout paragraph now states it — `llm_output` is Observe,
+  has no runner timeout and a discarded return value, so nothing upstream reaps a
+  hung child and the timeout is the only bound on resident capture processes.
 
 ## Open Questions
 
