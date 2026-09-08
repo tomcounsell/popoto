@@ -870,23 +870,173 @@ is #574's original defect.
 
 ## No-Gos (Out of Scope)
 
-_(skeleton)_
+- **[EXTERNAL] A live end-to-end Hermes turn against a real model provider.** It
+  needs provider credentials and outward API calls from a machine an agent cannot
+  reach unattended, and it cannot run in CI at all. spike-1 executes the plugin
+  loader and the `invoke_hook` dispatcher against the real 0.19.0 package and reads
+  the invoke-site kwargs verbatim from the shipped source; what stays unexecuted is
+  only that the agent loop reaches those call sites during a real turn. The fixture
+  `_provenance` and the guide must both say so in those words rather than claiming
+  a live capture.
+- **[EXTERNAL] Re-grading the Codex fixture pair.** `codex_*.json` are graded
+  "binary, not a live turn", and the fixtures README already records a first-hand
+  failed attempt (`.codex/hooks.json` present, `codex exec --enable hooks
+  --dangerously-bypass-hook-trust`, no hook ran). Closing it needs a machine with
+  Codex installed and a human granting project-level hook trust interactively.
+  Untouched here.
+- **[EXTERNAL] Removing a user's stale `~/.hermes/hooks/popoto-memory/`.** popoto
+  has no license to delete from a user's home directory; the old files are inert, so
+  this is a documented manual step in the README and CHANGELOG, not code.
+
+Everything else the issue lists — the plugin re-target, the field mapping, the
+`turn_id` plumbing and FIFO retirement for Hermes, the README/guide rewrite, the
+fixture replacement and re-grade, and the CI contract test — is **in scope for this
+plan**.
 
 ## Update System
 
-_(skeleton)_
+No update-system changes required in the deploy sense — popoto is a published
+library plus an mkdocs site, and this lane adds no service, secret, or deploy step.
+
+Two propagation facts do belong here:
+
+- **`.github/workflows/hermes-contract.yml` is a new CI surface.** It installs
+  `hermes-agent==0.19.0` in its own venv. It must **not** be added to
+  `lock-check.yml`'s `uv sync --all-extras`, must **not** appear in
+  `pyproject.toml`, and must **not** be listed in `scripts/check_lock_imports.py` —
+  that script's package list is deliberately hand-maintained for popoto's *published
+  extras*, and `hermes-agent` is not one. An anti-criterion in Verification pins
+  this.
+- **Existing installations need a manual migration**, stated in the CHANGELOG and
+  both READMEs: remove `~/.hermes/hooks/popoto-memory/`, install to
+  `~/.hermes/plugins/popoto-memory/`, and run `hermes plugins enable popoto-memory`.
+  The CHANGELOG entry must say the previous wiring never fired — an upgrade note
+  that implies a working feature got better would misdescribe the change.
 
 ## Agent Integration
 
-_(skeleton)_
+This *is* the agent-integration lane: the deliverable is the surface through which
+a Hermes agent reaches popoto's memory. Concretely:
+
+- **Hook surface (this lane's subject):** `plugins/hermes/__init__.py` registers
+  `pre_llm_call` and `post_llm_call` through `ctx.register_hook`, which is the
+  subconscious half — recall and capture on every turn whether or not the model
+  elects it. The contract test asserts both callbacks are actually registered
+  against the real `PluginManager`, which is the "grep confirms X references Y"
+  criterion in executable form.
+- **MCP surface (unchanged):** `hermes mcp add popoto-memory -- popoto-memory mcp`
+  exposes `memory_search` / `memory_save` / `memory_feedback` / `memory_status`.
+  No change is planned, **but the command's spelling has never been verified against
+  a real Hermes CLI** — it entered the docs from the same vendor-documentation
+  reading that produced the bug. A build task verifies it against the installed
+  0.19.0 CLI (`hermes mcp --help`) and corrects it if it has drifted.
+- **No new tool names, no MCP schema change.** The four tool names are frozen
+  (`integrations/mcp_server.py`); nothing here touches them.
 
 ## Documentation
 
-_(skeleton)_
+### Feature Documentation
+
+- [ ] `docs/features/harness-integration.md` — six edits: the capability-matrix
+      Hermes row `:53` (Setup cell "2-file hook directory" → the plugin install,
+      and note the opt-in step), the verification-matrix Hermes row `:63`
+      ("vendor documentation only" → the new grade), the turn-id section `:126-129`
+      (delete the Hermes FIFO carve-out and the "its hooks are synchronous" reason,
+      which is true but was not the reason), the read-path `(event, query_text,
+      session_id, cwd)` normalization claim `:88-96` (Hermes carries no `cwd`),
+      `render_context` shapes `:400-405` (unchanged, verify), and `:491`
+      ("`plugins/` declarative harness assets" — no longer declarative for Hermes
+      or OpenClaw).
+- [ ] `docs/features/README.md:20` — index row: no content change needed; confirm.
+
+### External Documentation Site
+
+- [ ] `docs/guides/harness-hermes.md` — **near-total rewrite** (99 lines, the highest
+      density of wrong claims in the repo). Replace: the "hooks run in the gateway
+      process" framing `:3-5`/`:45-55`/`:96-99` (true of the *gateway* system, not
+      the plugin system — plugin callbacks run in the agent process), the
+      verification admonition `:7-14`, the install block `:25-27` and "Two files, no
+      config file to edit" `:30`, the `HOOK.yaml` snippet `:32-39`, the
+      `async def handle` description `:41-43`, and the manual-verification recipe
+      `:76-86` (whose `echo '{"event_type":…,"extra":{"user_message":…}}'` asserts
+      the nested shape that does not exist). **Keep and strengthen** the
+      "injection lands in the user message" section `:57-65` — spike-1 and upstream
+      FR #23739 both confirm it, and it is the one Hermes claim that survives.
+      **Add**: the `plugins.enabled` opt-in step; the three-place failure-diagnosis
+      order (`hermes plugins list` → `~/.hermes/logs/agent.log` → `popoto-memory
+      doctor` / `~/.popoto/memory.log`); `POPOTO_MEMORY_AGENT_ID` guidance given the
+      absent `cwd`; the ~10,000-character spill ceiling next to
+      `POPOTO_MEMORY_MAX_TOKENS`; and the "remove your old `~/.hermes/hooks/`
+      install" migration line.
+- [ ] `docs/features/prompt-cache-efficiency.md:48-54` — the `{"context": ...}` claim
+      is correct; verify no gateway framing leaked in.
+- [ ] `docs/features/never-record-firewall.md:33`, `docs/index.md:43-45`,
+      `README.md:78,:126`, `examples/README.md:7`,
+      `examples/harness_memory/README.md:76-77` — brand-list mentions only; no change
+      expected. Confirm rather than assume.
+- [ ] `mkdocs.yml:39` — nav entry already present; `mkdocs build --strict` must pass.
+- [ ] `CHANGELOG.md` — new entry. Must state plainly that the shipped Hermes wiring
+      never fired, name the migration, and record that Hermes now sends `turn_id`.
+      Do **not** edit the historical 1.9.0 entry at `:95`; add a correcting entry
+      instead.
+
+### Inline Documentation
+
+- [ ] `src/popoto/integrations/hooks.py` — `:120` (turn id), `:170` ("Hermes nests
+      there"), `:253`/`:266` (verify the `context` shape claim, now backed by an
+      executed reference), `:285` (`cwd`), and the module docstring `:13-15`.
+- [ ] `src/popoto/integrations/service.py:632-634` — the `_push_pending` docstring's
+      Hermes carve-out.
+- [ ] `src/popoto/integrations/__init__.py:11-12`,
+      `src/popoto/integrations/config.py:129,:383` — "a Hermes `handler.py`" and
+      similar; rename to the plugin's entry point.
+- [ ] `plugins/hermes/README.md` — rewritten (see Solution).
+- [ ] `tests/fixtures/harness_payloads/README.md` — Hermes rows re-graded; the
+      two-level verified/not-verified framing widened to three levels (live turn /
+      real dispatcher / docs), and the "remaining four" count corrected.
+
+**Every rewritten claim must cite executed evidence** — a file:line in the installed
+`hermes-agent==0.19.0` package, or the fixture that recorded it. A claim whose only
+support is `hermes-agent.nousresearch.com` is the defect, not the fix, and the
+Research section documents two places where that site is currently wrong.
 
 ## Success Criteria
 
-_(skeleton)_
+- [ ] `plugins/hermes/` contains `plugin.yaml` + `__init__.py` + `README.md` and no
+      `HOOK.yaml`, `handler.py`, or `__pycache__`.
+- [ ] `plugins/hermes/__init__.py` defines `register(ctx)`, registers exactly
+      `pre_llm_call` and `post_llm_call`, and contains **no** `async def`.
+- [ ] The real `hermes_cli.plugins.PluginManager` loads the plugin from a scratch
+      `HERMES_HOME` with `error is None`, both hooks registered, every registered
+      name in `VALID_HOOKS`, and **does not** load it when `plugins.enabled` is
+      empty.
+- [ ] `hooks.normalize()` extracts non-empty `text` from a `post_llm_call` payload
+      carrying `assistant_response`, proven by a test that fails on the current
+      `_RESPONSE_FIELDS`.
+- [ ] Hermes read and write fixtures carry the **same** `turn_id`, and
+      `TURN_IDS[hermes_pre] == TURN_IDS[hermes_post] is not None`.
+- [ ] `service._push_pending` stages a **tagged** entry (`{"t": …, "k": […]}`) for a
+      Hermes-shaped payload, and `feedback` claims it by value — asserted on the
+      encoding, not on a return count.
+- [ ] No file in `src/` or `tests/` still claims Hermes sends no turn id.
+- [ ] The Hermes rows in `tests/fixtures/harness_payloads/README.md` no longer read
+      "docs only", and the replacement grade names what executed and what did not.
+- [ ] `plugins/hermes/README.md` and `docs/guides/harness-hermes.md` both install to
+      `~/.hermes/plugins/popoto-memory/` and both teach
+      `hermes plugins enable popoto-memory`; neither contains
+      `mkdir -p ~/.hermes/hooks`.
+- [ ] `hermes-agent` appears in no published dependency surface — not
+      `pyproject.toml`, not `uv.lock`, not `scripts/check_lock_imports.py`.
+- [ ] Red-state proof recorded in the PR: the new tests, run against the pre-fix
+      tree, fail — specifically the plugin-envelope turn-id assertion and the
+      `assistant_response` assertion.
+- [ ] Tests pass (`/do-test`), stating the environment and the DB (`POPOTO_TEST_DB=9`).
+- [ ] Documentation updated (`/do-docs`); `mkdocs build --strict` green.
+- [ ] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` all
+      green.
+- [ ] No xfail conversions needed — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
+      tests/` returns nothing at the baseline commit, so there is no expected-failure
+      marker documenting this bug.
 
 ## Team Orchestration
 
