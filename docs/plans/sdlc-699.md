@@ -1059,7 +1059,126 @@ branch (C1 confirmed); `cyclic_decay_field.py:163-166` is a bare `if period > 0`
 outside the `pcall` at `:159-160` (B1 confirmed); `base.py:2748-2754` is the
 `if not raw: return []` short-circuit (B2 confirmed).
 
+**Round 2** — 2026-09-08 · FULL depth · independent roster (3 critics: Risk &
+Robustness, Scope & Value, History & Consistency) · **Verdict: READY TO BUILD
+(with concerns)** (0 blockers, 4 concerns, 0 nits). All six round-1 findings
+verified as landed in the plan body, not only in the fold-in table.
+
+| Severity | Critic(s) | Finding | Location |
+|---|---|---|---|
+| CONCERN | Risk & Robustness (raised as BLOCKER; downgraded — see below) | C4 — the `CYCLES_MERGE_LUA` contract requires "an entry whose period slot is itself a table" to set `decode_failed = 1`, but the match-key function it supplies (`tonumber(v)` else `'s:' .. tostring(v)`) never errors on a table — `tostring({})` returns `"table: 0x…"` — so a builder implementing the key function faithfully silently *accepts* the case the same bullet says must fail. | Technical Approach — `CYCLES_MERGE_LUA` contract, the `pcall` bullet |
+| CONCERN | History & Consistency | C5 — the plan uses two entry-slot numbering conventions without saying so. `CYCLES_MERGE_LUA`'s table is 1-based Lua (`Slot 4` = `declared_baseline`), but the `CYCLES_ADJUST_LUA` Key Element and Task 2 say "multiplies slot 2 … never writing or stripping **slot 3**" — "slot 3" is lifted verbatim from `base.py:2776`'s 0-based **Python** comment, where `cycle[3]` is the baseline. In Lua, `c[3]` is *phase*. | Solution → Key Elements (`CYCLES_ADJUST_LUA`); Task 2 |
+| CONCERN | Risk & Robustness | C6 — a pipelined `strengthen_cycle`/`weaken_cycle` on a member with **no** stored cycles entry today returns `pipeline` at `base.py:2750-2753` having queued *nothing*; after the port `run_lua` unconditionally queues an `EVALSHA`, so the caller's `pipe.execute()` gains one result at a position it did not have before. The plan's "no public signature changes … keep their return contracts" does not cover this. | Technical Approach — "Pipeline handling after the change" table; Architectural Impact → Interface changes |
+| CONCERN | Scope & Value | C7 — the C3 escape hatch says "**Task 3 depends on nothing that depends on it**", but Task 5 (`validate-cycles`) lists `build-redis-accessor` in its own `Depends On`, and Success Criterion "`POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`" also references it. The written removal procedure names only the task, the Verification row and the `Validates` list — two of four edits. | Solution → Straggler cleanup; Task 3 removal procedure; Task 5 `Depends On`; Success Criteria |
+
+### C4 (CONCERN) — the match-key function swallows the table-valued period case the same bullet requires it to fail
+
+*Critic: Risk & Robustness. Raised as BLOCKER; **downgraded to CONCERN by the
+aggregator** because the plan already states the required behavior in prose
+("**any** failure … an entry whose period slot is itself a table … sets
+`decode_failed = 1`") and because two existing tests catch a miss — this is a
+missing mechanism for a stated requirement with a red-test feedback loop, not an
+unbuildable gap. Contrast B1, where no existing test asserted the property at all
+and three new ones had to be specified.*
+**Location:** Solution → Technical Approach → `CYCLES_MERGE_LUA` contract.
+
+Python reaches the fallback here by *crashing*: `learned.setdefault(entry[0], …)`
+at `cyclic_decay_field.py:647` raises `TypeError: unhashable type: 'list'` inside
+the `try`, which is why the guard at `:650-661` deliberately wraps decode **and**
+normalization. Lua has no unhashable-key failure — the plan's key function turns
+a table into the string `"table: 0x…"` and merges happily. Two existing tests,
+both of which the plan requires to pass **unchanged**, write exactly this payload
+and assert the whole bucket is discarded with the warning:
+
+- `tests/test_cyclic_decay_field.py:1512` `test_unhashable_period_falls_back_instead_of_raising`
+  — stores `[[[TemporalPeriod.DAILY], 9.0, 0]]`, asserts the declared `2.0` comes
+  back and `"Could not decode cycles"` is logged.
+- `tests/test_cyclic_decay_field.py:1534` `test_partial_merge_discarded_when_a_later_entry_is_malformed`
+  — first entry well-formed, second table-valued; asserts **both** declared
+  cycles fall back together (`2.0` and `3.0`).
+
+**Implementation Note:** in the per-entry loop that buckets stored cycles, guard
+the raw period *before* building the match key:
+`if type(p) ~= 'number' and type(p) ~= 'string' then decode_failed = 1; learned = {}; break end`
+— clearing the bucket table on the same all-or-nothing path as the top-level
+`pcall` failure, which is what makes the second test's "both fall back together"
+assertion hold. Note this is a **type** guard, not a `pcall`: nothing raises in
+Lua, so there is no error to catch.
+
+### C5 (CONCERN) — `CYCLES_ADJUST_LUA`'s protected slot is named in the wrong numbering base
+
+*Critic: History & Consistency.*
+**Location:** Solution → Key Elements (`CYCLES_ADJUST_LUA` bullet); Task 2, last step.
+
+`CYCLES_MERGE_LUA`'s per-slot table fixes 1-based Lua numbering
+(`1 period, 2 amplitude, 3 phase, 4 declared_baseline`) and uses it consistently.
+The adjust script's description shifts *amplitude* into that base ("slot 2",
+correct for Lua) but leaves the baseline reference at "slot 3", copied from
+`base.py:2776`'s 0-indexed Python comment. A builder writing Lua from the Key
+Elements bullet or Task 2 alone would protect `c[3]` — the phase — and consider
+`c[4]` fair game, silently destroying #698's baseline: the identical silent,
+crashless failure mode B1 warned about for the merge script.
+
+**Implementation Note:** the correct instruction is already in the Technical
+Approach paragraph — "Mutates only index 2 of each entry, re-packs the same
+tables, so a 4-slot entry keeps its baseline". Build from that. Fix the two
+downstream restatements to say **slot 4 (`declared_baseline`)**, or drop the slot
+number entirely and say "re-packs the entry unmodified except index 2", which
+needs no numbering base at all. Do not `table.remove`, re-length, or rebuild the
+entry table — mutate `c[2]` in place and re-pack the same table.
+
+### C6 (CONCERN) — the no-entry pipelined call now queues a command where it queued none
+
+*Critic: Risk & Robustness.*
+**Location:** Technical Approach → "Pipeline handling after the change"; Architectural Impact → Interface changes.
+
+At `base.py:2749-2754` the existence check is a **direct** `HGET`, and on a miss
+the method returns `pipeline` immediately without touching it. After the port the
+existence check moves inside the script, so `run_lua(pipeline, …)` queues an
+`EVALSHA` on **every** call. The Python-visible return is unchanged (still the
+pipeline), but `pipe.execute()`'s result list grows by one entry and every later
+position shifts for a caller that indexes it. This is a genuine behavior change
+that "no public signature changes … keep their return contracts" does not
+describe.
+
+**Implementation Note:** no code fix — the queued command is required for
+atomicity and is the right trade. Disclose it: add a line to Architectural Impact
+→ Interface changes and a step to Task 2 stating that a pipelined
+`strengthen_cycle`/`weaken_cycle` against a member with no stored cycles now
+contributes one result to `pipe.execute()` where it previously contributed none.
+`tests/test_observation_protocol.py:693-701` (`test_pipeline_support`) only
+asserts `result is pipe` and will not catch it; extend it, or add a test asserting
+`len(pipe.execute())` for the no-entry pipelined case, so the shift is recorded
+rather than discovered.
+
+### C7 (CONCERN) — the C3 escape hatch's removal procedure is two edits short of executable
+
+*Critic: Scope & Value.*
+**Location:** Solution → Straggler cleanup (the C3 scope-decision paragraph); Task 3 scope note; Task 5 `Depends On`; Success Criteria.
+
+The scope decision is defended on the grounds that the hatch is "structural, not
+a promise: **Task 3 depends on nothing that depends on it**". Task 5
+(`validate-cycles`) lists `build-redis-accessor` in its `Depends On` — the task
+note concedes this parenthetically ("a sequencing entry") while the Key Elements
+paragraph asserts the opposite, and the written removal procedure covers only
+three of the four places that reference Task 3. Deleting the task as written
+leaves a dangling `Depends On` ID (which the structural check verifies) and an
+unsatisfiable Success Criterion.
+
+**Implementation Note:** if Open Question 3 is answered "split it out", the edit
+is **four** places, not two: (1) delete Task 3; (2) delete the
+`grep -c "POPOTO_REDIS_DB" … == 0` Verification row; (3) drop
+`tests/test_popoto_redis_db_rebind.py` / `tests/test_connection.py` from the
+`Validates` list *(already written down)*; (4) **remove `build-redis-accessor`
+from Task 5's `Depends On` and delete the Success Criterion
+"`POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`"**. The
+plan's default remains "keep Task 3", under which no edit is needed; this only
+makes the hatch actually executable. Also reconcile the Key Elements sentence
+with the task note — one of the two is wrong as written.
+
 ### Structural check results
+
+**Round 2** — re-measured at HEAD `3f768d8a`.
 
 | Check | Status | Detail |
 |---|---|---|
@@ -1069,6 +1188,11 @@ outside the `pcall` at `:159-160` (B1 confirmed); `base.py:2748-2754` is the
 | File paths exist | PASS | 16/17; `tests/test_cyclic_decay_atomicity.py` is intentionally new (Task 4) |
 | Prerequisites met | PASS (3/4) | Redis 8.6.2 reachable on DB 9; `eval "return type(cmsgpack)"` → `table`; `msgpack`/`redis`/`pytest` importable. `POPOTO_TEST_DB` was unset in the critique shell — the build lane must export `9` |
 | Cross-references | PASS | Every Success Criterion maps to a task; Rabbit Holes (`write_filter.py`, `resolve_pressure`) are consistently excluded in the tasks |
+| Task numbering (r2) | PASS | Tasks 1-7, no gaps |
+| Dependencies valid (r2) | PASS | All 7 `Depends On` IDs resolve; no cycles. (Note C7: they resolve only while Task 3 is kept) |
+| File paths exist (r2) | PASS | 16/17; `tests/test_cyclic_decay_atomicity.py` is intentionally new (Task 4) |
+| Prerequisites met (r2) | PASS (3/4) | `redis-cli -u redis://localhost:6379/9 ping` → `PONG` (Redis 8.6.2); `eval "return type(cmsgpack)" 0` → `table`; `import msgpack, redis, pytest` → ok. `POPOTO_TEST_DB` unset in the critique shell — the build lane must export `9` |
+| Round-1 fold-in landed (r2) | PASS | B1, B2, C1, C2, C3, N1 each verified present in the plan **body**, not only the fold-in table. N1's count re-measured: 1 import (`:49`) + 9 uses |
 
 ---
 
