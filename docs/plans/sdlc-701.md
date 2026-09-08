@@ -650,7 +650,7 @@ No `src/` tests are affected — no `src/` file is modified.
 ## Risks
 
 ### Risk 1: A widened glob sweeps or tears down keys it should not
-**Impact:** `*:ExtMem*` and `*:{class_name}:*` are broader than the patterns
+**Impact:** `*:ExtMem*` and `*{class_name}*` are broader than the patterns
 they join. On the dedicated bench DB (14) or the pytest DB (15) this is
 harmless, but a run misconfigured onto a shared database could delete unrelated
 keys.
@@ -658,8 +658,15 @@ keys.
 literal, which is a hash-suffixed benchmark-only prefix; `run_external.py`
 already rejects DB 0 and defaults to 14. The updated
 `test_custom_patterns_sweep_only_matching_keys` keeps its `SomeOtherModel:keepme`
-survivor assertion, which is precisely the over-reach detector. Do **not**
-generalize to a bare `*ExtMem*` without the leading anchor set.
+survivor assertion, which is precisely the over-reach detector.
+
+Note the two globs are bounded differently, and C1 changed one of them.
+`teardown()`'s `*{class_name}*` is unanchored on both sides but carries the
+**full hash-suffixed class name** (`ExtMem<hash>`), so its breadth is bounded by
+the per-item name, not by punctuation — dropping the colon anchors costs
+nothing. `_STALE_KEY_PATTERNS`' `*:ExtMem*` has no hash and is bounded by its
+leading `:` anchor instead; do **not** generalize *that* one to a bare
+`*ExtMem*`.
 
 ### Risk 2: The updated leak test passes vacuously
 **Impact:** The single highest-value assertion here is "no keys survive
