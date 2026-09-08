@@ -580,6 +580,20 @@ silently changes the headline recall numbers on the public docs site
 anti-criterion asserts the `longmemeval_s_latest` symlink still resolves to
 `longmemeval_s_20260630.md` in the PR diff.
 
+**The mitigation is detection, not prevention, so it is moved earlier (critique
+C2).** `--output` is per-invocation with no code-level guard
+(`run_external.py:1216-1218`), so nothing stops an omitted flag; only the
+`readlink` check catches it. Evaluating that check for the first time at task 8
+would leave a clobbered pointer undetected across all three ~24-minute arms.
+The check therefore runs **inline at the end of run-arm-a**, blocking run-arm-b,
+in addition to the end-of-lane Verification row.
+
+**Recovery, if it does fire:** re-running the arm is unnecessary.
+`save_reports()` writes the dated `longmemeval_s_{date}.{json,md}` under a
+unique name regardless of `--output`; only the two `_latest` pointers were
+repointed. Restore them with `ln -sf longmemeval_s_20260630.md …_latest.md`
+(and the `.json` twin) and move the misplaced dated pair into `validity_586/`.
+
 ### Risk 3: A vacuous result (empty exclusion set) published as a finding
 
 **Impact:** Repeats the exact 2026-09-07 failure — `delta = 0.0` read as
@@ -636,6 +650,17 @@ begins, and all Redis calls are synchronous. The only background threads are the
 embedding-cache invalidation listeners, which are stopped per item
 (`external_base.py:1010`) *after* the validity cleanup, so pool pressure cannot
 precede the `DEL`.
+
+**One containment hole, closed by build-2 (critique C1).** That
+`stop_invalidation_listeners()` call is the only unguarded statement in
+`teardown()`. Because `teardown()` runs in `Scenario.execute()`'s `finally` —
+outside the `except Exception` that wraps `setup()`/`run()` — a raise there
+propagates out of `execute()` and terminates the driver loop mid-arm, rather
+than degrading to the per-item `status="error"` that spike-1's #701 containment
+argument depends on. build-2 wraps it in the file's `try/except` idiom (logged,
+non-raising) **without changing its position**, so the ordering property above
+is preserved and the containment argument no longer has an exception path out of
+it.
 
 The one ordering property that matters — *item N's validity keys are deleted
 before item N+1's ingest writes* — is guaranteed by that sequential structure
@@ -823,6 +848,22 @@ that nothing in `src/` imports, and this plan does not change that.
   `finally`.
 - Add a test that patches the delete to raise and asserts the warning is
   emitted and teardown returns normally.
+- **Also close the one unguarded step in the same method (critique C1).**
+  `stop_invalidation_listeners()` (`external_base.py:1010`, the last statement
+  before `super().teardown()`) is called bare while every sibling cleanup block
+  in `teardown()` is wrapped. `Scenario.execute()`'s `except Exception`
+  (`base.py:107-114`) covers only `setup()`/`run()`; `teardown()` runs in the
+  `finally`, so a raise there escapes `execute()` uncaught and kills the driver
+  loop mid-arm instead of producing the single-item `status="error"`
+  containment spike-1 claims. Wrap it in `try/except Exception:` logging a
+  warning, keeping teardown non-raising.
+  - **Do not move or reorder the call.** Race Conditions depends on it running
+    *after* the validity `DEL`.
+  - The exposure is latent for this run — the code's own comment at
+    `external_base.py:1009` says *"No-op in lexical mode (no listener ever
+    starts)"* and Key Elements pins `--retrieval-mode lexical` on all three
+    arms — but that safety currently rests on an inline comment rather than a
+    test, which is exactly why it is wrapped rather than argued away.
 
 ### 3. Stamp redis-py version and bench DB into the report
 
@@ -873,6 +914,23 @@ that nothing in `src/` imports, and this plan does not change that.
 - Expect ≈24 minutes. Capture full stdout to the artifact directory.
 - Confirm `n_total == 500`, `n_errors == 0`, supersession block zeroed with
   `arm == "none"`.
+- **Blocking inline check before run-arm-b starts (critique C2).** Immediately
+  after this arm completes, run:
+  `readlink tests/benchmarks/results/external/longmemeval_s_latest.md` — it must
+  still print `longmemeval_s_20260630.md`, and the `.json` twin likewise. Do not
+  start run-arm-b until it does. `--output` is per-invocation with no code-level
+  guard (`global RESULTS_DIR; if args.output: RESULTS_DIR = args.output`,
+  `run_external.py:1216-1218`), so the Risk-2 mitigation rests entirely on the
+  flag being typed correctly on three separately-issued commands; deferring the
+  check to task 8 leaves a clobbered pointer undetected for ~75 minutes.
+- **Recovery is a symlink repair, not an arm re-run.** If the flag was omitted,
+  `save_reports()` still wrote a correctly-dated, uniquely-named
+  `longmemeval_s_{date}.{json,md}` — only the `_latest` pointers were repointed.
+  Fix by restoring both pointers
+  (`ln -sf longmemeval_s_20260630.md tests/benchmarks/results/external/longmemeval_s_latest.md`,
+  and the `.json` twin) and moving the misplaced dated pair into
+  `validity_586/`. The arm's 24 minutes of wall clock are **not** lost; do not
+  re-run it.
 
 ### 6. Run arm B — producer on, gate off
 
