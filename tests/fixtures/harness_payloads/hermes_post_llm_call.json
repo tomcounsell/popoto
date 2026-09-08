@@ -1,9 +1,12 @@
 {
-  "_provenance": "captured-from: the Hermes hook contract as documented by Nous Research (docs.nousresearch.com Hermes hooks reference, read 2026-08-07), not from a live turn. Recapture: see hermes_pre_llm_call.json.",
-  "event_type": "post_llm_call",
-  "session_id": "hermes-6c1c1f0a",
-  "cwd": "/Users/dev/src/demo",
-  "extra": {
-    "response": "A failed health check triggers an automatic rollback to the previous green environment, and the deploy is marked failed in the pipeline."
-  }
+  "_provenance": "captured-from: real `hermes-agent` 0.19.0 plugin loader and `invoke_hook` dispatcher; kwargs verbatim from the 0.19.0 invoke sites; not a live model turn. Recapture: see hermes_pre_llm_call.json, substituting invoke_hook(\"post_llm_call\", **kwargs).",
+  "assistant_response": "We settled on an automatic rollback: the supervisor drains the pool when two consecutive health checks fail.",
+  "hook_event_name": "post_llm_call",
+  "model": "claude-sonnet-4-6",
+  "platform": "cli",
+  "session_id": "sess-4f2a9c",
+  "task_id": "task-7b31",
+  "telemetry_schema_version": "hermes.observer.v1",
+  "turn_id": "sess-4f2a9c:task-7b31:9d41c0ab",
+  "user_message": "How did we end up handling health checks for the worker pool?"
 }
