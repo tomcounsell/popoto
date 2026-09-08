@@ -221,27 +221,267 @@ Sources: [Build a Hermes Plugin](https://hermes-agent.nousresearch.com/docs/deve
 
 ## Spike Results
 
-_(skeleton)_
+### spike-1: Read the real `hermes-agent==0.19.0` plugin API off the installed package
+
+- **Assumption**: "The issue's description of the plugin system (`plugin.yaml` with
+  `provides_hooks`, `__init__.py` with `register(ctx)`, kwargs callbacks) is
+  accurate enough to build against."
+- **Method**: prototype — fresh venv, `pip install 'hermes-agent==0.19.0'` (exact
+  version resolved, no fallback), read `hermes_cli/plugins.py`, `agent/turn_context.py`,
+  `agent/turn_finalizer.py`, `hermes_cli/config.py` in site-packages.
+- **Finding**: mostly accurate, with **four corrections that change the build**.
+
+  1. **Callbacks must be synchronous.** `invoke_hook` calls `ret = cb(**kwargs)` and
+     never awaits (`hermes_cli/plugins.py:1911-1927`). An `async def` callback
+     returns a coroutine that is appended to the results list, filtered out by the
+     consumer's `isinstance` check, and never awaited — a never-awaited-coroutine
+     warning and no effect. popoto's current `async def handle` is wrong twice over.
+  2. **`provides_hooks` is cosmetic.** It is parsed into the manifest dataclass
+     (`plugins.py:1642`) and read by nothing that decides loading, registration, or
+     gating — the only other reference in the tree is a docstring in
+     `hermes_cli/web_server.py:916`. Registration happens exclusively through
+     `ctx.register_hook(hook_name, callback)` at `plugins.py:1158-1173`.
+     **No manifest key is required**; `name` defaults to the directory name
+     (`plugins.py:1580`). Hermes's own bundled plugins declare a *different*,
+     equally-unparsed key (`hooks:`).
+  3. **The exact invoke-site kwargs**, quoted verbatim:
+
+     | hook | kwargs |
+     |---|---|
+     | `pre_llm_call` (`agent/turn_context.py:692-703`) | `session_id`, `task_id`, **`turn_id`**, `user_message`, `conversation_history`, `is_first_turn`, `model`, `platform`, `sender_id` |
+     | `post_llm_call` (`agent/turn_finalizer.py:483-494`) | `session_id`, `task_id`, **`turn_id`**, `user_message`, **`assistant_response`**, `conversation_history`, `model`, `platform` |
+
+     `telemetry_schema_version` is injected on **both** by the manager, not the call
+     site (`plugins.py:1911`, `kwargs.setdefault`). **No `cwd` key exists on either**
+     — a working directory is serialized only by the unrelated *shell*-hook
+     subsystem (`agent/shell_hooks.py:541-550`). `post_llm_call` does not fire at
+     all when the response is empty or the turn was interrupted.
+  4. **Gating is real and is `plugins.enabled`.** `~/.hermes/config.yaml`
+     (`hermes_cli/config.py:749-751`), shape `plugins: {enabled: [...], disabled: [...]}`,
+     read at `plugins.py:256-270`. A plugin on disk but absent from the list is
+     recorded as `enabled=False` with error `"not enabled in config (run
+     `hermes plugins enable <key>` to activate)"` and never loaded
+     (`plugins.py:1459-1470`). A missing `plugins` key means **nothing** standalone
+     loads. `HERMES_SAFE_MODE=1` skips discovery entirely.
+
+  Additionally confirmed:
+  - **Return contract**: `{"context": "<str>"}` is exact, and a bare non-empty `str`
+    is equally accepted; all plugins' pieces are joined with `"\n\n"` and appended to
+    the **user** message (`agent/turn_context.py:720-741`). popoto's existing
+    `render_context()` output for `pre_llm_call` is already correct. `post_llm_call`
+    return values are **discarded** (`turn_finalizer.py:485`, statement position).
+  - **Errors are swallowed twice** — per-callback in the manager
+    (`plugins.py:1915-1926`, `logger.warning` only) and again at both invoke sites.
+    Load failures are swallowed too (`plugins.py:1825-1830`). A broken popoto hook is
+    invisible outside `~/.hermes/logs/agent.log` and `hermes plugins list`.
+  - **Neither loader validates event names.** The plugin loader warns on an unknown
+    `hook_name` and **still registers the callback** ("so forward-compatible plugins
+    don't break", `plugins.py:1164-1172`); manifest-declared names are never checked
+    at all. The issue's claim about the gateway loader generalizes to both.
+- **Confidence**: **high** for everything read out of the installed package.
+  **Medium** for behavior in a live agent turn: the invoke sites are present and
+  reachable, but spike-1 did not run a real turn against a model provider.
+- **Impact on plan**: sets the exact file contents for `plugins/hermes/`
+  (`plugin.yaml` + `__init__.py`, sync callbacks taking `**kwargs`), removes the
+  `assistant_response` and `cwd` guesswork from the adapter change, makes
+  `plugins.enabled` a mandatory README step, and supplies the ground truth the new
+  fixtures must match.
+
+### spike-2: Is `hermes-agent` viable as a CI dependency for a contract test?
+
+- **Assumption**: "A loader-level regression test against the real Hermes package is
+  affordable in CI."
+- **Method**: prototype — measured the install from spike-1's venv.
+- **Finding**: **yes, with one sharp caveat.** 61 packages, 187 MB site-packages,
+  wheels only, **no torch / transformers / numpy / nvidia**. Heaviest deps are
+  `cryptography` and `Pillow`. `from hermes_cli.plugins import PluginManager,
+  VALID_HOOKS, invoke_hook` succeeds in **0.54 s** with no API key set and a
+  throwaway `HOME`; `invoke_hook("pre_llm_call", session_id="x")` returns `[]`
+  cleanly.
+
+  **The caveat is a namespace collision.** `hermes-agent` installs `hermes_cli`,
+  `agent`, `gateway`, `tools`, `plugins`, `providers`, `cli.py` and
+  `batch_runner.py` as **top-level modules** — there is no `hermes_agent` namespace
+  package. popoto's repo root contains a `plugins/` directory, and this plan adds
+  `plugins/hermes/__init__.py`, which makes `plugins` an importable package from the
+  repo root. Installing `hermes-agent` into popoto's main dev/CI venv would make
+  `import plugins` ambiguous depending on `sys.path` order.
+- **Confidence**: high (measured), high (collision is structural, not speculative).
+- **Impact on plan**: the contract test gets its **own workflow job with its own
+  venv**, run from a temporary working directory outside the repo root, and is
+  `importorskip`-guarded so the default suite skips it. `hermes-agent` is **not**
+  added to `pyproject.toml`'s extras and **not** added to `uv.lock` — it never
+  enters the developer install path, so `scripts/check_lock_imports.py` and the
+  `lock-check` contract are untouched.
+
+### spike-3: Does the existing turn-keyed handoff need any code change for Hermes?
+
+- **Assumption**: "Plumbing `turn_id` for Hermes requires changes in
+  `service.py`/`hooks.py` beyond documentation."
+- **Method**: code-read of `hooks.py:82-98`, `hooks.py:167-181`, `hooks.py:221-246`,
+  `service.py:610-677`, `service.py:738-790`.
+- **Finding**: **no.** `_TURN_FIELDS` already contains `"turn_id"`;
+  `_first_string()` searches the **flat payload first** before descending into
+  `extra`/`context`/`data`/`input`. A flat `turn_id` kwarg is picked up by
+  `normalize()` with zero code change, and `_push_pending`/`_pop_pending` are
+  harness-agnostic. The FIFO fallback is not a Hermes branch — it is simply what
+  happens when `turn_id` is `None`. **Retiring it for Hermes means supplying the
+  value, then deleting the stale prose that says Hermes cannot.**
+  Likewise `_QUERY_FIELDS` already contains `"user_message"`, so the read path's
+  flat kwarg works untouched. The **only** adapter code change required is adding
+  `"assistant_response"` to `_RESPONSE_FIELDS`.
+- **Confidence**: high.
+- **Impact on plan**: collapses the `src/` change to one tuple entry plus docstring
+  corrections, and moves the weight of the work into `plugins/hermes/`, the fixtures,
+  the tests, and the docs. It also raises a **vacuity hazard** the test plan must
+  answer: an adapter test that "passes turn_id through" would pass today, before any
+  fix. The falsifiable assertion has to be made at the plugin's envelope, not at
+  `normalize()`.
+
+### spike-4: Does an abandoned/interrupted Hermes turn leak a pending entry?
+
+- **Assumption**: "`post_llm_call` not firing on an interrupted turn strands a
+  turn-tagged pending entry forever."
+- **Method**: code-read of `service.py:610-677` against spike-1's finding that
+  `post_llm_call` is skipped when `final_response` is empty or the turn was
+  interrupted.
+- **Finding**: **no leak.** `_push_pending` writes through an
+  `RPUSH`/`LTRIM -MAX_PENDING_TURNS`/`EXPIRE PENDING_TTL_SECONDS` pipeline, so an
+  unclaimed entry is bounded both by list length and by TTL. This is exactly the
+  case #574 designed for; turn-keying makes it *better* than the FIFO, because under
+  positional pairing a skipped write shifts every later pairing by one.
+- **Confidence**: high.
+- **Impact on plan**: no new expiry/cleanup work. Worth one sentence in the guide —
+  moving Hermes off the FIFO **fixes** an existing correctness bug for interrupted
+  turns rather than merely tidying.
 
 ## Data Flow
 
-_(skeleton)_
+**Read path (recall), after this change:**
+
+1. **Entry point** — Hermes reaches `agent/turn_context.py:692`, calls
+   `invoke_hook("pre_llm_call", session_id=…, task_id=…, turn_id=…, user_message=…,
+   conversation_history=[…], is_first_turn=…, model=…, platform=…, sender_id=…)`.
+   The plugin manager adds `telemetry_schema_version`.
+2. **`plugins/hermes/__init__.py`** — the registered sync callback receives those as
+   `**kwargs`, builds a JSON-able envelope: `{"hook_event_name": "pre_llm_call",
+   "session_id": …, "turn_id": …, "user_message": …}` plus the remaining scalar
+   kwargs, with `conversation_history` **dropped** (unbounded, unread, and it would
+   make the committed fixture a transcript). Optionally tees the envelope to
+   `$POPOTO_HOOK_CAPTURE/pre_llm_call.json`.
+3. **`hooks.handle_payload(envelope, service=_service())`** — in-process, no
+   subprocess. `normalize()` reads the event name, `session_id`, `turn_id`
+   (flat, via `_TURN_FIELDS`) and the query text (flat, via `_QUERY_FIELDS`
+   → `user_message`). `cwd` is `None`; the prebuilt service already has its
+   `agent_id`, so nothing consults it.
+4. **`MemoryService.assemble(text, session_id=…, turn_id=…)`** — Redis read,
+   exclusion of already-injected keys, token-budgeted context block, and
+   `_push_pending(session_id, records, turn_id=turn_id)` stages a **turn-tagged**
+   entry `{"t": turn_id, "k": [...]}`.
+5. **`render_context()`** → `{"context": "<block>"}` → `json.dumps` → the callback
+   `json.loads`es it and returns the dict.
+6. **Output** — `agent/turn_context.py:720-741` reads `r["context"]`, spills if over
+   ~10k chars, joins with any other plugin's piece, and appends to the **user**
+   message. The system prompt — and therefore the cache prefix — is untouched.
+
+**Write path (capture + outcome), after this change:**
+
+1. **Entry point** — `agent/turn_finalizer.py:483`, `invoke_hook("post_llm_call", …,
+   turn_id=<same value>, assistant_response=<final text>, …)`. Skipped entirely if
+   the response is empty or the turn was interrupted.
+2. **`plugins/hermes/__init__.py`** — same envelope shape with
+   `"hook_event_name": "post_llm_call"` and `assistant_response`.
+3. **`hooks.handle_payload`** — `normalize()` selects the write branch;
+   `_RESPONSE_FIELDS` must contain `assistant_response` for `event.text` to be
+   non-empty. **This is the one line whose absence silently empties the whole write
+   path.**
+4. **`MemoryService.capture(text, session_id=…)`** then
+   **`feedback(session_id, outcome="used", turn_id=turn_id)`** →
+   `_pop_pending(session_id, turn_id=…)` claims *this turn's* tagged entry by value
+   rather than popping the head of the FIFO.
+5. **Output** — the callback returns `None`; Hermes discards write-hook returns
+   anyway.
+
+**The load path (why nothing fires today):** `PluginManager.discover_plugins` scans
+`~/.hermes/plugins/*/plugin.yaml`, checks membership in `plugins.enabled`, imports
+`__init__.py` as `hermes_plugins.<slug>`, and calls `register(ctx)`. popoto's
+directory has no `plugin.yaml` and no `__init__.py`, so it is invisible to this path
+entirely; installed at the *other* location it registers against a vocabulary that
+is never emitted.
 
 ## Why Previous Fixes Failed
 
-_(skeleton)_
+| Prior Fix | What It Did | Why It Failed / Was Incomplete |
+|-----------|-------------|-------------------------------|
+| #515 / PR #546 | Shipped the four-harness integration including `plugins/hermes/` | Wrote the Hermes contract from vendor documentation. The docs describe the plugin *events* but popoto's author matched them to the gateway *file shape*, and nothing executed either. The PR was honest about it — the fixtures say "docs only" — but honesty in a `_provenance` string is not a gate. |
+| #574 / PR #628 | Turn-keyed the pending-turn handoff | Correct and complete for what it could see. It carved out Hermes on the strength of `hooks.py:120`'s docstring claim, inheriting #546's unverified reading rather than re-deriving it. A false premise propagated into a correct mechanism as a named exception. |
+| #552 / PR #696 | Fixed the identical class of defect for OpenClaw | Did not fail — it succeeded, and its own No-Gos split Hermes out as #688 rather than fixing it in the same lane. The delay is deliberate scope control, not a failed fix. |
+
+**Root cause pattern:** *a docs-derived integration with a self-consistent
+round-trip test.* Every layer agreed with every other layer because they were all
+derived from the same wrong source, and the test suite could only observe that
+agreement. `tests/fixtures/harness_payloads/README.md` names this exactly —
+"round-tripping proves the adapter is self-consistent, not that anything sends what
+the fixture claims" — and the warning did not prevent the recurrence because it was
+prose in a README rather than a check. The durable remedy is therefore not "capture
+better fixtures" (that fixes today's instance) but **a CI check that executes
+against the vendor's own loader**, which is what makes the claim falsifiable by
+something other than a human re-reading the docs.
 
 ## Architectural Impact
 
-_(skeleton)_
+- **New dependencies**: none in the shipped package. `hermes-agent==0.19.0` is added
+  **only** as a CI job's pip install for the contract test — not to
+  `[project.optional-dependencies]`, not to `uv.lock`, not to
+  `scripts/check_lock_imports.py`. popoto's published dependency surface, the
+  floor-propagation doctrine, and the `lock-check` contract are all untouched.
+- **Interface changes**: `plugins/hermes/` changes shape entirely — `HOOK.yaml` and
+  `handler.py` are **deleted**, replaced by `plugin.yaml` and `__init__.py`. This is
+  a breaking change for anyone who installed the old files, and it breaks something
+  that never worked, so there is no migration to preserve. In `src/`, the only
+  behavioral change is one entry appended to `_RESPONSE_FIELDS`, which is purely
+  additive and cannot alter any other harness's normalization (no existing fixture
+  carries an `assistant_response` key).
+- **Coupling**: **decreases.** The Hermes handler currently reaches into a nested
+  `extra` sub-object that the adapter special-cases for it (`hooks.py:170`); after
+  this change Hermes uses the same flat-payload path as every other harness, and the
+  "Hermes nests there" justification for the nested search disappears. The nested
+  search itself stays — `input`/`data` are still probed and removing it is a
+  separate, unforced change — but its comment stops naming a harness that does not
+  do it.
+- **Data ownership**: unchanged. `MemoryService` still owns records and the pending
+  list; the plugin owns only the envelope translation, exactly as OpenClaw's does.
+- **Reversibility**: high. Everything is confined to `plugins/hermes/`, one tuple in
+  `hooks.py`, two fixture files, docs, tests, and one new workflow. `git revert` of
+  a single PR restores the prior (broken) state with no data migration — the pending
+  list's tagged and untagged encodings already coexist by design (`_decode_pending_entry`).
 
 ## Appetite
 
-_(skeleton)_
+**Size:** Medium
+
+**Team:** Solo dev, PM (scope confirmation on the CI-dependency question), code
+reviewer
+
+**Interactions:**
+- PM check-ins: 1-2 — one on whether a `hermes-agent` CI job is acceptable, one on
+  the honest fixture grade (see Open Questions).
+- Review rounds: 1-2 — the plan-critique round plus PR review.
+
+The coding is small and well-bounded; spike-1 removed essentially all of the
+technical unknown. The cost is in breadth — six file groups (`plugins/`, `src/`,
+fixtures, three test files, five docs, one workflow) — and in getting the *claims*
+right, which is what failed last time.
 
 ## Prerequisites
 
-_(skeleton)_
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis/Valkey reachable | `redis-cli -n 9 PING` | The suite's integration tests; this lane uses DB 9 (`POPOTO_TEST_DB=9`) |
+| Lane worktree present | `test -d /Users/valorengels/src/popoto/.worktrees/sdlc-704` | Isolated build checkout on `session/sdlc-704` |
+| Full dev extras installed | `python -c "import numpy, sentence_transformers, mcp"` | Avoids the ~95-test silent deselection in a fresh worktree venv (`CLAUDE.md`, worktree gotcha 2) |
+| Network access to PyPI | `pip download --no-deps -d /tmp/hermes-probe 'hermes-agent==0.19.0'` | The contract-test job and any fixture recapture need the real package |
+| `hermes-agent` **not** in the main venv | `python -c "import hermes_cli" 2>&1 \| grep -q ModuleNotFoundError` | Guards the `plugins`/`agent`/`tools` top-level namespace collision from spike-2 |
 
 ## Solution
 
