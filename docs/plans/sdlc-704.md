@@ -7,7 +7,7 @@ created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/704
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-08T05:42:16Z
+revision_applied_at: 2026-09-08T05:51:00Z
 ---
 
 # Hermes: re-target the shipped plugin at the real hook system, and plumb `turn_id`
@@ -1137,14 +1137,24 @@ Research section documents two places where that site is currently wrong.
       regular `plugins` package.
 - [ ] The contract test's assertion (e) asserts on a **seeded sentinel's presence in
       the injected context**, not merely that a dict came back (critique C1), and the
-      contract job declares a Redis service unconditionally.
+      contract job declares a Redis service unconditionally. The *wiring* is checked,
+      not the word (round-2 R2-C2): the file must contain a real `.capture(` call and
+      an `assert … in …["context"]` containment assertion, since a comment, docstring
+      or unused local named `sentinel` satisfies a bare `grep -ci 'sentinel'` while
+      the corner-cut version of (e) survives.
 - [ ] `.github/workflows/hermes-contract.yml` states in its header that the job is
       **advisory and must not be a required status check**, and its `hermes-agent`
       install line carries a **dated pin comment** (critique C2, C3). The PR body
       carries the matching post-merge note about branch protection.
-- [ ] `tests/fixtures/harness_payloads/README.md` no longer contains the string
-      "remaining four", and its replacement names **two** files in the
-      not-yet-live-verified bucket (critique C4).
+- [ ] `tests/fixtures/harness_payloads/README.md` no longer contains the phrase
+      "remaining four" **even across a line break** — the check is
+      `tr '\n' ' ' < … | grep -cE 'remaining +four'` → 0, because the phrase is
+      currently wrapped between lines 19-20 and a plain `grep -c 'remaining four'`
+      returns 0 at baseline and therefore cannot detect its own violation
+      (critique C4, round-2 R2-C1). Its replacement names **two** files in the
+      not-yet-live-verified bucket, and the new middle tier label is positively
+      asserted present (`grep -c 'real dispatcher' …` → output > 0), so the
+      criterion is red before the edit and green only after it.
 - [ ] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
       (`black --check plugins/hermes/`, `ruff check plugins/hermes/`) since no CI job
       covers `plugins/` and this lane deliberately does not widen `lint.yml`
@@ -1320,8 +1330,12 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   count sentence together with the tier table — *live turn* (Claude Code, OpenClaw),
   *real dispatcher, not a live turn* (Hermes), *binary/docs, not a live turn*
   (Codex, 2 files) — so the number and the grade cannot drift apart. The
-  Verification row `grep -c 'remaining four' …` → 0 pins that the old sentence is
-  gone.
+  Verification row pins that the old sentence is gone — and it must be the
+  **newline-collapsing** form, `tr '\n' ' ' < … | grep -cE 'remaining +four'` → 0,
+  because the phrase is line-wrapped at `README.md:19-20` and a plain
+  `grep -c 'remaining four'` already returns 0 at baseline (round-2 R2-C1). Pair it
+  with the positive companion row `grep -c 'real dispatcher' …` → output > 0 so the
+  new tier label is asserted present, not merely the old wording absent.
 
 ### 4. Contract test and its CI job
 
@@ -1344,6 +1358,15 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   A bare `isinstance(result[0], dict)` passes on the swallowed-exception path and is
   rejected. If (e) is split out instead, its skip must be explicit and visible, never
   a silent pass; (a)–(d) need no Redis and stay the Redis-free gate.
+- **The Verification rows for (e) check the wiring, not the word** (round-2 R2-C2).
+  `grep -ci 'sentinel'` alone is satisfied by a comment, a docstring, or an unused
+  local, so the corner-cut version of (e) would pass the row that exists to catch it.
+  Two additional rows are required and are already in the Verification table:
+  `grep -c '\.capture(' tests/test_hermes_plugin_contract.py` → output > 0 and
+  `grep -cE 'assert .+ in .+\["context"\]' tests/test_hermes_plugin_contract.py` →
+  output > 0. Both are red at baseline by construction (the file does not exist), so
+  they need no separate red-state demonstration. The `sentinel` row stays — it is
+  harmless, just insufficient alone.
 - `.github/workflows/hermes-contract.yml`: one job, own venv, `pip install
   hermes-agent==0.19.0` plus `-e .[dev]`, **an unconditional Redis service** (C1 —
   the earlier "if the test needs one" hedge is resolved to *yes*), run `pytest`
@@ -1456,20 +1479,27 @@ with `POPOTO_TEST_DB=9` exported for every test run.
 | Fixtures keep a provenance string | `grep -l 'captured-from:' tests/fixtures/harness_payloads/hermes_pre_llm_call.json tests/fixtures/harness_payloads/hermes_post_llm_call.json \| wc -l` | output > 1 |
 | No stale xfails | `grep -rn 'xfail' tests/ \| grep -v '# open bug'` | exit code 1 |
 | Anti-criterion: repo-root `plugins/` stays a namespace portion (C5) | `test ! -e plugins/__init__.py` | exit code 0 |
-| Anti-criterion: the "remaining four" count is gone (C4) | `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md` | match count == 0 |
+| Anti-criterion: the "remaining four" count is gone — whitespace-insensitive (C4, R2-C1) | `tr '\n' ' ' < tests/fixtures/harness_payloads/README.md \| grep -cE 'remaining +four'` | output == 0 |
+| Positive companion: the new middle tier label is present (R2-C1) | `grep -c 'real dispatcher' tests/fixtures/harness_payloads/README.md` | output > 0 |
 | New plugin module is black-clean (C5) | `black --check plugins/hermes/` | exit code 0 |
 | New plugin module is ruff-clean (C5) | `ruff check plugins/hermes/` | exit code 0 |
 | Contract job declares an unconditional Redis service (C1) | `grep -c 'services:' .github/workflows/hermes-contract.yml` | output > 0 |
 | Contract job is marked advisory (C2) | `grep -ci 'advisory' .github/workflows/hermes-contract.yml` | output > 0 |
 | Pin carries a dated staleness comment (C3) | `grep -c 'pinned 2026-09-08' .github/workflows/hermes-contract.yml` | output > 0 |
 | Contract test seeds a sentinel rather than asserting bare `dict` (C1) | `grep -ci 'sentinel' tests/test_hermes_plugin_contract.py` | output > 0 |
+| Contract test actually captures the sentinel through a real service (R2-C2) | `grep -c '\.capture(' tests/test_hermes_plugin_contract.py` | output > 0 |
+| Contract test asserts containment in the injected context (R2-C2) | `grep -cE 'assert .+ in .+\["context"\]' tests/test_hermes_plugin_contract.py` | output > 0 |
 
-**Red-state proof required.** Before the implementation lands, run the two
+**Red-state proof required.** Before the implementation lands, run the three
 anti-criteria that can be falsified today — *"no `Hermes sends no turn id` claim
-survives"* and *"Hermes fixtures no longer graded docs only"* — against the baseline
-tree, confirm they FAIL, and paste that output into the PR description. An
-anti-criterion never demonstrated red is indistinguishable from one that cannot
-detect its violation.
+survives"*, *"Hermes fixtures no longer graded docs only"*, and the
+newline-collapsing *"remaining four"* row (`tr '\n' ' ' < … | grep -cE 'remaining +four'`,
+which returns **1** at baseline) — against the baseline tree, confirm they FAIL, and
+paste that output into the PR description. An anti-criterion never demonstrated red
+is indistinguishable from one that cannot detect its violation. That is not
+hypothetical here: the round-1 form of the third row, `grep -c 'remaining four'`,
+returned 0 at baseline because the phrase wraps across `README.md:19-20`, and it was
+caught only in critique round 2 (R2-C1).
 
 ## Critique Results
 
@@ -1715,6 +1745,16 @@ substantive instructions they guard are correct as written.
 concerns are **accepted on the record** and the build proceeds. Both are single-row
 edits to the Verification table that the builder (Task 4 / Task 3) applies in place;
 neither changes the implementation contract.
+
+**Round-2 fold-in applied** (2026-09-08, `revision_applied_at` below):
+
+| Item | Folded into |
+|---|---|
+| R2-C1 (line-wrapped `remaining four`) | Verification row replaced with the `tr`-collapsing form + new positive companion row on `real dispatcher`; Success Criteria bullet rewritten; Task 3 bullet corrected; Red-state proof paragraph widened from two rows to three |
+| R2-C2 (bare `sentinel` word grep) | Two Verification rows added (`\.capture(`, `assert … in …["context"]`); Success Criteria (e) bullet extended; Task 4 bullet added |
+
+No implementation-contract text changed. The plan is settled; the `plan_revising`
+lock is cleared.
 
 ---
 
