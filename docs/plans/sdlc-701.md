@@ -308,7 +308,11 @@ were written for. That is the non-obvious half of this change.
 
 **Size:** Medium
 
-**Team:** Solo dev, code reviewer
+**Team:** Two builders (one for the harness conversion + tests, one validator)
+plus a documentarian and a code reviewer — i.e. the roles enumerated in Team
+Orchestration, not a solo dev. (Revised per critique C6: the earlier "solo dev"
+line contradicted that section. Tasks 1 and 2 are merged below so the count is
+four roles across five tasks, with no builder-to-builder handoff.)
 
 **Interactions:**
 - PM check-ins: 1 (confirm the scope widening from 2 sites to 5, and the
@@ -348,7 +352,12 @@ is covered by an assertion on `_meta.db_class_key`, which needs no provider.
   globs written against the *old* key shapes. After the fix the harness's keys
   live under `$<FieldType>F:ExtMem<hash>:…` and `$Class:ExtMem<hash>`, which
   neither `ExtMem<hash>:*` nor `ExtMem*` matches. Both must widen, or the fix
-  trades one leak for another.
+  trades one leak for another. **The widened `teardown()` glob is
+  `*{class_name}*` — unanchored on both sides.** A `*:{class_name}:*` form
+  cannot match `$Class:ExtMem<hash>`, which `ModelOptions.__init__` creates as
+  `DB_key("$Class", db_class_key)` (`src/popoto/models/base.py:191`) with
+  **nothing after** the class name. See critique C1; that trailing-colon form was
+  in an earlier draft of Task 1 and is wrong.
 - **A construction-time invariant test**: a test that asserts
   `cls._meta.db_class_key.redis_key == cls.__name__` for every benchmark
   factory, so the pattern cannot come back silently in a sixth factory.
@@ -364,7 +373,8 @@ Benchmark run start → `_sweep_stale_benchmark_keys` clears residue matching th
 **new** patterns → per item, `setup()` calls a factory → factory returns a class
 whose `_meta.db_class_key` **is** `ExtMem<hash>` → every field and every record
 writes under that name → `teardown()` SCANs `ExtMem<hash>:*` **and**
-`*:ExtMem<hash>*`, which now matches everything the item wrote → next item
+`*ExtMem<hash>*` (no trailing colon anchor — see C1), which now matches
+everything the item wrote → next item
 starts on an empty namespace, with no dependence on `agent_id` uniqueness.
 
 ### Technical Approach
@@ -426,15 +436,54 @@ the form `$<Anything>:ExtMem<hash>…` and `$Class:ExtMem<hash>`, not just
 here because the sweep runs against the dedicated bench DB (14 by default, DB 0
 rejected) — but it must be *added alongside* the existing patterns, not
 replace them: `ExternalBenchmarkMemory:*` stays so that residue left by
-pre-fix runs is still swept. Symmetrically, `teardown()`'s
-`SCAN {class_name}:*` gains a `SCAN *:{class_name}:*` companion.
+pre-fix runs is still swept. `*:ExtMem*` **is** correct for the sweep — it does
+match `$Class:ExtMem12345678`, because that key has a colon *before* the class
+name; it is only the `teardown()` companion that must drop the trailing anchor.
+
+Symmetrically, `teardown()`'s `SCAN {class_name}:*` gains a
+`SCAN *{class_name}*` companion (**not** `*:{class_name}:*` — C1). The
+`{class_name}:*` pass is retained rather than subsumed: it is the cheaper,
+prefix-anchored scan for the record hashes, and keeping both makes the diff
+additive.
+
+**The new leak test must not reuse `teardown()`'s pattern constant.** It derives
+its own `*{class_name}*` match independently. Importing the glob under test into
+the test that checks it is exactly how a defect of this shape goes green.
 
 **Explicit-validity branch in `teardown()`: keep it.** After the fix its
 premise (a *shared* namespace) is false, but the branch itself is still
-correct, still targeted, and is covered by two tests worth keeping — including
-`test_teardown_on_arm_none_is_real_noop`, which guards against an
-unconditional DEL masking a leak. Rewrite the comment (Documentation task), do
-not delete the code. See Rabbit Holes for why the tempting deletion is a trap.
+correct and still targeted. Rewrite the comment (Documentation task), do not
+delete the code. See Rabbit Holes for why the tempting deletion is a trap.
+
+**But its no-op guard test must be rebuilt, not merely re-pointed (critique
+C3).** `test_teardown_on_arm_none_is_real_noop`
+(`tests/benchmarks/test_external.py:1226-1249`) seeds a sentinel into
+`ValidityField.get_all_keys(validity_cls, "validity")` where `validity_cls =
+_build_external_model_class("teardownchk", with_validity=True)`, then runs an
+**arm-none** scenario built from a *different* per-item class and asserts the
+sentinel survives. That is meaningful **only** because both classes collapse
+onto the shared `ExternalBenchmarkMemory` namespace today. After this fix the
+sentinel lives at `$ValidityF:ExtMemteardownchk:validity:*` while the scenario's
+class is `ExtMem<item-hash>`, so no teardown behavior — guarded or unguarded —
+can reach it and the test passes unconditionally. It becomes the #661 vacuity
+trap, landing on the very test cited as the reason to keep this branch.
+
+Re-deriving the sentinel's key "from the per-item class name" does **not**
+repair it: the arm-none class declares no `validity` field at all, so it has no
+validity keys to seed. The replacement asserts a different, still-real property
+— *this item's guard was evaluated and correctly took the no-op path*, on the
+arm-none class's own keyspace:
+
+1. Run a scenario whose class **does** declare validity, seed under
+   `ValidityField.get_prefix_db_key(scenario._model_class, "validity")`, and
+   assert `teardown()` removes it (the branch fires).
+2. Run the arm-none scenario and assert its own class produced **zero**
+   `$ValidityF:{arm_none_class_name}:*` keys — before and after teardown — so an
+   unconditional DEL would still be caught by the widened leak assertion rather
+   than by a foreign sentinel.
+
+If the builder cannot make this non-vacuous, it must say so explicitly in the PR
+body rather than ship a green test that cannot fail.
 
 ## Failure Path Test Strategy
 
@@ -481,15 +530,30 @@ rather than rendering.
 ## Test Impact
 
 - [ ] `tests/benchmarks/test_external.py::TestSupersessionArm::test_no_leaked_validity_keys_after_teardown`
-      — **UPDATE**: it currently asserts absence of
-      `$ValidityF:ExternalBenchmarkMemory:validity:*`. That literal is dead after
-      the fix, so the test would pass vacuously (the #661 vacuity trap). Widen it
-      to assert (a) zero keys matching `*ExternalBenchmarkMemory*` anywhere, and
-      (b) zero keys matching `*{model_class.__name__}*` after teardown.
+      — **UPDATE for coverage, not for vacuity (critique C2).** An earlier draft
+      of this plan claimed the test asserts absence of
+      `$ValidityF:ExternalBenchmarkMemory:validity:*` and would go vacuous. That
+      is a misreading: the real assertion is
+      `scan(cursor, match="$ValidityF:*", count=200)`
+      (`tests/benchmarks/test_external.py:1220`) — a field-type-wide wildcard
+      that keeps matching post-fix keys under any class name. **The test is not
+      vacuous today and does not become vacuous.** Do not go looking for a
+      literal that is not in the file. The update is still worth making, for a
+      different reason: `$ValidityF:*` misses `$Class:*`, `$ConfidencF:*`,
+      `$KeyF:*`, `$DecayingSortF:*` and the record hashes that spike-2 showed are
+      equally affected. Widen it to assert (a) zero keys matching
+      `*ExternalBenchmarkMemory*` anywhere, and (b) zero keys matching
+      `*{model_class.__name__}*` after teardown.
 - [ ] `tests/benchmarks/test_external.py::TestSupersessionArm::test_teardown_on_arm_none_is_real_noop`
-      — **UPDATE**: keep the intent (arm `none` must take a genuine no-op), but
-      re-derive its expected key names from the per-item class name rather than
-      the base name.
+      — **REBUILD, not update (critique C3).** This test *does* go vacuous after
+      the fix, and re-deriving its key names from the per-item class name does
+      not repair it, because the arm-none class declares no `validity` field.
+      Replace the foreign-sentinel assertion with the two-part
+      guard-was-evaluated assertion specified in Technical Approach
+      ("Explicit-validity branch in `teardown()`"). This is the highest-risk item
+      in the test set: it is the test the plan cites as the reason to keep the
+      explicit validity branch, so a vacuous version removes that justification
+      silently.
 - [ ] `tests/benchmarks/test_external.py::TestStaleKeySweep::test_sweeps_all_stale_patterns_and_reports_count`
       — **UPDATE**: add the post-fix key shapes it must now sweep
       (`$ValidityF:ExtMem12345678:validity:valid_from`,
