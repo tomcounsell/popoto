@@ -1,10 +1,14 @@
 [build-system]
 # setuptools>=83: first release with the MANIFEST.in exclusion-bypass fix
 # (sdist Unicode NFC/NFD normalization collision on macOS APFS/HFS+, #678).
-# This is a BUILD-environment constraint, not a runtime dependency: it is
-# resolved in the isolated build env and never propagates to consumers of the
-# published wheel or sdist, so CLAUDE.md's "never raise a floor" doctrine for
-# [project.dependencies] does not apply here.
+# This is a BUILD-environment constraint, not a runtime dependency, so
+# CLAUDE.md's "never raise a floor" doctrine for [project.dependencies] does
+# not apply here. Be precise about why (#694): the floor does NOT reach a
+# wheel install, and it DOES constrain an sdist build -- including a
+# consumer's, whenever their environment has no usable wheel or they pass
+# --no-binary. That cost is priced and accepted rather than denied: setuptools
+# 83.0.0 itself declares requires_python >= 3.10 and popoto already requires
+# >=3.10, so no consumer who can install popoto at all is excluded by it.
 requires = ["setuptools>=83", "wheel"]
 build-backend = "setuptools.build_meta"
 

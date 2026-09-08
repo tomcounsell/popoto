@@ -30,11 +30,20 @@ Hard failures (exit 1)
 
 Warning only (exit 0)
     * a top-level entry outside the known set. This is a hand-maintained list
-      with nothing to enforce correspondence against -- there is no
-      machine-readable declaration of intended sdist membership to parse (a
-      MANIFEST.in would be that declaration, and adding one would create the
-      advisory's own precondition). A legitimate packaging addition must never
-      block a release under release pressure, so this prints and continues.
+      with nothing to enforce correspondence against. A ``MANIFEST.in`` now
+      exists (#689), but it does not close that gap: it is a list of
+      prune/include *directives*, not an enumeration of intended top-level
+      membership, so there is still nothing to parse this set against. A
+      legitimate packaging addition must never block a release under release
+      pressure, so this prints and continues.
+
+The non-ASCII rule became **load-bearing** in #689. When this script was
+written there was no ``MANIFEST.in`` at all, so precondition 1 of the
+setuptools advisory was absent and the rule was defense-in-depth against its
+return. #689 added one (``prune tests``) because setuptools exposes no
+pyproject.toml equivalent, which spends that trade deliberately. Do not
+downgrade that rule to a warning: it is now the check that stands between an
+exclusion bypass and PyPI.
 """
 
 from __future__ import annotations
@@ -43,17 +52,22 @@ import pathlib
 import sys
 import tarfile
 
-# The seven top-level entries the published 1.9.0 sdist has. Hand-maintained
-# by design -- see the module docstring for why this warns rather than fails.
+# The top-level entries an sdist built from this tree has. Hand-maintained by
+# design -- see the module docstring for why this warns rather than fails.
+#
+# Recalibrated in #689, which added MANIFEST.in: `tests` left (the suite is no
+# longer shipped) and `MANIFEST.in` arrived (a MANIFEST.in ships itself). Net
+# membership went from 297 members to 131, all 166 of the removed ones under
+# tests/; src/ is untouched at 123. Measured on setuptools 84.0.0.
 EXPECTED_TOP_LEVEL = frozenset(
     {
         "LICENSE",
+        "MANIFEST.in",
         "PKG-INFO",
         "README.md",
         "pyproject.toml",
         "setup.cfg",
         "src",
-        "tests",
     }
 )
 

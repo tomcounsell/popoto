@@ -171,3 +171,61 @@ def test_build_system_floor_is_at_least_83():
     text = (REPO_ROOT / "pyproject.toml").read_text()
     build_system = text.split("[project]", 1)[0]
     assert 'requires = ["setuptools>=83", "wheel"]' in build_system
+
+
+def test_manifest_prunes_tests(tmp_path):
+    """#689: the sdist must not ship a suite it cannot collect.
+
+    The distutils default membership glob is ``tests/test*.py``, which matched
+    all 141 test modules but never ``tests/conftest.py``. Since setuptools
+    exposes no ``[tool.setuptools]`` key that reaches ``sdist.add_defaults``,
+    ``MANIFEST.in`` is the only mechanism, and the suite comes out rather than
+    the missing pieces going in (23 shipped modules read paths that are not in
+    the sdist at all, one of them under ``.github/``, which rule 2 rejects).
+    """
+    manifest = REPO_ROOT / "MANIFEST.in"
+    assert manifest.is_file(), "MANIFEST.in is what removes tests/ from the sdist"
+    directives = [
+        line.split("#", 1)[0].strip()
+        for line in manifest.read_text().splitlines()
+        if line.split("#", 1)[0].strip()
+    ]
+    assert "prune tests" in directives, directives
+
+
+def test_expected_top_level_tracks_the_manifest_decision():
+    """The allowlist and MANIFEST.in must not drift apart (#689).
+
+    Nothing enforces this correspondence at build time -- the top-level rule
+    warns rather than fails, by design -- so it is asserted here instead.
+    """
+    assert "tests" not in checker.EXPECTED_TOP_LEVEL, (
+        "tests/ is pruned from the sdist; leaving it in the allowlist would "
+        "silence the warning if the prune were ever removed"
+    )
+    assert (
+        "MANIFEST.in" in checker.EXPECTED_TOP_LEVEL
+    ), "a MANIFEST.in ships itself, so it is a legitimate top-level entry"
+
+
+def test_non_ascii_rule_is_load_bearing_and_says_so(tmp_path):
+    """#689 spent the trade #678 declined; the rule's status changed with it.
+
+    While no MANIFEST.in existed, precondition 1 of the setuptools
+    exclusion-bypass advisory was absent and the non-ASCII rule was
+    defense-in-depth. It is now the check standing between a bypass and PyPI.
+    A future editor tidying the severity split must read that first, so the
+    claim is asserted rather than left as prose no test protects.
+    """
+    text = SCRIPT.read_text()
+    assert "load-bearing" in text, (
+        "check_sdist_contents.py no longer records that the non-ASCII rule is "
+        "load-bearing now that MANIFEST.in exists"
+    )
+
+    # And it must still be a hard failure, not a warning -- the severity is
+    # the part the docstring is protecting.
+    sdist = _make_sdist(tmp_path / "nfc.tar.gz", CLEAN + ["src/popoto/café.py"])
+    failures, warnings = checker.check_members(_members(sdist))
+    assert any("non-ASCII" in f for f in failures)
+    assert not any("non-ASCII" in w for w in warnings)
