@@ -52,26 +52,26 @@ TURN_IDS = {
     # and Codex sends ``turn_id``, both on the read event and the write
     # event of the same turn. OpenClaw sends one too -- ``ctx.runId``,
     # which its plugin forwards as ``turn_id`` -- so the pair below is one
-    # live turn's real id on both hooks. Hermes sends none in the payloads
-    # popoto sees, which is what keeps it on the session-wide FIFO (#688).
+    # live turn's real id on both hooks. Hermes sends one too: its plugin
+    # hooks receive ``turn_id`` as a flat kwarg on both invoke sites, so the
+    # pair below is one dispatch run's real id (#704 closed #688 with it).
     "claude_code_user_prompt_submit.json": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
     "claude_code_stop.json": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
     "codex_user_prompt_submit.json": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
     "codex_stop.json": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
-    "hermes_pre_llm_call.json": None,
-    "hermes_post_llm_call.json": None,
+    "hermes_pre_llm_call.json": "sess-4f2a9c:task-7b31:9d41c0ab",
+    "hermes_post_llm_call.json": "sess-4f2a9c:task-7b31:9d41c0ab",
     "openclaw_before_prompt_build.json": "59a6ac21-e27c-4b80-a837-f714168ad16c",
     "openclaw_llm_output.json": "59a6ac21-e27c-4b80-a837-f714168ad16c",
 }
 """Expected ``NormalizedEvent.turn_id`` per fixture."""
 
-SENDS_A_TURN_ID = ("claude_code", "codex", "openclaw")
-"""Fixture-name prefixes for the harnesses that send a per-turn id."""
-
 CWDS = {
-    # The working directory each fixture reports. The five doc-derived
-    # fixtures name a synthetic demo path; the two OpenClaw fixtures were
-    # captured from a live run and carry that machine's real
+    # The working directory each fixture reports. The four doc-derived
+    # fixtures name a synthetic demo path; the two Hermes fixtures report
+    # None because Hermes plugin hooks serialize no working directory at
+    # all (only the separate shell-hook subsystem does); the two OpenClaw
+    # fixtures were captured from a live run and carry that machine's real
     # ``ctx.workspaceDir``. Asserting the exact value per fixture rather
     # than merely that one is present is what keeps the assertion
     # falsifiable -- a truthiness check would pass against any string,
@@ -80,8 +80,8 @@ CWDS = {
     "claude_code_stop.json": "/Users/dev/src/demo",
     "codex_user_prompt_submit.json": "/Users/dev/src/demo",
     "codex_stop.json": "/Users/dev/src/demo",
-    "hermes_pre_llm_call.json": "/Users/dev/src/demo",
-    "hermes_post_llm_call.json": "/Users/dev/src/demo",
+    "hermes_pre_llm_call.json": None,
+    "hermes_post_llm_call.json": None,
     "openclaw_before_prompt_build.json": (
         "/Users/valorengels/.openclaw-popotoprobe/.openclaw/workspace"
     ),
@@ -178,10 +178,7 @@ def test_read_fixtures_normalize_to_the_prompt(name):
     assert "health checks" in event.text
     assert event.session_id
     assert event.cwd == CWDS[name]
-    if name.startswith(SENDS_A_TURN_ID):
-        assert event.turn_id
-    else:
-        assert event.turn_id is None
+    assert event.turn_id == TURN_IDS[name]
 
 
 @pytest.mark.parametrize("name", WRITE_FIXTURES)
@@ -190,10 +187,7 @@ def test_write_fixtures_normalize_to_the_assistant_message(name):
     assert event.kind == "write"
     assert "automatic rollback" in event.text
     assert event.session_id
-    if name.startswith(SENDS_A_TURN_ID):
-        assert event.turn_id
-    else:
-        assert event.turn_id is None
+    assert event.turn_id == TURN_IDS[name]
 
 
 @pytest.mark.parametrize("name,expected", sorted(TURN_IDS.items()))
@@ -293,6 +287,88 @@ def test_claude_code_and_codex_share_one_response_shape():
                 "additionalContext": "remembered thing",
             }
         }
+
+
+# --- the Hermes plugin envelope (#704) ------------------------------------------
+#
+# These pin the shape `plugins/hermes/__init__.py` builds and the real
+# `hermes_cli.plugins` dispatcher fills in. They are deliberately fixture-driven
+# where the value came out of a capture and hand-built where the point is a
+# field the capture did not contain -- a test that only replays the happy
+# fixture cannot tell a tolerant adapter from a lucky one.
+
+
+def test_hermes_payloads_carry_no_cwd_key_at_all():
+    """Not merely a None cwd -- the key is absent from both envelopes.
+
+    Plugin hooks serialize no working directory (only the shell-hook
+    subsystem does), so `MemoryConfig.from_env()` falls back to the gateway
+    process's own cwd. If a future Hermes release starts sending one, this
+    fails and the fallback note in the guide can come out.
+    """
+    for name in ("hermes_pre_llm_call.json", "hermes_post_llm_call.json"):
+        payload = load(name)
+        assert "cwd" not in payload, name
+        assert "workspaceDir" not in payload, name
+        assert hooks.normalize(payload).cwd is None, name
+
+
+def test_hermes_pre_and_post_share_one_turn_id():
+    """The write must be claimable by the read's id, not by FIFO position."""
+    pre = hooks.normalize(load("hermes_pre_llm_call.json"))
+    post = hooks.normalize(load("hermes_post_llm_call.json"))
+    assert pre.turn_id == post.turn_id
+    assert pre.turn_id.count(":") == 2, pre.turn_id
+
+
+def test_assistant_response_is_the_field_hermes_writes_from():
+    """Fixture-independent: the field name alone must reach the write path.
+
+    `assistant_response` is what `agent/turn_finalizer.py:483-494` passes and
+    it was missing from `_RESPONSE_FIELDS` before #704, which is the whole
+    defect. Built by hand rather than loaded so it stays a test of the
+    adapter even if the fixture is recaptured with different wording.
+    """
+    event = hooks.normalize(
+        {
+            "hook_event_name": "post_llm_call",
+            "session_id": "s",
+            "assistant_response": "the answer worth keeping",
+        }
+    )
+    assert event.kind == "write"
+    assert event.text == "the answer worth keeping"
+
+
+def test_the_dispatchers_extra_kwargs_are_tolerated():
+    """`telemetry_schema_version` is injected by the manager, not the caller."""
+    payload = load("hermes_pre_llm_call.json")
+    assert payload["telemetry_schema_version"]
+    payload["some_future_kwarg"] = {"nested": ["anything"]}
+    event = hooks.normalize(payload)
+    assert event.kind == "read"
+    assert "health checks" in event.text
+
+
+def test_an_empty_assistant_response_is_not_a_write_worth_storing():
+    payload = load("hermes_post_llm_call.json")
+    payload["assistant_response"] = "   "
+    assert hooks.normalize(payload).text == ""
+
+
+def test_a_blank_turn_id_falls_back_to_none_rather_than_empty_string():
+    """An empty id must not become a pending-list key nothing can claim."""
+    payload = load("hermes_post_llm_call.json")
+    payload["turn_id"] = ""
+    assert hooks.normalize(payload).turn_id is None
+
+
+def test_a_pre_hook_without_a_user_message_yields_no_query():
+    payload = load("hermes_pre_llm_call.json")
+    del payload["user_message"]
+    event = hooks.normalize(payload)
+    assert event.kind == "read"
+    assert event.text == ""
 
 
 def test_hermes_response_shape():
