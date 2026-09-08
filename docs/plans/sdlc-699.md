@@ -1346,6 +1346,87 @@ Verified against the tree while folding in: `tests/test_cyclic_decay_field.py:15
 with **no** command queued (C6 confirmed); `base.py:2774-2777` reads "mutates only
 index 1 … slot-3 writer/deleter" in 0-based Python (C5 confirmed).
 
+**Round 3 (concern re-critique)** — 2026-09-08 · FULL depth · independent roster
+(3 critics: Risk & Robustness, Scope & Value, History & Consistency) · **Verdict:
+READY TO BUILD (with concerns)** (0 blockers, 2 concerns, 0 nits).
+
+This is the router's row-2b concern round (the critique verdict was stale after the
+round-2 fold-in), bounded by `MAX_CONCERN_RECRITIQUE_ROUNDS` — **not** a third G2
+cycle. The round-2 fold-in note above says "there is no round 3" of the G2 loop;
+that remains true and is not contradicted by this entry. Scope was restricted to
+verifying that C4–C7 landed correctly in the plan body. Scope & Value and History &
+Consistency each returned **No findings** — the C4/C5/C6/C7 body text, its citations
+(`base.py:2774-2777`, `tests/test_cyclic_decay_field.py:1512`/`:1534`,
+`tests/test_observation_protocol.py:693-701`) and the Task 3 four-edit escape hatch
+all verified accurate. The two findings below are **not** about the folded reasoning,
+which is correct; they are about two of the *Verification rows* the fold-in added,
+both of which are vacuous or unsatisfiable as written.
+
+| Severity | Critic(s) | Finding | Location |
+|---|---|---|---|
+| CONCERN | Risk & Robustness (measured independently by the aggregator before dispatch) | C8 — the C6 verification row `grep -c "pipe.execute()" tests/test_observation_protocol.py` \| `output > 0` **already returns 1 on unmodified `main`** (the pre-existing `test_pipeline_support` at `:701`). The gate is green before the C6 test exists and stays green if the builder skips it. | Verification table, "Pipelined no-entry result shift pinned by a test (C6)" |
+| CONCERN | Risk & Robustness (measured independently by the aggregator before dispatch) | C9 — the C5 verification row `grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` \| `== 0` **cannot reach 0**: four legitimate pre-existing 0-based *Python* uses live at `:344`, `:558`, `:619`, `:680`, three of them (`export_state`, and the `on_save` docstring/comment prose) in code no task rewrites. As written the gate either fails the build or forces edits to correct, out-of-scope comments. | Verification table, "Baseline slot protected in Lua terms, not Python's (C5)" |
+
+### C8 (CONCERN) — the C6 verification row is vacuous: it passes on unmodified `main`
+
+*Critic: Risk & Robustness, corroborated by the aggregator's own pre-dispatch
+measurement.*
+**Location:** Verification table, row "Pipelined no-entry result shift pinned by a
+test (C6)".
+
+Measured at HEAD `4cb3cd24`: `grep -c "pipe.execute()"
+tests/test_observation_protocol.py` → **1**, from the bare `pipe.execute()` at
+`tests/test_observation_protocol.py:701` inside the pre-existing
+`test_pipeline_support` — the very test the plan says "only asserts `result is pipe`
+… and cannot see" the shift. The row therefore certifies nothing: it is satisfied by
+the code the concern exists to strengthen. This is the #661 vacuity trap in
+verification-row form — a check that cannot distinguish done from not-done.
+
+**Implementation Note:** retarget the row at a string that is **absent today** and
+present only once the C6 test lands. The plan's own prose already names the
+assertion shape ("add a sibling test asserting `len(pipe.execute())` for the no-entry
+pipelined case"), so use:
+`grep -c "len(pipe.execute())" tests/test_observation_protocol.py` | expected
+`output > 0`. Confirm it reads **0** before the build starts — if it does not, pick a
+different unique literal (e.g. the new test's function name) rather than shipping a
+row that is already green.
+
+### C9 (CONCERN) — the C5 verification row is unsatisfiable without editing out-of-scope comments
+
+*Critic: Risk & Robustness, corroborated by the aggregator's own pre-dispatch
+measurement.*
+**Location:** Verification table, row "Baseline slot protected in Lua terms, not
+Python's (C5)".
+
+`grep -n "slot 3" src/popoto/fields/cyclic_decay_field.py` at `4cb3cd24` returns
+**four** hits, every one a correct 0-based *Python* reference to `entry[3]`:
+
+- `:344` — `export_state`'s docstring ("never carries slot 3 through"). `export_state`
+  is explicitly outside this plan's rewrite ("the other six are in `export_state`
+  (`:286`, `:301`), `import_state` … and the ranking path").
+- `:558` — the `on_save` docstring's baseline rule ("a non-numeric slot 3").
+- `:619`, `:680` — `on_save` comments ("baseline is None when slot 3 is …",
+  "Baseline unknown (legacy entry, or corrupt slot 3)").
+
+The C5 concern is about a *Lua* instruction inheriting Python's numbering, not about
+these Python comments, which are right as they stand. A whole-file ban on the
+substring is over-broad in one direction (it flags correct prose) while still being
+weak in the other: `base.py:2776`'s actual wording is **`slot-3`** with a hyphen, so a
+builder who copies that phrase verbatim into the new Lua is **not** caught by a grep
+for `slot 3` at all.
+
+**Implementation Note:** replace the row with a check that is both scoped and
+hyphen-tolerant. Either (a) scope it to the new script literal —
+`sed -n '/CYCLES_ADJUST_LUA = /,/^"""/p' src/popoto/fields/cyclic_decay_field.py |
+grep -Ec "slot[ -]3"` | expected `0` (adjust the `sed` range to the literal's actual
+delimiters once written) — or (b) grep the whole file for the specific mis-copied
+phrase, `grep -Ec "slot[ -]3 (writer|writer/deleter)"
+src/popoto/fields/cyclic_decay_field.py` | expected `0`, which measures 0 today and
+is a true signal. Pair it with a positive check that the protection actually exists,
+e.g. `grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` | `output > 0`. Do
+**not** satisfy the row as currently written by editing `:344`/`:558`/`:619`/`:680`
+— those are correct Python-side comments and rewording them is out of scope.
+
 ### Structural check results
 
 **Round 2** — re-measured at HEAD `3f768d8a`.
@@ -1363,6 +1444,18 @@ index 1 … slot-3 writer/deleter" in 0-based Python (C5 confirmed).
 | File paths exist (r2) | PASS | 16/17; `tests/test_cyclic_decay_atomicity.py` is intentionally new (Task 4) |
 | Prerequisites met (r2) | PASS (3/4) | `redis-cli -u redis://localhost:6379/9 ping` → `PONG` (Redis 8.6.2); `eval "return type(cmsgpack)" 0` → `table`; `import msgpack, redis, pytest` → ok. `POPOTO_TEST_DB` unset in the critique shell — the build lane must export `9` |
 | Round-1 fold-in landed (r2) | PASS | B1, B2, C1, C2, C3, N1 each verified present in the plan **body**, not only the fold-in table. N1's count re-measured: 1 import (`:49`) + 9 uses |
+
+**Round 3** — re-measured at HEAD `4cb3cd24`.
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections (r3) | PASS | All plan-template sections present and non-empty |
+| Task numbering (r3) | PASS | Tasks 1-7, no gaps |
+| Dependencies valid (r3) | PASS | All `Depends On` IDs resolve to real task IDs; no cycles |
+| File paths exist (r3) | PASS | Every referenced source/test/doc path exists except `tests/test_cyclic_decay_atomicity.py`, intentionally new (Task 4) |
+| Cross-references (r3) | PASS | Every Success Criterion maps to a task; Rabbit Holes stay excluded from the tasks |
+| Round-2 fold-in landed (r3) | PASS | C4 (type guard + verbatim Lua, Task 1 step, `:1512`/`:1534` named), C5 (1-based-Lua bullet, Key Elements + Task 2 rewritten, "slot 3" removed from the Lua instructions), C6 (Architectural Impact bullet, pipeline-table row, Task 2 step, Test Impact), C7 (four-edit removal procedure, Task 5 sequencing annotation, conditional Success Criterion) each verified present in the plan **body** |
+| Verification rows are non-vacuous (r3) | **FAIL (2 of 24)** | Pre-measured at `4cb3cd24`: `type(p) ~= 'number'` → 0, `CYCLES_MERGE_LUA` → 0, `CYCLES_ADJUST_LUA` → 0, `hget(cycles_hash_key)` → 1 (cdf) / 1 (base), `hget(pressure_hash_key)` → 1, `POPOTO_REDIS_DB` → 10, `save first` → 1, `rolling deploy` → 1 — all correctly red pre-build. The two exceptions are the C6 row (`pipe.execute()` → **1**, already green: C8) and the C5 row (`slot 3` → **4**, unsatisfiable in scope: C9) |
 
 ---
 
