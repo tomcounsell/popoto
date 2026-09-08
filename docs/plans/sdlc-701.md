@@ -615,31 +615,262 @@ neither should be done.
 
 ## Update System
 
-<!-- skeleton -->
+No update-system changes required. popoto is a published library plus an mkdocs
+site; this change lives entirely under `tests/benchmarks/`, adds no dependency,
+no config file, and no extra. Since #689 `MANIFEST.in` carries `prune tests`, so
+nothing in this plan reaches the published sdist or wheel — there is no consumer
+propagation path at all. `uv.lock` is untouched.
 
 ## Agent Integration
 
-<!-- skeleton -->
+No agent integration required. Nothing here is reachable from an agent or tool
+surface: these are benchmark-harness factory functions invoked by
+`tests/benchmarks/run_external.py` and by pytest. popoto exposes no MCP tool
+that constructs benchmark model classes.
 
 ## Documentation
 
-<!-- skeleton -->
+### Feature Documentation
+
+- [ ] `tests/benchmarks/README.md:267-274` — rewrite the "**Known limitation**"
+      paragraph under "External-harness supersession axis (#692)". It currently
+      states the shared-`ValidityField`-namespace defect as a live fact and
+      points at "the follow-up issue filed from #692". Replace with a short
+      statement that per-item classes are built with `type()` so
+      `_meta.db_class_key` is correct from creation, and cite #701.
+- [ ] `tests/benchmarks/README.md` — while there, correct the same understatement
+      the issue made: note that the defect covered `$Class`, `$KeyF`,
+      `$DecayingSortF`, `$ConfidencF` and record keys too, not only
+      `$ValidityF`. This is the durable record of what was actually wrong.
+- [ ] No `docs/features/` page exists for the benchmark harness and none is
+      warranted — `tests/benchmarks/README.md` is the harness's documentation
+      and is the correct home for this.
+
+### External Documentation Site
+
+- [ ] No mkdocs page changes. `tests/benchmarks/README.md` is not part of the
+      docs site (`mkdocs.yml` sources `docs/`), so `mkdocs build --strict`
+      is unaffected. Run it anyway as a regression gate.
+
+### Inline Documentation
+
+- [ ] `scenarios/external_base.py::teardown` — rewrite the 18-line comment at
+      lines 927-944. Its premise ("these five keys are SHARED across every item
+      in a run") becomes false. The branch stays; the justification changes from
+      *required for correctness* to *targeted cleanup of keys that the
+      prefix-anchored SCANs do not reach*, and it must still say why the
+      declared-field guard (not an arm guard) is the right condition.
+- [ ] Each of the five converted factories — add the one-line docstring note the
+      `siq`/`csr`/`rlt` factories already carry: built with `type()` so the
+      metaclass captures the unique `db_class_key` at creation; a post-hoc
+      `__name__` rename would not reach `_meta`.
+- [ ] `run_external.py:107-111` — update the `_STALE_KEY_PATTERNS` comment to
+      explain the added glob and why `ExternalBenchmarkMemory:*` is retained
+      (pre-fix residue).
+- [ ] `docs/plans/sdlc-692.md` — **read-only**. It is a shipped plan and a
+      historical record; its Technical Approach step 5 described the world
+      correctly at the time. Do not edit it. Note the supersession in
+      `sdlc-701.md` instead (this plan is that note).
 
 ## Success Criteria
 
-<!-- skeleton -->
+- [ ] For all five factories, `cls._meta.db_class_key.redis_key == cls.__name__`
+      and the name carries the per-item prefix.
+- [ ] Two per-item classes from the same factory with different prefixes share
+      **zero** Redis key prefixes: a save on each produces two disjoint key sets
+      (the spike-2 reproduction, re-run, now showing no `ExternalBenchmarkMemory`
+      key at all).
+- [ ] `$ValidityF`, `$ConfidencF`, `$Class`, `$KeyF`, `$DecayingSortF` and record
+      keys all carry `ExtMem<hash>` after the fix.
+- [ ] After `ExternalScenario.teardown()`, zero keys match `*ExtMem<hash>*` and
+      zero match `*ExternalBenchmarkMemory*`, asserted after first proving the
+      pre-teardown keyspace was non-empty.
+- [ ] `_sweep_stale_benchmark_keys` removes both pre-fix
+      (`ExternalBenchmarkMemory:*`) and post-fix (`$…:ExtMem*`) residue.
+- [ ] Converted `RecipeMemory` still has `WriteFilterMixin` in its MRO and still
+      exposes `compute_filter_score`.
+- [ ] Converted graph/assoc classes still expose their self-referential
+      `Relationship` in `_meta.fields`.
+- [ ] `grep -rn '\.__name__ = ' tests/ src/ scripts/` returns no matches.
+- [ ] `tests/benchmarks/README.md` no longer describes the limitation as live.
+- [ ] Tests pass (`/do-test`), with `POPOTO_TEST_DB` set for this lane and the DB
+      number stated alongside the count.
+- [ ] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py`,
+      `mkdocs build --strict` all clean.
+- [ ] Documentation updated (`/do-docs`).
+- [ ] No `src/` file modified (anti-criterion — see Verification).
 
 ## Team Orchestration
 
-<!-- skeleton -->
+### Team Members
+
+- **Builder (external-harness factories)**
+  - Name: `ext-factory-builder`
+  - Role: convert the two `external_base.py` factories and update
+    `teardown()` + `_STALE_KEY_PATTERNS`
+  - Agent Type: builder
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Builder (sibling factories)**
+  - Name: `sibling-factory-builder`
+  - Role: convert `recipe_base.py`, `association_recall.py`,
+    `test_confidence_gate_refusal.py`
+  - Agent Type: builder
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Test engineer (namespacing invariant + leak tests)**
+  - Name: `namespace-test-engineer`
+  - Role: write the new invariant test and update the four affected
+    `test_external.py` cases; produce red-state proof against pre-fix HEAD
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Documentarian**
+  - Name: `bench-documentarian`
+  - Role: `tests/benchmarks/README.md`, the `teardown()` comment, factory
+    docstrings, `_STALE_KEY_PATTERNS` comment
+  - Agent Type: documentarian
+  - Resume: true
+
+- **Validator**
+  - Name: `namespace-validator`
+  - Role: verify all Success Criteria and run the Verification table
+  - Agent Type: validator
+  - Resume: true
 
 ## Step by Step Tasks
 
-<!-- skeleton -->
+### 1. Convert the external-harness factories
+- **Task ID**: build-external-factories
+- **Depends On**: none
+- **Validates**: `tests/benchmarks/test_external.py`, `tests/benchmarks/test_supersession_axis.py`
+- **Informed By**: spike-1 (rename never reaches `_meta`), spike-2 (four key
+  families affected, not one), spike-3 (`type()` viable; post-hoc
+  `Relationship` and `with_validity` blocks stay post-hoc)
+- **Assigned To**: `ext-factory-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- Convert `_build_external_model_class` (`scenarios/external_base.py:186`) to a
+  single `type()` call over a conditionally-assembled namespace dict, collapsing
+  the three duplicated class bodies. Set `__module__` and `__qualname__` in the
+  dict. Keep the `with_validity` block after the `type()` call, unchanged.
+- Convert `_build_graph_model_class` (`scenarios/external_base.py:127`) the same
+  way. Keep the post-`type()` self-referential `prev_turn` `Relationship` +
+  `_meta.add_field` block, unchanged and post-hoc.
+- Delete both `__name__`/`__qualname__` assignment pairs (lines 172-173, 287-288).
+- In `ExternalScenario.teardown()`, add a second SCAN pass over
+  `*:{class_name}:*` alongside the existing `{class_name}:*` pass. Keep the
+  explicit validity branch and the agent-prefix pass.
+- In `run_external.py`, add `*:ExtMem*` to `_STALE_KEY_PATTERNS`, retaining
+  `ExternalBenchmarkMemory:*`, `ExtMem*`, and `$BM25:ExtMem*`.
+
+### 2. Convert the sibling factories
+- **Task ID**: build-sibling-factories
+- **Depends On**: none
+- **Validates**: `tests/benchmarks/test_confidence_gate_refusal.py`
+- **Informed By**: spike-3 (five sites; `recipe_base.py` carries a method and a
+  mixin base; `association_recall.py` carries a post-hoc self-relationship)
+- **Assigned To**: `sibling-factory-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- Convert `_build_recipe_model_class` (`scenarios/recipe_base.py:35`). Bases
+  tuple must stay `(WriteFilterMixin, popoto.Model)` in that order; hoist
+  `compute_filter_score` to a module-or-local `def` and put it in the namespace
+  dict along with `_wf_min_threshold` and `_wf_priority_threshold`.
+- Convert `_build_model` (`association_recall.py:103`), branching the namespace
+  dict on `with_cooccur` rather than duplicating the class body. Keep the
+  post-`type()` `related` `Relationship` registration.
+- Convert `_build_refusal_model` (`test_confidence_gate_refusal.py:152`).
+- Delete all three `__name__`/`__qualname__` assignment pairs.
+
+### 3. Namespacing invariant + leak tests
+- **Task ID**: build-namespace-tests
+- **Depends On**: none (write first, expect red)
+- **Validates**: `tests/benchmarks/test_model_class_namespacing.py` (create),
+  `tests/benchmarks/test_external.py`
+- **Informed By**: spike-2 (exact key families to assert), Risk 2 (vacuity)
+- **Assigned To**: `namespace-test-engineer`
+- **Agent Type**: test-engineer
+- **Parallel**: true
+- Create `tests/benchmarks/test_model_class_namespacing.py`: parametrized over
+  all five factories, assert `_meta.db_class_key.redis_key == cls.__name__`,
+  that the name carries the prefix, and that `":" not in db_class_key.redis_key`.
+- In the same file, assert per factory that `_meta.fields` matches a reference
+  key set (Risk 3), that `WriteFilterMixin in RecipeMemory.__mro__`, and that
+  the self-referential relationship fields survive conversion.
+- Add a two-prefix disjointness test: build two classes, save one record each,
+  assert the two key sets are disjoint and that **no** key contains
+  `ExternalBenchmarkMemory`.
+- Update `test_no_leaked_validity_keys_after_teardown` and
+  `test_teardown_on_arm_none_is_real_noop` per Test Impact — assert non-empty
+  pre-teardown, empty post-teardown; derive names from the class, never from a
+  hardcoded base name.
+- Update both `TestStaleKeySweep` cases with post-fix key shapes, keeping the
+  `SomeOtherModel:keepme` survivor assertion (Risk 1).
+- **Red-state proof**: run the new/updated tests against pre-fix `HEAD`, capture
+  the failures, and paste them into the PR description.
+
+### 4. Validate the conversions
+- **Task ID**: validate-conversions
+- **Depends On**: build-external-factories, build-sibling-factories, build-namespace-tests
+- **Assigned To**: `namespace-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification table. Diff-review each converted factory body
+  field-by-field against its pre-conversion form (benchmarks are not run in CI —
+  this review is the only guard against a silently dropped attribute).
+- Re-run the spike-2 reproduction and confirm zero `ExternalBenchmarkMemory` keys.
+- Report pass/fail with the Redis DB number and package versions stated.
+
+### 5. Documentation
+- **Task ID**: document-namespacing
+- **Depends On**: validate-conversions
+- **Assigned To**: `bench-documentarian`
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Rewrite `tests/benchmarks/README.md`'s "Known limitation" paragraph; record
+  the corrected (wider) scope of what was broken.
+- Rewrite the `teardown()` validity-branch comment (`external_base.py:927-944`).
+- Add the `type()` rationale line to all five factory docstrings.
+- Update the `_STALE_KEY_PATTERNS` comment.
+- Do **not** edit `docs/plans/sdlc-692.md`.
+
+### 6. Final validation
+- **Task ID**: validate-all
+- **Depends On**: document-namespacing
+- **Assigned To**: `namespace-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Full suite with `POPOTO_TEST_DB` set; `ruff check src/`;
+  `black --check src/ tests/`; `scripts/mypy_ratchet.py`;
+  `mkdocs build --strict`.
+- Confirm every Success Criteria checkbox, including the no-`src/`-change
+  anti-criterion.
 
 ## Verification
 
-<!-- skeleton -->
+| Check | Command | Expected |
+|-------|---------|----------|
+| Benchmark harness tests pass | `python -m pytest tests/benchmarks/ -q` | exit code 0 |
+| Namespacing invariant tests pass | `python -m pytest tests/benchmarks/test_model_class_namespacing.py -q` | exit code 0 |
+| External-harness tests pass | `python -m pytest tests/benchmarks/test_external.py -q` | exit code 0 |
+| Full suite passes | `python -m pytest -q` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Format clean | `python -m black --check src/ tests/` | exit code 0 |
+| Type ratchet holds | `python scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `python -m mkdocs build --strict` | exit code 0 |
+| No post-hoc class renames remain | `grep -rn '\.__name__ = ' tests/ src/ scripts/ \| wc -l` | match count == 0 |
+| Every factory builds via `type()` | `grep -c 'type(' tests/benchmarks/scenarios/external_base.py` | output > 1 |
+| Anti-criterion — no `src/` file modified | `git diff --name-only origin/main...HEAD -- src/ \| wc -l` | match count == 0 |
+| Anti-criterion — `ValidityField` gains no override hook | `git diff origin/main...HEAD -- src/popoto/fields/validity_field.py \| wc -l` | match count == 0 |
+| Anti-criterion — `db_class_key` not made lazy | `git diff origin/main...HEAD -- src/popoto/models/base.py \| wc -l` | match count == 0 |
+| Anti-criterion — sdlc-692 plan untouched | `git diff --name-only origin/main...HEAD -- docs/plans/sdlc-692.md \| wc -l` | match count == 0 |
+| Teardown gained the second SCAN pass | `grep -c 'class_name' tests/benchmarks/scenarios/external_base.py` | output > 2 |
+| Sweep covers post-fix key shapes | `grep -c ':ExtMem\*' tests/benchmarks/run_external.py` | output > 0 |
+| README limitation note updated | `grep -c 'Known limitation' tests/benchmarks/README.md` | output > 0 |
+| No shared base-class keys survive a two-class save | `python -m pytest tests/benchmarks/test_model_class_namespacing.py -q -k disjoint` | exit code 0 |
 
 ## Critique Results
 
