@@ -236,12 +236,20 @@ All three spikes ran against the live server on this machine (Redis 8.6.2,
   than atomicity. It is kept because a *partial* conversion leaves the file in the
   exact half-converted state #655 warns about — and because the conversion is nine
   single-token edits in one file with no behavior change, which is a smaller review
-  burden than the split-issue bookkeeping. The escape hatch is structural, not a
-  promise: **Task 3 depends on nothing that depends on it**, so if a reviewer or the
-  supervisor wants it out (Open Question 3), dropping Task 3 wholesale requires no
-  change to Tasks 1, 2 or 4 — only the removal of the
-  `grep -c "POPOTO_REDIS_DB" … == 0` anti-criterion, which holds only when all nine
-  sites convert.
+  burden than the split-issue bookkeeping.
+
+  **The escape hatch, stated accurately (critique C7).** An earlier draft claimed
+  "Task 3 depends on nothing that depends on it". That is **wrong as written** and the
+  task note contradicted it parenthetically: Task 5 (`validate-cycles`) *does* list
+  `build-redis-accessor` in its `Depends On`, and a Success Criterion references the
+  conversion too. The true statement is narrower and still sufficient: **no task
+  produces work that Task 3 consumes, and no task's implementation changes if Task 3 is
+  dropped** — Tasks 1, 2 and 4 are untouched either way; Task 5's entry is a
+  sequencing edge, not a data dependency. Dropping Task 3 is therefore safe but is
+  **not free** — it is a four-edit operation, because deleting the task alone leaves a
+  dangling `Depends On` ID (which the critique's structural check verifies) and an
+  unsatisfiable Success Criterion. The four edits are enumerated in Task 3's scope
+  note; the plan's **default is to keep Task 3**, under which no edit is needed.
 
 ### Flow
 
@@ -723,8 +731,11 @@ public methods keep their signatures.
       state instead that the companion write is one eager atomic script, and why it
       is eager (Risk 2 / #476 precedent).
 - [ ] `Model._adjust_cycle_amplitudes` docstring (`:2703-2723`) — the long comment
-      explaining why the 4th slot is repacked untouched must survive the port; the
-      property is now enforced by the Lua, so the comment moves next to it.
+      explaining why the baseline slot is repacked untouched must survive the port; the
+      property is now enforced by the Lua, so the comment moves next to it. **Translate
+      the index when it moves (critique C5):** the Python comment at `base.py:2776`
+      calls it `cycle[3]` (0-based); in the Lua it is `c[4]`. Do not carry "slot 3"
+      across — `c[3]` is *phase*.
 - [ ] Both Lua scripts get header comments in the style of `CYCLIC_DECAY_LUA`
       (`:60-68`): KEYS/ARGV layout, and an explicit note that the return value is
       `cmsgpack`-packed because bare Lua numbers are truncated to integers over the
@@ -751,6 +762,14 @@ public methods keep their signatures.
 - [ ] The rolling-deploy caveat (Race 4 / critique C2) is present in
       `docs/features/cyclic-decay-field.md`, not only in this plan.
 - [ ] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
+      *(Task 3 only. Delete this criterion if Open Question 3 is answered "split it
+      out" — edit 4 of the removal procedure, critique C7.)*
+- [ ] `tests/test_cyclic_decay_field.py:1512` and `:1534` (table-valued period →
+      whole learned bucket discarded with the decode warning) pass **unmodified** —
+      the acceptance test for the C4 `type` guard.
+- [ ] A pipelined `strengthen_cycle`/`weaken_cycle` against a member with no stored
+      cycles entry is covered by a test that pins `pipe.execute()`'s result length,
+      recording the one-entry shift (critique C6).
 - [ ] The "queue the save first" caveat is gone from the docstring and the docs page.
 - [ ] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
 - [ ] `scripts/mypy_ratchet.py`, `ruff check src/`, `black --check src/ tests/`,
@@ -890,14 +909,27 @@ public methods keep their signatures.
   Tasks 1-2 rewrite) — with `get_REDIS_DB()`; drop the name from the import at `:49`.
 - Do not touch `fields/write_filter.py`.
 - **Scope note (critique C3):** six of the nine are outside this bug's code path.
-  They are kept to avoid leaving the file half-converted (#655), and no build task
-  depends on this one (Task 5 merely lists it in `Depends On`, a sequencing entry) —
-  so if the supervisor answers Open Question 3
-  with "split it out", delete this task and the
-  `grep -c "POPOTO_REDIS_DB" … == 0` Verification anti-criterion (which only holds
-  on a full conversion) and drop `tests/test_popoto_redis_db_rebind.py` /
-  `tests/test_connection.py` from the Validates list. Tasks 1, 2 and 4 are unaffected
-  either way.
+  They are kept to avoid leaving the file half-converted (#655). No task consumes work
+  this one produces, and no task's implementation changes if it is dropped — Tasks 1, 2
+  and 4 are unaffected either way, and Task 5's `Depends On` entry is a sequencing edge
+  rather than a data dependency.
+- **Removal procedure if Open Question 3 is answered "split it out" — four edits, not
+  two (critique C7).** Deleting the task alone leaves a dangling `Depends On` ID and an
+  unsatisfiable Success Criterion, both of which the plan's structural check flags:
+  1. Delete this task (Task 3) and renumber nothing — task IDs, not ordinals, are what
+     `Depends On` resolves against.
+  2. Delete the Verification row
+     `Anti-criterion: stale client import gone` / `grep -c "POPOTO_REDIS_DB" … == 0`,
+     which holds only on a **full** nine-site conversion.
+  3. Drop `tests/test_popoto_redis_db_rebind.py` and `tests/test_connection.py` from
+     this task's `Validates` list (moot once the task is gone; listed so the audit is
+     complete).
+  4. **Remove `build-redis-accessor` from Task 5's `Depends On`, and delete the
+     Success Criterion "`POPOTO_REDIS_DB` no longer appears in
+     `fields/cyclic_decay_field.py`".** These are the two the earlier draft missed.
+
+  The plan's **default is to keep Task 3**; under the default none of the four edits
+  apply.
 - Verify in a **full-suite** run, not a file-scoped one: a stale snapshot and a
   converted call agree until `tests/test_connection.py` rebinds the global.
 
@@ -925,6 +957,9 @@ public methods keep their signatures.
 ### 5. Validation
 - **Task ID**: validate-cycles
 - **Depends On**: build-merge-script, build-adjust-script, build-redis-accessor, build-atomicity-tests
+  <br>*(`build-redis-accessor` is a **sequencing** edge only — Task 5 consumes nothing
+  Task 3 produces. If Open Question 3 is answered "split it out", this ID must be
+  removed here; it is edit 4 of Task 3's removal procedure — critique C7.)*
 - **Assigned To**: `cycles-validator`
 - **Agent Type**: validator
 - **Parallel**: false
@@ -970,6 +1005,10 @@ public methods keep their signatures.
 | Stored period is numeric, not an ARGV string (B1) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "period_type or scoring_path"` | exit code 0 |
 | Ranked query does not raise post-port (B1) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "top_by_decay"` | exit code 0 |
 | No-entry adjust returns `[]` (B2) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "no_stored_cycles"` | exit code 0 |
+| Table-valued period still falls back, whole bucket (C4) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "unhashable_period or partial_merge_discarded"` | exit code 0, **with the tests unmodified** (`git diff origin/main -- tests/test_cyclic_decay_field.py \| grep -c "unhashable_period"` → 0) |
+| Lua type guard present, not a `pcall` (C4) | `grep -c "type(p) ~= 'number'" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
+| Baseline slot protected in Lua terms, not Python's (C5) | `grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Pipelined no-entry result shift pinned by a test (C6) | `grep -c "pipe.execute()" tests/test_observation_protocol.py` | output > 0 |
 | Rolling-deploy caveat documented (C2) | `grep -c "rolling deploy" docs/features/cyclic-decay-field.md` | output >= 2 |
 | Anti-criterion: `resolve_pressure` body left alone | `git diff origin/main -- src/popoto/models/base.py \| grep -c "^[-+][^-+].*resolve_pressure"` | match count == 0 |
 | Anti-criterion: pipeline caveat removed from docs | `grep -c "save first" docs/features/cyclic-decay-field.md` | match count == 0 |
