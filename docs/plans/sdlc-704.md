@@ -5,7 +5,7 @@ appetite: Medium
 owner: Valor Engels
 created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/704
-last_comment_id:
+last_comment_id: none
 ---
 
 # Hermes: re-target the shipped plugin at the real hook system, and plumb `turn_id`
