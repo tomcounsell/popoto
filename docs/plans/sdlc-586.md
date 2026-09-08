@@ -673,31 +673,295 @@ failure to report, not a licence to re-defer.
 
 ## Update System
 
-<!-- skeleton -->
+No update-system changes required. popoto is a published library plus an mkdocs
+site; this work adds no dependency, no config file, and no migration. The one
+deploy-adjacent effect is the docs site, covered under Documentation.
 
 ## Agent Integration
 
-<!-- skeleton -->
+No agent integration required. Nothing here is reachable by, or intended for, an
+agent/tool surface — the supersession producer is a benchmark-harness artifact
+that nothing in `src/` imports, and this plan does not change that.
 
 ## Documentation
 
-<!-- skeleton -->
+### Feature documentation
+
+- [ ] Add a **"Validity gating: three-arm supersession axis (#586)"** section to
+      `docs/benchmarks.md`, following the `graph_eval_484` precedent
+      (`docs/benchmarks.md:707-720`): prose framing plus a table citing the
+      committed `validity_586/*.json` artifacts by path. Must include the
+      environment line (Python, redis-py, platform, Redis DB, commit SHA), the
+      A→B result stated *before* the B→C result, the knowledge-update and
+      temporal-reasoning breakdowns, and the "what it does not establish" limits
+      copied from `tests/benchmarks/README.md`.
+- [ ] Add a short `tests/benchmarks/results/external/validity_586/README.md`
+      naming the three arms, the exact commands that produced them, and the
+      environment — so the directory is self-describing without the plan.
+- [ ] Update `tests/benchmarks/README.md`'s "External-harness supersession axis
+      (#692)" section to point at the real n=500 result, replacing the
+      "that run is a follow-up" framing.
+
+### External documentation site
+
+- [ ] `mkdocs build --strict` passes.
+- [ ] The build emits **no new** `[gen_benchmark_pages] WARNING: unmapped
+      artifact` lines (guaranteed by the `validity_586/` subdirectory; verified,
+      not assumed).
+- [ ] The published headline recall page is unchanged — `longmemeval_s_latest`
+      still resolves to `longmemeval_s_20260630.*`.
+
+### Inline documentation
+
+- [ ] Comment on the `$ValidityF:*` stale-key pattern explaining it exists
+      because per-item teardown protects items 2..N but not item 1 after an
+      interrupted run.
+- [ ] Comment on the `machine` block additions naming CLAUDE.md's
+      redis-py-version-dependent-metric rule as the reason.
+
+### Issue comment
+
+- [ ] Post the findings summary as a comment on #586 (the issue's own history is
+      where the two prior re-blocks were recorded; the resolution belongs in the
+      same thread).
 
 ## Success Criteria
 
-<!-- skeleton -->
+- [ ] All three arms run at **n=500** (`n_total == 500`, `n_ok == 500`,
+      `n_errors == 0`) at the same commit, machine, and session.
+- [ ] Artifacts for all three arms committed under
+      `tests/benchmarks/results/external/validity_586/`, and **nothing else**
+      under `results/external/` is added or modified.
+- [ ] `longmemeval_s_latest.{json,md}` still resolves to the 2026-06-30 run.
+- [ ] Arm C reports `n_excluded_keys_total > 0` **and**
+      `n_excluded_hits_total > 0` — the anti-vacuity condition that failed on
+      2026-09-07.
+- [ ] `producer_failures == 0` and `measurement_failures == 0` on arms B and C.
+- [ ] Arm A reports the zeroed supersession block with `arm == "none"`.
+- [ ] Every committed artifact's `machine` block carries `python_version`,
+      `platform`, `cpu_count`, **`redis_version`**, and **`bench_db`**.
+- [ ] The write-up reports **A→B before B→C**, gives per-category
+      knowledge-update (n=78) and temporal-reasoning (n=133) numbers, and draws
+      no category-level conclusion absent an interval excluding zero.
+- [ ] The write-up contains no judged-accuracy number and no cross-family
+      comparison; no `_judged` artifact exists in `validity_586/`.
+- [ ] The result is published regardless of sign (criterion 4).
+- [ ] Existing benchmark tests pass under `POPOTO_TEST_DB=9`, including the four
+      `TestSupersessionArm` tests.
+- [ ] New tests exist for the logged teardown-cleanup failure and the `machine`
+      block additions.
+- [ ] `ruff check src/`, `black --check src/ tests/`, `mkdocs build --strict`,
+      and `scripts/mypy_ratchet.py` pass.
+- [ ] Documentation updated (`/do-docs`).
 
 ## Team Orchestration
 
-<!-- skeleton -->
+### Team members
+
+- **Builder (harness hardening)**
+  - Name: `harness-builder`
+  - Role: the three additive `tests/benchmarks/` edits plus their tests
+  - Agent Type: `builder` — Domain: Redis/Popoto data
+  - Resume: true
+
+- **Builder (benchmark runner)**
+  - Name: `bench-runner`
+  - Role: execute the three arms, commit artifacts, capture stdout logs
+  - Agent Type: `builder`
+  - Resume: true
+
+- **Documentarian**
+  - Name: `bench-documentarian`
+  - Role: the `docs/benchmarks.md` section, the subdirectory README, the
+    `tests/benchmarks/README.md` update, the #586 comment
+  - Agent Type: `documentarian`
+  - Resume: true
+
+- **Validator**
+  - Name: `bench-validator`
+  - Role: verify the anti-criteria — baseline pointer intact, no artifacts
+    outside `validity_586/`, non-vacuous exclusion set, environment stamped,
+    no cross-family comparison in the prose
+  - Agent Type: `validator`
+  - Resume: true
 
 ## Step by Step Tasks
 
-<!-- skeleton -->
+### 1. Add `$ValidityF:*` to the stale-key sweep
+
+- **Task ID**: build-1
+- **Depends On**: none
+- **Validates**: `tests/benchmarks/test_external.py`
+- **Informed By**: spike-1 (caveat 1: startup/exit sweeps miss validity keys, so
+  a SIGKILLed prior run is visible to item 1)
+- **Assigned To**: `harness-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- Add `"$ValidityF:*"` to `_STALE_KEY_PATTERNS` (`run_external.py:112-116`),
+  with a comment explaining that per-item teardown protects items 2..N but not
+  item 1 after an interrupted run.
+- Note in the comment that `$` is not a Redis SCAN metacharacter (the existing
+  comment already establishes this for `$BM25:ExtMem*`).
+- Add/extend a test asserting a pre-seeded `$ValidityF:*` key is swept at
+  startup.
+
+### 2. Make the teardown cleanup failure observable
+
+- **Task ID**: build-2
+- **Depends On**: none
+- **Validates**: `tests/benchmarks/test_external.py`
+- **Informed By**: spike-1 (caveat 2: bare `except Exception: pass` at
+  `external_base.py:962-963` makes the one #701-observable path silent)
+- **Assigned To**: `harness-builder`
+- **Agent Type**: builder — Domain: Redis/Popoto data
+- **Parallel**: true
+- Replace the bare `except Exception: pass` with `except Exception:
+  logger.warning(...)`, naming the key prefix that failed to clear.
+- Keep it non-raising — teardown must still not propagate, since it runs in a
+  `finally`.
+- Add a test that patches the delete to raise and asserts the warning is
+  emitted and teardown returns normally.
+
+### 3. Stamp redis-py version and bench DB into the report
+
+- **Task ID**: build-3
+- **Depends On**: none
+- **Validates**: `tests/benchmarks/test_external.py`
+- **Informed By**: spike-4 (the `machine` block is `{python_version, platform,
+  cpu_count}`; the README's promise that every number carries its redis-py
+  version is currently false)
+- **Assigned To**: `harness-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- Add `redis_version` (from `redis.__version__`, falling back to `"unknown"`
+  rather than raising) and `bench_db` (the resolved `POPOTO_BENCH_DB`) to the
+  `machine` block at `run_external.py:597-601`.
+- Surface both in the rendered `.md` header alongside Python and Platform.
+- Add a test asserting both keys are present and that an unresolvable version
+  yields `"unknown"`.
+- Comment the addition with CLAUDE.md's redis-py-version-dependent-metric rule.
+
+### 4. Validate the hardening before spending an hour of wall clock
+
+- **Task ID**: validate-harness
+- **Depends On**: build-1, build-2, build-3
+- **Assigned To**: `bench-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- `POPOTO_TEST_DB=9 pytest tests/benchmarks/test_external.py -q` — all green,
+  including the four `TestSupersessionArm` tests.
+- `ruff check src/`, `black --check src/ tests/`.
+- Smoke the three arms on the fixture
+  (`tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json`) and confirm
+  the #692 demonstration numbers reproduce, so a harness regression is caught
+  before the corpus runs.
+
+### 5. Run arm A — baseline, no ValidityField
+
+- **Task ID**: run-arm-a
+- **Depends On**: validate-harness
+- **Assigned To**: `bench-runner`
+- **Agent Type**: builder
+- **Parallel**: false
+- `POPOTO_BENCH_DB=9 python -m tests.benchmarks.run_external --dataset
+  longmemeval-s --supersession none --output
+  tests/benchmarks/results/external/validity_586/`
+- **The `--output` flag is mandatory**: without it this command repoints the
+  published `longmemeval_s_latest` pointer (Risk 2).
+- Expect ≈24 minutes. Capture full stdout to the artifact directory.
+- Confirm `n_total == 500`, `n_errors == 0`, supersession block zeroed with
+  `arm == "none"`.
+
+### 6. Run arm B — producer on, gate off
+
+- **Task ID**: run-arm-b
+- **Depends On**: run-arm-a
+- **Assigned To**: `bench-runner`
+- **Agent Type**: builder
+- **Parallel**: false
+- `POPOTO_BENCH_DB=9 python -m tests.benchmarks.run_external --dataset
+  longmemeval-s --supersession content-identity --no-validity-gating --output
+  tests/benchmarks/results/external/validity_586/`
+- Confirm `n_excluded_keys_total > 0` with `n_excluded_hits_total == 0` (gate
+  off: keys are computed but nothing is subtracted) and `producer_failures == 0`.
+
+### 7. Run arm C — producer on, gate on
+
+- **Task ID**: run-arm-c
+- **Depends On**: run-arm-b
+- **Assigned To**: `bench-runner`
+- **Agent Type**: builder
+- **Parallel**: false
+- `POPOTO_BENCH_DB=9 python -m tests.benchmarks.run_external --dataset
+  longmemeval-s --supersession content-identity --output
+  tests/benchmarks/results/external/validity_586/`
+- Confirm the anti-vacuity condition: `n_excluded_keys_total > 0` **and**
+  `n_excluded_hits_total > 0`. If either is zero, **stop** and report a harness
+  defect rather than publishing a delta (Risk 3).
+
+### 8. Commit artifacts
+
+- **Task ID**: commit-artifacts
+- **Depends On**: run-arm-c
+- **Assigned To**: `bench-runner`
+- **Agent Type**: builder
+- **Parallel**: false
+- `git add tests/benchmarks/results/external/validity_586/` and commit.
+- Verify the diff adds **nothing** elsewhere under `results/external/`, and that
+  `longmemeval_s_latest.md` still points at `longmemeval_s_20260630.md`.
+
+### 9. Write the findings
+
+- **Task ID**: document-findings
+- **Depends On**: commit-artifacts
+- **Assigned To**: `bench-documentarian`
+- **Agent Type**: documentarian
+- **Parallel**: false
+- `docs/benchmarks.md` section (structure per the Documentation section):
+  environment line first, **A→B before B→C**, per-category knowledge-update and
+  temporal-reasoning tables, operational statistics, then the verbatim "what it
+  does not establish" limits.
+- `validity_586/README.md` with the three exact commands and the environment.
+- Update `tests/benchmarks/README.md` to cite the real n=500 result.
+- Draft the #586 issue comment.
+- **Publish the result whatever the sign** — a negative C − B means the gate
+  removed records the retriever wanted, which is a real finding about subtractive
+  gating.
+
+### 10. Final validation
+
+- **Task ID**: validate-all
+- **Depends On**: document-findings
+- **Assigned To**: `bench-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Run every row of the Verification table.
+- Read the prose for cross-family contamination: no judged-accuracy number, no
+  comparison against LoCoMo `*_judged` results, no claim of the form "V0
+  validity gating improves LongMemEval-S by X".
+- Confirm every published number is accompanied by its environment.
 
 ## Verification
 
-<!-- skeleton -->
+| Check | Command | Expected |
+|-------|---------|----------|
+| Benchmark harness tests pass | `POPOTO_TEST_DB=9 python -m pytest tests/benchmarks/test_external.py -q` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Format clean | `python -m black --check src/ tests/` | exit code 0 |
+| Docs build strict | `python -m mkdocs build --strict` | exit code 0 |
+| Three arms committed (3 dated + 3 latest `.md`) | `ls tests/benchmarks/results/external/validity_586/*.md \| wc -l` | output > 5 |
+| Arm A ran at n=500 with no errors | `python -c "import json;d=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest.json'));s=d['summary'];print(s['n_total']==500 and s['n_ok']==500 and s['n_errors']==0)"` | output contains True |
+| Arm C ran at n=500 with no errors | `python -c "import json;d=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'));s=d['summary'];print(s['n_total']==500 and s['n_ok']==500 and s['n_errors']==0)"` | output contains True |
+| **Anti-vacuity**: arm C excluded keys AND hits are non-zero | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'))['supersession'];print(b['n_excluded_keys_total']>0 and b['n_excluded_hits_total']>0)"` | output contains True |
+| Producer did not fail | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'))['supersession'];print(b['producer_failures']==0 and b['measurement_failures']==0)"` | output contains True |
+| Arm A is a true baseline (zeroed block, arm "none") | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest.json'))['supersession'];print(b['arm']=='none' and b['n_supersessions']==0)"` | output contains True |
+| Environment stamped in every committed artifact | `python -c "import json,glob;ps=[p for p in glob.glob('tests/benchmarks/results/external/validity_586/*_latest*.json')];print(all(set(('python_version','platform','cpu_count','redis_version','bench_db'))<=set(json.load(open(p))['machine']) for p in ps) and len(ps)>=3)"` | output contains True |
+| **Anti-criterion (Risk 2)**: published baseline pointer untouched | `readlink tests/benchmarks/results/external/longmemeval_s_latest.md` | output contains longmemeval_s_20260630.md |
+| **Anti-criterion (Risk 2)**: no results touched outside `validity_586/` | `git diff --name-only origin/main...HEAD -- tests/benchmarks/results/external/ \| grep -vc '^tests/benchmarks/results/external/validity_586/'` | match count == 0 |
+| **Anti-criterion (metric family)**: no judged artifact in the study | `ls tests/benchmarks/results/external/validity_586/ \| grep -c judged` | match count == 0 |
+| **Anti-criterion (No-Go #701)**: `_build_external_model_class` untouched | `git diff origin/main...HEAD -- tests/benchmarks/scenarios/external_base.py \| grep -c '_build_external_model_class'` | match count == 0 |
+| Stale-key sweep covers validity keys | `grep -c '\$ValidityF:\*' tests/benchmarks/run_external.py` | output > 0 |
+| Teardown failure is no longer silent | `python -c "import re,pathlib;s=pathlib.Path('tests/benchmarks/scenarios/external_base.py').read_text();print('except Exception:\n            pass' not in s)"` | output contains True |
 
 ## Critique Results
 
@@ -707,4 +971,23 @@ failure to report, not a licence to re-defer.
 
 ## Open Questions
 
-<!-- skeleton -->
+1. **Is the three-arm reinterpretation of acceptance criterion 2 accepted?**
+   The issue asks for a two-arm "before/after" against the committed n=500
+   baseline; #692's README mandates three arms and this plan re-runs arm A
+   rather than reusing the 2026-06-30 artifact. Everything downstream follows
+   from that call.
+2. **If arm A's n=500 number differs materially from the published 2026-06-30
+   baseline** (four months and six relevant PRs apart, different Python and
+   redis-py), is that reported as an incidental environment observation inside
+   this study, or filed as its own issue? This plan assumes the former and
+   treats refreshing the published headline as an `[ORDERED]` No-Go.
+3. **Does #701 need to land first?** spike-1 says no (per-item teardown deletes
+   all six validity key shapes, tested), and this plan proceeds without it. The
+   lane is being planned concurrently; if the PM wants strict sequencing, say so
+   before the runs are spent.
+4. **Should the run also be repeated under redis-py 8.1.0?** The lane's
+   `uv.lock` environment resolves 7.1.1. The three arms are internally
+   consistent either way, but the repo has a documented history of
+   redis-py-version-dependent numbers. This plan runs one version and stamps it;
+   a second version is a doubling of wall clock for a comparison nobody has
+   asked for yet.
