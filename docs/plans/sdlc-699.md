@@ -7,7 +7,7 @@ created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/699
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-08T05:30:28Z
+revision_applied_at: 2026-09-08T05:44:30Z
 ---
 
 # #699 — Make the cycles/pressure companion read-modify-write atomic
@@ -210,8 +210,12 @@ All three spikes ran against the live server on this machine (Redis 8.6.2,
   `c[4]` in Lua**. An earlier draft of this plan carried the phrase "never write or
   strip slot 3" lifted verbatim from that 0-based comment; in Lua `c[3]` is *phase*, so
   a builder protecting `c[3]` would leave `c[4]` fair game and silently destroy #698's
-  baseline — the same crashless, logless failure mode B1 warned about. When quoting a
-  Python comment or a Python index into a Lua instruction, translate the number.
+  baseline — the same crashless, logless failure mode B1 warned about. **Both halves of
+  the comment at `base.py:2774-2777` need translating, not just one**: it reads
+  "mutates only index **1** and repacks the same list objects … would turn this method
+  into a **slot-3** writer/deleter". In Lua that is *mutate only index **2**, never
+  touch slot **4***. Whenever a Python comment or a Python index is quoted into a Lua
+  instruction — in this plan or in the shipped script — translate the number.
 - **Decision report**: both scripts return `cmsgpack.pack(...)`, never bare Lua
   values, so Python keeps float amplitudes and structured reset records. Python
   logs the #698 reset lines and the "could not decode" warning from that report,
@@ -1322,6 +1326,26 @@ plan's default remains "keep Task 3", under which no edit is needed; this only
 makes the hatch actually executable. Also reconcile the Key Elements sentence
 with the task note — one of the two is wrong as written.
 
+### Round 2 fold-in — applied 2026-09-08T05:44:30Z
+
+The G2 critique cap (2 cycles) is exhausted; there is no round 3. All four round-2
+concerns are folded into the plan **body**, not only into this table.
+
+| Finding | Disposition | Where the plan now says it |
+|---|---|---|
+| C4 table-valued period accepted by the match-key function | **Fixed** | Technical Approach → `CYCLES_MERGE_LUA` contract (new "type guard, not a `pcall`" bullet with the verbatim Lua, plus a note on the match-key bullet forbidding a `pcall`/`tostring` fallback); Task 1 (new step); Test Impact (`:1512`/`:1534` named as the acceptance tests, must pass unmodified); Success Criteria; Verification (2 rows) |
+| C5 mixed 1-based Lua / 0-based Python slot numbering | **Fixed** | Solution → Key Elements: `CYCLES_ADJUST_LUA` bullet rewritten to "index 2 in place / index 4 untouched", plus a new **"Slot numbering is 1-based Lua everywhere in this plan"** bullet fixing the convention and translating both halves of `base.py:2774-2777`; Technical Approach → `CYCLES_ADJUST_LUA` contract; Task 2 (step rewritten — "slot 3" removed); Inline Documentation; Verification (`grep -c "slot 3"` == 0) |
+| C6 pipelined no-entry call now queues an `EVALSHA` | **Disclosed (no code fix — correct trade)** | Architectural Impact → Interface changes (new bullet); Technical Approach → "Pipeline handling after the change" (new table row); Task 2 (new step); Test Impact (`test_observation_protocol.py:693-701` to be extended); Success Criteria; Verification |
+| C7 escape hatch is two edits short of executable | **Fixed** | Solution → Straggler cleanup (the false "depends on nothing that depends on it" claim replaced with the accurate narrower one); Task 3 scope note now enumerates the **four** edits; Task 5's `Depends On` annotated as a sequencing edge; the `POPOTO_REDIS_DB` Success Criterion annotated as Task-3-conditional |
+
+Verified against the tree while folding in: `tests/test_cyclic_decay_field.py:1512` and
+`:1534` are `test_unhashable_period_falls_back_instead_of_raising` and
+`test_partial_merge_discarded_when_a_later_entry_is_malformed` (C4 confirmed);
+`tests/test_observation_protocol.py:693` is `test_pipeline_support` (C6 confirmed);
+`base.py:2748-2755` is the `if not raw:` short-circuit returning `pipeline` or `[]`
+with **no** command queued (C6 confirmed); `base.py:2774-2777` reads "mutates only
+index 1 … slot-3 writer/deleter" in 0-based Python (C5 confirmed).
+
 ### Structural check results
 
 **Round 2** — re-measured at HEAD `3f768d8a`.
@@ -1388,5 +1412,9 @@ What still needs supervisor input:
    `import_state`, the ranking path) are unrelated to atomicity. **The plan's default
    is to keep it**, on the grounds that a partial conversion leaves the file in the
    half-converted state #655 warns about. This question is now non-blocking: Task 3
-   is isolated, and the removal procedure if the answer is "split it out" is written
-   into the task itself. Answer at leisure; the build can proceed on the default.
+   is isolated (no task consumes what it produces), and the removal procedure if the
+   answer is "split it out" is written into the task itself as **four** explicit edits
+   — delete the task, delete the `grep -c "POPOTO_REDIS_DB" … == 0` Verification row,
+   drop the two test files from `Validates`, and remove `build-redis-accessor` from
+   Task 5's `Depends On` together with the matching Success Criterion (critique C7).
+   Answer at leisure; the build can proceed on the default.
