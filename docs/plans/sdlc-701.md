@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: Valor Engels
@@ -880,4 +880,32 @@ that constructs benchmark model classes.
 
 ## Open Questions
 
-<!-- skeleton -->
+Three judgment calls were made rather than left blocking, so the pipeline can
+proceed. Each is stated with the default taken and the cost of reversing it —
+critique should challenge any that look wrong.
+
+1. **Scope widened from two factories to five.** The issue names
+   `_build_external_model_class` and asks that `_build_graph_model_class` be
+   audited. Spike-3 found three more sites with the identical defect
+   (`recipe_base.py`, `association_recall.py`, `test_confidence_gate_refusal.py`).
+   **Default taken:** convert all five, because leaving a known-broken idiom in
+   the tree is how it came back here in the first place, and the per-site edit is
+   mechanical. **Reversal cost:** low — drop task 2 and its three sites; the plan
+   still stands for the two `external_base.py` factories.
+2. **No `src/` change.** The issue's options 1 and 3 both touch `src/`;
+   Technical Approach rejects both. **Default taken:** harness-only fix.
+   **Reversal cost:** high — option 1 is a library-wide keyspace-stability
+   change and would need its own issue, plan, and migration story. If a
+   maintainer wants `db_class_key` to be derivable at call time as a library
+   property, that is a different piece of work, not a variant of this one.
+3. **`teardown()`'s explicit validity branch is kept, not deleted.** After the
+   fix it is redundant with the widened SCAN, but it is targeted, cheap, and
+   carries the `test_teardown_on_arm_none_is_real_noop` guard. **Default
+   taken:** keep and re-comment. **Reversal cost:** low, but deleting it costs
+   the no-op test its subject.
+
+One thing genuinely worth a human eye: the `*:ExtMem*` glob added to
+`_STALE_KEY_PATTERNS` is broader than anything the sweep uses today (Risk 1). It
+is bounded by the dedicated bench DB and by the `ExtMem` anchor, and the
+existing survivor assertion covers over-reach — but if there is an operational
+reason the bench DB might not be dedicated in some deployment, say so now.
