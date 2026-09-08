@@ -808,18 +808,16 @@ that constructs benchmark model classes.
 
 ### Team Members
 
-- **Builder (external-harness factories)**
-  - Name: `ext-factory-builder`
-  - Role: convert the two `external_base.py` factories and update
-    `teardown()` + `_STALE_KEY_PATTERNS`
-  - Agent Type: builder
-  - Domain: Redis/Popoto data
-  - Resume: true
+Revised per critique C6 — the two builders below were merged into one. They had
+`Depends On: none`, were both `Parallel: true`, touched disjoint files, and
+shared no state, so a second agent bought a handoff and no concurrency.
 
-- **Builder (sibling factories)**
-  - Name: `sibling-factory-builder`
-  - Role: convert `recipe_base.py`, `association_recall.py`,
-    `test_confidence_gate_refusal.py`
+- **Builder (all five factories)**
+  - Name: `harness-factory-builder`
+  - Role: convert all five `type()` sites — the two `external_base.py`
+    factories, `recipe_base.py`, `association_recall.py`,
+    `test_confidence_gate_refusal.py` — and update `teardown()` +
+    `_STALE_KEY_PATTERNS`
   - Agent Type: builder
   - Domain: Redis/Popoto data
   - Resume: true
@@ -846,79 +844,111 @@ that constructs benchmark model classes.
 
 ## Step by Step Tasks
 
-### 1. Convert the external-harness factories
-- **Task ID**: build-external-factories
+### 1. Convert all five factories, and move the two glob patterns with them
+- **Task ID**: build-factories
 - **Depends On**: none
-- **Validates**: `tests/benchmarks/test_external.py`, `tests/benchmarks/test_supersession_axis.py`
+- **Validates**: `tests/benchmarks/test_external.py`,
+  `tests/benchmarks/test_supersession_axis.py`,
+  `tests/benchmarks/test_confidence_gate_refusal.py`
 - **Informed By**: spike-1 (rename never reaches `_meta`), spike-2 (four key
-  families affected, not one), spike-3 (`type()` viable; post-hoc
-  `Relationship` and `with_validity` blocks stay post-hoc)
-- **Assigned To**: `ext-factory-builder`
+  families affected, not one), spike-3 (five sites; `type()` viable at each;
+  post-hoc `Relationship` and `with_validity` blocks stay post-hoc), critique
+  C1 (glob shape), C5 (1:1 conversion, no dedup)
+- **Assigned To**: `harness-factory-builder`
 - **Agent Type**: builder
-- **Parallel**: true
-- Convert `_build_external_model_class` (`scenarios/external_base.py:186`) to a
-  single `type()` call over a conditionally-assembled namespace dict, collapsing
-  the three duplicated class bodies. Set `__module__` and `__qualname__` in the
-  dict. Keep the `with_validity` block after the `type()` call, unchanged.
-- Convert `_build_graph_model_class` (`scenarios/external_base.py:127`) the same
-  way. Keep the post-`type()` self-referential `prev_turn` `Relationship` +
-  `_meta.add_field` block, unchanged and post-hoc.
-- Delete both `__name__`/`__qualname__` assignment pairs (lines 172-173, 287-288).
-- In `ExternalScenario.teardown()`, add a second SCAN pass over
-  `*:{class_name}:*` alongside the existing `{class_name}:*` pass. Keep the
-  explicit validity branch and the agent-prefix pass.
-- In `run_external.py`, add `*:ExtMem*` to `_STALE_KEY_PATTERNS`, retaining
-  `ExternalBenchmarkMemory:*`, `ExtMem*`, and `$BM25:ExtMem*`.
+- **Parallel**: false
 
-### 2. Convert the sibling factories
-- **Task ID**: build-sibling-factories
-- **Depends On**: none
-- **Validates**: `tests/benchmarks/test_confidence_gate_refusal.py`
-- **Informed By**: spike-3 (five sites; `recipe_base.py` carries a method and a
-  mixin base; `association_recall.py` carries a post-hoc self-relationship)
-- **Assigned To**: `sibling-factory-builder`
-- **Agent Type**: builder
-- **Parallel**: true
+*Merged from the former Tasks 1 and 2 per critique C6 — they had no ordering
+constraint and touched disjoint files, so splitting them bought a handoff and no
+concurrency.*
+
+**Conversion rule for every site: one literal `type()` call per existing `class`
+block, each with its own literal namespace dict (C5).** Do not consolidate
+variants behind a conditionally-assembled dict. Set `__module__` and
+`__qualname__` in each dict. The diff must stay line-for-line comparable against
+the pre-conversion bodies — that comparability is the only guard against Risk 3
+in a harness CI never runs.
+
+- Convert `_build_external_model_class` (`scenarios/external_base.py:186`) —
+  three `type()` calls, one per mutually exclusive variant (bm25+embedding /
+  embedding-only / bm25-only). Keep the `with_validity` block after the `type()`
+  call, unchanged.
+- Convert `_build_graph_model_class` (`scenarios/external_base.py:127`). Keep the
+  post-`type()` self-referential `prev_turn` `Relationship` + `_meta.add_field`
+  block, unchanged and post-hoc.
 - Convert `_build_recipe_model_class` (`scenarios/recipe_base.py:35`). Bases
   tuple must stay `(WriteFilterMixin, popoto.Model)` in that order; hoist
-  `compute_filter_score` to a module-or-local `def` and put it in the namespace
-  dict along with `_wf_min_threshold` and `_wf_priority_threshold`.
-- Convert `_build_model` (`association_recall.py:103`), branching the namespace
-  dict on `with_cooccur` rather than duplicating the class body. Keep the
-  post-`type()` `related` `Relationship` registration.
+  `compute_filter_score` to a local `def` just above the `type()` call and put it
+  in the namespace dict along with `_wf_min_threshold` and
+  `_wf_priority_threshold`.
+- Convert `_build_model` (`association_recall.py:103`) — one `type()` per
+  `with_cooccur` variant. Keep the post-`type()` `related` `Relationship`
+  registration.
 - Convert `_build_refusal_model` (`test_confidence_gate_refusal.py:152`).
-- Delete all three `__name__`/`__qualname__` assignment pairs.
+- Delete all five `__name__`/`__qualname__` assignment pairs
+  (`external_base.py:172-173,287-288`, `recipe_base.py:73-74`,
+  `association_recall.py:152-153`, `test_confidence_gate_refusal.py:168`).
+- In `ExternalScenario.teardown()`, add a second SCAN pass over
+  **`*{class_name}*`** alongside the existing `{class_name}:*` pass. **Not
+  `*:{class_name}:*`** — that form cannot match `$Class:ExtMem<hash>`, which has
+  nothing after the class name, and would leave Success Criterion 4
+  unsatisfiable (critique C1). Keep the explicit validity branch and the
+  agent-prefix pass.
+- In `run_external.py`, add `*:ExtMem*` to `_STALE_KEY_PATTERNS`, retaining
+  `ExternalBenchmarkMemory:*`, `ExtMem*`, and `$BM25:ExtMem*`. The sweep's
+  leading-colon form **is** correct — `$Class:ExtMem12345678` has a colon before
+  the class name — so only the `teardown()` companion drops the anchor.
 
-### 3. Namespacing invariant + leak tests
+### 2. Namespacing invariant + leak tests
 - **Task ID**: build-namespace-tests
 - **Depends On**: none (write first, expect red)
 - **Validates**: `tests/benchmarks/test_model_class_namespacing.py` (create),
   `tests/benchmarks/test_external.py`
-- **Informed By**: spike-2 (exact key families to assert), Risk 2 (vacuity)
+- **Informed By**: spike-2 (exact key families to assert), Risk 2 (vacuity),
+  critique C2 (what the leak test really asserts), C3 (arm-none rebuild), C4
+  (parametrize on real prefixes), C1 (derive the glob independently)
 - **Assigned To**: `namespace-test-engineer`
 - **Agent Type**: test-engineer
 - **Parallel**: true
 - Create `tests/benchmarks/test_model_class_namespacing.py`: parametrized over
   all five factories, assert `_meta.db_class_key.redis_key == cls.__name__`,
   that the name carries the prefix, and that `":" not in db_class_key.redis_key`.
+  **Parametrize on each factory's real caller-supplied prefix expression**
+  (`uuid.uuid4().hex[:8]` for `association_recall` and
+  `test_confidence_gate_refusal`; the `setup()`/`_build_recipe_model_class`
+  sanitized forms elsewhere), not on a hand-picked clean hex literal — only three
+  of five factories sanitize internally, so a self-chosen literal restates the
+  claim instead of testing it (C4).
 - In the same file, assert per factory that `_meta.fields` matches a reference
   key set (Risk 3), that `WriteFilterMixin in RecipeMemory.__mro__`, and that
   the self-referential relationship fields survive conversion.
 - Add a two-prefix disjointness test: build two classes, save one record each,
   assert the two key sets are disjoint and that **no** key contains
   `ExternalBenchmarkMemory`.
-- Update `test_no_leaked_validity_keys_after_teardown` and
-  `test_teardown_on_arm_none_is_real_noop` per Test Impact — assert non-empty
-  pre-teardown, empty post-teardown; derive names from the class, never from a
-  hardcoded base name.
+- Widen `test_no_leaked_validity_keys_after_teardown` for **coverage** (C2): its
+  current `match="$ValidityF:*"` (`test_external.py:1220`) is not vacuous
+  post-fix, but it misses `$Class:*`, `$ConfidencF:*`, `$KeyF:*`,
+  `$DecayingSortF:*` and the record hashes. Assert non-empty pre-teardown, then
+  zero keys matching `*ExternalBenchmarkMemory*` and zero matching
+  `*{model_class.__name__}*` after. **Derive that glob in the test itself** — do
+  not import or reuse `teardown()`'s pattern constant (C1).
+- **Rebuild** `test_teardown_on_arm_none_is_real_noop` (C3) — do not merely
+  re-point its key names. Its foreign sentinel becomes unreachable once the
+  classes stop sharing a namespace, and the arm-none class declares no `validity`
+  field to seed. Implement the two-part replacement in Technical Approach:
+  (a) seed under a validity-declaring scenario's own
+  `ValidityField.get_prefix_db_key(...)` and assert the branch fires; (b) assert
+  the arm-none class's own keyspace holds zero `$ValidityF:{its_name}:*` keys
+  throughout. If it cannot be made falsifiable, say so in the PR rather than ship
+  a green test that cannot fail.
 - Update both `TestStaleKeySweep` cases with post-fix key shapes, keeping the
   `SomeOtherModel:keepme` survivor assertion (Risk 1).
 - **Red-state proof**: run the new/updated tests against pre-fix `HEAD`, capture
   the failures, and paste them into the PR description.
 
-### 4. Validate the conversions
+### 3. Validate the conversions
 - **Task ID**: validate-conversions
-- **Depends On**: build-external-factories, build-sibling-factories, build-namespace-tests
+- **Depends On**: build-factories, build-namespace-tests
 - **Assigned To**: `namespace-validator`
 - **Agent Type**: validator
 - **Parallel**: false
@@ -928,7 +958,7 @@ that constructs benchmark model classes.
 - Re-run the spike-2 reproduction and confirm zero `ExternalBenchmarkMemory` keys.
 - Report pass/fail with the Redis DB number and package versions stated.
 
-### 5. Documentation
+### 4. Documentation
 - **Task ID**: document-namespacing
 - **Depends On**: validate-conversions
 - **Assigned To**: `bench-documentarian`
@@ -941,7 +971,7 @@ that constructs benchmark model classes.
 - Update the `_STALE_KEY_PATTERNS` comment.
 - Do **not** edit `docs/plans/sdlc-692.md`.
 
-### 6. Final validation
+### 5. Final validation
 - **Task ID**: validate-all
 - **Depends On**: document-namespacing
 - **Assigned To**: `namespace-validator`
