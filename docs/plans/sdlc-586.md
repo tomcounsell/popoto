@@ -5,7 +5,7 @@ appetite: Medium
 owner: valorengels
 created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/586
-last_comment_id:
+last_comment_id: 5570962918
 ---
 
 # LongMemEval-S n=500 three-arm supersession/validity run (#586)
@@ -815,8 +815,10 @@ that nothing in `src/` imports, and this plan does not change that.
 - **Assigned To**: `harness-builder`
 - **Agent Type**: builder — Domain: Redis/Popoto data
 - **Parallel**: true
-- Replace the bare `except Exception: pass` with `except Exception:
-  logger.warning(...)`, naming the key prefix that failed to clear.
+- Replace the bare `except Exception: pass` (`external_base.py:962-963`) with
+  `except Exception: logger.warning(...)`. The message **must contain the exact
+  substring `validity key cleanup failed`** (the Verification row greps for it)
+  and must name the key prefix that failed to clear plus the exception.
 - Keep it non-raising — teardown must still not propagate, since it runs in a
   `finally`.
 - Add a test that patches the delete to raise and asserts the warning is
@@ -961,7 +963,7 @@ that nothing in `src/` imports, and this plan does not change that.
 | **Anti-criterion (metric family)**: no judged artifact in the study | `ls tests/benchmarks/results/external/validity_586/ \| grep -c judged` | match count == 0 |
 | **Anti-criterion (No-Go #701)**: `_build_external_model_class` untouched | `git diff origin/main...HEAD -- tests/benchmarks/scenarios/external_base.py \| grep -c '_build_external_model_class'` | match count == 0 |
 | Stale-key sweep covers validity keys | `grep -c '\$ValidityF:\*' tests/benchmarks/run_external.py` | output > 0 |
-| Teardown failure is no longer silent | `python -c "import re,pathlib;s=pathlib.Path('tests/benchmarks/scenarios/external_base.py').read_text();print('except Exception:\n            pass' not in s)"` | output contains True |
+| Teardown validity-cleanup failure is logged, not swallowed | `grep -c 'validity key cleanup failed' tests/benchmarks/scenarios/external_base.py` | output > 0 |
 
 ## Critique Results
 
