@@ -7,7 +7,7 @@ created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/701
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-08T05:24:51Z
+revision_applied_at: 2026-09-08T05:35:56Z
 ---
 
 # #701 — Per-item benchmark model classes must own their Redis namespace from class creation
@@ -1253,6 +1253,25 @@ any behaviorally equivalent rewrite; Success Criterion 4 and Task 2's widened
 leak test already gate the real behavior. It can only false-fail, never
 false-pass, so it is harmless — but N1 asked for exactly this row to become a
 real assertion and it did not. Consider dropping it. (Scope & Value)
+
+### Revision Applied — Round 2 (2026-09-08)
+
+**Critique cycle cap reached (2 of 2). There is no round 3; the next stage is
+BUILD.** All three round-2 concerns and the nit were folded into the plan body.
+C7 and C8 were re-verified against the working tree before editing, not taken on
+the critique's word.
+
+| Finding | Re-verified | Where the plan now handles it |
+|---|---|---|
+| C7 — key-count replacement is unfalsifiable by the guard-removal mutation | yes — `validity_field.py:781-796` (`get_all_keys` reads only `_meta.db_class_key`, never `_meta.fields`) → `field.py:629` | Technical Approach "Explicit-validity branch in `teardown()`" now specifies a two-leg test: a `patch.object(ValidityField, "get_all_keys", wraps=...)` **guard-evaluation** leg (the proof, matched on `call.args[0] is scenario._model_class`) plus an independent key-deletion leg. Success Criterion 5 rewritten to the spy assertion and explicitly disqualifies a key count. Test Impact bullet and Task 2 bullet respecified. |
+| C8 — new `teardown()` SCAN would inherit a stale `POPOTO_REDIS_DB` snapshot | yes — `external_base.py:83` import; snapshot used at 971, 975, 986, 990; `get_REDIS_DB()` at 949, 955, 959; those four are the *only* uses in the file | Task 1 gains an explicit bullet: write the new pass as `get_REDIS_DB().scan/.delete`, convert the four adjacent sites in the same edit, drop `POPOTO_REDIS_DB` from the import. Added to Task 1 "Informed By", Task 3's diff-review checklist, Success Criteria, and two Verification rows (`grep -c 'POPOTO_REDIS_DB' … == 0`; leak tests green in a full-suite run). |
+| C9 — Appetite roster still contradicted Team Orchestration | n/a (editorial) | Appetite "Team" line replaced with the four roles verbatim (`harness-factory-builder`, `namespace-test-engineer`, `bench-documentarian`, `namespace-validator`); the phantom "code reviewer" is gone and the C6 history is restated correctly (the merge was builder+builder). No task, dependency or criterion changed. |
+| N4 — C1 Verification row is a source-text grep proxy | yes | Row dropped. C1's behavior stays gated by Success Criterion 4 and Task 2's independently-derived widened leak assertion. |
+
+Net effect on structure: no task count change (still 5), no dependency change.
+Task 1's scope grew by the four mechanical `get_REDIS_DB()` conversions; Task 2's
+arm-none rebuild changed shape from key-count to call-spy; the Verification table
+lost one row and gained two.
 
 ---
 
