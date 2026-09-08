@@ -1,0 +1,22 @@
+# sdist membership (#689).
+#
+# Why this file exists at all, given #678 argued against it: setuptools has no
+# pyproject.toml equivalent. Nothing under [tool.setuptools] reaches
+# sdist.add_defaults, so MANIFEST.in is the only mechanism for changing sdist
+# membership. The trade was made deliberately -- see CLAUDE.md.
+#
+# What it fixes: the distutils default membership glob is `tests/test*.py`,
+# which matched all 141 test modules but not `tests/conftest.py`. The published
+# 1.9.0 sdist therefore shipped a test suite that cannot be collected. Shipping
+# the suite in runnable form is not reachable: 23 of those modules read `docs/`,
+# `scripts/`, `examples/`, `uv.lock`, `CLAUDE.md`, and `.github/workflows/`, and
+# the last would be rejected by check_sdist_contents.py's dotfile rule. So the
+# suite comes out instead of the missing pieces going in. The tests remain in
+# the repository and in CI; only the published sdist stops carrying them.
+#
+# CONSEQUENCE, stated because it is easy to lose: with this file present,
+# popoto now has precondition 1 of the setuptools MANIFEST.in exclusion-bypass
+# advisory (Unicode NFC/NFD collision on APFS/HFS+). The non-ASCII member rule
+# in scripts/check_sdist_contents.py is therefore load-bearing, not
+# defense-in-depth. Do not relax it to a warning.
+prune tests
