@@ -337,31 +337,281 @@ is covered by an assertion on `_meta.db_class_key`, which needs no provider.
 
 ## Solution
 
-<!-- skeleton -->
+### Key Elements
+
+- **`type()`-built factories**: every per-item / per-case / per-trial benchmark
+  model class is born with its final, prefix-bearing name, so `_meta` captures
+  the right `db_class_key` the first time. Five call sites, matching the shape
+  already used by `siq/corpus.py`, `csr/corpus.py`, and `rlt/corpus.py`.
+- **Pattern constants that follow the rename**: `ExternalScenario.teardown()`'s
+  class-name SCAN and `run_external.py::_STALE_KEY_PATTERNS` are prefix-anchored
+  globs written against the *old* key shapes. After the fix the harness's keys
+  live under `$<FieldType>F:ExtMem<hash>:…` and `$Class:ExtMem<hash>`, which
+  neither `ExtMem<hash>:*` nor `ExtMem*` matches. Both must widen, or the fix
+  trades one leak for another.
+- **A construction-time invariant test**: a test that asserts
+  `cls._meta.db_class_key.redis_key == cls.__name__` for every benchmark
+  factory, so the pattern cannot come back silently in a sixth factory.
+- **Docs that stop describing a defect that no longer exists**:
+  `tests/benchmarks/README.md`'s "Known limitation" paragraph and
+  `external_base.py`'s teardown comment (and its ancestor,
+  `docs/plans/sdlc-692.md` Technical Approach step 5) all assert the shared
+  namespace as a live fact.
+
+### Flow
+
+Benchmark run start → `_sweep_stale_benchmark_keys` clears residue matching the
+**new** patterns → per item, `setup()` calls a factory → factory returns a class
+whose `_meta.db_class_key` **is** `ExtMem<hash>` → every field and every record
+writes under that name → `teardown()` SCANs `ExtMem<hash>:*` **and**
+`*:ExtMem<hash>*`, which now matches everything the item wrote → next item
+starts on an empty namespace, with no dependence on `agent_id` uniqueness.
+
+### Technical Approach
+
+**The fix is the issue's option 2, and only option 2.** Options 1 and 3 are
+rejected, for reasons that should not be relitigated at build time:
+
+- *Option 1 — compute `db_class_key` lazily from `type(self).__name__`.* This
+  is a `src/` behavior change to every model in the library. `db_class_key` is
+  read at `src/popoto/models/base.py:766` (record keys), `:3610` (instance
+  scans), `src/popoto/fields/field.py:629` (every special-use field key),
+  `key_field_mixin.py:484`, `datetime_key_migration.py:489,512`, and
+  `extraction/decision_log.py:949`. Making it mutable would mean a class whose
+  `__name__` changes silently repoints at a different keyspace — turning a
+  benchmark-harness footgun into a library-wide one, and breaking the stability
+  guarantee that a persisted key can be recomputed. **Rejected.**
+- *Option 3 — an override hook on `ValidityField`.* Adds public API surface to
+  `src/` to serve one test-tree caller, and only fixes one of the four affected
+  key families (spike-2: `ConfidenceField`, `$Class`, `$KeyF`,
+  `$DecayingSortF` would all still be wrong). **Rejected.**
+- *Option 2 — build the class with its final name.* No `src/` change, fixes all
+  key families at once, and is already the convention in three sibling
+  factories that each document this exact hazard. **Selected.**
+
+Per-site notes (from spike-3, so the builder does not re-derive them):
+
+- `scenarios/external_base.py::_build_external_model_class` has three mutually
+  exclusive class-body variants (bm25+embedding / embedding-only / bm25-only).
+  Build a shared base namespace dict and add `content_index` /
+  `embedding` conditionally, then one `type()` call — this also removes the
+  triplicated field list. The post-`type()` `with_validity` block
+  (`.validity = ValidityField()` + `_meta.add_field`) is **unchanged**: it is
+  name-independent, and `ValidityField` derives its keys at call time from a
+  `_meta.db_class_key` that is now already correct.
+- `scenarios/external_base.py::_build_graph_model_class` — same conversion. Its
+  post-`type()` self-referential `Relationship(model=cls, null=True)` +
+  `_meta.add_field("prev_turn", …)` block is **unchanged and must stay
+  post-hoc**: the class object cannot reference itself inside its own namespace
+  dict any more than inside its own body.
+- `association_recall.py::_build_model` — two class-body variants (with/without
+  `CoOccurrenceField`); same conditional-namespace treatment, same post-hoc
+  self-referential `related = Relationship(model=AssocMemory, null=True)`.
+- `scenarios/recipe_base.py::_build_recipe_model_class` — the only site whose
+  class body carries a **method** (`compute_filter_score`) and two class
+  attributes read from the `overrides` dict (`_wf_min_threshold`,
+  `_wf_priority_threshold`). All three go into the namespace dict verbatim; the
+  method as a plain `def` defined just above the `type()` call. Note this class
+  has a **mixin base** (`WriteFilterMixin, popoto.Model`) — the bases tuple must
+  preserve that order.
+- `test_confidence_gate_refusal.py::_build_refusal_model` — the simplest site;
+  single class body, direct conversion.
+
+Every converted site sets `__module__` and `__qualname__` in the namespace dict
+(as `siq`/`csr`/`rlt` do), so tracebacks and reprs stay readable.
+
+**Pattern updates.** `run_external.py::_STALE_KEY_PATTERNS` must cover keys of
+the form `$<Anything>:ExtMem<hash>…` and `$Class:ExtMem<hash>`, not just
+`ExtMem*` and `$BM25:ExtMem*`. A `*:ExtMem*` glob covers all of them and is safe
+here because the sweep runs against the dedicated bench DB (14 by default, DB 0
+rejected) — but it must be *added alongside* the existing patterns, not
+replace them: `ExternalBenchmarkMemory:*` stays so that residue left by
+pre-fix runs is still swept. Symmetrically, `teardown()`'s
+`SCAN {class_name}:*` gains a `SCAN *:{class_name}:*` companion.
+
+**Explicit-validity branch in `teardown()`: keep it.** After the fix its
+premise (a *shared* namespace) is false, but the branch itself is still
+correct, still targeted, and is covered by two tests worth keeping — including
+`test_teardown_on_arm_none_is_real_noop`, which guards against an
+unconditional DEL masking a leak. Rewrite the comment (Documentation task), do
+not delete the code. See Rabbit Holes for why the tempting deletion is a trap.
 
 ## Failure Path Test Strategy
 
-<!-- skeleton -->
+### Exception Handling Coverage
+
+`ExternalScenario.teardown()` is built from four `try: … except Exception: pass`
+blocks (`scenarios/external_base.py:930-991`), and `_build_refusal_model`'s
+companion `_teardown_model` has the same shape. This plan does **not** convert
+them to logging handlers — swallowing is deliberate in a teardown path (a
+teardown failure must not abort a 500-item run), and changing it is out of
+scope. Instead, the observable behavior each `except` is hiding is asserted
+directly:
+
+- [ ] The new construction-invariant test asserts on `_meta.db_class_key`, a
+      pure in-memory property, so it cannot be masked by a swallowed Redis error.
+- [ ] The new post-teardown leak test asserts **zero** keys matching
+      `*ExternalBenchmarkMemory*` and zero matching `*{class_name}*` after
+      `teardown()` — a swallowed exception in any of the four blocks surfaces as
+      surviving keys rather than as a silent pass. This is the existing
+      `test_no_leaked_validity_keys_after_teardown` shape, widened from validity
+      keys to the whole keyspace.
+
+### Empty/Invalid Input Handling
+
+- [ ] `safe_prefix=""` — every factory would produce class name `ExtMem`
+      (`RecipeMem`, `Assoc`, `RefusalMem`), which is still a valid, distinct
+      Python identifier and a valid Redis key component. It is degenerate, not
+      erroneous: two empty-prefix classes would collide with each other exactly
+      as today's classes do. Document the behavior; do not add validation — no
+      caller can produce it (`safe_prefix` is always a non-empty hash slice).
+- [ ] `safe_prefix` containing `:` or `-` — cannot occur; callers already strip
+      both (`prefix.replace(":", "").replace("-", "")[:8]` in
+      `_build_recipe_model_class`, and the equivalent in `ExternalScenario.setup()`).
+      The invariant test asserts the produced `db_class_key` contains no `:`,
+      which mechanically pins this.
+- [ ] No agent-output processing is involved; no empty-output loop risk.
+
+### Error State Rendering
+
+Not user-visible. The harness's only output is a benchmark report; a failed
+teardown manifests as leaked keys, which the new leak test asserts against
+rather than rendering.
 
 ## Test Impact
 
-<!-- skeleton -->
+- [ ] `tests/benchmarks/test_external.py::TestSupersessionArm::test_no_leaked_validity_keys_after_teardown`
+      — **UPDATE**: it currently asserts absence of
+      `$ValidityF:ExternalBenchmarkMemory:validity:*`. That literal is dead after
+      the fix, so the test would pass vacuously (the #661 vacuity trap). Widen it
+      to assert (a) zero keys matching `*ExternalBenchmarkMemory*` anywhere, and
+      (b) zero keys matching `*{model_class.__name__}*` after teardown.
+- [ ] `tests/benchmarks/test_external.py::TestSupersessionArm::test_teardown_on_arm_none_is_real_noop`
+      — **UPDATE**: keep the intent (arm `none` must take a genuine no-op), but
+      re-derive its expected key names from the per-item class name rather than
+      the base name.
+- [ ] `tests/benchmarks/test_external.py::TestStaleKeySweep::test_sweeps_all_stale_patterns_and_reports_count`
+      — **UPDATE**: add the post-fix key shapes it must now sweep
+      (`$ValidityF:ExtMem12345678:validity:valid_from`,
+      `$Class:ExtMem12345678`, `$KeyF:ExtMem12345678:agent_id:x`) to the `stale`
+      dict, and keep `ExternalBenchmarkMemory:abc` so pre-fix residue stays
+      covered.
+- [ ] `tests/benchmarks/test_external.py::TestStaleKeySweep::test_custom_patterns_sweep_only_matching_keys`
+      — **UPDATE**: it asserts `ExtMem12345678:xyz` *survives* a CSR-patterned
+      sweep. Still true, but re-check that the widened default patterns are not
+      what is being passed; the assertion that `SomeOtherModel:keepme` survives
+      is the one that must hold against the new `*:ExtMem*` glob.
+- [ ] `tests/benchmarks/test_external.py:712-713` (embedding-listener test using
+      the literal `"ExtMemLeakCheck"`) — **no change**: it names a class directly
+      and never goes through a factory.
+- [ ] `tests/benchmarks/test_supersession_axis.py:159` — **no change**: the
+      literal `"ExternalBenchmarkMemory:incumbent"` is an opaque fake return
+      value in a `_FakeResult`, not a key that is ever written or matched.
+- [ ] `tests/benchmarks/test_confidence_gate_refusal.py` — **UPDATE** if it
+      asserts on model-class key shapes; otherwise no change beyond the factory
+      body itself.
+- [ ] `tests/benchmarks/test_defaults_sync.py` — **no change**: this plan adds no
+      `Defaults` constant. (Named explicitly because narrow-scope lane test
+      selection routinely misses it and it then fails in CI after review.)
+- [ ] **NEW** `tests/benchmarks/test_model_class_namespacing.py` — the
+      construction invariant, one parametrized case per factory.
+
+No `src/` tests are affected — no `src/` file is modified.
 
 ## Rabbit Holes
 
-<!-- skeleton -->
+- **"While we're here, make `db_class_key` lazy in `src/`."** This is the
+  issue's option 1 and it is a library-wide behavior change with seven call
+  sites and a persistence-stability guarantee behind it. It also is not needed:
+  option 2 fixes every symptom. Do not open this.
+- **Deleting `teardown()`'s explicit validity branch because "the SCAN covers it
+  now."** Tempting and wrong twice over: the SCAN would only cover it after the
+  `*:{class_name}:*` widening also lands (so deleting it before that is a
+  regression), and `test_teardown_on_arm_none_is_real_noop` exists specifically
+  to catch an unconditional cleanup masking a leak. Keep the branch; rewrite its
+  comment.
+- **Rewriting the sweep to `FLUSHDB` on the bench database.** Faster, obviously
+  correct, and prohibited by this repo's DB-0 doctrine — `run_external.py`
+  resolves its DB from `POPOTO_BENCH_DB` and a misconfiguration would meet
+  popoto's `Db0FlushRefusedError` rather than a clean failure. SCAN+DEL with
+  correct patterns is the shape the repo has already settled on (#465, #490).
+- **Unifying the five factories into one generic builder.** They differ in
+  bases (`WriteFilterMixin`), field sets, key-field names (`turn_id` / `mem_id`
+  / `memory_key`), and post-hoc relationship registration. A shared builder
+  would need a parameter per difference and would couple five independent
+  benchmarks. Convert them in place.
+- **Chasing the `$BM25:ExtMemaaa:…:tf:ExternalBenchmarkMemory:x:<uuid>` shape as
+  a separate bug.** It is not one — it is the record key embedded in the BM25
+  term-frequency key, and it corrects itself the moment the record key does.
 
 ## Risks
 
-<!-- skeleton -->
+### Risk 1: A widened glob sweeps or tears down keys it should not
+**Impact:** `*:ExtMem*` and `*:{class_name}:*` are broader than the patterns
+they join. On the dedicated bench DB (14) or the pytest DB (15) this is
+harmless, but a run misconfigured onto a shared database could delete unrelated
+keys.
+**Mitigation:** Both globs remain anchored on the `ExtMem`/`{class_name}`
+literal, which is a hash-suffixed benchmark-only prefix; `run_external.py`
+already rejects DB 0 and defaults to 14. The updated
+`test_custom_patterns_sweep_only_matching_keys` keeps its `SomeOtherModel:keepme`
+survivor assertion, which is precisely the over-reach detector. Do **not**
+generalize to a bare `*ExtMem*` without the leading anchor set.
+
+### Risk 2: The updated leak test passes vacuously
+**Impact:** The single highest-value assertion here is "no keys survive
+teardown". Written carelessly against a literal that no longer exists, it goes
+green while the defect persists — the exact shape of the #661 trap and of the
+four stale spy tests CLAUDE.md describes.
+**Mitigation:** The test must first assert that the pre-teardown keyspace is
+**non-empty** and contains the expected `ExtMem<hash>` names, then assert it is
+empty after. Red-state proof: run the new tests against `HEAD~1` (pre-fix) and
+paste the failures into the PR.
+
+### Risk 3: `type()` conversion silently drops a class attribute
+**Impact:** `_build_recipe_model_class` carries a method and two mixin config
+attributes; `_build_graph_model_class` and `_build_model` carry post-hoc
+relationship registration. A dropped attribute changes what a benchmark
+measures without failing loudly.
+**Mitigation:** The invariant test asserts, per factory, that the produced class
+exposes the same `_meta.fields` key set as a reference list, and that
+`WriteFilterMixin` is still in `RecipeMemory.__mro__`. Benchmarks are not run in
+CI, so a diff-level review of each converted body is a named review task.
+
+### Risk 4: Concurrent SDLC lanes on shared Redis DB 15 produce phantom failures
+**Impact:** 73-158 spurious failures have been observed; a reviewer could read
+them as regressions from this change.
+**Mitigation:** Set `POPOTO_TEST_DB=<n>` for this lane (Prerequisites table) and
+state the DB alongside every count reported from a test run, per repo doctrine.
+`tests/test_version.py::test_version_matches_pyproject` fails by construction on
+a stale editable install — expected noise, not a regression.
 
 ## Race Conditions
 
-<!-- skeleton -->
+No race conditions identified. Every path touched here is synchronous and
+single-threaded: the factories are pure class construction, `teardown()` and
+`_sweep_stale_benchmark_keys` are sequential SCAN+DEL loops, and benchmark items
+run strictly one at a time (`external_base.py`'s
+`stop_invalidation_listeners()` comment states the sequential-item invariant
+explicitly, and relies on it).
+
+One adjacent concurrency fact is worth stating because it is *improved* rather
+than introduced: today two benchmark processes running against the same
+database would corrupt each other's `$ValidityF:ExternalBenchmarkMemory:validity:*`
+and `$ConfidencF:ExternalBenchmarkMemory:certainty:data` regardless of item
+ordering, since those keys are name-shared across every class. After this fix
+they are namespaced per item, so the only remaining cross-process collision
+would require a `safe_prefix` hash collision.
 
 ## No-Gos (Out of Scope)
 
-<!-- skeleton -->
+Nothing deferred — every relevant item is in scope for this plan.
+
+The two alternatives the issue raises (lazy `db_class_key` in `src/`; an
+override hook on `ValidityField`) are **rejected on the merits**, not deferred;
+the reasoning is recorded in Technical Approach so a later reader does not
+mistake rejection for a missing follow-up. No issue is filed for either, because
+neither should be done.
 
 ## Update System
 
