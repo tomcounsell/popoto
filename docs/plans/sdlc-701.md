@@ -312,11 +312,16 @@ were written for. That is the non-obvious half of this change.
 
 **Size:** Medium
 
-**Team:** Two builders (one for the harness conversion + tests, one validator)
-plus a documentarian and a code reviewer — i.e. the roles enumerated in Team
-Orchestration, not a solo dev. (Revised per critique C6: the earlier "solo dev"
-line contradicted that section. Tasks 1 and 2 are merged below so the count is
-four roles across five tasks, with no builder-to-builder handoff.)
+**Team:** One builder (`harness-factory-builder`), one test engineer
+(`namespace-test-engineer`), one documentarian (`bench-documentarian`), one
+validator (`namespace-validator`) — four roles across five tasks. There is no
+code-reviewer role; the diff review is Task 3, owned by the validator.
+
+(History: critique C6 replaced an earlier "solo dev" line that contradicted Team
+Orchestration, and merged two *builders* — `ext-factory-builder` and
+`sibling-factory-builder` — into the single `harness-factory-builder` above. The
+C6 replacement text itself then misdescribed the roster; critique C9 corrected it
+to the four roles named here, which match Team Orchestration verbatim.)
 
 **Interactions:**
 - PM check-ins: 1 (confirm the scope widening from 2 sites to 5, and the
