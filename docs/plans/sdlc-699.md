@@ -285,6 +285,37 @@ ARGV[3N+4] now               (only used on a pressure first-save)
   the learned buckets wholesale — the same all-or-nothing fallback the Python code
   takes today, for the same reason (a half-read payload must not seed some cycles
   and not others).
+- **The table-valued period is a `type` guard, not a `pcall` (critique C4).** This is
+  the one clause above that a faithful port silently *drops*, because the two
+  languages fail differently. Python reaches the fallback by **crashing**:
+  `learned.setdefault(entry[0], …)` at `cyclic_decay_field.py:647` raises
+  `TypeError: unhashable type: 'list'` *inside* the `try`, which is why the handler at
+  `:650-661` wraps decode **and** normalization. Lua has no unhashable-key failure and
+  nothing raises — `tostring({})` cheerfully returns `"table: 0x…"`, so the `%.17g` /
+  `tostring` key function specified in the next bullet would accept a table-valued
+  period and merge it as a normal string-keyed bucket. There is no error for a `pcall`
+  to catch. Guard the raw period **before** building its match key, inside the
+  per-entry bucketing loop:
+
+  ```lua
+  if type(p) ~= 'number' and type(p) ~= 'string' then
+      decode_failed = 1
+      learned = {}
+      break
+  end
+  ```
+
+  Clearing `learned` on the same all-or-nothing path as a top-level `pcall` failure is
+  what makes a *later* malformed entry discard an *earlier* well-formed one. Two
+  existing tests, both of which this plan requires to pass **unchanged**, write exactly
+  this payload and assert exactly that: `tests/test_cyclic_decay_field.py:1512`
+  `test_unhashable_period_falls_back_instead_of_raising` (stores
+  `[[[TemporalPeriod.DAILY], 9.0, 0]]`, asserts the declared `2.0` comes back and
+  `"Could not decode cycles"` is logged) and `:1534`
+  `test_partial_merge_discarded_when_a_later_entry_is_malformed` (first entry
+  well-formed, second table-valued; asserts **both** declared cycles fall back
+  together, `2.0` and `3.0`). Omitting the guard turns both red; that red is the
+  feedback loop, not a stale-test signal.
 - Bucket stored entries by period **in stored order**, pop index 1 per declared
   cycle: FIFO within duplicate periods, preserving today's semantics. Pop the
   `(amplitude, baseline)` pair together as one decision.
@@ -294,7 +325,11 @@ ARGV[3N+4] now               (only used on a pressure first-save)
   `'n:' .. string.format('%.17g', n)`, else `'s:' .. tostring(v)`. Declared periods
   arrive as `str(period)` in ARGV and take the same path, so the two sides agree by
   construction. **The match key is for matching only — it is never written into the
-  entry.**
+  entry.** The key function is only ever reached with a `number` or a `string`,
+  because the stored side passes the C4 `type` guard above first and the declared side
+  is an ARGV string by construction; it must **not** be hardened with a `pcall` or a
+  `tostring` fallback for tables, which would re-admit the case the guard exists to
+  reject.
 - **Every ARGV-sourced numeric slot must be converted before it is written back
   (critique B1).** `ARGV` is always a Lua string, and `period`/`amplitude`/`phase`/
   `declared_baseline` are all re-read from the declared side on each save, so a
@@ -431,6 +466,19 @@ distinguishable from a packed empty result, which an empty bulk string is not.
       main regression signal for the Lua port. Audit each test that patches or spies on
       `hget`/`hset` — those spies stop firing once the work moves into a script and
       must be re-pointed at the script's effect (or at `run_lua`), not deleted.
+- [ ] **`tests/test_cyclic_decay_field.py:1512` and `:1534` are the named acceptance
+      tests for critique C4** — `test_unhashable_period_falls_back_instead_of_raising`
+      and `test_partial_merge_discarded_when_a_later_entry_is_malformed`. Both write a
+      table-valued period and assert the whole learned bucket is discarded with the
+      decode warning. They must pass **unmodified**; if either needs editing to
+      accommodate the port, the Lua is missing the C4 `type` guard, not the tests being
+      stale.
+- [ ] `tests/test_observation_protocol.py:693-701` (`test_pipeline_support`) — UPDATE
+      for critique C6. It only asserts `result is pipe`, so it cannot see that a
+      pipelined `strengthen_cycle`/`weaken_cycle` against a member with **no** stored
+      cycles now queues one `EVALSHA` where it previously queued nothing. Extend it, or
+      add a sibling test asserting `len(pipe.execute())` for the no-entry pipelined
+      case, so the result-list shift is recorded rather than discovered downstream.
 - [ ] `tests/test_transfer_fidelity_fields.py:466-600` — UPDATE if anything asserts a
       value's *type*. Its current assertions are `pytest.approx` and a
       `len(exported_cycles[0]) == 4` arity check, both int/float-agnostic, so the
@@ -728,6 +776,15 @@ public methods keep their signatures.
   learned amplitude) and the `logger.warning` decode line from it. Normalize an empty
   report defensively — `cmsgpack` may pack an empty Lua table as either an array or a map.
 - Match periods through the `%.17g` / string key function; do not compare raw values.
+- **Guard a table-valued stored period by `type`, before the match key is built
+  (critique C4).** In the bucketing loop:
+  `if type(p) ~= 'number' and type(p) ~= 'string' then decode_failed = 1; learned = {}; break end`.
+  This is a type check, **not** a `pcall` — nothing raises in Lua, so there is no
+  error to catch, and a faithful port of the Python `try` alone silently accepts the
+  payload. Clearing `learned` (not just skipping the entry) is what makes a later
+  malformed entry discard an earlier well-formed one.
+  `tests/test_cyclic_decay_field.py:1512` and `:1534` are the acceptance test for this
+  step and must pass **unmodified**.
 - **Convert every ARGV-sourced slot before writing it back (critique B1).** Add the
   `coerce_period()` helper and build each entry as
   `{coerce_period(argv_period), tonumber(amp), tonumber(phase), tonumber(baseline)}`.
