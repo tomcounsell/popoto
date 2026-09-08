@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/701
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-08T05:24:51Z
 ---
 
 # #701 — Per-item benchmark model classes must own their Redis namespace from class creation
@@ -225,7 +227,9 @@ at `9986c086`, project `.venv`, Redis on `localhost:6379` DB 9, macOS 25.6.0.
 - **Finding**: **Five sites, all in `tests/benchmarks/`, none in `src/`:**
   1. `scenarios/external_base.py:172` — `_build_graph_model_class`
   2. `scenarios/external_base.py:287` — `_build_external_model_class`
-  3. `scenarios/recipe_base.py:73` — `build_benchmark_model`
+  3. `scenarios/recipe_base.py:35` — `_build_recipe_model_class` (an earlier
+     draft called this `build_benchmark_model` at line 73; that is the
+     `__name__` assignment *inside* the function, not the function — nit N2)
   4. `association_recall.py:152` — the `AssocMemory` factory
   5. `test_confidence_gate_refusal.py:168` — `_build_refusal_model`
   Each converts to `type(name, bases, namespace)` mechanically. Two
@@ -508,7 +512,8 @@ body rather than ship a green test that cannot fail.
 ### Exception Handling Coverage
 
 `ExternalScenario.teardown()` is built from four `try: … except Exception: pass`
-blocks (`scenarios/external_base.py:919-1010`), and `_build_refusal_model`'s
+blocks (`scenarios/external_base.py:924-1012` at HEAD; the plan's original
+`919-1010` was measured against baseline `9986c086` — nit N3, no semantic drift), and `_build_refusal_model`'s
 companion `_teardown_model` has the same shape. This plan does **not** convert
 them to logging handlers — swallowing is deliberate in a teardown path (a
 teardown failure must not abort a 500-item run), and changing it is out of
@@ -759,7 +764,7 @@ that constructs benchmark model classes.
 ### Inline Documentation
 
 - [ ] `scenarios/external_base.py::teardown` — rewrite the 18-line comment at
-      lines 927-944. Its premise ("these five keys are SHARED across every item
+      lines 930-947 (re-measured at HEAD; nit N3). Its premise ("these five keys are SHARED across every item
       in a run") becomes false. The branch stays; the justification changes from
       *required for correctness* to *targeted cleanup of keys that the
       prefix-anchored SCANs do not reach*, and it must still say why the
@@ -788,7 +793,12 @@ that constructs benchmark model classes.
       keys all carry `ExtMem<hash>` after the fix.
 - [ ] After `ExternalScenario.teardown()`, zero keys match `*ExtMem<hash>*` and
       zero match `*ExternalBenchmarkMemory*`, asserted after first proving the
-      pre-teardown keyspace was non-empty.
+      pre-teardown keyspace was non-empty. (Satisfiable only with the unanchored
+      `*{class_name}*` teardown glob — C1.)
+- [ ] `test_teardown_on_arm_none_is_real_noop` is **falsifiable after the fix**:
+      demonstrated by showing it goes red when the explicit validity branch's
+      guard is removed (i.e. made unconditional). A version that passes with and
+      without that mutation has not met this criterion (C3).
 - [ ] `_sweep_stale_benchmark_keys` removes both pre-fix
       (`ExternalBenchmarkMemory:*`) and post-fix (`$…:ExtMem*`) residue.
 - [ ] Converted `RecipeMemory` still has `WriteFilterMixin` in its MRO and still
@@ -966,7 +976,7 @@ in a harness CI never runs.
 - **Parallel**: false
 - Rewrite `tests/benchmarks/README.md`'s "Known limitation" paragraph; record
   the corrected (wider) scope of what was broken.
-- Rewrite the `teardown()` validity-branch comment (`external_base.py:927-944`).
+- Rewrite the `teardown()` validity-branch comment (`external_base.py:930-947`).
 - Add the `type()` rationale line to all five factory docstrings.
 - Update the `_STALE_KEY_PATTERNS` comment.
 - Do **not** edit `docs/plans/sdlc-692.md`.
@@ -996,12 +1006,11 @@ in a harness CI never runs.
 | Type ratchet holds | `python scripts/mypy_ratchet.py` | exit code 0 |
 | Docs build | `python -m mkdocs build --strict` | exit code 0 |
 | No post-hoc class renames remain | `grep -rn '\.__name__ = ' tests/ src/ scripts/ \| wc -l` | match count == 0 |
-| Every factory builds via `type()` | `grep -c 'type(' tests/benchmarks/scenarios/external_base.py` | output > 1 |
 | Anti-criterion — no `src/` file modified | `git diff --name-only origin/main...HEAD -- src/ \| wc -l` | match count == 0 |
 | Anti-criterion — `ValidityField` gains no override hook | `git diff origin/main...HEAD -- src/popoto/fields/validity_field.py \| wc -l` | match count == 0 |
 | Anti-criterion — `db_class_key` not made lazy | `git diff origin/main...HEAD -- src/popoto/models/base.py \| wc -l` | match count == 0 |
 | Anti-criterion — sdlc-692 plan untouched | `git diff --name-only origin/main...HEAD -- docs/plans/sdlc-692.md \| wc -l` | match count == 0 |
-| Teardown gained the second SCAN pass | `grep -c 'class_name' tests/benchmarks/scenarios/external_base.py` | output > 2 |
+| Teardown's second SCAN uses the unanchored glob (C1) | `grep -c 'match=f"\*{class_name}\*"' tests/benchmarks/scenarios/external_base.py` | output == 1 |
 | Sweep covers post-fix key shapes | `grep -c ':ExtMem\*' tests/benchmarks/run_external.py` | output > 0 |
 | README limitation note updated | `grep -c 'Known limitation' tests/benchmarks/README.md` | output > 0 |
 | No shared base-class keys survive a two-class save | `python -m pytest tests/benchmarks/test_model_class_namespacing.py -q -k disjoint` | exit code 0 |
@@ -1165,13 +1174,39 @@ All five `__name__` rename sites re-verified present at HEAD `06748cfe`:
 `external_base.py:172,287`, `recipe_base.py:73`, `association_recall.py:152`,
 `test_confidence_gate_refusal.py:168`.
 
+### Revision Applied
+
+All six concerns and all three nits were folded into the plan body on
+2026-09-08. C1–C4 were independently re-verified against the working tree before
+editing, not taken on the critique's word:
+
+| Finding | Re-verified | Where the plan now handles it |
+|---|---|---|
+| C1 glob cannot match `$Class:ExtMem<hash>` | yes | Technical Approach "Pattern updates"; Flow; Task 1; Verification row; Success Criterion 4 |
+| C2 leak test really scans `$ValidityF:*` | yes — `test_external.py:1220` | Test Impact bullet rewritten: coverage rationale, vacuity claim retracted |
+| C3 arm-none test goes vacuous | yes — `test_external.py:1226-1249` | Technical Approach (two-part replacement); Test Impact; Task 2; new Success Criterion; Rabbit Holes caveat |
+| C4 prefix sanitization is 3-of-5, caller-supplied | yes — `association_recall.py:172`, `test_confidence_gate_refusal.py:208,383` pass `uuid4().hex[:8]` | Failure Path Test Strategy; Task 2 parametrization rule |
+| C5 dedup refactor bundled in | n/a (judgment) | Technical Approach 1:1 conversion rule; Task 1; Risk 3 escape clause |
+| C6 Appetite vs. Team Orchestration | n/a (judgment) | Appetite line corrected; Tasks 1+2 merged into one builder; roster reduced to four roles |
+| Prerequisites PARTIAL (`POPOTO_TEST_DB` unset) | n/a | Prerequisites section now states it as a hard build-lane gate |
+| N1 grep-count proxies | — | one row dropped, the other replaced with a real C1 assertion |
+| N2 recipe factory misnamed | yes | spike-3 item 3 corrected |
+| N3 line-number drift | yes | `teardown()` refs updated to 924-1012 / 930-947 |
+
+Task count went 6 → 5 and task IDs `build-external-factories` /
+`build-sibling-factories` were merged into `build-factories`; the
+`validate-conversions` dependency list was updated to match.
+
 ---
 
-## Open Questions
+## Resolved Questions
+
+*Closed at the revision pass. Critique reviewed all three and challenged none of
+the defaults; they stand as recorded. Retained rather than deleted because each
+one's reversal cost is the thing a build-time reader will want.*
 
 Three judgment calls were made rather than left blocking, so the pipeline can
-proceed. Each is stated with the default taken and the cost of reversing it —
-critique should challenge any that look wrong.
+proceed. Each is stated with the default taken and the cost of reversing it.
 
 1. **Scope widened from two factories to five.** The issue names
    `_build_external_model_class` and asks that `_build_graph_model_class` be
@@ -1192,6 +1227,11 @@ critique should challenge any that look wrong.
    carries the `test_teardown_on_arm_none_is_real_noop` guard. **Default
    taken:** keep and re-comment. **Reversal cost:** low, but deleting it costs
    the no-op test its subject.
+
+Item 3 above ("keep the explicit validity branch") survived critique but its
+*justification* was narrowed: the branch is kept, and the test that justified
+keeping it must be rebuilt to stay falsifiable (C3). The default is unchanged;
+the work it implies grew.
 
 One thing genuinely worth a human eye: the `*:ExtMem*` glob added to
 `_STALE_KEY_PATTERNS` is broader than anything the sweep uses today (Risk 1). It
