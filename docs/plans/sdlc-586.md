@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Medium
 owner: valorengels
 created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/586
 last_comment_id: 5570962918
+revision_applied: true
+revision_applied_at: 2026-09-08T05:31:37Z
 ---
 
 # LongMemEval-S n=500 three-arm supersession/validity run (#586)
@@ -809,6 +811,14 @@ that nothing in `src/` imports, and this plan does not change that.
 - [ ] The write-up reports **A→B before B→C**, gives per-category
       knowledge-update (n=78) and temporal-reasoning (n=133) numbers, and draws
       no category-level conclusion absent an interval excluding zero.
+- [ ] **(D2, binding)** The write-up reports the published 2026-06-30 n=500
+      baseline alongside arm A as context, **explicitly labelled
+      non-comparable** — different environment, unrecorded redis-py version —
+      and never uses it as the "before".
+- [ ] **(C3)** The write-up and `validity_586/README.md` disclose that the
+      `machine` block gained `redis_version` and `bench_db` in this PR, so
+      artifacts dated earlier carry three keys and are not directly diffable on
+      that field.
 - [ ] The write-up contains no judged-accuracy number and no cross-family
       comparison; no `_judged` artifact exists in `validity_586/`.
 - [ ] The result is published regardless of sign (criterion 4).
@@ -1096,6 +1106,7 @@ that nothing in `src/` imports, and this plan does not change that.
 | **Anti-criterion (No-Go #701)**: `_build_external_model_class` untouched | `git diff origin/main...HEAD -- tests/benchmarks/scenarios/external_base.py \| grep -c '_build_external_model_class'` | match count == 0 |
 | Stale-key sweep covers validity keys | `grep -c '\$ValidityF:\*' tests/benchmarks/run_external.py` | output > 0 |
 | Teardown validity-cleanup failure is logged, not swallowed | `grep -c 'validity key cleanup failed' tests/benchmarks/scenarios/external_base.py` | output > 0 |
+| **Teardown has no unguarded step (critique C1)**: `stop_invalidation_listeners()` is inside a `try` | `python -c "import ast,sys;src=open('tests/benchmarks/scenarios/external_base.py').read();t=ast.parse(src);calls=[n for n in ast.walk(t) if isinstance(n,ast.Try) for c in ast.walk(n) if isinstance(c,ast.Call) and getattr(c.func,'id','')=='stop_invalidation_listeners'];print(len(calls)>0)"` | output contains True |
 
 ## Critique Results
 
@@ -1232,27 +1243,86 @@ for all three arms, including arm B's `_sup-content-identity_nogate`.
   judge-accuracy with recall, forbids `--judged`, and does not cross-compare its
   redis-py 7.1.1 spike numbers against the 2026-09-07 redis-py 8.1.0 probe.
 
+### Revision applied — round 1
+
+All four concerns and the nit are folded into the plan body, not merely
+acknowledged:
+
+| Finding | Where it landed |
+|---|---|
+| C1 — unguarded `stop_invalidation_listeners()` | **build-2** gains the wrap (logged, non-raising, position unchanged); **Race Conditions** gains the "one containment hole, closed by build-2" paragraph; **Verification** gains an `ast`-based row asserting the call sits inside a `try`. |
+| C2 — `--output` mitigation is detection, checked 75 min late | **run-arm-a** gains a blocking inline `readlink` check before run-arm-b, plus the symlink-repair recovery path (explicitly *not* an arm re-run); **Risk 2** gains both. |
+| C3 — build-3 mutates a harness-wide schema | New **Risk 8** (disclosure gap, not breakage — no consumer enumerates the key set); **Documentation** gains the divergence disclosure for `docs/benchmarks.md` and `validity_586/README.md`; **Test Impact**'s "UPDATE if present" resolved to *no such assertion exists*; **build-3** gains the scope note. |
+| C4 — Open Question 1 gated no task | New zero-cost task **5 `confirm-reinterpretation`** (`Depends On: validate-harness`), added to **run-arm-a**'s `Depends On`; tasks renumbered 5→11; **Flow** and **Appetite** updated. |
+| N1 — no arm-B verification row | **Verification** gains the arm-B `n=500 / n_ok / n_errors` row and an arm-B producer-failure row, both against `longmemeval_s_latest_sup-content-identity_nogate.json`. |
+
+Doctrine re-checked as intact after the revision: judge-accuracy is never
+cross-compared with recall; every number in the plan states its environment; the
+redis-py 7.1.1 spike numbers are never compared against the 2026-09-07 redis-py
+8.1.0 probe.
+
+---
+
+## Decisions (settled)
+
+### D1 — The three-arm design supersedes the issue's two-arm framing. **ACCEPTED by the supervisor, 2026-09-08.**
+
+This closes what was Open Question 1, and it is settled, not assumed.
+
+- **The three-arm mandate is already merged repo doctrine**, not this plan's
+  invention: `tests/benchmarks/README.md`'s "External-harness supersession axis"
+  section shipped with #692 (PR #702).
+- **A two-arm comparison provably cannot attribute its delta.** The producer and
+  the gate are two changes shipped together, so "before/after" measures their
+  sum. Only A→B and B→C separate them.
+- Therefore the plan does **not** honor #586's acceptance criterion 2 literally;
+  the mapping table under *Reconciling the issue's two-arm framing* stands as
+  written.
+
+### D2 — Arm A is re-run rather than reusing the committed 2026-06-30 baseline. **ACCEPTED by the supervisor, 2026-09-08.**
+
+- **Six PRs intervened** since that baseline was measured, including #588's
+  `SUPERSEDE_LUA` membership change (`90fc3d30`), which altered supersession
+  semantics directly.
+- **The baseline's redis-py version was never recorded** (spike-4: its `machine`
+  block is three keys, no `redis_version`), so under the repo's
+  state-your-environment rule it is **not a valid comparand**.
+- **Binding condition on the write-up:** the published 2026-06-30 baseline must
+  still be *reported alongside* arm A as context, and must be **explicitly
+  labelled non-comparable** — different environment, unrecorded redis-py
+  version. It is context, never a "before".
+
 ---
 
 ## Open Questions
 
-1. **Is the three-arm reinterpretation of acceptance criterion 2 accepted?**
-   The issue asks for a two-arm "before/after" against the committed n=500
-   baseline; #692's README mandates three arms and this plan re-runs arm A
-   rather than reusing the 2026-06-30 artifact. Everything downstream follows
-   from that call.
-2. **If arm A's n=500 number differs materially from the published 2026-06-30
-   baseline** (four months and six relevant PRs apart, different Python and
-   redis-py), is that reported as an incidental environment observation inside
-   this study, or filed as its own issue? This plan assumes the former and
-   treats refreshing the published headline as an `[ORDERED]` No-Go.
-3. **Does #701 need to land first?** spike-1 says no (per-item teardown deletes
-   all six validity key shapes, tested), and this plan proceeds without it. The
-   lane is being planned concurrently; if the PM wants strict sequencing, say so
-   before the runs are spent.
-4. **Should the run also be repeated under redis-py 8.1.0?** The lane's
-   `uv.lock` environment resolves 7.1.1. The three arms are internally
-   consistent either way, but the repo has a documented history of
-   redis-py-version-dependent numbers. This plan runs one version and stamps it;
-   a second version is a doubling of wall clock for a comparison nobody has
-   asked for yet.
+Q1 is closed — see **D1/D2** above. Q3 is closed on evidence. Q2 and Q4 remain
+open but are **non-blocking**: each has a stated default the plan proceeds on,
+and neither gates a task.
+
+1. ~~**Is the three-arm reinterpretation of acceptance criterion 2
+   accepted?**~~ **CLOSED — supervisor, 2026-09-08. See D1 and D2.**
+2. **OPEN (non-blocking).** If arm A's n=500 number differs materially from the
+   published 2026-06-30 baseline (four months and six relevant PRs apart,
+   different Python and an unrecorded redis-py), is that reported as an
+   incidental environment observation inside this study, or filed as its own
+   issue? **Default the plan proceeds on:** the former — reported inside the
+   study, with refreshing the published headline held as an `[ORDERED]` No-Go.
+   Escalate only if the difference is large enough to call the published
+   headline into question, which is a PM/editorial call, not a build-time one.
+3. ~~**Does #701 need to land first?**~~ **CLOSED on evidence — no.** spike-1
+   establishes containment (per-item `finally: teardown()` deletes all six
+   validity key shapes, asserted by
+   `test_no_leaked_validity_keys_after_teardown` with an anti-vacuity control at
+   `test_teardown_on_arm_none_is_real_noop`), critique verified that argument
+   against `base.py:95-116` and `external_base.py:919-964`, and its one hole
+   (C1) is closed by build-2 in this plan. The Freshness Check records the
+   merge-order symmetry: #701's fix is namespace-only and cannot change a
+   contained result, so neither ordering forces a re-run.
+4. **OPEN (non-blocking).** Should the run also be repeated under redis-py
+   8.1.0? The lane's `uv.lock` environment resolves 7.1.1; the three arms are
+   internally consistent either way. **Default the plan proceeds on:** run one
+   version and stamp it (build-3 makes the stamp real). A second version doubles
+   ~75 minutes of wall clock for a cross-version comparison nobody has requested,
+   and per repo doctrine the two would in any case never be cross-compared —
+   only reported side by side with their environments.
