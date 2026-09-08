@@ -76,7 +76,7 @@ docstring. The external harness is the outlier.
 - `tests/benchmarks/scenarios/external_base.py:172-173` — the same rename in
   `_build_graph_model_class` — **still present** (the issue names this factory
   only in its "audit this too" note; it has the identical defect).
-- `tests/benchmarks/scenarios/external_base.py:918-963` — `ExternalScenario.teardown()`'s
+- `tests/benchmarks/scenarios/external_base.py:919-1010` — `ExternalScenario.teardown()`'s
   validity-cleanup branch, guarded on `"validity" in self._model_class._meta.fields`
   — **still present**, and its explanatory comment (lines 927-944) states the
   root cause correctly.
@@ -441,7 +441,7 @@ not delete the code. See Rabbit Holes for why the tempting deletion is a trap.
 ### Exception Handling Coverage
 
 `ExternalScenario.teardown()` is built from four `try: … except Exception: pass`
-blocks (`scenarios/external_base.py:930-991`), and `_build_refusal_model`'s
+blocks (`scenarios/external_base.py:919-1010`), and `_build_refusal_model`'s
 companion `_teardown_model` has the same shape. This plan does **not** convert
 them to logging handlers — swallowing is deliberate in a teardown path (a
 teardown failure must not abort a 500-item run), and changing it is out of
