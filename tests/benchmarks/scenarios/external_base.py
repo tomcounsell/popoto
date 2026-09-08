@@ -944,6 +944,11 @@ class ExternalScenario(Scenario):
             self._model_class is not None
             and "validity" in self._model_class._meta.fields
         ):
+            # Bound before the try: the two statements below it can raise, and
+            # an unbound `prefix` would turn the handler's log call into a
+            # NameError — making teardown raise, which is precisely what this
+            # guard exists to prevent.
+            prefix = "<unresolved>"
             try:
                 keys = ValidityField.get_all_keys(self._model_class, "validity")
                 get_REDIS_DB().delete(*keys.values())
@@ -959,8 +964,15 @@ class ExternalScenario(Scenario):
                         get_REDIS_DB().delete(*open_keys)
                     if cursor == 0:
                         break
-            except Exception:
-                pass  # matches the file's existing teardown idiom below
+            except Exception as exc:  # noqa: BLE001 - teardown must not raise
+                # Logged rather than swallowed (#586): this is the one path
+                # where #701's shared ValidityField namespace becomes
+                # observable, and a silent failure here leaks open-interval
+                # keys into the next item's retrieval as live records. Still
+                # non-raising — teardown runs in a `finally`.
+                logger.warning(
+                    "validity key cleanup failed for prefix %r: %s", prefix, exc
+                )
 
         # Scan and clean by model class name
         if self._model_class:
@@ -1007,6 +1019,16 @@ class ExternalScenario(Scenario):
         # exhaust the 128-connection BlockingConnectionPool at ~item 120 and
         # block forever. Items run sequentially, so stopping all is stopping
         # ours. No-op in lexical mode (no listener ever starts).
-        stop_invalidation_listeners()
+        #
+        # Wrapped (#586) because it was the one unguarded step in this method.
+        # Scenario.execute() only catches around setup()/run(); teardown() runs
+        # in its `finally`, so a raise here escapes execute() uncaught and kills
+        # the driver loop mid-arm instead of producing a single-item
+        # status="error". Must stay AFTER the validity DEL above — reordering
+        # it reintroduces the race that ordering closes.
+        try:
+            stop_invalidation_listeners()
+        except Exception as exc:  # noqa: BLE001 - teardown must not raise
+            logger.warning("invalidation listener shutdown failed: %s", exc)
 
         super().teardown()
