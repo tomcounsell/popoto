@@ -189,23 +189,229 @@ locally rather than researched: see spike-2.
 
 ## Spike Results
 
-<!-- skeleton -->
+All spikes ran at plan time on the lane's isolated database.
+
+**Spike environment (stated per repo doctrine):** Python 3.12.14, redis-py
+**7.1.1**, macOS-26.6.2-arm64-arm-64bit (Darwin 25.6.0), Redis bench DB 9
+(`POPOTO_BENCH_DB=9`), repo commit `24e8f8cd`. Note the redis-py version: it is
+the `uv.lock`-resolved 7.1.1, not the 8.1.0 used for the 2026-09-07 issue probe.
+
+### spike-1: Does #701 block the real n=500 run?
+
+- **Assumption**: "The shared `$ValidityF:ExternalBenchmarkMemory:validity:*`
+  key namespace (#701) contaminates results across items at n=500."
+- **Method**: code-read (read-only subagent over `external_base.py`,
+  `run_external.py`, `supersession_axis.py`, `base.py`, `test_external.py`).
+- **Finding**: **DOES NOT BLOCK.**
+  - `Scenario.execute()` (`tests/benchmarks/scenarios/base.py:95-116`) wraps
+    `setup`/`run` in `try/except Exception` + **`finally: self.teardown()`**, so
+    teardown runs on success, on error, and on `KeyboardInterrupt`. A raising
+    item becomes a `status="error"` result and the driver loop
+    (`run_external.py:1396-1436`) continues.
+  - Teardown (`external_base.py:919-964`), guarded on `"validity" in
+    self._model_class._meta.fields`, deletes the five fixed keys from
+    `ValidityField.get_all_keys()` (`validity_field.py:782-796`) **plus** a
+    `SCAN {prefix}:open:*` sweep — i.e. all six key shapes the field documents
+    (`validity_field.py:38-42`). Item N+1 therefore reads empty ZSETs.
+  - Items are strictly sequential and synchronous; no ingest write for item N+1
+    can precede item N's `DEL`. Containment is O(1) in keys per item and does
+    not degrade with item count.
+  - Asserted by `tests/benchmarks/test_external.py:1204-1224`
+    (`test_no_leaked_validity_keys_after_teardown`) and the anti-vacuity control
+    at `:1226-1249` (`test_teardown_on_arm_none_is_real_noop`).
+- **Two residual caveats the spike surfaced** (neither blocks; both are cheap to
+  close and are folded into this plan's tasks):
+  1. `_STALE_KEY_PATTERNS` (`run_external.py:112-116`) does **not** include
+     `$ValidityF:*`, so neither the startup nor the exit sweep removes validity
+     keys. A previously SIGKILLed `content-identity` run leaves ZSETs that
+     **item 1 of the next run can see** (items 2..500 are clean because item 1's
+     own teardown clears them). → **task build-1**.
+  2. The validity cleanup is wrapped in a bare `except Exception: pass`
+     (`external_base.py:962-963`), so a failed `DEL` leaks silently with no log
+     line — the one path where #701 becomes observable mid-run. → **task
+     build-2**.
+- **Confidence**: high.
+- **Impact on plan**: #701 is **not** a blocker and this plan does not wait on
+  it; the two caveats become two small pre-run hardening tasks.
+
+### spike-2: Is the n=500 run actually feasible in this environment?
+
+- **Assumption**: "The run needs the external corpus, an embedding provider, and
+  hours of wall clock" — the issue's own stated reason for deferral, restated in
+  the dispatch as a possible `[EXTERNAL]` gate.
+- **Method**: prototype (real runs of `run_external.py` against the real corpus
+  at `--limit 5` and `--limit 25`, `--dry-run`, `POPOTO_BENCH_DB=9`).
+- **Finding**: **the premise is stale on all three counts. The run is fully
+  runnable in this environment and is NOT an `[EXTERNAL]` gate.**
+  - **Corpus**: cached on disk at
+    `~/.cache/popoto_benchmarks/longmemeval_s_cleaned.json` (277,383,467 bytes,
+    2026-06-29). The harness logs *"using cached file"*; no download, no
+    network.
+  - **Embedding provider**: not required. `--retrieval-mode` defaults to
+    `lexical` (BM25 only, "needs no model download",
+    `run_external.py:1077-1093`), which is the mode the committed n=500 baseline
+    was produced in. Only `hybrid`/`vector` need the ~90MB all-MiniLM-L6-v2
+    download, and this plan uses neither. No `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`
+    either — those are `--judged` and `--extraction claude`, both excluded.
+  - **Wall clock**: measured, not estimated.
+
+    | Run | Items | Wall clock (`/usr/bin/time -p real`) | Harness-reported | s/item |
+    |---|---|---|---|---|
+    | `--limit 5 --supersession content-identity --dry-run` | 5 | 16.36 s | 14.2 s | 2.84 |
+    | `--limit 25 --supersession content-identity --dry-run` | 25 | 74.87 s | ~72 s | 2.88 |
+
+    Linear in items (2.84 → 2.88 s/item across a 5× range), with a fixed ~2 s
+    corpus-load cost. **n=500 projects to ≈ 24 minutes per arm, ≈ 75 minutes for
+    all three arms** — not "hours", and comfortably inside one build session.
+- **Secondary finding — the gate is live and non-vacuous at scale.** The n=25
+  arm-C run reported `identity writes 281 (groups=62
+  units_with_identity=281/12222)`, `supersessions 193`, `excluded keys/hits: 193
+  / 11`, `producer failures 0`. Eleven excluded *hits* means the gate actually
+  subtracted records the retriever would otherwise have returned — the exact
+  condition whose absence re-blocked this issue on 2026-09-07. (The n=5 run
+  showed `32 / 0`: keys excluded, no hits. So hits scale with n and a small
+  sample is not evidence of an inert gate.)
+- **Confidence**: high (measured on the real corpus, not the fixture).
+- **Impact on plan**: removes the `[EXTERNAL]` framing entirely; the run is an
+  in-scope build task. Also sets the Risk-4 time budget.
+
+### spike-3: Where can arm artifacts land without damaging the published baseline?
+
+- **Assumption**: "Committing three arms' artifacts is harmless."
+- **Method**: code-read (`run_external.py:1021-1034`,
+  `docs/scripts/gen_benchmark_pages.py`, `mkdocs.yml`) plus inspection of the
+  committed results tree.
+- **Finding**: **not harmless by default — two distinct hazards.**
+  1. **Clobber.** `run_external.py:1021-1034` rewrites
+     `{dataset_slug}_latest{suffix}.{json,md}` after every run. Arm A
+     (`--supersession none`) has an **empty suffix**, so a plain arm-A run
+     repoints `longmemeval_s_latest` away from `longmemeval_s_20260630.*` — the
+     artifact `docs/scripts/gen_benchmark_pages.py:120` publishes as the
+     headline recall page on the docs site. Arms B and C are safe from this
+     (`_sup-content-identity[_nogate]` suffix), but arm A is not.
+  2. **Orphan warnings.** `_warn_orphan_artifacts`
+     (`gen_benchmark_pages.py:555-600`) globs `external/*_latest*.md` and prints
+     a build-time WARNING for any stem no `Spec` publishes. Committing
+     `longmemeval_s_latest_sup-content-identity.md` and
+     `..._sup-content-identity_nogate.md` at top level would emit two warnings
+     on every docs deploy. It warns rather than raises, so `mkdocs build
+     --strict` stays green — but the log noise is real and self-inflicted.
+  - **Both are avoided by one decision**: `--output
+    tests/benchmarks/results/external/validity_586/`. The glob is
+    **non-recursive**, so subdirectory artifacts produce no orphan warnings, and
+    a subdirectory `longmemeval_s_latest.*` cannot touch the canonical one. This
+    is exactly the precedent set by
+    `tests/benchmarks/results/external/graph_eval_484/` (#484), whose numbers
+    are cited from a hand-authored `docs/benchmarks.md` section.
+- **Confidence**: high.
+- **Impact on plan**: `--output` to a `validity_586/` subdirectory is
+  **mandatory on all three arms**, and is an anti-criterion in Verification.
+
+### spike-4: Does the report record enough environment to satisfy repo doctrine?
+
+- **Assumption**: "The harness already stamps every number with its
+  environment", as `tests/benchmarks/README.md` claims for this axis (*"Every
+  number produced under this axis carries Python version, redis-py version,
+  platform, Redis DB, and the baseline commit SHA"*).
+- **Method**: code-read (`run_external.py:597-601`) + inspection of the
+  committed baseline JSON.
+- **Finding**: **the claim is false today.** The `machine` block is exactly
+  `{python_version, platform, cpu_count}`. **redis-py version is absent, the
+  resolved bench DB is absent, and the commit SHA is absent** — confirmed
+  against `longmemeval_s_20260630.json`, whose `machine` block is
+  `{"python_version": "3.12.13", "platform": "macOS-26.3.1-arm64-arm-64bit",
+  "cpu_count": 10}`. CLAUDE.md's rule (*"state the environment alongside any
+  count"*) and the redis-py-version-dependent-metric rule both bite here: a
+  committed artifact that does not name its redis-py version cannot be compared
+  to a later one.
+- **Confidence**: high.
+- **Impact on plan**: adding `redis_version` and `bench_db` to the `machine`
+  block is a **prerequisite of the run**, not a nice-to-have — the artifacts
+  this plan commits are the first ones the README's promise is measured against.
+  → **task build-3**.
 
 ## Data Flow
 
-<!-- skeleton -->
+Per arm, per item (500 items, strictly sequential):
+
+1. **Entry point**: `python -m tests.benchmarks.run_external --dataset
+   longmemeval-s --supersession {none|content-identity} [--no-validity-gating]
+   --output tests/benchmarks/results/external/validity_586/`.
+2. **DB bind**: `_select_bench_db()` (`run_external.py:201-223`) resolves
+   `POPOTO_BENCH_DB` (DB 0 rejected), repoints the Popoto connection, and sweeps
+   `_STALE_KEY_PATTERNS`.
+3. **Corpus load**: `LongMemEvalS` adapter reads the cached
+   `longmemeval_s_cleaned.json` and yields items under `sample=stride seed=0`.
+4. **Per item — setup**: `_build_external_model_class(safe_prefix, ...,
+   with_validity=<arm != none>)` builds an `ExtMem<hash>` model class.
+   *(#701: with validity on, the field's Redis keys resolve under the pre-rename
+   `ExternalBenchmarkMemory` namespace regardless of `safe_prefix` — contained
+   by teardown, see spike-1.)*
+5. **Per item — ingest**: each conversational turn becomes one record. Arm A
+   calls `.save()`. Arms B/C route through
+   `supersession_axis.identity_of(unit_text)` (one positional, text-only
+   parameter — structurally label-blind) and, for identity-bearing units,
+   `SupersessionProtocol.save_and_supersede`, which closes any prior claim
+   sharing the identity key (`invalid_at` set to a finite score).
+6. **Per item — retrieve**: the question is issued through `ContextAssembler`.
+   In arm C, `_resolve_excluded_keys` → `ValidityField.resolve_excluded_keys`
+   subtracts closed/not-yet-started members via two `ZRANGEBYSCORE` reads. In
+   arm B, `Defaults.VALIDITY_GATING_ENABLED = False` skips the subtraction —
+   **identical stored state, different read path**. In arm A the field does not
+   exist.
+7. **Per item — teardown**: `finally: self.teardown()` deletes the item's
+   `ExtMem*` keys, the five fixed validity keys, and the `open:*` pointers.
+8. **Aggregate**: Recall@1/5/10 + MRR overall and `by_question_type`, latency
+   percentiles, and the `supersession` block (`identity_writes`,
+   `identity_groups`, `n_supersessions`, `n_excluded_keys_total`,
+   `n_excluded_hits_total`, `producer_failures`).
+9. **Output**: `{dataset}_{date}[_sup-{arm}][_nogate].{json,md}` plus
+   `_latest*` pointers, written **into `validity_586/`**.
 
 ## Architectural Impact
 
-<!-- skeleton -->
+Deliberately near-zero. This is a measurement run, not a feature.
+
+- **New dependencies**: none. No new package, no network call, no API key.
+- **Interface changes**: none in `src/`. **This plan does not touch `src/` at
+  all.** Three small additive edits under `tests/benchmarks/`: one tuple entry
+  (`_STALE_KEY_PATTERNS`), one bare-except → logged warning, two keys added to
+  the report's `machine` block.
+- **Coupling**: unchanged. The producer remains a harness artifact that nothing
+  in `src/` imports.
+- **Data ownership**: unchanged. Artifacts land in a new results subdirectory.
+- **Reversibility**: trivial — revert the three edits; the artifacts are inert
+  data files.
 
 ## Appetite
 
-<!-- skeleton -->
+**Size:** Medium
+
+**Team:** Solo dev, PM (for the publish-the-result call if the sign is
+awkward), code reviewer.
+
+**Interactions:**
+- PM check-ins: 1-2 (confirming the three-arm reinterpretation of criterion 2;
+  reviewing the finding before it is published if C − B is negative).
+- Review rounds: 1.
+
+The coding is small (three additive harness edits). The cost is the ~75 minutes
+of measured wall clock, the care required not to damage the published baseline,
+and the discipline of writing an honest findings section that does not overclaim
+— which is where this issue has failed twice already.
 
 ## Prerequisites
 
-<!-- skeleton -->
+| Requirement | Check Command | Purpose |
+|---|---|---|
+| LongMemEval-S corpus cached locally | `test -s ~/.cache/popoto_benchmarks/longmemeval_s_cleaned.json` | The 265MB corpus; without it the harness attempts a download. |
+| Redis/Valkey reachable | `redis-cli -n 9 PING` | The harness needs a live server on localhost:6379. |
+| Isolated bench DB for this lane | `test "$POPOTO_BENCH_DB" != "" -a "$POPOTO_BENCH_DB" != "0"` | Other SDLC lanes are live; DB 0 is the production agent store. This lane uses **9**. |
+| No embedding provider needed | `python -c "import sys; sys.exit(0)"` | Recorded as satisfied-by-construction: `--retrieval-mode` stays at its `lexical` default. |
+
+**Explicitly NOT required** (contradicting the issue's stated deferral reason):
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the `[embeddings]`/`[benchmark]` extras,
+and any network access.
 
 ## Solution
 
