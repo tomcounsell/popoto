@@ -415,31 +415,261 @@ and any network access.
 
 ## Solution
 
-<!-- skeleton -->
+### Key Elements
+
+- **Three-arm run configuration**: A `--supersession none`; B `--supersession
+  content-identity --no-validity-gating`; C `--supersession content-identity`.
+  All at n=500 (no `--limit`), `sample=stride seed=0`, `--retrieval-mode
+  lexical`, same commit, same machine, same session.
+- **A quarantined artifact directory**: `--output
+  tests/benchmarks/results/external/validity_586/` on every arm, so no run can
+  repoint the canonical `longmemeval_s_latest` pointer or emit docs-build orphan
+  warnings.
+- **Three pre-run harness hardenings** (small, additive, `tests/benchmarks/`
+  only): `$ValidityF:*` in the stale-key sweep; the teardown's silent
+  `except Exception: pass` becomes a logged warning; `redis_version` and
+  `bench_db` added to the report's `machine` block.
+- **A findings write-up** that reports A→B *before* B→C, gives the
+  knowledge-update and temporal-reasoning per-category breakdowns, carries the
+  operational statistics (exclusion-set cardinality, supersession counts,
+  producer failures, retrieval latency), states the environment, and copies
+  #692's "what it does not establish" limits verbatim.
+
+### Flow
+
+Build lane → harden the harness (3 edits) → verify with the existing fixture
+tests → run arm A (~24 min) → run arm B → run arm C → commit artifacts under
+`validity_586/` → write findings (A→B first, then B→C) → publish as a
+`docs/benchmarks.md` section + an issue comment on #586 → PR.
+
+### Technical Approach
+
+1. **Do not use the committed 2026-06-30 artifact as the "before".** It was
+   measured under Python 3.12.13, an unrecorded redis-py version, and a codebase
+   four months and six relevant PRs older (#588's `SUPERSEDE_LUA` membership
+   change among them). Arm A is **re-run** at plan-commit HEAD so that A, B, and
+   C differ in exactly one axis. The 2026-06-30 numbers are quoted only as
+   context, and any A-vs-2026-06-30 difference is reported as an environment
+   observation, never as a validity finding.
+2. **Report A→B before reading C.** If |A→B| on Recall@1/5/10 or MRR is not
+   ~0, that is a harness finding and must be stated first; C is then interpreted
+   in its light rather than silently absorbing it.
+3. **Run all 500 questions, report the categories.** `--question-type` filtering
+   is available but is *not* used: the harness's `by_question_type` block already
+   yields the knowledge-update (n=78) and temporal-reasoning (n=133) slices from
+   a full run, and a full run keeps the overall number comparable across arms.
+4. **Draw no category-level conclusion without an interval that excludes zero.**
+   n=78 on knowledge-update is small; per README doctrine, report the breakdown
+   and stop there.
+5. **Recall-family only.** `--judged` is not supported with `--supersession` and
+   must not be attempted. No judged-accuracy number appears anywhere in the
+   write-up.
+6. **Run the three arms back-to-back in one session**, so Python, redis-py,
+   platform, Redis DB, and commit SHA are provably identical across them.
+7. **Publish whatever the sign.** Acceptance criterion 4 is binding here in a
+   way it was not on 2026-09-07: spike-2 shows the gate fires at scale
+   (`excluded hits 11/25 items`), so a flat or negative delta is now a *measured*
+   finding, not a tautology.
 
 ## Failure Path Test Strategy
 
-<!-- skeleton -->
+### Exception handling coverage
+
+- `tests/benchmarks/scenarios/external_base.py:962-963` — a bare
+  `except Exception: pass` around the validity-key cleanup. **This plan converts
+  it to a logged warning** (task build-2) and adds a test that asserts the
+  observable behavior: patch the delete path to raise, assert a `logger.warning`
+  is emitted (and that teardown still returns rather than propagating). This is
+  the only `except Exception: pass` in the scope of this work.
+- The driver loop's per-item error swallow (`base.py:108-114` →
+  `run_external.py:1431-1436`) is *already* observable: it produces
+  `status="error"`, logs, and is surfaced in the report's `n_errors` and gated
+  by `--error-threshold 0.10`. No change; the run is required to finish with
+  `n_errors == 0` (Success Criteria).
+- The producer's own failures are counted, not swallowed: the report prints
+  `producer failures` and `measurement fails` **even when zero**, so "found
+  nothing" is distinguishable from "errored on everything". Both must be `0`.
+
+### Empty/invalid input handling
+
+- `identity_of(unit_text)` on empty/whitespace-only text: covered by #702's
+  existing unit tests; unchanged here.
+- The new `machine` block fields must degrade rather than crash if
+  `redis.__version__` is unavailable — the builder reports `"unknown"` instead of
+  raising, with a test.
+- An **empty exclusion set at n=500** is the specific "empty output" hazard for
+  this work: it is exactly the vacuity that re-blocked the issue. If
+  `n_excluded_keys_total == 0` on arm C, the run is **not** published as a
+  finding — it is reported as a defect (see Risk 3 and the Verification
+  anti-criterion).
+
+### Error state rendering
+
+- User-visible output is the committed `.md` report and the write-up. A run
+  ending with `n_errors > 0` or `producer_failures > 0` must be visible in the
+  report body (it already is) and must block publication.
 
 ## Test Impact
 
-<!-- skeleton -->
+- `tests/benchmarks/test_external.py::TestSupersessionArm::*` — **UPDATE (no
+  behavior change expected)**: re-run to confirm the three harness edits keep
+  `test_arm_none_is_byte_identical`,
+  `test_content_identity_produces_non_empty_exclusion_set`,
+  `test_no_leaked_validity_keys_after_teardown`, and
+  `test_teardown_on_arm_none_is_real_noop` green. The stale-key-pattern addition
+  touches a module constant these tests do not assert on; if any of them *does*
+  assert the tuple's contents, update the expectation.
+- `tests/benchmarks/test_external.py` (report-shape assertions) — **UPDATE if
+  present**: any test asserting the exact key set of the `machine` block must
+  gain `redis_version` and `bench_db`.
+- **New**: a test asserting the teardown cleanup failure is logged rather than
+  swallowed (see Failure Path Test Strategy).
+- **New**: a test asserting `machine` carries `redis_version` and `bench_db`,
+  and that an unresolvable redis-py version yields `"unknown"` rather than an
+  exception.
+- `docs/scripts/gen_benchmark_pages.py` tests (`_warn_orphan_artifacts`) —
+  **no change**, but re-run: the committed `validity_586/` subdirectory must
+  produce **zero** new orphan warnings. This is an anti-criterion.
+- No `src/` tests are affected — `src/` is not modified.
 
 ## Rabbit Holes
 
-<!-- skeleton -->
+- **Fixing #701 as part of this run.** Tempting because it is right there and
+  the spike explains it. It is a separate lane being planned concurrently
+  (`docs/plans/sdlc-701.md`), and spike-1 shows containment is real and tested.
+  Touching `_build_external_model_class` here would collide with that lane and
+  put a namespace refactor inside a measurement PR.
+- **Improving the identity heuristic.** `identity_of` recognizes a narrow "I
+  `<verb>` [`<preposition>`] ..." pattern and finds identity in ~2.3% of units
+  (281/12222 at n=25). A better heuristic would produce a different number in an
+  unknown direction — which is precisely why the README forbids reading the
+  result as a bound. Improving it is a different study.
+- **Answering #693.** Whether save-only inertness should be the library default
+  is a design question this measurement deliberately does not settle; the
+  producer here is an explicit imperative caller, the shape #693 questions.
+- **Running the hybrid or judged arms.** `hybrid` adds a 90MB model download and
+  a second confound; `--judged` is unsupported with `--supersession` and is a
+  different metric family. Both are out.
+- **Refreshing the published `longmemeval_s_latest` baseline** because arm A
+  produces a newer number in a newer environment. That is a separate editorial
+  decision about the docs site's headline figures, with its own review.
+- **Statistical machinery.** Bootstrapping confidence intervals over 500
+  questions is a tempting rigor upgrade. Report point estimates and the n per
+  category, state that no category-level conclusion is drawn without an interval
+  excluding zero, and leave interval estimation alone.
 
 ## Risks
 
-<!-- skeleton -->
+### Risk 1: Using the committed 2026-06-30 baseline as the "before"
+
+**Impact:** The comparison silently absorbs four months of unrelated code change
+(#588 supersession membership, #494 tombstones, #648 field-layer routing, #563)
+plus a different Python and an unrecorded redis-py version. Any delta would be
+uninterpretable, and would be published as a validity finding.
+**Mitigation:** Arm A is re-run at the same commit, machine, and session as B
+and C. The 2026-06-30 figures appear in the write-up only as context, explicitly
+labelled as a different environment.
+
+### Risk 2: Clobbering the published baseline artifact
+
+**Impact:** An arm-A run without `--output` repoints `longmemeval_s_latest` and
+silently changes the headline recall numbers on the public docs site
+(`gen_benchmark_pages.py:120`). This is a live, one-command mistake.
+**Mitigation:** `--output tests/benchmarks/results/external/validity_586/` on
+**every** arm, following the `graph_eval_484/` precedent; a Verification
+anti-criterion asserts the `longmemeval_s_latest` symlink still resolves to
+`longmemeval_s_20260630.md` in the PR diff.
+
+### Risk 3: A vacuous result (empty exclusion set) published as a finding
+
+**Impact:** Repeats the exact 2026-09-07 failure — `delta = 0.0` read as
+"validity gating does not help" when the gate never fired.
+**Mitigation:** spike-2 already measured a non-empty, hit-producing exclusion
+set at n=25 (`193 keys / 11 hits`). The run is required to report
+`n_excluded_keys_total > 0` **and** `n_excluded_hits_total > 0` on arm C; if
+either is zero at n=500, the result is reported as a harness defect, not as a
+finding about validity. Encoded as a Verification row.
+
+### Risk 4: Wall clock overrunning the build session
+
+**Impact:** A partially-run set of arms is worthless; three arms must share one
+environment.
+**Mitigation:** Measured at ≈24 min/arm, ≈75 min total (spike-2). Arms are run
+sequentially in one session and each writes its artifact on completion, so a
+crash costs at most one arm. If an arm dies, re-run **that arm only** and record
+that it was re-run — the harness environment is deterministic given the same
+commit and seed.
+
+### Risk 5: Cross-run validity residue reaching item 1
+
+**Impact:** A previously interrupted `content-identity` run leaves
+`$ValidityF:*` keys that item 1 of the next run can see, inflating its
+`n_excluded_keys` (spike-1, caveat 1).
+**Mitigation:** task build-1 adds `$ValidityF:*` to `_STALE_KEY_PATTERNS`, so
+both the startup and exit sweeps clear it. Additionally, the run uses a lane-
+private bench DB (`POPOTO_BENCH_DB=9`) that no other lane touches.
+
+### Risk 6: Concurrent SDLC lanes contending on Redis
+
+**Impact:** Other lanes are live in this repo; a shared DB produces phantom
+failures and, worse here, foreign keys inside a benchmark measurement.
+**Mitigation:** `POPOTO_BENCH_DB=9` for the runs and `POPOTO_TEST_DB=9` for the
+test suite, both lane-private. DB 0 is never touched (the harness rejects it,
+and the guard raises `Db0FlushRefusedError` independently).
+
+### Risk 7: An artifact that cannot be compared later
+
+**Impact:** Committing three reports whose `machine` block omits the redis-py
+version reproduces the defect CLAUDE.md's ratchet notes warn about — a number
+whose environment is not recoverable from the artifact.
+**Mitigation:** task build-3 adds `redis_version` and `bench_db` to the
+`machine` block **before** the runs, so all three committed artifacts carry
+them. Verified by a Verification row reading the committed JSON.
 
 ## Race Conditions
 
-<!-- skeleton -->
+**No race conditions identified.** The benchmark driver is synchronous and
+single-threaded: items are iterated in a plain `for` loop
+(`run_external.py:1396`), each item's `setup`/`run`/`teardown` completes inside
+`Scenario.execute()`'s `try/finally` (`base.py:95-116`) before the next item
+begins, and all Redis calls are synchronous. The only background threads are the
+embedding-cache invalidation listeners, which are stopped per item
+(`external_base.py:1010`) *after* the validity cleanup, so pool pressure cannot
+precede the `DEL`.
+
+The one ordering property that matters — *item N's validity keys are deleted
+before item N+1's ingest writes* — is guaranteed by that sequential structure
+and asserted by
+`tests/benchmarks/test_external.py::TestSupersessionArm::test_no_leaked_validity_keys_after_teardown`.
+
+Cross-*process* contention (another SDLC lane writing to the same Redis DB) is
+not a race in the code but is a real hazard; it is handled as Risk 6 by a
+lane-private `POPOTO_BENCH_DB`.
 
 ## No-Gos (Out of Scope)
 
-<!-- skeleton -->
+- [SEPARATE-SLUG #701] Fixing the shared `ValidityField` key namespace in
+  `_build_external_model_class`. spike-1 establishes it does not block this run
+  (per-item teardown deletes all six key shapes, tested). A lane is planning it
+  concurrently.
+- [SEPARATE-SLUG #693] Deciding whether save-only inertness is the right library
+  default. This run measures an explicit imperative producer; it does not touch
+  the default.
+- [SEPARATE-SLUG #564] The M5 reconciliation work. Not a prerequisite any more
+  and not exercised here.
+- [ORDERED] Refreshing the published `longmemeval_s_latest` headline baseline to
+  a 2026-09 environment. That changes public docs figures and is a PM/editorial
+  call gated on this run's arm-A number being reviewed first; it must not ride
+  along in this PR.
+
+**Explicitly NOT a No-Go, contrary to the issue's framing:** the n=500 run
+itself. The issue deferred it as needing "the external LongMemEval-S corpus, an
+embedding provider, and hours of wall clock". spike-2 measured all three
+premises false — corpus cached locally (277 MB, on disk), no embedding provider
+required in the default `lexical` mode, ≈75 minutes for all three arms. It is
+therefore an in-scope build task and **not** an `[EXTERNAL]` gate. If a future
+executor finds the corpus missing or Redis unreachable, that is a Prerequisites
+failure to report, not a licence to re-defer.
 
 ## Update System
 
