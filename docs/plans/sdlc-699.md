@@ -7,7 +7,7 @@ created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/699
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-08T05:44:30Z
+revision_applied_at: 2026-09-08T05:54:25Z
 ---
 
 # #699 — Make the cycles/pressure companion read-modify-write atomic
@@ -1011,8 +1011,9 @@ public methods keep their signatures.
 | No-entry adjust returns `[]` (B2) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "no_stored_cycles"` | exit code 0 |
 | Table-valued period still falls back, whole bucket (C4) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "unhashable_period or partial_merge_discarded"` | exit code 0, **with the tests unmodified** (`git diff origin/main -- tests/test_cyclic_decay_field.py \| grep -c "unhashable_period"` → 0) |
 | Lua type guard present, not a `pcall` (C4) | `grep -c "type(p) ~= 'number'" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
-| Baseline slot protected in Lua terms, not Python's (C5) | `grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
-| Pipelined no-entry result shift pinned by a test (C6) | `grep -c "pipe.execute()" tests/test_observation_protocol.py` | output > 0 |
+| Baseline slot protected in Lua terms, not Python's — negative (C5, row fixed per C9) | `grep -Ec "slot[ -]3 writer" src/popoto/fields/cyclic_decay_field.py` | match count == 0 (measured **0** at `3ed94376`; hyphen-tolerant, so a verbatim copy of `base.py:2776`'s `slot-3 writer/deleter` into the new Lua is caught). Do **not** replace this with a whole-file `grep -c "slot 3"` — that returns **4** at `3ed94376` from correct 0-based Python prose at `:344`, `:558`, `:619`, `:680`, which no task rewrites |
+| Baseline slot protected in Lua terms, not Python's — positive (C5, row fixed per C9) | `grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` | output > 0 (measured **0** at `3ed94376`, so this is red pre-build and green only once `CYCLES_ADJUST_LUA` names the baseline in 1-based Lua) |
+| Pipelined no-entry result shift pinned by a test (C6, row fixed per C8) | `grep -c "len(pipe.execute())" tests/test_observation_protocol.py` | output > 0 (measured **0** at `3ed94376`. The earlier row grepped bare `pipe.execute()`, which returns **1** on unmodified `main` from `test_pipeline_support:701` — the very test C6 exists to strengthen — and so certified nothing) |
 | Rolling-deploy caveat documented (C2) | `grep -c "rolling deploy" docs/features/cyclic-decay-field.md` | output >= 2 |
 | Anti-criterion: `resolve_pressure` body left alone | `git diff origin/main -- src/popoto/models/base.py \| grep -c "^[-+][^-+].*resolve_pressure"` | match count == 0 |
 | Anti-criterion: pipeline caveat removed from docs | `grep -c "save first" docs/features/cyclic-decay-field.md` | match count == 0 |
@@ -1334,7 +1335,7 @@ concerns are folded into the plan **body**, not only into this table.
 | Finding | Disposition | Where the plan now says it |
 |---|---|---|
 | C4 table-valued period accepted by the match-key function | **Fixed** | Technical Approach → `CYCLES_MERGE_LUA` contract (new "type guard, not a `pcall`" bullet with the verbatim Lua, plus a note on the match-key bullet forbidding a `pcall`/`tostring` fallback); Task 1 (new step); Test Impact (`:1512`/`:1534` named as the acceptance tests, must pass unmodified); Success Criteria; Verification (2 rows) |
-| C5 mixed 1-based Lua / 0-based Python slot numbering | **Fixed** | Solution → Key Elements: `CYCLES_ADJUST_LUA` bullet rewritten to "index 2 in place / index 4 untouched", plus a new **"Slot numbering is 1-based Lua everywhere in this plan"** bullet fixing the convention and translating both halves of `base.py:2774-2777`; Technical Approach → `CYCLES_ADJUST_LUA` contract; Task 2 (step rewritten — "slot 3" removed); Inline Documentation; Verification (`grep -c "slot 3"` == 0) |
+| C5 mixed 1-based Lua / 0-based Python slot numbering | **Fixed** | Solution → Key Elements: `CYCLES_ADJUST_LUA` bullet rewritten to "index 2 in place / index 4 untouched", plus a new **"Slot numbering is 1-based Lua everywhere in this plan"** bullet fixing the convention and translating both halves of `base.py:2774-2777`; Technical Approach → `CYCLES_ADJUST_LUA` contract; Task 2 (step rewritten — "slot 3" removed); Inline Documentation; Verification (the round-2 row was `grep -c "slot 3"` == 0 — **superseded by the round-3 fold-in below**, see C9) |
 | C6 pipelined no-entry call now queues an `EVALSHA` | **Disclosed (no code fix — correct trade)** | Architectural Impact → Interface changes (new bullet); Technical Approach → "Pipeline handling after the change" (new table row); Task 2 (new step); Test Impact (`test_observation_protocol.py:693-701` to be extended); Success Criteria; Verification |
 | C7 escape hatch is two edits short of executable | **Fixed** | Solution → Straggler cleanup (the false "depends on nothing that depends on it" claim replaced with the accurate narrower one); Task 3 scope note now enumerates the **four** edits; Task 5's `Depends On` annotated as a sequencing edge; the `POPOTO_REDIS_DB` Success Criterion annotated as Task-3-conditional |
 
@@ -1426,6 +1427,34 @@ is a true signal. Pair it with a positive check that the protection actually exi
 e.g. `grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` | `output > 0`. Do
 **not** satisfy the row as currently written by editing `:344`/`:558`/`:619`/`:680`
 — those are correct Python-side comments and rewording them is out of scope.
+
+### Round 3 fold-in — applied 2026-09-08T05:54:25Z
+
+Targeted pass. Both round-3 concerns are defects in *Verification rows* the round-2
+fold-in added, not in the folded reasoning; no plan reasoning, task, or scope was
+re-opened. Each replacement command was **run against the tree at `3ed94376` before
+being written into the table** — a verification row that has never been executed is
+what produced C8 and C9 in the first place.
+
+| Finding | Disposition | Where the plan now says it |
+|---|---|---|
+| C8 the C6 row is vacuous (green on unmodified `main`) | **Fixed** | Verification table: the C6 row now greps `len(pipe.execute())` in `tests/test_observation_protocol.py` (`output > 0`). Measured **0** at `3ed94376`, so it is red pre-build and can only go green once the sibling no-entry-length test lands. The row records why the bare `pipe.execute()` form (which measures **1**, from `test_pipeline_support:701`) was rejected |
+| C9 the C5 row is unsatisfiable and hyphen-blind | **Fixed** | Verification table: the single whole-file `grep -c "slot 3"` == 0 row is replaced by a **pair** — a scoped, hyphen-tolerant negative (`grep -Ec "slot[ -]3 writer"`, measured **0** at `3ed94376`, and it *does* match `base.py:2776`'s `slot-3 writer/deleter` so a verbatim copy into the new Lua is caught) plus a positive (`grep -c "c\[4\]"`, measured **0** at `3ed94376`, green only once `CYCLES_ADJUST_LUA` names the baseline in 1-based Lua). The row carries an explicit do-not-revert note that the whole-file form returns **4** from correct 0-based Python prose at `:344`, `:558`, `:619`, `:680`, which no task rewrites. The round-2 fold-in table's stale pointer to the old row is annotated as superseded |
+
+Measured at `3ed94376` while folding in (`SDLC_TARGET_REPO`/main checkout):
+`grep -c "len(pipe.execute())" tests/test_observation_protocol.py` → **0**;
+`grep -c "pipe.execute()" tests/test_observation_protocol.py` → **1** (C8 confirmed);
+`grep -Ec "slot[ -]3 writer" src/popoto/fields/cyclic_decay_field.py` → **0**;
+`grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` → **0**;
+`grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` → **4** (C9 confirmed);
+`sed -n '2770,2780p' src/popoto/models/base.py` contains the literal
+`slot-3 writer/deleter` (C9's hyphen-blindness confirmed).
+
+Option (a) from C9's Implementation Note — a `sed` range scoped to the
+`CYCLES_ADJUST_LUA` literal — was **rejected**: that literal does not exist yet, so
+the `sed` range yields nothing and `grep -c` returns 0 vacuously today, reproducing
+exactly the defect C8 names. Option (b) plus the positive `c[4]` check was taken
+instead.
 
 ### Structural check results
 
