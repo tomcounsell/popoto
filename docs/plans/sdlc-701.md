@@ -1124,6 +1124,58 @@ in a harness CI never runs.
 
 ## Critique Results
 
+### Round 3 (2026-09-08) — verdict: READY TO BUILD (no concerns)
+
+**Critics**: Risk & Robustness, Scope & Value, History & Consistency (FULL depth)
+**Mode**: independent roster (3 critics)
+**Findings**: 1 total (0 blockers, 0 concerns, 1 nit)
+
+**Confirmation pass.** The MAX_CRITIQUE_CYCLES=2 cap was already exhausted; this
+round was dispatched only because the round-2 verdict was stale relative to the
+revised plan. Its sole question was whether the round-2 fold-in landed. It did.
+Scope was explicitly restricted to (a) fold-ins that did not land, (b) defects
+the revision itself introduced, and (c) anything that would make BUILD produce
+broken work. No round-1/round-2 point was re-litigated and no new scope opened.
+
+All three critics independently verified the fold-in against the **working tree**,
+not against the plan's own resolution table:
+
+| Round-2 finding | Landed? | Independent verification |
+|---|---|---|
+| C7 — arm-none test falsifiability | yes | `get_all_keys` confirmed a `@classmethod` at `src/popoto/fields/validity_field.py:781-796` deriving keys purely from `_meta.db_class_key` via `field.py:629`, never consulting `_meta.fields`. All 26 call sites invoke it on the class, never an instance, so `patch.object(ValidityField, "get_all_keys", wraps=...)` replaces the descriptor with a plain mock and `call.args[0]` **is** the model — the plan's `call.args[0] is scenario._model_class` assertion is mechanically correct, and `wraps=` preserves real deletion for the independent key-deletion leg. Present identically in Technical Approach, Test Impact, Success Criterion 5, and Task 2. |
+| C8 — stale `POPOTO_REDIS_DB` snapshot | yes | `grep -n 'POPOTO_REDIS_DB' tests/benchmarks/scenarios/external_base.py` returns exactly 83, 971, 975, 986, 990 — an exact match for the plan's claim that the import plus four call sites are the file's only uses, and all four are inside `teardown()`, the function Task 1 already edits. Carried consistently through Task 1 bullets, Task 1 "Informed By", Task 3's checklist, Success Criteria, and two Verification rows. Scope growth is bounded to one function; it is not a reopening of the #655 sweep. |
+| C9 — Appetite roster | yes | Appetite "Team" now names the four roles verbatim and matches Team Orchestration by name and Agent Type. The phantom "code reviewer" survives only inside quoted round-2 critique history, never as a live claim. |
+| N4 — grep-proxy Verification row | yes | Absent from the 15-row Verification table; the only remaining occurrence is inside the quoted round-2 nit. |
+
+#### Nits
+
+**N5 — Risk 3's escape clause points at the wrong task number.** Risk 3 says "the
+**Task 4** diff review must produce an explicit per-variant field-name checklist"
+(plan line 732). That text predates the C6 6→5 task merge: the diff review is now
+**Task 3** (`validate-conversions`, owned by `namespace-validator`), and Task 4 is
+`document-namespacing`. The plan's own Appetite section already states this
+correctly ("There is no code-reviewer role; the diff review is Task 3, owned by
+the validator"), and Task 3's bullet already mandates the field-by-field review,
+so a builder is not misled — the stale number is editorial only. Fix opportunis-
+tically during BUILD; it does not warrant a revision pass. (Structural check)
+
+#### Structural Check Results
+
+| Check | Status | Detail |
+|-------|--------|--------|
+| Required sections | PASS | All plan sections present and non-empty |
+| Task numbering | PASS | Tasks 1-5, no gaps |
+| Dependencies valid | PASS | All five `Depends On` IDs resolve (`build-factories`, `build-namespace-tests`, `validate-conversions`, `document-namespacing`); no cycles |
+| File paths exist | PASS | 16 of 17 exist; `tests/benchmarks/test_model_class_namespacing.py` is intentionally new |
+| Prerequisites met | PARTIAL | Unchanged from round 1 — `POPOTO_TEST_DB` must be exported non-zero and lane-scoped by the build lane; the plan states this as a hard gate |
+| Cross-references | PASS | Round 1's FAIL (Success Criterion 4 vs. Task 1's glob) is resolved; every Success Criterion maps to a task; no No-Go or Rabbit Hole appears as planned work. One stale task number — see N5 |
+
+**Verdict: READY TO BUILD (no concerns).** Zero blockers, zero concerns; the
+single nit is editorial and non-blocking. No revision pass is required and none
+is available — proceed to BUILD.
+
+---
+
 ### Round 2 (2026-09-08) — verdict: READY TO BUILD (with concerns)
 
 FULL depth, independent roster (Risk & Robustness, Scope & Value, History &
