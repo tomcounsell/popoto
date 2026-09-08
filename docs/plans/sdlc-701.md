@@ -861,6 +861,11 @@ that constructs benchmark model classes.
 - [ ] Converted graph/assoc classes still expose their self-referential
       `Relationship` in `_meta.fields`.
 - [ ] `grep -rn '\.__name__ = ' tests/ src/ scripts/` returns no matches.
+- [ ] `tests/benchmarks/scenarios/external_base.py` contains **no**
+      `POPOTO_REDIS_DB` reference — the new SCAN pass and the four pre-existing
+      call sites all route through `get_REDIS_DB()`, and the line-83 import no
+      longer names the snapshot (C8). The leak tests pass in a full-suite run,
+      not only file-scoped.
 - [ ] `tests/benchmarks/README.md` no longer describes the limitation as live.
 - [ ] Tests pass (`/do-test`), with `POPOTO_TEST_DB` set for this lane and the DB
       number stated alongside the count.
@@ -918,7 +923,8 @@ shared no state, so a second agent bought a handoff and no concurrency.
 - **Informed By**: spike-1 (rename never reaches `_meta`), spike-2 (four key
   families affected, not one), spike-3 (five sites; `type()` viable at each;
   post-hoc `Relationship` and `with_validity` blocks stay post-hoc), critique
-  C1 (glob shape), C5 (1:1 conversion, no dedup)
+  C1 (glob shape), C5 (1:1 conversion, no dedup), C8 (`get_REDIS_DB()` for the
+  new SCAN pass **and** the four adjacent sites)
 - **Assigned To**: `harness-factory-builder`
 - **Agent Type**: builder
 - **Parallel**: false
@@ -959,6 +965,31 @@ in a harness CI never runs.
   nothing after the class name, and would leave Success Criterion 4
   unsatisfiable (critique C1). Keep the explicit validity branch and the
   agent-prefix pass.
+- **Write the new pass through `get_REDIS_DB()`, never `POPOTO_REDIS_DB`
+  (critique C8) — and convert the four adjacent sites in the same edit.**
+  `tests/benchmarks/scenarios/external_base.py:83` holds
+  `from src.popoto.redis_db import POPOTO_REDIS_DB, get_REDIS_DB`, a plain
+  module-level import of the rebindable global — the exact shape CLAUDE.md names
+  as stale. `teardown()` already mixes idioms: the validity branch calls
+  `get_REDIS_DB()` (lines 949, 955, 959) while the class-name and agent-prefix
+  SCANs use the snapshot (lines 971, 975, 986, 990). Because this bullet says
+  "alongside the existing pass", a builder mirroring the adjacent line would
+  inherit the snapshot. `tests/test_connection.py:117` rebinds the global via
+  `set_REDIS_DB_settings(...)`, so in a **full-suite** run teardown would sweep
+  one database while Success Criterion 4's leak assertion (which reads through
+  `get_REDIS_DB()`, as `test_external.py:1207` already does) reads another —
+  green file-scoped, red full-suite, and presenting as a namespacing regression
+  rather than a connection-binding bug (#655/#661). Concretely:
+  - new pass: `get_REDIS_DB().scan(cursor, match=f"*{class_name}*", count=200)`
+    and `get_REDIS_DB().delete(*keys)`;
+  - convert `external_base.py:971, 975, 986, 990` from `POPOTO_REDIS_DB.scan/.delete`
+    to `get_REDIS_DB().scan/.delete`;
+  - drop `POPOTO_REDIS_DB` from the line-83 import — re-verified at revision
+    time that those four are its **only** uses in the file, so the import becomes
+    `from src.popoto.redis_db import get_REDIS_DB`.
+  This is mechanical and in scope precisely because Task 1 is already editing
+  this function; it is **not** a reopening of the #655 sweep, and no other file
+  is touched by it.
 - In `run_external.py`, add `*:ExtMem*` to `_STALE_KEY_PATTERNS`, retaining
   `ExternalBenchmarkMemory:*`, `ExtMem*`, and `$BM25:ExtMem*`. The sweep's
   leading-colon form **is** correct — `$Class:ExtMem12345678` has a colon before
@@ -1034,6 +1065,12 @@ in a harness CI never runs.
 - Run the Verification table. Diff-review each converted factory body
   field-by-field against its pre-conversion form (benchmarks are not run in CI —
   this review is the only guard against a silently dropped attribute).
+- **Connection-binding checklist item (C8):** confirm
+  `grep -n 'POPOTO_REDIS_DB' tests/benchmarks/scenarios/external_base.py` returns
+  **nothing** — the four converted sites and the import are all gone, and the new
+  SCAN pass uses `get_REDIS_DB()`. Then confirm the leak tests pass in a
+  **full-suite** run (not only file-scoped), since that is the only run in which
+  a surviving snapshot would show up.
 - Re-run the spike-2 reproduction and confirm zero `ExternalBenchmarkMemory` keys.
 - Report pass/fail with the Redis DB number and package versions stated.
 
@@ -1079,7 +1116,8 @@ in a harness CI never runs.
 | Anti-criterion — `ValidityField` gains no override hook | `git diff origin/main...HEAD -- src/popoto/fields/validity_field.py \| wc -l` | match count == 0 |
 | Anti-criterion — `db_class_key` not made lazy | `git diff origin/main...HEAD -- src/popoto/models/base.py \| wc -l` | match count == 0 |
 | Anti-criterion — sdlc-692 plan untouched | `git diff --name-only origin/main...HEAD -- docs/plans/sdlc-692.md \| wc -l` | match count == 0 |
-| Teardown's second SCAN uses the unanchored glob (C1) | `grep -c 'match=f"\*{class_name}\*"' tests/benchmarks/scenarios/external_base.py` | output == 1 |
+| No stale connection snapshot in the harness (C8) | `grep -c 'POPOTO_REDIS_DB' tests/benchmarks/scenarios/external_base.py` | match count == 0 |
+| Leak assertion holds in a full-suite run, not only file-scoped (C8) | `python -m pytest -q tests/test_connection.py tests/benchmarks/test_external.py` | exit code 0 |
 | Sweep covers post-fix key shapes | `grep -c ':ExtMem\*' tests/benchmarks/run_external.py` | output > 0 |
 | README limitation note updated | `grep -c 'Known limitation' tests/benchmarks/README.md` | output > 0 |
 | No shared base-class keys survive a two-class save | `python -m pytest tests/benchmarks/test_model_class_namespacing.py -q -k disjoint` | exit code 0 |
