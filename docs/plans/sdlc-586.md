@@ -391,8 +391,11 @@ Deliberately near-zero. This is a measurement run, not a feature.
 awkward), code reviewer.
 
 **Interactions:**
-- PM check-ins: 1-2 (confirming the three-arm reinterpretation of criterion 2;
-  reviewing the finding before it is published if C − B is negative).
+- PM check-ins: 1 remaining. The first — confirming the three-arm
+  reinterpretation of criterion 2 — was **spent and answered** on 2026-09-08
+  (see *Decisions (settled)*); it is now the zero-cost `confirm-reinterpretation`
+  gate rather than an open await. The remaining one is reviewing the finding
+  before it is published if C − B is negative.
 - Review rounds: 1.
 
 The coding is small (three additive harness edits). The cost is the ~75 minutes
@@ -438,7 +441,9 @@ and any network access.
 ### Flow
 
 Build lane → harden the harness (3 edits) → verify with the existing fixture
-tests → run arm A (~24 min) → run arm B → run arm C → commit artifacts under
+tests → **confirm the three-arm reinterpretation still stands (zero-cost gate,
+already answered by the supervisor)** → run arm A (~24 min, then the inline
+baseline-pointer check) → run arm B → run arm C → commit artifacts under
 `validity_586/` → write findings (A→B first, then B→C) → publish as a
 `docs/benchmarks.md` section + an issue comment on #586 → PR.
 
@@ -943,10 +948,33 @@ that nothing in `src/` imports, and this plan does not change that.
   the #692 demonstration numbers reproduce, so a harness regression is caught
   before the corpus runs.
 
-### 5. Run arm A — baseline, no ValidityField
+### 5. Confirm the three-arm reinterpretation before spending wall clock
+
+- **Task ID**: confirm-reinterpretation
+- **Depends On**: validate-harness
+- **Informed By**: critique C4 (Open Question 1 was load-bearing —
+  *"everything downstream follows from that call"* — yet gated no task, so
+  ~75 minutes of wall clock ran unconditionally)
+- **Assigned To**: `bench-runner`
+- **Agent Type**: builder
+- **Parallel**: false
+- **Cost**: zero. This is a gate, not work.
+- **Status: SATISFIED — the supervisor answered this on 2026-09-08.** See
+  *Decisions (settled)* below: the three-arm design is ACCEPTED and re-running
+  arm A rather than reusing the committed 2026-06-30 baseline is ACCEPTED.
+- The executor's obligation is to **read that decision and confirm it still
+  stands** before issuing run-arm-a. If anything has changed the framing since
+  (e.g. the PM reverts to a two-arm reading, or #692's README doctrine is
+  amended), **stop here** — the harness edits build-1..build-3 are correct under
+  either framing, which is why this gate sits after `validate-harness` rather
+  than at the top, but the runs are not.
+- Failing fast here costs nothing; failing after arm C is committed costs the
+  whole session.
+
+### 6. Run arm A — baseline, no ValidityField
 
 - **Task ID**: run-arm-a
-- **Depends On**: validate-harness
+- **Depends On**: validate-harness, confirm-reinterpretation
 - **Assigned To**: `bench-runner`
 - **Agent Type**: builder
 - **Parallel**: false
@@ -976,7 +1004,7 @@ that nothing in `src/` imports, and this plan does not change that.
   `validity_586/`. The arm's 24 minutes of wall clock are **not** lost; do not
   re-run it.
 
-### 6. Run arm B — producer on, gate off
+### 7. Run arm B — producer on, gate off
 
 - **Task ID**: run-arm-b
 - **Depends On**: run-arm-a
@@ -989,7 +1017,7 @@ that nothing in `src/` imports, and this plan does not change that.
 - Confirm `n_excluded_keys_total > 0` with `n_excluded_hits_total == 0` (gate
   off: keys are computed but nothing is subtracted) and `producer_failures == 0`.
 
-### 7. Run arm C — producer on, gate on
+### 8. Run arm C — producer on, gate on
 
 - **Task ID**: run-arm-c
 - **Depends On**: run-arm-b
@@ -1003,7 +1031,7 @@ that nothing in `src/` imports, and this plan does not change that.
   `n_excluded_hits_total > 0`. If either is zero, **stop** and report a harness
   defect rather than publishing a delta (Risk 3).
 
-### 8. Commit artifacts
+### 9. Commit artifacts
 
 - **Task ID**: commit-artifacts
 - **Depends On**: run-arm-c
@@ -1014,7 +1042,7 @@ that nothing in `src/` imports, and this plan does not change that.
 - Verify the diff adds **nothing** elsewhere under `results/external/`, and that
   `longmemeval_s_latest.md` still points at `longmemeval_s_20260630.md`.
 
-### 9. Write the findings
+### 10. Write the findings
 
 - **Task ID**: document-findings
 - **Depends On**: commit-artifacts
@@ -1032,7 +1060,7 @@ that nothing in `src/` imports, and this plan does not change that.
   removed records the retriever wanted, which is a real finding about subtractive
   gating.
 
-### 10. Final validation
+### 11. Final validation
 
 - **Task ID**: validate-all
 - **Depends On**: document-findings
@@ -1055,9 +1083,11 @@ that nothing in `src/` imports, and this plan does not change that.
 | Docs build strict | `python -m mkdocs build --strict` | exit code 0 |
 | Three arms committed (3 dated + 3 latest `.md`) | `ls tests/benchmarks/results/external/validity_586/*.md \| wc -l` | output > 5 |
 | Arm A ran at n=500 with no errors | `python -c "import json;d=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest.json'));s=d['summary'];print(s['n_total']==500 and s['n_ok']==500 and s['n_errors']==0)"` | output contains True |
+| Arm B ran at n=500 with no errors (critique N1) | `python -c "import json;d=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity_nogate.json'));s=d['summary'];print(s['n_total']==500 and s['n_ok']==500 and s['n_errors']==0)"` | output contains True |
 | Arm C ran at n=500 with no errors | `python -c "import json;d=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'));s=d['summary'];print(s['n_total']==500 and s['n_ok']==500 and s['n_errors']==0)"` | output contains True |
 | **Anti-vacuity**: arm C excluded keys AND hits are non-zero | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'))['supersession'];print(b['n_excluded_keys_total']>0 and b['n_excluded_hits_total']>0)"` | output contains True |
-| Producer did not fail | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'))['supersession'];print(b['producer_failures']==0 and b['measurement_failures']==0)"` | output contains True |
+| Producer did not fail (arm C) | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity.json'))['supersession'];print(b['producer_failures']==0 and b['measurement_failures']==0)"` | output contains True |
+| Producer did not fail (arm B, critique N1) | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest_sup-content-identity_nogate.json'))['supersession'];print(b['producer_failures']==0 and b['measurement_failures']==0)"` | output contains True |
 | Arm A is a true baseline (zeroed block, arm "none") | `python -c "import json;b=json.load(open('tests/benchmarks/results/external/validity_586/longmemeval_s_latest.json'))['supersession'];print(b['arm']=='none' and b['n_supersessions']==0)"` | output contains True |
 | Environment stamped in every committed artifact | `python -c "import json,glob;ps=[p for p in glob.glob('tests/benchmarks/results/external/validity_586/*_latest*.json')];print(all(set(('python_version','platform','cpu_count','redis_version','bench_db'))<=set(json.load(open(p))['machine']) for p in ps) and len(ps)>=3)"` | output contains True |
 | **Anti-criterion (Risk 2)**: published baseline pointer untouched | `readlink tests/benchmarks/results/external/longmemeval_s_latest.md` | output contains longmemeval_s_20260630.md |
