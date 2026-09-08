@@ -107,12 +107,19 @@ BENCH_DB_DEFAULT = 14
 # Key patterns left behind by prior/interrupted runs. ExtMem* covers the
 # per-item model keys and their sorted-index keys (ExtMem<hash>:_relevance,
 # etc.); $BM25:ExtMem* covers the BM25 index keys; ExternalBenchmarkMemory:*
-# covers any keys written under the un-renamed base class name. All are literal
-# outside the trailing glob (``$`` is not a Redis SCAN metacharacter).
+# covers any keys written under the pre-#701 un-renamed base class name (kept
+# so residue from pre-fix runs is still swept). *:ExtMem* covers every
+# special-use field key family that carries the class name *after* a colon
+# rather than as a leading prefix — $Class:ExtMem<hash>, $ValidityF:ExtMem
+# <hash>:validity:*, $ConfidencF:ExtMem<hash>:certainty:data,
+# $KeyF:ExtMem<hash>:agent_id:*, $DecayingSortF:ExtMem<hash>:relevance:* (#701
+# spike-2) — none of which the plain "ExtMem*" prefix pattern reaches. All are
+# literal outside the trailing glob (``$`` is not a Redis SCAN metacharacter).
 _STALE_KEY_PATTERNS = (
     "ExternalBenchmarkMemory:*",
     "ExtMem*",
     "$BM25:ExtMem*",
+    "*:ExtMem*",
 )
 
 
