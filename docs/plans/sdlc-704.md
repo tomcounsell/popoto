@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: Valor Engels
 created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/704
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-08T05:42:16Z
 ---
 
 # Hermes: re-target the shipped plugin at the real hook system, and plumb `turn_id`
@@ -569,7 +571,12 @@ surface. The guide must name all three, in that order.
   wherever the operator started it — stable but arbitrary. The remedy is
   documentation, not code: the guide must tell operators to set
   `POPOTO_MEMORY_AGENT_ID` explicitly for Hermes, and say why. Inventing a
-  Hermes-specific `agent_id` heuristic is a rabbit hole (below).
+  Hermes-specific `agent_id` heuristic is a rabbit hole (below). **Recommended, not
+  required** (critique ruling 3): do **not** add a first-use `logger.warning` branch
+  when `POPOTO_MEMORY_AGENT_ID` is unset — Hermes swallows plugin logging into
+  `~/.hermes/logs/agent.log` where nobody reads it, so the warning adds a branch and
+  buys nothing. Guide text next to the absent-`cwd` explanation, and stop. Do not
+  raise either.
 - **The contract test asserts the *shape*, against the real loader.** Concretely:
   point `HERMES_HOME` at a tmpdir, copy `plugins/hermes/` into
   `$HERMES_HOME/plugins/popoto-memory/`, write a `config.yaml` with
@@ -582,12 +589,39 @@ surface. The guide must name all three, in that order.
   It also asserts (e) that `invoke_hook("pre_llm_call", **captured_kwargs)` returns
   a list whose first element is a `dict` with a `"context"` key when memory has
   something to inject, exercising the real dispatcher end to end minus the model.
+- **Assertion (e) must be seeded, or it passes vacuously** (critique C1). A bare
+  `isinstance(result[0], dict)` is not falsifiable: `handle_payload` does not guard
+  `service.assemble()` (`hooks.py:305-313`), so with Redis unreachable the plugin's
+  own mandated `except Exception: return None` swallows the error and `invoke_hook`
+  returns `[None]` — the same observable as "nothing to inject". The contract job's
+  **Redis service is therefore unconditional, not "if the test needs one"**, and the
+  test builds a real `MemoryService` bound to it, `.capture()`s a known sentinel
+  string, and then asserts
+  `invoke_hook("pre_llm_call", **kwargs)[0]["context"]` **contains that sentinel**.
+  If a reviewer judges a Redis service too heavy for this job, the only acceptable
+  alternative is to split (e) into its own test whose skip is *visible* (an explicit
+  `pytest.skip` with a reason, never a silent pass) and keep (a)–(d) as the
+  Redis-free gate — assertions (a)–(d) require no Redis at all.
 - **Pin `hermes-agent==0.19.0` in the job.** An unpinned install turns every
   upstream release into a popoto CI failure; a pinned one is a contract snapshot
   that must be bumped deliberately. Read it the way `CLAUDE.md` reads a green
   `lock-check`: it proves the manifest and entry point still satisfy *0.19.0's*
   loader, not that the integration is safe on whatever the user has installed.
-  Say that in the workflow file.
+  Say that in the workflow file — and say it **together with the advisory rule**
+  (critique C2): *"green proves the manifest satisfies 0.19.0's loader; this job is
+  advisory and must not gate merge."* The two sentences belong in one header comment
+  because they are one argument.
+- **Date the pin (critique C3).** No configured Dependabot lane can see this version:
+  `.github/dependabot.yml` runs `uv` at `/` and `/examples` and `github-actions` at
+  `/`, and none of the three reads a `pip install hermes-agent==0.19.0` inside a
+  workflow `run` step. "Accept and document" with no owner and no cadence is the same
+  silent rot this lane exists to close, one level up. The minimum required form is a
+  dated comment on the install line —
+  `# pinned 2026-09-08 (hermes-agent 0.19.0); re-check against latest by 2027-03` —
+  plus one sentence in `docs/guides/harness-hermes.md` naming the pinned version and
+  the date, so a reader can tell how stale the claim is without reading CI. A
+  `schedule:`-triggered non-gating re-run against unpinned `hermes-agent` is the
+  stronger option and is acceptable **only** if it cannot report failure on a PR.
 
 ## Failure Path Test Strategy
 
@@ -692,7 +726,14 @@ behavior:
 - [ ] `tests/test_hermes_plugin_contract.py` — **NEW** (see Solution).
 - [ ] `tests/fixtures/harness_payloads/README.md` — **UPDATE**: the two Hermes rows
       and the "the remaining four are still the maintainer's acceptance pass"
-      sentence (three remain after this lane, not four).
+      sentence. **The corrected count is two, not three** (critique C4). That bucket
+      holds four *files* — the Codex pair and the Hermes pair — and fixtures move in
+      pairs, so it can only stay at four or drop to two. Rewrite the sentence as a
+      unit with the new three-tier grading rather than patching the digit: after this
+      lane the buckets are *live turn* (Claude Code, OpenClaw = 4 files), *real
+      dispatcher, not a live turn* (Hermes = 2), *binary/docs, not a live turn*
+      (Codex = 2). Shipping a wrong count in the one file whose job is honest
+      bookkeeping would be this issue's own failure mode in miniature.
 
 **Vacuity guard.** Per spike-3, `normalize()` already extracts a flat `turn_id`, so
 any test written only at the adapter layer **passes before the fix** and proves
@@ -749,6 +790,11 @@ with kwargs taken verbatim from the 0.19.0 invoke sites; not a live model turn."
 The fixtures README already has a precedent column for partial grades
 (`codex_*.json` → "binary, not a live turn"). Add a sentence to that README
 distinguishing three levels — live turn / real dispatcher / docs — rather than two.
+Critique ruling 2 confirms the three-level framing: Hermes's grade is backed by the
+real `PluginManager` and `invoke_hook`, Codex's by a binary's schema and a *failed*
+live attempt, and collapsing them onto one phrase would destroy a distinction the
+project paid to establish. The count in that same sentence corrects from four to
+**two**, not three — see critique C4 and Test Impact.
 
 ### Risk 2: `hermes-agent`'s top-level modules collide with popoto's repo layout
 
@@ -757,14 +803,41 @@ distinguishing three levels — live turn / real dispatcher / docs — rather th
 making `plugins` importable from popoto's repo root. In an environment with both,
 `import plugins` resolves by `sys.path` order — and the contract test's job is
 precisely to be such an environment.
-**Mitigation:** three layers. (a) The contract job runs `pytest` from a temp
+**The invariant the collision actually turns on (critique C5):** `hermes-agent` ships
+`plugins` as a **regular** package (it has an `__init__.py`); popoto's repo-root
+`plugins/` has none, so it is only a PEP 420 namespace *portion* — and a namespace
+portion never wins over a regular package found later on `sys.path`, whatever the
+order. That asymmetry, not `sys.path` hygiene, is what makes the collision
+survivable. It follows that `plugins/hermes/__init__.py` is **required** (Hermes
+imports the plugin *directory* as a module) while **`plugins/__init__.py` must never
+exist** — adding it is a plausible future "tidy-up", exactly the edit that
+`plugins/hermes/__init__.py` invites, and it would silently flip popoto's `plugins`
+into a regular package that shadows the vendor's inside the one job built to
+exercise it. Pinned by the anti-criterion `test ! -e plugins/__init__.py` in
+Verification and by a Success Criterion.
+
+**Mitigation:** four layers. (a) The contract job runs `pytest` from a temp
 directory with an explicit test path, never with the repo root leading `sys.path`.
 (b) `tests/test_integrations_db0_isolation.py` loads the plugin by file path via
 `importlib`, never by package name. (c) The main dev/CI venvs never install
-`hermes-agent` — asserted as a Prerequisite check. If (a) proves fragile in
+`hermes-agent` — asserted as a Prerequisite check. (d) `plugins/__init__.py` never
+exists, preserving the namespace-portion asymmetry above. If (a) proves fragile in
 practice, the fallback is to run the contract assertions in a subprocess whose
 `cwd` and `sys.path` are fully controlled, which is the shape
 `tests/test_integrations_db0_isolation.py` already uses.
+
+**Lint/format coverage of `plugins/` — decided, not deferred (critique C5, second
+half).** Neither `ruff check src/` nor `black --check src/ tests/` reaches
+`plugins/`, so `plugins/hermes/__init__.py` lands ungated by CI. **This lane accepts
+that explicitly rather than widening `lint.yml`.** Widening is a cross-cutting change
+— it edits `lint.yml`, contradicts `CLAUDE.md`'s Code Style paragraph which names
+`black --check src/ tests/` verbatim, and pulls in the sibling
+`plugins/openclaw/` JS tree that neither tool understands — and Task 4's no-touch
+list keeps this PR out of `lint.yml` for good reason. Instead the lane gates the new
+module **lane-locally**: two Verification rows (`black --check plugins/hermes/` and
+`ruff check plugins/hermes/`, both exit 0) that the validator runs, so the file ships
+formatted and lint-clean even though no CI job would have caught it. Widening the CI
+gate to `plugins/` is a legitimate follow-up chore; it is not this PR.
 
 ### Risk 3: Pinning `hermes-agent==0.19.0` freezes the contract while users move
 
@@ -777,6 +850,22 @@ loader. Record the version and date in the fixture `_provenance` and the guide s
 future reader can tell how stale the claim is. Dependabot is not wired to this job
 by design — a surprise `hermes-agent` bump landing as a red CI on an unrelated PR is
 worse than a stale pin.
+
+Two operational conclusions that Risk 3 previously left undrawn, both now mandatory:
+
+- **The job is advisory and must never be a required status check (critique C2).**
+  Branch protection is not configured in-repo — there is no `.github/settings.yml`
+  and no CODEOWNERS — so whoever wires this workflow could reasonably mark it
+  required, after which a PyPI outage or a yanked `hermes-agent` release blocks every
+  unrelated PR on the repo. The rule goes in the workflow header comment next to the
+  pin rationale *and* in Update System. Because it is a repo-settings action the PR
+  diff cannot enforce, it is written down as a **manual post-merge note in the PR
+  body**, not assumed.
+- **The pin carries a dated staleness signal (critique C3).** No Dependabot lane
+  reads a `pip install` inside a workflow `run` step, so the accepted risk gets a
+  self-limiting mechanism rather than prose alone: a dated comment on the install
+  line and the version+date named in `docs/guides/harness-hermes.md`. See Solution →
+  Technical Approach for the exact wording.
 
 ### Risk 4: The `plugins.enabled` step is skipped by users and fails silently
 
@@ -906,7 +995,11 @@ Two propagation facts do belong here:
   `pyproject.toml`, and must **not** be listed in `scripts/check_lock_imports.py` —
   that script's package list is deliberately hand-maintained for popoto's *published
   extras*, and `hermes-agent` is not one. An anti-criterion in Verification pins
-  this.
+  this. **It is also advisory and must not be added to the repo's required status
+  checks** (critique C2) — the pin can go stale or become transiently unfetchable,
+  and a PyPI outage must not block every unrelated PR. Branch protection lives in
+  repo settings, not in the diff, so the PR body must carry this as an explicit
+  post-merge note to whoever administers the repo.
 - **Existing installations need a manual migration**, stated in the CHANGELOG and
   both READMEs: remove `~/.hermes/hooks/popoto-memory/`, install to
   `~/.hermes/plugins/popoto-memory/`, and run `hermes plugins enable popoto-memory`.
@@ -965,9 +1058,12 @@ a Hermes agent reaches popoto's memory. Concretely:
       **Add**: the `plugins.enabled` opt-in step; the three-place failure-diagnosis
       order (`hermes plugins list` → `~/.hermes/logs/agent.log` → `popoto-memory
       doctor` / `~/.popoto/memory.log`); `POPOTO_MEMORY_AGENT_ID` guidance given the
-      absent `cwd`; the ~10,000-character spill ceiling next to
-      `POPOTO_MEMORY_MAX_TOKENS`; and the "remove your old `~/.hermes/hooks/`
-      install" migration line.
+      absent `cwd` (**recommended, not required** — critique ruling 3); the
+      ~10,000-character spill ceiling next to `POPOTO_MEMORY_MAX_TOKENS`; the
+      "remove your old `~/.hermes/hooks/` install" migration line; and **one sentence
+      naming the CI-pinned `hermes-agent` version and the date it was pinned**
+      (2026-09-08, 0.19.0) so a reader can judge how stale the verification claim is
+      without reading CI (critique C3).
 - [ ] `docs/features/prompt-cache-efficiency.md:48-54` — the `{"context": ...}` claim
       is correct; verify no gateway framing leaked in.
 - [ ] `docs/features/never-record-firewall.md:33`, `docs/index.md:43-45`,
@@ -987,13 +1083,22 @@ a Hermes agent reaches popoto's memory. Concretely:
       executed reference), `:285` (`cwd`), and the module docstring `:13-15`.
 - [ ] `src/popoto/integrations/service.py:632-634` — the `_push_pending` docstring's
       Hermes carve-out.
-- [ ] `src/popoto/integrations/__init__.py:11-12`,
-      `src/popoto/integrations/config.py:129,:383` — "a Hermes `handler.py`" and
-      similar; rename to the plugin's entry point.
+- [ ] `src/popoto/integrations/config.py:383` — the only `handler.py` reference in
+      `src/popoto/integrations/` (verified at baseline: `grep -rn "handler.py"
+      src/popoto/integrations/` returns that line and nothing else). Rename to the
+      plugin's entry point.
+- [ ] `src/popoto/integrations/config.py:129` — says "a Hermes handler" in prose;
+      reword to the plugin callback.
+- [ ] `src/popoto/integrations/__init__.py:11-12` — **confirm, no change expected**
+      (critique N1). It names the event pair `pre_llm_call`/`post_llm_call`, which
+      stays true after the re-target; it carries no `handler.py` reference. Do not
+      edit a correct line.
 - [ ] `plugins/hermes/README.md` — rewritten (see Solution).
 - [ ] `tests/fixtures/harness_payloads/README.md` — Hermes rows re-graded; the
       two-level verified/not-verified framing widened to three levels (live turn /
-      real dispatcher / docs), and the "remaining four" count corrected.
+      real dispatcher / docs); and the "remaining four" count corrected **to two**
+      (critique C4 — four files move as two pairs, so four → two, never three),
+      rewritten as one sentence with the new tiers so count and grade agree.
 
 **Every rewritten claim must cite executed evidence** — a file:line in the installed
 `hermes-agent==0.19.0` package, or the fixture that recorded it. A claim whose only
@@ -1027,6 +1132,23 @@ Research section documents two places where that site is currently wrong.
       `mkdir -p ~/.hermes/hooks`.
 - [ ] `hermes-agent` appears in no published dependency surface — not
       `pyproject.toml`, not `uv.lock`, not `scripts/check_lock_imports.py`.
+- [ ] **`plugins/__init__.py` does not exist** (critique C5) — popoto's `plugins/`
+      stays a PEP 420 namespace portion so it can never shadow `hermes-agent`'s
+      regular `plugins` package.
+- [ ] The contract test's assertion (e) asserts on a **seeded sentinel's presence in
+      the injected context**, not merely that a dict came back (critique C1), and the
+      contract job declares a Redis service unconditionally.
+- [ ] `.github/workflows/hermes-contract.yml` states in its header that the job is
+      **advisory and must not be a required status check**, and its `hermes-agent`
+      install line carries a **dated pin comment** (critique C2, C3). The PR body
+      carries the matching post-merge note about branch protection.
+- [ ] `tests/fixtures/harness_payloads/README.md` no longer contains the string
+      "remaining four", and its replacement names **two** files in the
+      not-yet-live-verified bucket (critique C4).
+- [ ] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
+      (`black --check plugins/hermes/`, `ruff check plugins/hermes/`) since no CI job
+      covers `plugins/` and this lane deliberately does not widen `lint.yml`
+      (critique C5, second half).
 - [ ] Red-state proof recorded in the PR: the new tests, run against the pre-fix
       tree, fail — specifically the plugin-envelope turn-id assertion and the
       `assistant_response` assertion.
@@ -1034,6 +1156,9 @@ Research section documents two places where that site is currently wrong.
 - [ ] Documentation updated (`/do-docs`); `mkdocs build --strict` green.
 - [ ] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` all
       green.
+- [ ] The PR body carries `Closes #704` **and** `Closes #688` outright, with no
+      "partially addresses" hedge (critique ruling 4), plus the red-state proof and
+      the C2 post-merge branch-protection note.
 - [ ] No xfail conversions needed — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
       tests/` returns nothing at the baseline commit, so there is no expected-failure
       marker documenting this bug.
@@ -1152,8 +1277,11 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   `{"context": …}` shape is correct; add the executed citation
   (`agent/turn_context.py:720-741`).
 - Rewrite `service.py:632-634`'s Hermes carve-out.
-- Rewrite `integrations/__init__.py:11-12` and `integrations/config.py:129,:383`
-  (references to "a Hermes `handler.py`").
+- Rewrite `integrations/config.py:383` (the sole `handler.py` reference in the
+  package) and `integrations/config.py:129` ("a Hermes handler" in prose).
+  **Leave `integrations/__init__.py:11-12` alone** — critique N1 verified it carries
+  no `handler.py` reference; it names the event pair, which stays true. Confirm and
+  move on.
 - **Do not** change `render_context`, `normalize`, `_first_string`, or any
   `service.py` behavior.
 
@@ -1186,7 +1314,14 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   to reproduce.
 - Update `tests/fixtures/harness_payloads/README.md`: re-grade both Hermes rows,
   widen the framing from two verification levels to three, and correct
-  "the remaining four".
+  "the remaining four" **to two** (critique C4). Word the Hermes rows exactly:
+  *"real `hermes-agent` 0.19.0 plugin loader and `invoke_hook` dispatcher; kwargs
+  verbatim from the 0.19.0 invoke sites; not a live model turn."* Rewrite the
+  count sentence together with the tier table — *live turn* (Claude Code, OpenClaw),
+  *real dispatcher, not a live turn* (Hermes), *binary/docs, not a live turn*
+  (Codex, 2 files) — so the number and the grade cannot drift apart. The
+  Verification row `grep -c 'remaining four' …` → 0 pins that the old sentence is
+  gone.
 
 ### 4. Contract test and its CI job
 
@@ -1203,12 +1338,25 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   in and `config.yaml` written; assertions (a)–(e) from Solution → Technical
   Approach. Assertion (c) — every registered hook name is in `VALID_HOOKS` — is the
   one that would have caught the original defect and must be present.
+- **Assertion (e) must be seeded** (critique C1): build a real `MemoryService` bound
+  to the job's Redis, `.capture()` a sentinel string, then assert
+  `invoke_hook("pre_llm_call", **kwargs)[0]["context"]` **contains that sentinel**.
+  A bare `isinstance(result[0], dict)` passes on the swallowed-exception path and is
+  rejected. If (e) is split out instead, its skip must be explicit and visible, never
+  a silent pass; (a)–(d) need no Redis and stay the Redis-free gate.
 - `.github/workflows/hermes-contract.yml`: one job, own venv, `pip install
-  hermes-agent==0.19.0` plus `-e .[dev]`, Redis service if the test needs one, run
-  `pytest` **from a temp working directory** with an absolute test path so the repo
-  root does not lead `sys.path`. A header comment must state the pin's meaning: a
-  green run proves the manifest and entry point satisfy *0.19.0's* loader, nothing
-  more.
+  hermes-agent==0.19.0` plus `-e .[dev]`, **an unconditional Redis service** (C1 —
+  the earlier "if the test needs one" hedge is resolved to *yes*), run `pytest`
+  **from a temp working directory** with an absolute test path so the repo root does
+  not lead `sys.path`. The header comment must state three things together: the
+  pin's meaning (a green run proves the manifest and entry point satisfy *0.19.0's*
+  loader, nothing more); that **this job is advisory and must not be added to
+  required status checks** (C2); and the dated pin
+  (`# pinned 2026-09-08 (hermes-agent 0.19.0); re-check against latest by 2027-03`,
+  C3) on the install line.
+- The PR body carries a **manual post-merge note** asking the repo administrator not
+  to mark `hermes-contract` a required check — branch protection is repo settings, so
+  the diff cannot enforce it (C2).
 - Do **not** touch `pyproject.toml`, `uv.lock`, `scripts/check_lock_imports.py`,
   `lock-check.yml`, `tests.yml`, or `lint.yml`.
 
@@ -1307,6 +1455,14 @@ with `POPOTO_TEST_DB=9` exported for every test run.
 | Correct install path in both READMEs | `grep -l '\.hermes/plugins/popoto-memory' plugins/hermes/README.md docs/guides/harness-hermes.md \| wc -l` | output > 1 |
 | Fixtures keep a provenance string | `grep -l 'captured-from:' tests/fixtures/harness_payloads/hermes_pre_llm_call.json tests/fixtures/harness_payloads/hermes_post_llm_call.json \| wc -l` | output > 1 |
 | No stale xfails | `grep -rn 'xfail' tests/ \| grep -v '# open bug'` | exit code 1 |
+| Anti-criterion: repo-root `plugins/` stays a namespace portion (C5) | `test ! -e plugins/__init__.py` | exit code 0 |
+| Anti-criterion: the "remaining four" count is gone (C4) | `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md` | match count == 0 |
+| New plugin module is black-clean (C5) | `black --check plugins/hermes/` | exit code 0 |
+| New plugin module is ruff-clean (C5) | `ruff check plugins/hermes/` | exit code 0 |
+| Contract job declares an unconditional Redis service (C1) | `grep -c 'services:' .github/workflows/hermes-contract.yml` | output > 0 |
+| Contract job is marked advisory (C2) | `grep -ci 'advisory' .github/workflows/hermes-contract.yml` | output > 0 |
+| Pin carries a dated staleness comment (C3) | `grep -c 'pinned 2026-09-08' .github/workflows/hermes-contract.yml` | output > 0 |
+| Contract test seeds a sentinel rather than asserting bare `dict` (C1) | `grep -ci 'sentinel' tests/test_hermes_plugin_contract.py` | output > 0 |
 
 **Red-state proof required.** Before the implementation lands, run the two
 anti-criteria that can be falsified today — *"no `Hermes sends no turn id` claim
@@ -1488,34 +1644,23 @@ Scope & Value, History & Consistency. Run `d46186192d5346478dc7853b5e958068`,
 
 ## Open Questions
 
-1. **Is a `hermes-agent==0.19.0` CI job acceptable?** It is 61 packages / 187 MB in
-   its own venv, no torch, ~0.5 s import, no API key — and it is the only mechanism
-   that makes this integration falsifiable by machine rather than by a human
-   re-reading vendor docs, which is precisely what failed in #515. The alternative
-   the issue offers is "the fixtures should at minimum record the capture command
-   and date", which this plan does regardless. **Plan assumes yes**, as a separate
-   workflow with a pinned version and no reach into `pyproject.toml` or `uv.lock`.
-   Say no and the plan drops task 4 and the contract test, keeping everything else.
+**All four open questions were ruled on during critique round 1 and are closed.**
+See *Critique Results → Open Question Rulings* immediately above for the reasoning;
+the rulings are folded into the plan body (Solution → Technical Approach, Risk 1,
+Risk 3, Test Impact, Success Criteria, Verification) and are the build contract:
 
-2. **What exactly should the new fixture grade say?** The plan proposes a third
-   verification level — *"real 0.19.0 loader and `invoke_hook` dispatcher; kwargs
-   verbatim from the invoke sites; not a live model turn"* — sitting between the
-   Claude Code / OpenClaw "yes, live" and the Codex "binary, not a live turn". This
-   is a judgment call about how the project talks about its own verification, and
-   getting it wrong is the exact failure mode of the issue. Is the three-level
-   framing right, or should the Hermes rows simply read "harness dispatcher, not a
-   live turn" and match the Codex phrasing?
+1. **`hermes-agent==0.19.0` CI job** — build it, conditioned on C1 (seeded
+   sentinel + unconditional Redis service), C2 (advisory, never a required check),
+   C3 (dated pin comment plus the version/date in the guide) and C5 (no
+   `plugins/__init__.py`, ever).
+2. **Fixture grade** — adopt the three-level framing (*live turn* / *real
+   dispatcher, not a live turn* / *binary or docs, not a live turn*). Hermes rows
+   read: "real `hermes-agent` 0.19.0 plugin loader and `invoke_hook` dispatcher;
+   kwargs verbatim from the 0.19.0 invoke sites; not a live model turn." The count
+   corrects from four to **two** (C4).
+3. **`POPOTO_MEMORY_AGENT_ID`** — recommended and documented, **not** required. No
+   first-use warning branch, no raise.
+4. **#688** — closed outright. The PR body carries `Closes #704` **and**
+   `Closes #688`, with no "partially addresses" hedge.
 
-3. **Should `POPOTO_MEMORY_AGENT_ID` be *required* on Hermes rather than
-   recommended?** With no `cwd` in the payload, the default `agent_id` becomes the
-   basename of the Hermes process's working directory — stable, but arbitrary and
-   invisible to the operator. The plan documents it. The stronger option is for the
-   plugin to emit a `logger.warning` on first use when `POPOTO_MEMORY_AGENT_ID` is
-   unset. Against it: Hermes swallows plugin logging into `~/.hermes/logs/agent.log`
-   where nobody will read it, so the warning buys little and adds a branch.
-
-4. **Does this PR close #688 outright, or only its plumbing half?** #688 asked a
-   question ("does Hermes carry a per-turn id?") that its own comment answered, and
-   resolution path (a) — "plumb it through as `turn_id` exactly as #552 does for
-   OpenClaw" — is fully in scope here. The plan assumes the PR body carries
-   `Closes #704` **and** `Closes #688`. Confirm, or name what #688 keeps.
+No question is escalated to the supervisor; nothing here blocks build.
