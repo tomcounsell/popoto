@@ -334,6 +334,15 @@ does not raise.
 | Lane-scoped test DB (DB 15 is shared across worktrees) | `python -c "import os; d=os.environ.get('POPOTO_TEST_DB'); assert d and d != '0', 'set POPOTO_TEST_DB=<n>, n != 0'"` | Concurrent SDLC lanes on this machine collide on DB 15 (73-158 phantom failures) |
 | Benchmark extras installed | `python -c "import src.popoto.fields.bm25_field, src.popoto.fields.validity_field"` | The touched factories import BM25/Validity/Confidence/CoOccurrence fields |
 
+**Status at critique time: PARTIAL.** `redis-cli … ping` → PONG and the
+benchmark extras import cleanly, but **`POPOTO_TEST_DB` was unset**. The build
+lane MUST export a non-zero, lane-scoped `POPOTO_TEST_DB=<n>` before running
+anything — this is not advisory. DB 15 is shared across every worktree on this
+machine and concurrent lanes have produced 73–158 phantom failures (Risk 4), and
+an unset value is exactly the condition under which a reviewer misreads
+contention as a regression from this change. Every count reported from a test run
+must state its DB number alongside it.
+
 This repo has no `scripts/check_prerequisites.py`; run the commands above
 directly. `sentence-transformers` is **not** required — every task in this plan
 exercises the lexical/graph arms, and the vector arm's `EmbeddingField` branch
@@ -403,9 +412,17 @@ Per-site notes (from spike-3, so the builder does not re-derive them):
 
 - `scenarios/external_base.py::_build_external_model_class` has three mutually
   exclusive class-body variants (bm25+embedding / embedding-only / bm25-only).
-  Build a shared base namespace dict and add `content_index` /
-  `embedding` conditionally, then one `type()` call — this also removes the
-  triplicated field list. The post-`type()` `with_validity` block
+  **Convert them 1:1 — one literal `type()` call per existing `class` block,
+  each with its own literal namespace dict (critique C5).** Do *not* consolidate
+  into a shared base dict with conditional field insertion. Consolidation is a
+  structural dedup refactor riding inside a one-line-per-site correctness fix; it
+  makes Risk 3 ("`type()` conversion silently drops a class attribute")
+  materially harder to review in a harness CI never runs, and it is not the shape
+  `siq`/`csr`/`rlt` use — each of those hard-codes one literal namespace dict.
+  The 1:1 form keeps the diff line-for-line comparable against the pre-conversion
+  bodies, which is the only real defense here. If a later reader wants the
+  triplication removed, that is a separate, independently reviewable change.
+  The post-`type()` `with_validity` block
   (`.validity = ValidityField()` + `_meta.add_field`) is **unchanged**: it is
   name-independent, and `ValidityField` derives its keys at call time from a
   `_meta.db_class_key` that is now already correct.
@@ -415,8 +432,9 @@ Per-site notes (from spike-3, so the builder does not re-derive them):
   post-hoc**: the class object cannot reference itself inside its own namespace
   dict any more than inside its own body.
 - `association_recall.py::_build_model` — two class-body variants (with/without
-  `CoOccurrenceField`); same conditional-namespace treatment, same post-hoc
-  self-referential `related = Relationship(model=AssocMemory, null=True)`.
+  `CoOccurrenceField`); same 1:1 treatment (one `type()` call per variant, per
+  C5 — not a branched namespace dict), same post-hoc self-referential
+  `related = Relationship(model=AssocMemory, null=True)`.
 - `scenarios/recipe_base.py::_build_recipe_model_class` — the only site whose
   class body carries a **method** (`compute_filter_score`) and two class
   attributes read from the `overrides` dict (`_wf_min_threshold`,
@@ -514,11 +532,25 @@ directly:
       erroneous: two empty-prefix classes would collide with each other exactly
       as today's classes do. Document the behavior; do not add validation — no
       caller can produce it (`safe_prefix` is always a non-empty hash slice).
-- [ ] `safe_prefix` containing `:` or `-` — cannot occur; callers already strip
-      both (`prefix.replace(":", "").replace("-", "")[:8]` in
-      `_build_recipe_model_class`, and the equivalent in `ExternalScenario.setup()`).
-      The invariant test asserts the produced `db_class_key` contains no `:`,
-      which mechanically pins this.
+- [ ] `safe_prefix` containing `:` or `-` — **claim narrowed per critique C4.**
+      Two of the five factories sanitize inside the factory
+      (`prefix.replace(":", "").replace("-", "")[:8]` in
+      `_build_recipe_model_class`, and the equivalent in
+      `ExternalScenario.setup()`). The other three do **not**:
+      `association_recall.py::_build_model` and
+      `test_confidence_gate_refusal.py::_build_refusal_model` take `prefix`
+      through unmodified. Re-verified at plan-revision time — their callers pass
+      `uuid.uuid4().hex[:8]` (`association_recall.py:172`,
+      `test_confidence_gate_refusal.py:208,383`), which is clean hex, so the
+      claim *holds in practice* but is a property of the **callers**, not of the
+      factories. A `:` reaching a class name would corrupt the colon-delimited
+      key scheme everywhere `DB_key` composes (`src/popoto/fields/field.py:629`).
+      Still do **not** add validation — no caller can produce it. Instead the new
+      invariant test is the enforcement, and it must be parametrized over each
+      factory's **real caller-supplied prefix expression**, not a hand-picked
+      clean hex literal. A test that feeds in a literal it chose itself restates
+      the claim; one that feeds in what the caller actually passes can falsify
+      it.
 - [ ] No agent-output processing is involved; no empty-output loop risk.
 
 ### Error State Rendering
@@ -590,10 +622,12 @@ No `src/` tests are affected — no `src/` file is modified.
   option 2 fixes every symptom. Do not open this.
 - **Deleting `teardown()`'s explicit validity branch because "the SCAN covers it
   now."** Tempting and wrong twice over: the SCAN would only cover it after the
-  `*:{class_name}:*` widening also lands (so deleting it before that is a
+  `*{class_name}*` widening also lands (so deleting it before that is a
   regression), and `test_teardown_on_arm_none_is_real_noop` exists specifically
   to catch an unconditional cleanup masking a leak. Keep the branch; rewrite its
-  comment.
+  comment. Note that this rabbit hole's second half is *conditional on that test
+  still being able to fail* — see C3 in Technical Approach; the test must be
+  rebuilt in the same change, or this justification quietly evaporates.
 - **Rewriting the sweep to `FLUSHDB` on the bench database.** Faster, obviously
   correct, and prohibited by this repo's DB-0 doctrine — `run_external.py`
   resolves its DB from `POPOTO_BENCH_DB` and a misconfiguration would meet
@@ -641,6 +675,12 @@ measures without failing loudly.
 exposes the same `_meta.fields` key set as a reference list, and that
 `WriteFilterMixin` is still in `RecipeMemory.__mro__`. Benchmarks are not run in
 CI, so a diff-level review of each converted body is a named review task.
+Critique C5 tightens this: the 1:1 conversion rule (one `type()` per existing
+`class` block) exists precisely to keep that review tractable. If the builder
+nonetheless consolidates any site's variants into a single conditional namespace
+dict, the Task 4 diff review must produce an **explicit per-variant field-name
+checklist in the PR body**, enumerating every field of every pre-conversion
+variant against the post-conversion result — a visual scan is not sufficient.
 
 ### Risk 4: Concurrent SDLC lanes on shared Redis DB 15 produce phantom failures
 **Impact:** 73-158 spurious failures have been observed; a reviewer could read
