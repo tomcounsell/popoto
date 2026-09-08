@@ -149,6 +149,21 @@ All three spikes ran against the live server on this machine (Redis 8.6.2,
 
 - **New dependencies**: none. `cmsgpack` is built into the Lua interpreter Redis and Valkey both ship; `run_lua` / `lua_script` already exist.
 - **Interface changes**: no public signature changes. `strengthen_cycle`/`weaken_cycle`/`save` keep their arguments and return contracts. One *documented* contract is deleted (the "queue save first" pipeline rule) because the hazard it warned about ceases to exist.
+- **One observable behavior change the "return contracts" line does not cover
+  (critique C6): the pipelined no-entry call now queues a command where it queued
+  none.** At `base.py:2749-2754` the existence check is a **direct** `HGET`, and on a
+  miss `_adjust_cycle_amplitudes` returns `pipeline` immediately without touching it.
+  After the port the existence check moves inside the script, so `run_lua(pipeline, …)`
+  queues an `EVALSHA` unconditionally. The Python-visible *return value* is identical
+  (still the pipeline), but a caller who does
+  `record.strengthen_cycle(..., pipeline=pipe)` against a member with **no stored
+  cycles entry** and then indexes `pipe.execute()` sees one extra result and every
+  later position shifted by one. This is accepted, not fixed — the queued command is
+  what makes the operation atomic, and suppressing it would reintroduce the
+  client-side existence check this plan exists to remove. It is disclosed here, carried
+  as a step in Task 2, and pinned by a test (Test Impact,
+  `tests/test_observation_protocol.py:693-701`) so it is recorded rather than
+  discovered.
 - **Behavioral change at the seam**: `on_save`'s companion-hash writes stop being queued on the caller's pipeline and execute eagerly, in **both** the internal-pipeline and the caller-supplied-pipeline branches of `Model.save` (see Solution → Placement, and Risk 2). #476's eager indexed-field EVALs (`base.py:1773-1786`) are the shape precedent but cover only the internal-pipeline branch; extending it to the caller-pipeline branch is new and is Open Question 1.
 - **Coupling**: slightly increased — the #698 merge rule moves from Python into Lua, so the rule now has one authoritative implementation in a language with no test-time introspection. Mitigated by keeping the *decision report* in the return value so Python tests can assert on decisions, not just outcomes.
 - **Data ownership**: unchanged; the field still owns both companion hashes.
@@ -182,9 +197,21 @@ All three spikes ran against the live server on this machine (Redis 8.6.2,
   #698 three-way cycles merge **and** the pressure rate-refresh/first-save branch
   **and** the two `HDEL` branches, then returns a msgpack-encoded decision report.
 - **`CYCLES_ADJUST_LUA`** (new, same module, imported by `models/base.py`): owns
-  `_adjust_cycle_amplitudes`. `KEYS = [cycles_hash]`. Multiplies slot 2 of every
-  entry, clamps, and re-packs with whatever arity the entry had — never writing or
-  stripping slot 3.
+  `_adjust_cycle_amplitudes`. `KEYS = [cycles_hash]`. Mutates **index 2 (`amplitude`)
+  in place**, clamps, and re-packs the same entry table with whatever arity it had —
+  every other index, in particular **index 4 (`declared_baseline`)**, is re-packed
+  byte-for-byte untouched. Do not `table.remove`, re-length, or rebuild the entry.
+
+- **Slot numbering is 1-based Lua everywhere in this plan (critique C5).** Every
+  "slot N" / "index N" in this document refers to the Lua entry table:
+  **`1 = period`, `2 = amplitude`, `3 = phase`, `4 = declared_baseline`.** The Python
+  source this plan ports from is 0-based — `base.py:2776`'s comment protects
+  `cycle[3]`, and `cyclic_decay_field.py` reads `entry[3]` — and **that same slot is
+  `c[4]` in Lua**. An earlier draft of this plan carried the phrase "never write or
+  strip slot 3" lifted verbatim from that 0-based comment; in Lua `c[3]` is *phase*, so
+  a builder protecting `c[3]` would leave `c[4]` fair game and silently destroy #698's
+  baseline — the same crashless, logless failure mode B1 warned about. When quoting a
+  Python comment or a Python index into a Lua instruction, translate the number.
 - **Decision report**: both scripts return `cmsgpack.pack(...)`, never bare Lua
   values, so Python keeps float amplitudes and structured reset records. Python
   logs the #698 reset lines and the "could not decode" warning from that report,
@@ -379,6 +406,11 @@ ARGV[1] member key   ARGV[2] factor   ARGV[3] max_amplitude   ARGV[4] min_thresh
 
 Mutates only index 2 of each entry; re-packs the same tables, so a 4-slot entry
 keeps its baseline (the property `base.py:2770-2779` currently documents at length).
+**This sentence is the authoritative instruction** — "re-packs the entry unmodified
+except index 2" needs no numbering base at all, which is why it is phrased that way
+(critique C5). Where a slot number is unavoidable, it is 1-based Lua: the baseline is
+**slot 4 (`declared_baseline`)**, never "slot 3" — that number belongs to the 0-based
+Python comment at `base.py:2776`, where `cycle[3]` is the same field.
 The clamp constants stay Python-side and arrive as ARGV so they remain single-sourced.
 
 **The no-entry case is a `nil` return, not an empty bulk string (critique B2).**
@@ -424,6 +456,7 @@ distinguishable from a packed empty result, which an empty bulk string is not.
 | `on_save` cycles + pressure | read direct, write via pipeline | one eager direct `EVAL` (pipeline kwarg ignored for these two writes; still forwarded to `super().on_save()`) |
 | `_adjust_cycle_amplitudes`, no pipeline | `HGET` + `HSET` | direct `EVAL`, returns packed cycles |
 | `_adjust_cycle_amplitudes`, pipeline | read direct, `HSET` queued | `run_lua` queues the `EVALSHA`; returns the pipeline, exactly as today |
+| `_adjust_cycle_amplitudes`, pipeline, **member has no stored entry** | direct `HGET` misses → returns `pipeline` having queued **nothing** (`base.py:2750-2753`) | queues one `EVALSHA` (the existence check is now inside the script); still returns `pipeline`, but `pipe.execute()` yields **one extra result** and later positions shift (critique C6 — disclosed, not fixed) |
 | `resolve_pressure` | single `HSET` | unchanged |
 | `on_delete` | `HDEL` ×2 | unchanged |
 
@@ -824,8 +857,25 @@ public methods keep their signatures.
   forms.
 - Coerce amplitude and phase to `float` on the public return (Risk 1); leave `period`
   untouched.
-- Preserve the "never write or strip slot 3" property in the Lua and keep the comment
-  that explains why.
+- **Preserve the baseline slot, in the right numbering base (critique C5).** The Lua
+  must mutate `c[2]` **in place** and re-pack the *same* entry table — no
+  `table.remove`, no re-length, no rebuild — so every other index survives untouched.
+  Stated as a number: the protected slot is **`c[4]` (`declared_baseline`)** in 1-based
+  Lua, which is the field `base.py:2776`'s 0-based comment calls `cycle[3]`. Do not
+  copy "slot 3" from that comment into the script: `c[3]` is *phase*, and protecting it
+  instead would leave `c[4]` fair game and destroy #698's baseline with no crash and no
+  log line. Keep the comment that explains why the slot is preserved, translated to the
+  Lua index, next to the Lua.
+- **Disclose the pipelined no-entry result-list shift (critique C6).** Today's direct
+  `HGET` existence check at `base.py:2749-2754` returns `pipeline` on a miss having
+  queued **nothing**; after the port the check lives inside the script, so
+  `run_lua(pipeline, …)` queues an `EVALSHA` on **every** call. The Python return is
+  unchanged (still the pipeline), but `pipe.execute()`'s result list gains one entry
+  and every later position shifts for a caller that indexes it. No code fix — the
+  queued command is required for atomicity and is the right trade. Record it: extend
+  `tests/test_observation_protocol.py:693-701` (`test_pipeline_support`, which only
+  asserts `result is pipe` and cannot see this), or add a sibling test asserting
+  `len(pipe.execute())` for the no-entry pipelined case.
 
 ### 3. Convert the module's stale `POPOTO_REDIS_DB` import
 - **Task ID**: build-redis-accessor
