@@ -497,19 +497,47 @@ trap, landing on the very test cited as the reason to keep this branch.
 
 Re-deriving the sentinel's key "from the per-item class name" does **not**
 repair it: the arm-none class declares no `validity` field at all, so it has no
-validity keys to seed. The replacement asserts a different, still-real property
-— *this item's guard was evaluated and correctly took the no-op path*, on the
-arm-none class's own keyspace:
+validity keys to seed.
 
-1. Run a scenario whose class **does** declare validity, seed under
+**And a key-count replacement does not repair it either (critique C7).** An
+earlier revision of this plan specified a two-part assertion whose part (b) was
+"assert the arm-none class produced zero `$ValidityF:{arm_none_class_name}:*`
+keys, before and after teardown". That is *also* unfalsifiable by the mutation
+this plan's build gate names. Re-verified against source at revision time:
+`ValidityField.get_all_keys()` (`src/popoto/fields/validity_field.py:781-796`)
+derives its five key names *purely* from `_meta.db_class_key`, via
+`get_special_use_field_db_key` → `DB_key(cls.field_class_key,
+model._meta.db_class_key, *field_names)` (`src/popoto/fields/field.py:629`); it
+never consults whether the model declares a `validity` field. On the arm-none
+class those five names were never written, so removing the
+`"validity" in self._model_class._meta.fields` guard makes the DEL an
+**unconditional no-op** — zero keys before, zero keys after, in both the guarded
+and the unguarded build. Deleting the branch is falsifiable; removing its guard
+is not.
+
+**The replacement must therefore assert that the guard was *evaluated*, not that
+its output looks empty.** Spy on the call, not on the keyspace:
+
+1. **Guard-evaluation leg (the falsifiability proof).** Wrap the scenario run in
+   `unittest.mock.patch.object(ValidityField, "get_all_keys", wraps=ValidityField.get_all_keys)`
+   and assert:
+   - (i) for the **arm-none** scenario, **no** entry in `mock.call_args_list` has
+     that scenario's `_model_class` as its first positional argument; and
+   - (ii) for a **validity-declaring** scenario, exactly such a call **is**
+     present.
+   Removing the `"validity" in self._model_class._meta.fields` guard turns (i)
+   red immediately. This leg — and only this leg — is what Success Criterion 5
+   is measured against.
+2. **Key-deletion leg (independent, catches branch *deletion*).** Run a scenario
+   whose class **does** declare validity, seed under
    `ValidityField.get_prefix_db_key(scenario._model_class, "validity")`, and
-   assert `teardown()` removes it (the branch fires).
-2. Run the arm-none scenario and assert its own class produced **zero**
-   `$ValidityF:{arm_none_class_name}:*` keys — before and after teardown — so an
-   unconditional DEL would still be caught by the widened leak assertion rather
-   than by a foreign sentinel.
+   assert `teardown()` removes it. Keep this, but it must **not** stand alone as
+   the falsifiability proof.
 
-If the builder cannot make this non-vacuous, it must say so explicitly in the PR
+Match the spy on identity (`call.args[0] is scenario._model_class`), not on the
+class *name*, so a same-named class from another factory cannot satisfy it.
+
+If the builder cannot make leg 1 non-vacuous, it must say so explicitly in the PR
 body rather than ship a green test that cannot fail.
 
 ## Failure Path Test Strategy
@@ -590,12 +618,18 @@ rather than rendering.
       — **REBUILD, not update (critique C3).** This test *does* go vacuous after
       the fix, and re-deriving its key names from the per-item class name does
       not repair it, because the arm-none class declares no `validity` field.
-      Replace the foreign-sentinel assertion with the two-part
-      guard-was-evaluated assertion specified in Technical Approach
-      ("Explicit-validity branch in `teardown()`"). This is the highest-risk item
-      in the test set: it is the test the plan cites as the reason to keep the
-      explicit validity branch, so a vacuous version removes that justification
-      silently.
+      **Nor does a before/after key count on the arm-none class's own keyspace
+      (C7)** — `get_all_keys()` never checks whether the model declares
+      `validity`, so an unconditional DEL there is a silent no-op and the count
+      is identical with and without the guard. Replace the foreign-sentinel
+      assertion with the two-leg assertion specified in Technical Approach
+      ("Explicit-validity branch in `teardown()`"): a `patch.object(ValidityField,
+      "get_all_keys", wraps=...)` **guard-evaluation** leg (the falsifiability
+      proof) plus an independent **key-deletion** leg. This is the highest-risk
+      item in the test set: it is the test the plan cites as the reason to keep
+      the explicit validity branch, so a vacuous version removes that
+      justification silently — and it has now been specified vacuously once
+      already.
 - [ ] `tests/benchmarks/test_external.py::TestStaleKeySweep::test_sweeps_all_stale_patterns_and_reports_count`
       — **UPDATE**: add the post-fix key shapes it must now sweep
       (`$ValidityF:ExtMem12345678:validity:valid_from`,
@@ -807,10 +841,19 @@ that constructs benchmark model classes.
       zero match `*ExternalBenchmarkMemory*`, asserted after first proving the
       pre-teardown keyspace was non-empty. (Satisfiable only with the unanchored
       `*{class_name}*` teardown glob — C1.)
-- [ ] `test_teardown_on_arm_none_is_real_noop` is **falsifiable after the fix**:
-      demonstrated by showing it goes red when the explicit validity branch's
-      guard is removed (i.e. made unconditional). A version that passes with and
-      without that mutation has not met this criterion (C3).
+- [ ] `test_teardown_on_arm_none_is_real_noop` is **falsifiable after the fix**,
+      proved by its **guard-evaluation leg** (C7): with
+      `patch.object(ValidityField, "get_all_keys", wraps=...)` in place, the test
+      asserts no call carries the arm-none scenario's `_model_class` as first
+      positional argument, and that a validity-declaring scenario *does* produce
+      such a call. Demonstrate it goes red when the
+      `"validity" in self._model_class._meta.fields` guard is removed (i.e. made
+      unconditional). **A key-count assertion cannot satisfy this criterion** —
+      `get_all_keys()` derives names from `_meta.db_class_key` alone
+      (`validity_field.py:781-796` → `field.py:629`), so on the arm-none class an
+      unconditional DEL removes nothing and a before/after key count is identical
+      in both builds (C7). The key-deletion leg is a separate, independent
+      assertion that catches branch *deletion*; it does not count as this proof.
 - [ ] `_sweep_stale_benchmark_keys` removes both pre-fix
       (`ExternalBenchmarkMemory:*`) and post-fix (`$…:ExtMem*`) residue.
 - [ ] Converted `RecipeMemory` still has `WriteFilterMixin` in its MRO and still
@@ -954,15 +997,29 @@ in a harness CI never runs.
   zero keys matching `*ExternalBenchmarkMemory*` and zero matching
   `*{model_class.__name__}*` after. **Derive that glob in the test itself** — do
   not import or reuse `teardown()`'s pattern constant (C1).
-- **Rebuild** `test_teardown_on_arm_none_is_real_noop` (C3) — do not merely
-  re-point its key names. Its foreign sentinel becomes unreachable once the
-  classes stop sharing a namespace, and the arm-none class declares no `validity`
-  field to seed. Implement the two-part replacement in Technical Approach:
-  (a) seed under a validity-declaring scenario's own
-  `ValidityField.get_prefix_db_key(...)` and assert the branch fires; (b) assert
-  the arm-none class's own keyspace holds zero `$ValidityF:{its_name}:*` keys
-  throughout. If it cannot be made falsifiable, say so in the PR rather than ship
-  a green test that cannot fail.
+- **Rebuild** `test_teardown_on_arm_none_is_real_noop` (C3, respecified by C7) —
+  do not merely re-point its key names, and **do not use a key count as the
+  falsifiability proof**. Its foreign sentinel becomes unreachable once the
+  classes stop sharing a namespace; the arm-none class declares no `validity`
+  field to seed; and because `ValidityField.get_all_keys()` derives names from
+  `_meta.db_class_key` alone (`validity_field.py:781-796` → `field.py:629`),
+  removing the guard makes the DEL an unconditional no-op that no
+  before/after count on that class can detect (C7). Implement the two legs from
+  Technical Approach:
+  - **(a) Guard-evaluation leg — the proof.** Wrap the scenario run in
+    `unittest.mock.patch.object(ValidityField, "get_all_keys", wraps=ValidityField.get_all_keys)`.
+    Assert (i) for the arm-none scenario, **no** `mock.call_args_list` entry has
+    that scenario's `_model_class` as `call.args[0]` (compare by `is`, not by
+    class name); and (ii) for a validity-declaring scenario, exactly such a call
+    is present. Verify this leg goes **red** when the
+    `"validity" in self._model_class._meta.fields` guard is deleted — that
+    mutation run is the evidence Success Criterion 5 asks for; paste it in the PR.
+  - **(b) Key-deletion leg — independent.** Seed under a validity-declaring
+    scenario's own `ValidityField.get_prefix_db_key(...)` and assert `teardown()`
+    removes it. This catches *deletion* of the branch; it is not the
+    falsifiability proof.
+  If leg (a) cannot be made falsifiable, say so in the PR rather than ship a
+  green test that cannot fail.
 - Update both `TestStaleKeySweep` cases with post-fix key shapes, keeping the
   `SomeOtherModel:keepme` survivor assertion (Risk 1).
 - **Red-state proof**: run the new/updated tests against pre-fix `HEAD`, capture
