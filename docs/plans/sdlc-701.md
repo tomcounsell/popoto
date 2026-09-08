@@ -874,7 +874,162 @@ that constructs benchmark model classes.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Critics**: Risk & Robustness, Scope & Value, History & Consistency (FULL depth)
+**Mode**: independent roster (3 critics)
+**Findings**: 9 total (0 blockers, 6 concerns, 3 nits)
+**Verdict**: READY TO BUILD (with concerns)
+
+### Blockers
+
+None.
+
+### Concerns
+
+**C1 — `teardown()`'s proposed second SCAN glob does not match `$Class:ExtMem<hash>`, and contradicts two other sections of this plan.**
+*Critics: Risk & Robustness (Adversary); Structural check (independent).*
+*Location: Step by Step Tasks > Task 1; cross-referenced with Flow and Success Criteria.*
+Task 1 instructs `*:{class_name}:*`. That glob requires a colon **after** the
+class name, so it cannot match `$Class:ExtMem<hash>` — a key that
+`ModelOptions.__init__` creates as `DB_key("$Class", db_class_key)`
+(`src/popoto/models/base.py:191`) with nothing following the class name. The
+existing `{class_name}:*` pass cannot match it either (the key does not *start*
+with the class name), and the agent-prefix pass `*{agent_prefix}*` does not
+contain it. The Flow section already writes the working form
+(`*:ExtMem<hash>*`, no trailing anchor), and Success Criterion 4 ("zero keys
+match `*ExtMem<hash>*`") is unsatisfiable under Task 1's literal — so the plan
+instructs the builder to write a glob that fails the plan's own criterion.
+**Implementation Note:** use `match=f"*{class_name}*"` for the second SCAN pass,
+not `match=f"*:{class_name}:*"`. Reconcile Task 1 with the Flow section, which
+is the correct version. The new leak test must derive its own match pattern
+independently (`*{class_name}*`) rather than reusing `teardown()`'s constant —
+copying the glob under test into the test that checks it is how this defect
+would go green. The same reasoning applies to `_STALE_KEY_PATTERNS`: `*:ExtMem*`
+does match `$Class:ExtMem12345678`, so that one is correct as written; only the
+`teardown()` companion is wrong.
+
+**C2 — The Test Impact bullet for `test_no_leaked_validity_keys_after_teardown` misquotes what that test asserts.**
+*Critics: History & Consistency (Consistency Auditor); verified independently.*
+*Location: Test Impact.*
+The plan states the test "currently asserts absence of
+`$ValidityF:ExternalBenchmarkMemory:validity:*`" and would therefore go
+vacuous. The real assertion is `scan(cursor, match="$ValidityF:*", count=200)`
+(`tests/benchmarks/test_external.py:1220`) — a field-type-wide wildcard that
+keeps matching post-fix keys under any class name. The test is not vacuous
+today and does not become vacuous; the #661 justification for the UPDATE is
+built on a misreading.
+**Implementation Note:** the update is still worth doing, but for a different
+reason — **coverage**, not vacuity. The existing scan covers only `$ValidityF:*`
+and misses `$Class:*`, `$ConfidencF:*`, `$KeyF:*`, `$DecayingSortF:*` and the
+record hashes that spike-2 showed are equally affected. Widen it to assert zero
+keys matching `*ExternalBenchmarkMemory*` **and** zero matching
+`*{model_class.__name__}*`, and correct the Test Impact prose so the builder does
+not go looking for a literal that is not in the file.
+
+**C3 — `test_teardown_on_arm_none_is_real_noop` becomes genuinely vacuous after this fix, and neither the plan nor the History critic caught it.**
+*Critics: Structural check / aggregation cross-validation (contradicts History & Consistency's NIT, which concluded no change was needed).*
+*Location: Test Impact; Technical Approach ("Explicit-validity branch in `teardown()`: keep it"); Rabbit Holes.*
+The test seeds a sentinel into `ValidityField.get_all_keys(validity_cls,
+"validity")` where `validity_cls = _build_external_model_class("teardownchk",
+with_validity=True)`, then runs an **arm-none** scenario (a different per-item
+class) and asserts the sentinel survives
+(`tests/benchmarks/test_external.py:1226-1249`). It is meaningful *today* only
+because both classes collapse onto the shared `ExternalBenchmarkMemory`
+namespace: a hypothetical unconditional DEL in `teardown()` would hit the very
+key the sentinel occupies, turning the test red. **After the fix the sentinel
+lives at `$ValidityF:ExtMemteardownchk:validity:*` while the scenario's class is
+`ExtMem<item-hash>`** — so no teardown behavior, guarded or unguarded, can
+reach the sentinel, and the test passes unconditionally. The plan's guidance
+("re-derive its expected key names from the per-item class name") does not
+repair this: the arm-none class declares no `validity` field at all, so it has
+no validity keys to seed. This is the #661 vacuity trap landing on the one test
+the plan's Technical Approach cites as the reason to keep the explicit validity
+branch.
+**Implementation Note:** rebuild the no-op guard so the sentinel and the
+scenario share a class. Concretely: seed the sentinel under
+`ValidityField.get_prefix_db_key(scenario._model_class, "validity")` for a
+scenario whose class *does* declare validity, and assert the branch fires; then
+run the arm-none scenario and assert its own (validity-free) class produced no
+`$ValidityF:` keys at all — i.e. replace "a foreign sentinel survives" with
+"this item's guard was evaluated and correctly took the no-op path", asserted on
+the arm-none class's own keyspace. If that cannot be made non-vacuous, say so in
+the PR rather than shipping a green test that cannot fail.
+
+**C4 — The "`safe_prefix` cannot contain `:` or `-`" claim is verified for two of five factories and asserted for all five.**
+*Critic: Risk & Robustness (Skeptic).*
+*Location: Failure Path Test Strategy > Empty/Invalid Input Handling.*
+The plan cites the stripping code in `_build_recipe_model_class` and
+`ExternalScenario.setup()`. `association_recall.py::_build_model` and
+`test_confidence_gate_refusal.py::_build_refusal_model` take `prefix` directly
+with no stripping shown, and their callers were not inspected. A `:` in a class
+name corrupts the colon-delimited key scheme everywhere `DB_key` composes
+(`src/popoto/fields/field.py:629`).
+**Implementation Note:** do not add validation (the plan is right that it is not
+needed); instead make the new invariant test the enforcement, and parametrize it
+over each factory's **real** caller-supplied prefix expression rather than a
+hand-picked clean hex literal, so `":" not in cls._meta.db_class_key.redis_key`
+can actually falsify the claim rather than restate it.
+
+**C5 — Task 1 bundles a deduplication refactor into a namespacing correctness fix.**
+*Critic: Scope & Value (Simplifier).*
+*Location: Step by Step Tasks > Task 1; Technical Approach.*
+"a single `type()` call over a conditionally-assembled namespace dict,
+collapsing the three duplicated class bodies" is a structural refactor riding
+inside a one-line-per-site correctness change. The minimal fix is three literal
+`type()` calls mirroring today's three `class` blocks 1:1 — which is also the
+shape `siq`/`csr`/`rlt` actually use (each hard-codes one literal namespace
+dict). This is the plan's own Risk 3 ("`type()` conversion silently drops a
+class attribute") made materially harder to review, in a harness that CI never
+runs.
+**Implementation Note:** prefer one `type()` call per existing `class` variant,
+so the diff is line-for-line comparable. If the consolidated-dict form is kept
+anyway, the Task 4 diff review must enumerate every field name in each variant
+against the pre-conversion body explicitly — a per-variant field-name checklist
+in the PR body, not a visual scan.
+
+**C6 — Appetite and Team Orchestration disagree about the team.**
+*Critic: Scope & Value (Simplifier).*
+*Location: Appetite vs. Team Orchestration.*
+Appetite says "Team: Solo dev, code reviewer"; Team Orchestration names five
+agent roles across six tasks. `ext-factory-builder` and
+`sibling-factory-builder` both have `Depends On: none`, both are `Parallel:
+true`, and they share no state.
+**Implementation Note:** merge Tasks 1 and 2 under a single builder (they touch
+disjoint files and have no ordering constraint, so one agent doing both in
+sequence removes a handoff with no change to output), or correct the Appetite
+line. Do not leave the two sections contradicting each other going into build.
+
+### Nits
+
+**N1 — Two Verification rows are grep-count proxies.** `grep -c 'type(' … > 1`
+and `grep -c 'class_name' … > 2` do not confirm behavior and are already
+subsumed by the invariant/disjointness tests and by the existing
+`grep -rn '\.__name__ = '` absence row. (Scope & Value)
+
+**N2 — spike-3 names the recipe factory wrongly.** Spike Results item 3 calls it
+`scenarios/recipe_base.py:73` — `build_benchmark_model`. The function is
+`_build_recipe_model_class`, defined at `recipe_base.py:35`; line 73 is the
+`__name__` assignment inside it. Technical Approach and Task 2 use the correct
+name. (Structural)
+
+**N3 — Minor line-number drift against HEAD.** `teardown()` is at
+`external_base.py:924-1012` (plan says 919-1010) and its validity comment at
+930-947 (plan says 927-944). The plan's baseline was `9986c086`; HEAD is
+`06748cfe`. No semantic drift. (Structural)
+
+### Structural Check Results
+
+| Check | Status | Detail |
+|-------|--------|--------|
+| Required sections | PASS | All plan sections present and non-empty |
+| Task numbering | PASS | Tasks 1-6, no gaps |
+| Dependencies valid | PASS | All `Depends On` IDs resolve; no cycles |
+| File paths exist | PASS | 14 of 15 exist; `tests/benchmarks/test_model_class_namespacing.py` is intentionally new |
+| Prerequisites met | PARTIAL | `redis-cli … ping` → PONG; benchmark extras import OK; **`POPOTO_TEST_DB` is unset** — must be set to a non-zero lane-scoped DB before the build lane runs |
+| Cross-references | FAIL | Success Criterion 4 (`zero keys match *ExtMem<hash>*`) is unsatisfiable under Task 1's `*:{class_name}:*` glob — see C1 |
+
+All five `__name__` rename sites re-verified present at HEAD `06748cfe`:
+`external_base.py:172,287`, `recipe_base.py:73`, `association_recall.py:152`,
+`test_confidence_gate_refusal.py:168`.
 
 ---
 
