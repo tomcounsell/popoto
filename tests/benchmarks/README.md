@@ -128,8 +128,11 @@ pytest tests/benchmarks/ -x -q
 
 The external harness (`run_external.py`) is a **benchmark, not a pytest test**,
 so the pytest db15 test-isolation plugin does **not** apply to it. Each
-benchmark item writes `ExternalBenchmarkMemory` / `ExtMem<hash>` model keys (and
-`$BM25:ExtMem<hash>*` BM25 index keys) to Redis. `ExternalScenario.teardown()`
+benchmark item writes `ExtMem<hash>` model keys plus the special-use field keys
+derived from that name (`$BM25:ExtMem<hash>*`, `$Class:ExtMem<hash>`,
+`$ValidityF:`/`$ConfidencF:`/`$KeyF:`/`$DecayingSortF:ExtMem<hash>*`) to Redis.
+Runs from before #701 wrote those field keys under the shared
+`ExternalBenchmarkMemory` name instead. `ExternalScenario.teardown()`
 deletes them per-item, but a **killed / interrupted / wedged** run leaves that
 residue behind permanently — and if the harness shares db0 with a live store,
 the residue pollutes it (a dogfood machine accumulated **1,825** leaked keys).
@@ -146,7 +149,12 @@ collection and the db15 plugin are unaffected):
    `REDIS_URL` are preserved.
 2. **Startup sweep.** Before any ingestion the harness `SCAN`s (non-blocking,
    Valkey-safe) and `DEL`s any stale `ExternalBenchmarkMemory:*` / `ExtMem*` /
-   `$BM25:ExtMem*` keys left by a prior run on the bench DB, logging the count.
+   `$BM25:ExtMem*` / `*:ExtMem*` keys left by a prior run on the bench DB,
+   logging the count. The unanchored `*:ExtMem*` pattern (#701) is what reaches
+   the field-key families that carry the class name *after* a colon rather than
+   as a leading prefix; the pre-#701 patterns are kept so residue from older
+   runs is still swept. The authoritative list is `_STALE_KEY_PATTERNS` in
+   `run_external.py`.
 
 ### Cleaning existing db0 pollution
 
@@ -155,12 +163,12 @@ non-blocking `SCAN`+`DEL` (works on both Redis and Valkey — no modules):
 
 ```bash
 # Dry run first — list what would be deleted (per pattern):
-for p in 'ExternalBenchmarkMemory:*' 'ExtMem*' '$BM25:ExtMem*'; do
+for p in 'ExternalBenchmarkMemory:*' '*:ExternalBenchmarkMemory*' 'ExtMem*' '$BM25:ExtMem*' '*:ExtMem*'; do
   redis-cli -n 0 --scan --pattern "$p"
 done
 
 # Delete them (redis-cli --scan streams via SCAN, not the blocking KEYS):
-for p in 'ExternalBenchmarkMemory:*' 'ExtMem*' '$BM25:ExtMem*'; do
+for p in 'ExternalBenchmarkMemory:*' '*:ExternalBenchmarkMemory*' 'ExtMem*' '$BM25:ExtMem*' '*:ExtMem*'; do
   redis-cli -n 0 --scan --pattern "$p" | xargs -r -L 100 redis-cli -n 0 DEL
 done
 ```
