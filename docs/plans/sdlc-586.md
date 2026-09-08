@@ -1261,6 +1261,55 @@ cross-compared with recall; every number in the plan states its environment; the
 redis-py 7.1.1 spike numbers are never compared against the 2026-09-07 redis-py
 8.1.0 probe.
 
+### Round 2 — 2026-09-08. Depth: FULL. Mode: independent roster (3 critics).
+
+**Verdict: READY TO BUILD (no concerns) — 0 blockers, 0 concerns, 2 nits.**
+
+Scope was verification of the round-1 fold-in, not re-litigation. All five
+round-1 findings verified as landed **in the plan body**, not merely narrated:
+
+- **C1** — build-2 carries the wrap plus the explicit *do not move or reorder*
+  constraint; Race Conditions gains the containment-hole paragraph. The `ast`
+  Verification row was checked for vacuity: `stop_invalidation_listeners()` is a
+  bare `Name` call at `external_base.py:1010`, currently outside any `try`, and
+  is the only call site — so the row reads False today and flips True exactly on
+  the fix.
+- **C2** — run-arm-a carries the blocking inline `readlink` check and the
+  symlink-repair recovery path, explicitly *not* an arm re-run; Risk 2 gains both.
+- **C3** — Risk 8 exists; the disclosure obligation is in Documentation (both
+  `docs/benchmarks.md` and `validity_586/README.md`), Success Criteria, and
+  build-3's scope note. The "no consumer enumerates the `machine` key set" claim
+  was re-verified independently: zero `machine` matches in `test_external.py`,
+  `build_markdown_report` reads only `python_version`/`platform`
+  (`run_external.py:803-804`), and `rlt/run_rlt.py` uses its own
+  `build_machine_metadata`.
+- **C4** — task 5 `confirm-reinterpretation` exists and is in run-arm-a's
+  `Depends On`.
+- **N1** — two arm-B Verification rows exist; the filename
+  `longmemeval_s_latest_sup-content-identity_nogate.json` was re-derived from the
+  harness's own suffix composition and confirmed.
+
+Structural: 11 tasks, contiguous, no dangling `Depends On`, acyclic, no orphans;
+the Flow paragraph and Appetite's one-spent/one-remaining check-in accounting
+match the renumbered graph. Prerequisites re-run: corpus present
+(277,383,467 bytes), `redis-cli -n 9 PING` → PONG with `DBSIZE` 0.
+
+Doctrine re-confirmed intact after the revision: recall-family only with
+`--judged` forbidden in three places plus an anti-criterion; every number states
+its environment; the redis-py 7.1.1 spike figures are never cross-compared with
+the 2026-09-07 8.1.0 probe. D1/D2 are encoded consistently across task 5,
+Appetite, and Open Questions.
+
+Two non-blocking nits, recorded and not gating build:
+
+- **N2** — the C1 `ast` row asserts only that the call sits inside *some* `try`;
+  it cannot catch a build that wraps the call while violating the do-not-reorder
+  constraint. Optional strengthening: compare the call's `lineno` against the
+  validity-cleanup `delete`.
+- **N3** — Success Criteria requires `scripts/mypy_ratchet.py` to pass but no
+  Verification row checks it. Pre-existing; low risk since this plan touches no
+  `src/`.
+
 ---
 
 ## Decisions (settled)
