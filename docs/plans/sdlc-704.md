@@ -1642,6 +1642,82 @@ Scope & Value, History & Consistency. Run `d46186192d5346478dc7853b5e958068`,
 
 ---
 
+## Critique Results — Round 2 (re-critique of the revised plan)
+
+**Verdict:** READY TO BUILD (with concerns) — 0 blockers, 2 concerns, 0 nits.
+**Depth:** FULL. **Mode:** independent roster (3 critics) — Risk & Robustness,
+Scope & Value, History & Consistency. Run `d46186192d5346478dc7853b5e958068`,
+2026-09-08, against revised plan commit `b508e8c7`.
+
+**Fold-in audit — all six round-1 items verified present and faithful:**
+
+| Item | Folded into | Verified |
+|---|---|---|
+| C1 (seeded sentinel, unconditional Redis) | Technical Approach bullet; Task 4; Success Criteria; 2 Verification rows | yes |
+| C2 (advisory, never a required check) | Risk 3 operational conclusions; Update System; Task 4; Success Criteria; Verification row | yes |
+| C3 (dated pin + version/date in the guide) | Technical Approach; Risk 3; `docs/guides/harness-hermes.md` bullet; Verification row | yes |
+| C4 (count corrects four → **two**, three-tier grading) | Risk 1; Test Impact; Documentation; Task 3; Success Criteria; Verification row | yes (but see R2-C1) |
+| C5 (namespace-portion invariant; `plugins/` lint gap accepted) | Risk 2 rewritten; Success Criteria ×2; Verification rows ×3 | yes |
+| N1 (`integrations/__init__.py:11-12` is confirm-only) | Documentation → Inline; Task 2 | yes |
+
+Scope & Value and History & Consistency each returned **No findings** — no scope
+crept in, no correct pre-existing content was deleted or weakened by the revision
+diff, and the added file:line citations spot-check accurate against the real files.
+Both round-2 concerns are hardening of *the new Verification rows themselves*; the
+substantive instructions they guard are correct as written.
+
+### R2-C1 — The C4 anti-criterion cannot detect its own violation (line-wrapped phrase)
+
+- **Severity:** CONCERN · **Critics:** Structural (lead), executed
+- **Location:** Verification table, row *"Anti-criterion: the 'remaining four' count
+  is gone (C4)"*; Success Criteria, the matching bullet
+- **Finding:** `tests/fixtures/harness_payloads/README.md:19-20` wraps the sentence
+  between the two words — `…and the remaining\nfour are still the maintainer's
+  acceptance pass`. `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md`
+  therefore returns **0 at the baseline commit, before any edit**, so the row passes
+  vacuously and the Success Criterion that mirrors it is already satisfied. The plan's
+  own *"Red-state proof required"* paragraph names exactly this failure — "an
+  anti-criterion never demonstrated red is indistinguishable from one that cannot
+  detect its violation" — and this row is one. (Executed at baseline: the row returns
+  0/exit 1; the sibling rows `grep -c 'docs only'` → 2 and the `Hermes sends none`
+  anti-criterion → 3 hits are properly red, so the defect is isolated to this one row.)
+- **Suggestion:** Make the check whitespace-insensitive, and assert the *replacement*
+  text rather than only the absence of the old.
+- **Implementation Note:** Replace the row's command with a newline-collapsing form,
+  e.g. `tr '\n' ' ' < tests/fixtures/harness_payloads/README.md | grep -cE 'remaining +four'`
+  → 0, and add a positive companion row asserting the new tier label is present, e.g.
+  `grep -c 'real dispatcher' tests/fixtures/harness_payloads/README.md` → output > 0.
+  Update the matching Success Criterion to name the positive assertion too. Do **not**
+  simply reword the criterion to "the count sentence is rewritten" — that is
+  unverifiable by command. This is a Verification-table edit, not new build scope.
+
+### R2-C2 — The C1 anti-criterion is a bare word grep, not a wiring check
+
+- **Severity:** CONCERN · **Critics:** Risk & Robustness
+- **Location:** Verification table, row *"Contract test seeds a sentinel rather than
+  asserting bare `dict` (C1)"*
+- **Finding:** The check is `grep -ci 'sentinel' tests/test_hermes_plugin_contract.py`
+  → output > 0. A comment, a docstring, or an unused local named `sentinel` satisfies
+  it without the test ever calling `.capture()` on a real `MemoryService` or asserting
+  containment in the returned `["context"]`. The row that exists specifically to catch
+  the corner-cut version of assertion (e) does not catch it.
+- **Suggestion:** Assert the wiring, not the word.
+- **Implementation Note:** Require the same literal token to appear both after
+  `.capture(` and inside an `in`-assertion against the injected context. Cheapest
+  command form that survives review:
+  `grep -c '\.capture(' tests/test_hermes_plugin_contract.py` → output > 0, **and**
+  `grep -cE 'assert .+ in .+\["context"\]' tests/test_hermes_plugin_contract.py` →
+  output > 0, as two rows. Keep the existing `sentinel` row as well; it is harmless,
+  just insufficient alone. The file does not exist at baseline, so both rows are red
+  today by construction — this is a plan-level gap, not an implementation bug.
+
+**Disposition.** The critique cycle cap is 2 and this is round 2, so these two
+concerns are **accepted on the record** and the build proceeds. Both are single-row
+edits to the Verification table that the builder (Task 4 / Task 3) applies in place;
+neither changes the implementation contract.
+
+---
+
 ## Open Questions
 
 **All four open questions were ruled on during critique round 1 and are closed.**
