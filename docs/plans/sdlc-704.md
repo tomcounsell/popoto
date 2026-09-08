@@ -1040,15 +1040,280 @@ Research section documents two places where that site is currently wrong.
 
 ## Team Orchestration
 
-_(skeleton)_
+The lead agent coordinates and never builds directly. Work is in the lane worktree
+`/Users/valorengels/src/popoto/.worktrees/sdlc-704` on branch `session/sdlc-704`,
+with `POPOTO_TEST_DB=9` exported for every test run.
+
+### Team Members
+
+- **Builder (plugin)**
+  - Name: `hermes-plugin-builder`
+  - Role: `plugins/hermes/` — delete the gateway shape, write `plugin.yaml` and
+    `__init__.py`, rewrite the plugin README.
+  - Agent Type: `builder`
+  - Domain: MCP-tool/API integration
+  - Resume: true
+
+- **Builder (adapter)**
+  - Name: `adapter-builder`
+  - Role: `src/popoto/integrations/` — `_RESPONSE_FIELDS`, and every docstring that
+    asserts a false Hermes fact.
+  - Agent Type: `builder`
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Builder (fixtures + contract CI)**
+  - Name: `contract-builder`
+  - Role: capture the replacement fixtures through the real dispatcher, re-grade the
+    fixtures README, write `tests/test_hermes_plugin_contract.py` and
+    `.github/workflows/hermes-contract.yml`.
+  - Agent Type: `test-engineer`
+  - Resume: true
+
+- **Builder (suite repair)**
+  - Name: `suite-builder`
+  - Role: the three existing test files in Test Impact, plus the red-state proof.
+  - Agent Type: `test-engineer`
+  - Resume: true
+
+- **Documentarian**
+  - Name: `hermes-documentarian`
+  - Role: `docs/guides/harness-hermes.md` rewrite, `docs/features/harness-integration.md`
+    matrix and turn-id edits, CHANGELOG, brand-list confirmations.
+  - Agent Type: `documentarian`
+  - Resume: true
+
+- **Validator**
+  - Name: `hermes-validator`
+  - Role: verify every Success Criterion and run the Verification table.
+  - Agent Type: `validator`
+  - Resume: true
 
 ## Step by Step Tasks
 
-_(skeleton)_
+### 1. Re-target the plugin directory
+
+- **Task ID**: `build-plugin`
+- **Depends On**: none
+- **Validates**: `tests/test_hermes_plugin_contract.py` (create),
+  `tests/test_integrations_db0_isolation.py`
+- **Informed By**: spike-1 (sync callbacks; `register(ctx)`/`ctx.register_hook`;
+  `provides_hooks` is cosmetic; exact kwargs; `{"context": …}` return; errors
+  swallowed), spike-2 (namespace collision)
+- **Assigned To**: `hermes-plugin-builder`
+- **Agent Type**: `builder`
+- **Parallel**: true
+- Delete `plugins/hermes/HOOK.yaml`, `plugins/hermes/handler.py`, and
+  `plugins/hermes/__pycache__/`.
+- Add `plugins/hermes/plugin.yaml`: `name: popoto-memory`, `version`, `description`,
+  `author`, `provides_hooks: [pre_llm_call, post_llm_call]` — with an inline comment
+  stating that `provides_hooks` is parsed into the manifest but read by nothing that
+  registers hooks (`hermes_cli/plugins.py:1642`), so registration lives in
+  `__init__.py`.
+- Add `plugins/hermes/__init__.py`: module docstring naming the install path and the
+  `plugins.enabled` requirement; the existing lazy `_service()` singleton carried
+  over verbatim, with a comment on why no lock (Race 3); `_envelope(event_name,
+  kwargs)` dropping `conversation_history` and synthesizing `hook_event_name`;
+  optional `POPOTO_HOOK_CAPTURE` tee mirroring
+  `plugins/openclaw/popoto-memory-plugin/index.js`; **synchronous** `_on_pre` and
+  `_on_post` taking `**kwargs` only; and `def register(ctx)` calling
+  `ctx.register_hook` twice.
+- The read callback returns `json.loads(output)` when `handle_payload` returns a
+  string, and `None` otherwise — never `{"context": ""}`.
+- Both callbacks wrap everything in `except Exception` and return `None`, but must
+  leave an observable trace (`hooks._log_hook_error` or a `logger.warning`); a
+  silent swallow is explicitly rejected by the Failure Path Test Strategy.
+- Rewrite `plugins/hermes/README.md` per Solution → Flow, including the
+  "remove your old `~/.hermes/hooks/popoto-memory/`" migration line.
+- Verify `hermes mcp add popoto-memory -- popoto-memory mcp` against the installed
+  0.19.0 CLI (`hermes mcp --help`) and correct the command if it has drifted.
+
+### 2. Fix the adapter field mapping and retire the false claims
+
+- **Task ID**: `build-adapter`
+- **Depends On**: none
+- **Validates**: `tests/test_integrations_hooks.py`, `tests/test_integrations_service.py`
+- **Informed By**: spike-3 (only `_RESPONSE_FIELDS` needs a code change; `turn_id`
+  and `user_message` already resolve flat), spike-1 (no `cwd` anywhere in plugin
+  hooks)
+- **Assigned To**: `adapter-builder`
+- **Agent Type**: `builder`
+- **Parallel**: true
+- Add `"assistant_response"` to `_RESPONSE_FIELDS` (`hooks.py:88-98`), with a comment
+  citing `agent/turn_finalizer.py:483-494`.
+- Rewrite `hooks.py:120` (`NormalizedEvent.turn_id` docstring): Hermes **does** send
+  `turn_id`, minted once per turn at `agent/turn_context.py:370` and passed to both
+  hooks; the FIFO fallback now applies only to `POPOTO_MEMORY_TURN_KEYED=0`.
+- Rewrite `hooks.py:170`: drop "(Hermes nests there)"; the nested search stays for
+  `input`/`data`, and the code is **not** otherwise changed.
+- Rewrite `hooks.py:285`: plugin-hook payloads carry no `cwd`; the Hermes path passes
+  a prebuilt service, and operators should set `POPOTO_MEMORY_AGENT_ID`.
+- Rewrite `hooks.py:13-15` (module docstring) and confirm `:253`/`:266` — the
+  `{"context": …}` shape is correct; add the executed citation
+  (`agent/turn_context.py:720-741`).
+- Rewrite `service.py:632-634`'s Hermes carve-out.
+- Rewrite `integrations/__init__.py:11-12` and `integrations/config.py:129,:383`
+  (references to "a Hermes `handler.py`").
+- **Do not** change `render_context`, `normalize`, `_first_string`, or any
+  `service.py` behavior.
+
+### 3. Capture replacement fixtures and re-grade
+
+- **Task ID**: `build-fixtures`
+- **Depends On**: `build-plugin`
+- **Validates**: `tests/test_integrations_hooks.py`
+- **Informed By**: spike-1 (invoke-site kwargs), spike-2 (`hermes-agent` installs
+  cleanly, 0.54 s import, no API key)
+- **Assigned To**: `contract-builder`
+- **Agent Type**: `test-engineer`
+- **Parallel**: false
+- In a scratch venv **outside the repo** with `hermes-agent==0.19.0`, install the new
+  plugin into a scratch `HERMES_HOME`, enable it in `config.yaml`, and drive
+  `hermes_cli.plugins.invoke_hook("pre_llm_call", **kwargs)` /
+  `("post_llm_call", **kwargs)` with the kwargs from spike-1's tables, using
+  `POPOTO_HOOK_CAPTURE` to write the envelopes.
+- The probe values must keep the assertions in
+  `test_read_fixtures_normalize_to_the_prompt` and
+  `test_write_fixtures_normalize_to_the_assistant_message` alive: `user_message`
+  containing "health checks", `assistant_response` containing "automatic rollback".
+  The `turn_id` must be **byte-identical across the pair** and in Hermes's own
+  `<session>:<task>:<hex8>` shape.
+- Replace `tests/fixtures/harness_payloads/hermes_pre_llm_call.json` and
+  `hermes_post_llm_call.json`. `_provenance` must state: the exact package version
+  and date; that the loader and `invoke_hook` dispatcher are real; that the kwargs
+  were taken verbatim from the 0.19.0 invoke sites; that **no live model turn ran**;
+  that `conversation_history` was dropped by popoto's plugin; and the exact command
+  to reproduce.
+- Update `tests/fixtures/harness_payloads/README.md`: re-grade both Hermes rows,
+  widen the framing from two verification levels to three, and correct
+  "the remaining four".
+
+### 4. Contract test and its CI job
+
+- **Task ID**: `build-contract`
+- **Depends On**: `build-plugin`
+- **Validates**: `tests/test_hermes_plugin_contract.py` (create)
+- **Informed By**: spike-1 (loader internals, `VALID_HOOKS`, gating), spike-2
+  (namespace collision, install weight)
+- **Assigned To**: `contract-builder`
+- **Agent Type**: `test-engineer`
+- **Parallel**: false
+- `tests/test_hermes_plugin_contract.py`: `pytest.importorskip("hermes_cli.plugins")`
+  at module scope; a fixture building a scratch `HERMES_HOME` with the plugin copied
+  in and `config.yaml` written; assertions (a)–(e) from Solution → Technical
+  Approach. Assertion (c) — every registered hook name is in `VALID_HOOKS` — is the
+  one that would have caught the original defect and must be present.
+- `.github/workflows/hermes-contract.yml`: one job, own venv, `pip install
+  hermes-agent==0.19.0` plus `-e .[dev]`, Redis service if the test needs one, run
+  `pytest` **from a temp working directory** with an absolute test path so the repo
+  root does not lead `sys.path`. A header comment must state the pin's meaning: a
+  green run proves the manifest and entry point satisfy *0.19.0's* loader, nothing
+  more.
+- Do **not** touch `pyproject.toml`, `uv.lock`, `scripts/check_lock_imports.py`,
+  `lock-check.yml`, `tests.yml`, or `lint.yml`.
+
+### 5. Repair the existing suite and prove red state
+
+- **Task ID**: `build-suite`
+- **Depends On**: `build-adapter`, `build-fixtures`
+- **Validates**: `tests/test_integrations_hooks.py`,
+  `tests/test_integrations_service.py`, `tests/test_integrations_db0_isolation.py`
+- **Informed By**: spike-3 (the vacuity hazard), spike-4 (no leak to test for)
+- **Assigned To**: `suite-builder`
+- **Agent Type**: `test-engineer`
+- **Parallel**: false
+- Apply every disposition in Test Impact, including deleting `SENDS_A_TURN_ID` and
+  driving both branches off `TURN_IDS`.
+- Add the fixture-independent `assistant_response` normalization test and the Hermes
+  envelope tests from Failure Path Test Strategy (extra kwargs tolerated; empty
+  `assistant_response`; blank `turn_id`; absent `user_message`; down-Redis
+  `register()`).
+- Add an assertion that the Hermes envelope contains **no `cwd` key**, not merely a
+  null one.
+- Rewrite `test_the_hermes_handler_binds_too` to load
+  `plugins/hermes/__init__.py` by file path via `importlib.util.spec_from_file_location`
+  under a synthetic module name — never `import plugins.hermes`.
+- **Red-state proof**: `git stash` the `src/` and `plugins/` changes (or check the
+  new tests out against the baseline commit), run them, and paste the failure output
+  into the PR description. Tests that pass in both states are vacuous and must be
+  strengthened before proceeding.
+
+### 6. Validate the build
+
+- **Task ID**: `validate-build`
+- **Depends On**: `build-plugin`, `build-adapter`, `build-fixtures`,
+  `build-contract`, `build-suite`
+- **Assigned To**: `hermes-validator`
+- **Agent Type**: `validator`
+- **Parallel**: false
+- Run the Verification table. Report the environment (`redis` / `redis-py` versions,
+  `POPOTO_TEST_DB=9`, worktree path, editable-install resolution) alongside every
+  count — `CLAUDE.md`'s rule is that a count without its environment is unusable.
+- Confirm the five worktree-verification gotchas: correct package under test, full
+  extras installed (`.[dev,embeddings,mcp]`), DB isolation, and the known-noise
+  `tests/test_version.py::test_version_matches_pyproject` failure on a stale editable
+  install.
+
+### 7. Documentation
+
+- **Task ID**: `document-feature`
+- **Depends On**: `validate-build`
+- **Assigned To**: `hermes-documentarian`
+- **Agent Type**: `documentarian`
+- **Parallel**: false
+- Execute every checkbox in the Documentation section.
+- Every rewritten Hermes claim carries an executed citation — a file:line in the
+  installed `hermes-agent==0.19.0` package or the replaced fixture. No claim may cite
+  only the vendor website.
+- `mkdocs build --strict` must pass.
+
+### 8. Final validation
+
+- **Task ID**: `validate-all`
+- **Depends On**: `document-feature`
+- **Assigned To**: `hermes-validator`
+- **Agent Type**: `validator`
+- **Parallel**: false
+- Re-run the full Verification table plus the full suite.
+- Verify every Success Criterion, including the red-state proof's presence in the PR
+  description.
+- Report pass/fail with the environment stated.
 
 ## Verification
 
-_(skeleton)_
+| Check | Command | Expected |
+|-------|---------|----------|
+| Full suite passes | `POPOTO_TEST_DB=9 pytest -q` | exit code 0 |
+| Integration tests pass | `POPOTO_TEST_DB=9 pytest tests/test_integrations_hooks.py tests/test_integrations_service.py tests/test_integrations_db0_isolation.py -q` | exit code 0 |
+| Contract test skips cleanly without hermes-agent | `POPOTO_TEST_DB=9 pytest tests/test_hermes_plugin_contract.py -q` | exit code 0 |
+| Lint clean | `ruff check src/` | exit code 0 |
+| Format clean | `black --check src/ tests/` | exit code 0 |
+| Type ratchet holds | `scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `mkdocs build --strict` | exit code 0 |
+| Gateway shape deleted | `test ! -e plugins/hermes/HOOK.yaml && test ! -e plugins/hermes/handler.py` | exit code 0 |
+| Plugin manifest present | `test -f plugins/hermes/plugin.yaml && test -f plugins/hermes/__init__.py` | exit code 0 |
+| `register(ctx)` entry point exists | `python -c "import ast,pathlib;t=ast.parse(pathlib.Path('plugins/hermes/__init__.py').read_text());raise SystemExit(0 if any(getattr(n,'name',None)=='register' for n in t.body) else 1)"` | exit code 0 |
+| Both hooks registered | `grep -c 'register_hook' plugins/hermes/__init__.py` | output > 1 |
+| No async callbacks in the plugin | `grep -c 'async def' plugins/hermes/__init__.py` | match count == 0 |
+| `assistant_response` mapped in the adapter | `grep -c 'assistant_response' src/popoto/integrations/hooks.py` | output > 0 |
+| Contract workflow present | `test -f .github/workflows/hermes-contract.yml` | exit code 0 |
+| Anti-criterion: no "Hermes sends no turn id" claim survives | `grep -rn 'Hermes sends none\|no turn id (Hermes' src/ tests/ docs/features docs/guides plugins/` | exit code 1 |
+| Anti-criterion: no gateway install instruction survives | `grep -rn 'mkdir -p ~/.hermes/hooks' plugins/ docs/guides/ docs/features/ README.md` | exit code 1 |
+| Anti-criterion: Hermes fixtures no longer graded "docs only" | `grep -c 'docs only' tests/fixtures/harness_payloads/README.md` | match count == 0 |
+| Anti-criterion: `hermes-agent` absent from published deps | `grep -c 'hermes-agent' pyproject.toml uv.lock scripts/check_lock_imports.py` | match count == 0 |
+| Anti-criterion: plugin never imported as a package | `grep -rn 'import plugins.hermes\|from plugins.hermes' tests/ src/` | exit code 1 |
+| `plugins.enabled` step taught in the guide | `grep -c 'hermes plugins enable' docs/guides/harness-hermes.md` | output > 0 |
+| `plugins.enabled` step taught in the plugin README | `grep -c 'hermes plugins enable' plugins/hermes/README.md` | output > 0 |
+| Correct install path in both READMEs | `grep -l '\.hermes/plugins/popoto-memory' plugins/hermes/README.md docs/guides/harness-hermes.md \| wc -l` | output > 1 |
+| Fixtures keep a provenance string | `grep -l 'captured-from:' tests/fixtures/harness_payloads/hermes_pre_llm_call.json tests/fixtures/harness_payloads/hermes_post_llm_call.json \| wc -l` | output > 1 |
+| No stale xfails | `grep -rn 'xfail' tests/ \| grep -v '# open bug'` | exit code 1 |
+
+**Red-state proof required.** Before the implementation lands, run the two
+anti-criteria that can be falsified today — *"no `Hermes sends no turn id` claim
+survives"* and *"Hermes fixtures no longer graded docs only"* — against the baseline
+tree, confirm they FAIL, and paste that output into the PR description. An
+anti-criterion never demonstrated red is indistinguishable from one that cannot
+detect its violation.
 
 ## Critique Results
 
@@ -1058,4 +1323,34 @@ _(skeleton)_
 
 ## Open Questions
 
-_(skeleton)_
+1. **Is a `hermes-agent==0.19.0` CI job acceptable?** It is 61 packages / 187 MB in
+   its own venv, no torch, ~0.5 s import, no API key — and it is the only mechanism
+   that makes this integration falsifiable by machine rather than by a human
+   re-reading vendor docs, which is precisely what failed in #515. The alternative
+   the issue offers is "the fixtures should at minimum record the capture command
+   and date", which this plan does regardless. **Plan assumes yes**, as a separate
+   workflow with a pinned version and no reach into `pyproject.toml` or `uv.lock`.
+   Say no and the plan drops task 4 and the contract test, keeping everything else.
+
+2. **What exactly should the new fixture grade say?** The plan proposes a third
+   verification level — *"real 0.19.0 loader and `invoke_hook` dispatcher; kwargs
+   verbatim from the invoke sites; not a live model turn"* — sitting between the
+   Claude Code / OpenClaw "yes, live" and the Codex "binary, not a live turn". This
+   is a judgment call about how the project talks about its own verification, and
+   getting it wrong is the exact failure mode of the issue. Is the three-level
+   framing right, or should the Hermes rows simply read "harness dispatcher, not a
+   live turn" and match the Codex phrasing?
+
+3. **Should `POPOTO_MEMORY_AGENT_ID` be *required* on Hermes rather than
+   recommended?** With no `cwd` in the payload, the default `agent_id` becomes the
+   basename of the Hermes process's working directory — stable, but arbitrary and
+   invisible to the operator. The plan documents it. The stronger option is for the
+   plugin to emit a `logger.warning` on first use when `POPOTO_MEMORY_AGENT_ID` is
+   unset. Against it: Hermes swallows plugin logging into `~/.hermes/logs/agent.log`
+   where nobody will read it, so the warning buys little and adds a branch.
+
+4. **Does this PR close #688 outright, or only its plumbing half?** #688 asked a
+   question ("does Hermes carry a per-turn id?") that its own comment answered, and
+   resolution path (a) — "plumb it through as `turn_id` exactly as #552 does for
+   OpenClaw" — is fully in scope here. The plan assumes the PR body carries
+   `Closes #704` **and** `Closes #688`. Confirm, or name what #688 keeps.
