@@ -1758,6 +1758,77 @@ lock is cleared.
 
 ---
 
+## Critique Results — Round 3 (final bounded round — confirmation of the round-2 fold-ins)
+
+**Verdict:** READY TO BUILD (no concerns) — 0 blockers, 0 concerns, 2 nits.
+**Depth:** FULL. **Mode:** independent roster (3 critics) — Risk & Robustness,
+Scope & Value, History & Consistency; roster 3/3 complete, all grounded. Run
+`d46186192d5346478dc7853b5e958068`, 2026-09-08, against revised plan commit
+`8d6ec6cb`.
+
+**R2-C1 fold-in — verified real and non-vacuous (commands executed at baseline):**
+
+| Command | Baseline result | Meaning |
+|---|---|---|
+| `tr '\n' ' ' < tests/fixtures/harness_payloads/README.md \| grep -cE 'remaining +four'` | **1** | genuinely RED before the edit — detects its own violation |
+| `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md` | 0 (exit 1) | the round-1 form, vacuously green — the defect R2-C1 named, confirmed |
+| `grep -c 'real dispatcher' tests/fixtures/harness_payloads/README.md` | 0 | positive companion row is RED before the edit, green only after |
+
+The phrase does wrap at `tests/fixtures/harness_payloads/README.md:19-20`
+(`…and the remaining` / `four are still the maintainer's acceptance pass`),
+exactly as R2-C1 stated.
+
+**R2-C2 fold-in — verified red at baseline by construction:**
+`tests/test_hermes_plugin_contract.py` does not exist, so
+`grep -c '\.capture(' …` and `grep -cE 'assert .+ in .+\["context"\]' …` both
+produce no matching output (exit 2). Both rows can only go green once the test
+is written with real wiring; neither is satisfiable by a comment, a docstring, or
+an unused local named `sentinel`.
+
+**Regression check on the two revision diffs** (`b508e8c7`, `8d6ec6cb`): every hunk
+is additive or a strict correction. No prior correct content was deleted, weakened,
+or left contradicting the new text; no new build scope entered through the
+Verification table — the `.capture(`/containment rows machine-check a requirement
+round 1 had already written into the Technical Approach. The four R2-C1 touch
+points (Verification row, Success Criteria bullet, Task 3 bullet, red-state-proof
+paragraph, now correctly "three" rows) agree with each other, and the surviving
+plain-`grep -c 'remaining four'` mentions are confined to the historical critique
+records where they describe the defect under discussion.
+
+**Structural checks:** required sections present; tasks 1-8 sequential with no gaps
+or dangling dependencies; every referenced existing path resolves; prerequisites
+green (`redis-cli -n 9 PING` → PONG, lane worktree present); success criteria all
+map to tasks; no No-Go or Rabbit Hole appears as planned work.
+
+### N-R3-1 — `README.md:23` still says "the other four"
+
+- **Severity:** NIT
+- **Location:** Task 3 / `tests/fixtures/harness_payloads/README.md:23`
+- **Finding:** The same stale count survives a second time at line 23 ("a warning
+  about the other four"), which no anti-criterion covers; after the Task 3 edit the
+  README could still assert four unverified fixtures while every Verification row is
+  green.
+- **Suggestion:** When rewriting the count sentence in Task 3, correct line 23 in the
+  same pass — the tier rewrite should leave no "four" describing the
+  not-yet-live-verified bucket.
+
+### N-R3-2 — the containment regex is single-line
+
+- **Severity:** NIT · **Critic:** Scope & Value
+- **Location:** Verification row *"Contract test asserts containment in the injected
+  context (R2-C2)"*
+- **Finding:** `assert .+ in .+\["context"\]` is a single-line regex and can
+  false-negative on a correct assertion that black wraps across lines.
+- **Suggestion:** If the builder's formatted assertion does not match during Task 4
+  self-check, widen the row to the newline-collapsing `tr '\n' ' ' | grep -cE …`
+  form used two rows above, rather than reading the red result as a plan failure.
+
+**Disposition.** Both round-2 concerns are answered by the `8d6ec6cb` revision and
+neither survives round 3. Nits do not block and require no revision pass; the
+`plan_revising` lock stays clear. Proceed to `/do-build`.
+
+---
+
 ## Open Questions
 
 **All four open questions were ruled on during critique round 1 and are closed.**
