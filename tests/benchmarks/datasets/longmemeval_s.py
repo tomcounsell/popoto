@@ -31,6 +31,7 @@ Caching:
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -38,6 +39,50 @@ from . import BenchmarkItem
 from .sampling import sample_items
 
 logger = logging.getLogger("POPOTO.Benchmark.LongMemEvalS")
+
+#: strptime format of ``haystack_dates`` entries, e.g. "2023/05/20 (Sat) 02:21".
+#: Minute precision — two sessions in one haystack can share a timestamp; see
+#: docs/plans/sdlc-692.md, Race 1 "Tied dates".
+HAYSTACK_DATE_FORMAT = "%Y/%m/%d (%a) %H:%M"
+
+
+#: Window of years this parser will accept. ``haystack_dates`` are ordinary
+#: conversation timestamps, so anything outside this range is corrupt input,
+#: not a date to key bitemporal ordering off. The bound is explicit because
+#: ``time.mktime``'s own tolerance is PLATFORM-DEPENDENT (#692 review round 2):
+#: for year 1000, macOS raises OverflowError while glibc happily returns
+#: -30610224000.0, so a parser that relies on mktime to reject out-of-range
+#: years has different behavior on a developer laptop and in CI. Checking the
+#: year ourselves makes "out of range -> None" true on both.
+MIN_SESSION_YEAR = 1900
+MAX_SESSION_YEAR = 2200
+
+
+def _parse_session_date(raw: Optional[str]) -> Optional[float]:
+    """Parse one ``haystack_dates`` entry to an epoch float, or ``None``.
+
+    Never raises and never substitutes a timestamp (#692) — a missing,
+    unparseable, or out-of-range date must disable the supersession producer
+    for that turn rather than inventing a value it would then treat as ground
+    truth. A year outside ``[MIN_SESSION_YEAR, MAX_SESSION_YEAR]`` is treated
+    as unparseable on every platform, independently of whether the local
+    ``time.mktime`` would accept it.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        parsed = time.strptime(raw, HAYSTACK_DATE_FORMAT)
+        if not MIN_SESSION_YEAR <= parsed.tm_year <= MAX_SESSION_YEAR:
+            logger.debug("Out-of-range haystack_dates entry: %r", raw)
+            return None
+        # time.strptime also accepts in-window values that mktime can still
+        # reject on some platforms; OverflowError is "unparseable" under this
+        # function's contract just as ValueError is (#692 review).
+        return time.mktime(parsed)
+    except (ValueError, OverflowError):
+        logger.debug("Unparseable haystack_dates entry: %r", raw)
+        return None
+
 
 CACHE_DIR = Path.home() / ".cache" / "popoto_benchmarks"
 CACHED_FILE = CACHE_DIR / "longmemeval_s_cleaned.json"
@@ -102,7 +147,10 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
         "question_date": "...",
         "answer": "...",
         "answer_session_ids": ["session_id", ...],   # ground truth
-        "haystack_dates": ["...", ...],               # parallel to sessions
+        "haystack_dates": ["...", ...],               # parallel to sessions;
+                                                        # parsed (#692) into a
+                                                        # per-turn epoch float
+                                                        # "session_date"
         "haystack_session_ids": ["session_id", ...],  # parallel to sessions
         "haystack_sessions": [                         # parallel to ids
             [ {"role": "user"|"assistant", "content": "..."}, ... ],
@@ -136,6 +184,9 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
     query = record["question"]
     sessions = record["haystack_sessions"]
     session_ids = record["haystack_session_ids"]
+    raw_dates = record.get("haystack_dates", [])
+    if not isinstance(raw_dates, list):
+        raw_dates = []
 
     if not isinstance(sessions, list):
         raise ValueError(
@@ -152,7 +203,14 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
     # Flatten parallel session arrays into a list of turns with session_id
     # metadata. Each session is itself a list of {role, content} turn dicts.
     history = []
-    for session_id, turns in zip(session_ids, sessions):
+    for session_idx, (session_id, turns) in enumerate(zip(session_ids, sessions)):
+        # Missing / short haystack_dates -> None for every turn of that
+        # session, never a substituted timestamp (#692).
+        session_date = (
+            _parse_session_date(raw_dates[session_idx])
+            if session_idx < len(raw_dates)
+            else None
+        )
         for turn_idx, turn in enumerate(turns):
             history.append(
                 {
@@ -160,6 +218,7 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
                     "content": turn.get("content", ""),
                     "turn_id": f"{session_id}::{turn_idx}",
                     "session_id": session_id,
+                    "session_date": session_date,
                 }
             )
 

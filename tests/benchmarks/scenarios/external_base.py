@@ -71,15 +71,18 @@ from src.popoto.embeddings.sentence_transformers import SentenceTransformersProv
 from src.popoto.fields.bm25_field import BM25Field
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField
 from src.popoto.fields.confidence_field import ConfidenceField
+from src.popoto.fields.constants import Defaults
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.fields.embedding_field import (
     EmbeddingField,
     _get_embeddings_dir,
     stop_invalidation_listeners,
 )
+from src.popoto.fields.validity_field import ValidityField
 from src.popoto.recipes.context_assembler import ContextAssembler
-from src.popoto.redis_db import POPOTO_REDIS_DB
+from src.popoto.redis_db import POPOTO_REDIS_DB, get_REDIS_DB
 
+from .. import supersession_axis
 from ..datasets import GROUND_TRUTH_UNITS, BenchmarkItem, ground_truth_unit
 from .base import Scenario, ScenarioResult
 
@@ -121,7 +124,7 @@ def _get_shared_provider():
     return _SHARED_PROVIDER
 
 
-def _build_graph_model_class(safe_prefix: str):
+def _build_graph_model_class(safe_prefix: str, with_validity: bool = False):
     """Build a BM25 + association-graph Model class for one benchmark item.
 
     Used by ``retrieval_mode="graph"`` (issue #484). Identical to the lexical
@@ -157,6 +160,15 @@ def _build_graph_model_class(safe_prefix: str):
         content_index = BM25Field(source="content")
         associations = CoOccurrenceField(symmetric=True, max_edges=100)
 
+    if with_validity:
+        # Declared iff the supersession arm is active (#692). See the module
+        # docstring and docs/plans/sdlc-692.md for why this is a benchmark
+        # harness decision, not a src/ default (#693 owns that question).
+        ExternalBenchmarkMemory.validity = ValidityField()
+        ExternalBenchmarkMemory._meta.add_field(
+            "validity", ExternalBenchmarkMemory.validity
+        )
+
     ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
     ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
     # Self-referential Relationship must be registered post-hoc — the class
@@ -175,6 +187,7 @@ def _build_external_model_class(
     safe_prefix: str,
     with_bm25: bool = True,
     with_embedding: bool = False,
+    with_validity: bool = False,
 ):
     """Build a fresh Popoto Model class for one benchmark item.
 
@@ -261,6 +274,15 @@ def _build_external_model_class(
             )
             certainty = ConfidenceField(initial_confidence=0.5)
             content_index = BM25Field(source="content")
+
+    if with_validity:
+        # Declared iff the supersession arm is active (#692); see module
+        # docstring and docs/plans/sdlc-692.md. Not a src/ change — #693 owns
+        # whether save-only inertness should gain a default producer.
+        ExternalBenchmarkMemory.validity = ValidityField()
+        ExternalBenchmarkMemory._meta.add_field(
+            "validity", ExternalBenchmarkMemory.validity
+        )
 
     ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
     ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
@@ -365,6 +387,7 @@ class ExternalScenario(Scenario):
         retrieval_mode: str = "lexical",
         extraction_provider: Optional[Any] = None,
         extraction_stats: Optional[Any] = None,
+        supersession_arm: str = "none",
     ):
         super().__init__(overrides)
         self.item = item
@@ -372,6 +395,39 @@ class ExternalScenario(Scenario):
         # Ingest arm (#489). None => write turns verbatim (committed baseline).
         self._extractor = extraction_provider
         self._extraction_stats = extraction_stats
+        # Supersession producer arm (#692). "none" is byte-identical to the
+        # committed baseline: no ValidityField, no protocol call, no
+        # reordering (Success Criterion 5).
+        if supersession_arm not in supersession_axis.ARM_CHOICES:
+            raise ValueError(
+                f"Unknown supersession arm {supersession_arm!r}; choose from "
+                f"{supersession_axis.ARM_CHOICES}"
+            )
+        # Reject rather than silently mislabel (#692 review, finding 4):
+        # retrieval_mode="vector" sets self._assembler = None and ranks by
+        # raw cosine via QueryBuilder._get_vector_scores(), bypassing
+        # ContextAssembler entirely. Validity gating lives only in
+        # ContextAssembler._resolve_excluded_keys, so the vector path applies
+        # NO exclusion at all -- yet the observability block would still
+        # report supersession_arm="content-identity" with n_excluded_keys=0,
+        # which reads as "gating ran and excluded nothing" rather than
+        # "gating never ran". That is functionally arm B wearing arm C's
+        # label, a trap for whoever runs #586's full corpus. Reject the
+        # combination outright rather than emit a report that needs a
+        # footnote to be read correctly.
+        if retrieval_mode == "vector" and supersession_arm != "none":
+            raise ValueError(
+                "retrieval_mode='vector' bypasses ContextAssembler and "
+                "therefore applies no validity gating; "
+                f"supersession_arm={supersession_arm!r} would be silently "
+                "ungated while still reporting as that arm. Use "
+                "supersession_arm='none' with retrieval_mode='vector', or "
+                "choose a non-vector retrieval_mode with this supersession "
+                "arm."
+            )
+        self._supersession_arm = supersession_arm
+        self._supersession_stats = supersession_axis.SupersessionStats()
+        self._identity_counts: Dict[Any, int] = {}
         self._agent_id = f"extbench:{uuid.uuid4().hex[:12]}"
         self._model_class = None
         self._assembler = None
@@ -390,6 +446,58 @@ class ExternalScenario(Scenario):
         # key cannot influence ranking or dedup, only final scoring.
         self._ranking_unit = _resolve_ranking_unit(item)
 
+    def _ordered_history(self) -> List[Dict[str, Any]]:
+        """Return the turn order to ingest in (#692, critique C2).
+
+        Arm ``"none"``: returns ``self.item.history`` UNCHANGED (same object).
+        This is load-bearing, not a convenience — that iteration order is the
+        insertion order into ``DecayingSortedField`` and the BM25 index, so
+        reordering it on the baseline arm would move committed-baseline
+        numbers and break Success Criterion 5 / Verification row 8c.
+
+        Arm ``"content-identity"``: sessions are ordered ascending by
+        ``session_date`` (ties broken by original haystack position, an
+        arbitrary-but-outcome-neutral choice per the "Tied dates" analysis in
+        docs/plans/sdlc-692.md), with turn order preserved WITHIN each
+        session — reordering must never occur within a session, since graph
+        mode's adjacency edges are built per session from ``prev_by_session``
+        (Race 1).
+        """
+        if self._supersession_arm == "none":
+            return self.item.history
+
+        session_order: List[str] = []
+        session_turns: Dict[str, List[Dict[str, Any]]] = {}
+        for turn in self.item.history:
+            sid = turn.get("session_id", "")
+            if sid not in session_turns:
+                session_turns[sid] = []
+                session_order.append(sid)
+            session_turns[sid].append(turn)
+
+        def _session_sort_key(indexed_sid: tuple) -> tuple:
+            position, sid = indexed_sid
+            date = next(
+                (
+                    t.get("session_date")
+                    for t in session_turns[sid]
+                    if t.get("session_date") is not None
+                ),
+                None,
+            )
+            # (has_no_date, date, original_position): dated sessions sort
+            # first by date; undated sessions keep their original relative
+            # order at the end rather than colliding at date 0.
+            return (date is None, date if date is not None else 0.0, position)
+
+        ordered_sids = [
+            sid for _, sid in sorted(enumerate(session_order), key=_session_sort_key)
+        ]
+        ordered: List[Dict[str, Any]] = []
+        for sid in ordered_sids:
+            ordered.extend(session_turns[sid])
+        return ordered
+
     def setup(self) -> None:
         """Ingest the benchmark item's conversation history into Redis.
 
@@ -401,16 +509,20 @@ class ExternalScenario(Scenario):
             ConnectionError: If Redis is unavailable.
         """
         safe_prefix = uuid.uuid4().hex[:8]
+        with_validity = self._supersession_arm != "none"
         # Field presence per mode:
         #   lexical → BM25 only; hybrid → BM25 + embedding; vector → embedding
         #   only; graph → BM25 + CoOccurrenceField + self-referential Relationship.
         if self.retrieval_mode == "graph":
-            self._model_class = _build_graph_model_class(safe_prefix)
+            self._model_class = _build_graph_model_class(
+                safe_prefix, with_validity=with_validity
+            )
         else:
             self._model_class = _build_external_model_class(
                 safe_prefix,
                 with_bm25=self.retrieval_mode != "vector",
                 with_embedding=self.retrieval_mode in ("hybrid", "vector"),
+                with_validity=with_validity,
             )
         # lexical/hybrid drive ContextAssembler.assemble() as the primary path with
         # retrieval_mode="auto": field presence resolves the mode (issue #395) —
@@ -442,7 +554,7 @@ class ExternalScenario(Scenario):
 
         prev_by_session: Dict[str, Any] = {}
 
-        for turn in self.item.history:
+        for turn in self._ordered_history():
             content = turn.get("content", "")
             if not content or not content.strip():
                 continue  # Skip empty / image-only turns
@@ -469,15 +581,48 @@ class ExternalScenario(Scenario):
             # graph behavior is byte-identical to the pre-#489 path.
             turn_first_instance = None
 
+            session_date = turn.get("session_date")
             for unit_text, unit_importance in units:
                 try:
-                    instance = self._model_class(
+                    instance_kwargs = dict(
                         agent_id=self._agent_id,
                         content=unit_text,
                         importance=unit_importance,
                     )
-                    result = instance.save()
-                    if result is False:
+                    if self._supersession_arm != "none" and session_date is not None:
+                        # ValidityField.on_save uses a numeric field value as
+                        # this record's OWN valid_from; a defaulted (unset)
+                        # field falls back to the real save-time clock (#692).
+                        # Without this, a first claim opens at wall-clock
+                        # "now" while a later claim's close-at is the
+                        # session's historical date, which is always earlier
+                        # than "now" -- every second-plus claim in a group
+                        # would raise ValidityCloseBeforeStartError. Setting
+                        # the field here puts the record's own interval on
+                        # the SAME timeline as the ``at=`` passed to
+                        # route_write below, so opens and closes compare
+                        # correctly against each other.
+                        instance_kwargs["validity"] = session_date
+                    instance = self._model_class(**instance_kwargs)
+                    if self._supersession_arm == "none":
+                        ok = bool(instance.save())
+                    else:
+                        # Label-blind identity: takes text and nothing else
+                        # (#692). Never consults relevant_ids/question_type.
+                        identity = supersession_axis.identity_of(unit_text)
+                        if identity is not None:
+                            self._identity_counts[identity] = (
+                                self._identity_counts.get(identity, 0) + 1
+                            )
+                            if self._identity_counts[identity] == 2:
+                                self._supersession_stats.identity_groups += 1
+                        ok = supersession_axis.route_write(
+                            instance,
+                            identity=identity,
+                            at=session_date,
+                            stats=self._supersession_stats,
+                        )
+                    if not ok:
                         logger.warning(
                             "Failed to save unit for item %s (save() returned False)",
                             self.item.item_id,
@@ -519,6 +664,16 @@ class ExternalScenario(Scenario):
                 if prev is not None:
                     try:
                         turn_first_instance.prev_turn = prev
+                        # Deliberately NOT routed through route_write/
+                        # save_and_supersede (#692, critique N2): this
+                        # re-saves a record already written to attach a graph
+                        # edge, it is not a new claim, and must not open a
+                        # new interval or close anything. Safe because
+                        # ValidityField.on_save mode "open" uses ZADD NX
+                        # gated on invalid_at absent-or-+inf
+                        # (validity_field.py:403-410), so a re-save can
+                        # neither shift an existing interval nor resurrect a
+                        # closed one.
                         turn_first_instance.save()
                         self._model_class._meta.fields["associations"].link(
                             self._model_class,
@@ -633,10 +788,18 @@ class ExternalScenario(Scenario):
             # Primary retrieval: ContextAssembler.assemble(). With both BM25 and
             # EmbeddingField present (hybrid mode) this runs _pull_path_hybrid()
             # (RRF k=60); with BM25 only it runs the lexical pull path.
+            #
+            # Explicit as_of=t (#692, Race 2): pinning t here and reusing it for
+            # ValidityField.resolve_excluded_keys(..., as_of=t) is the only
+            # correct way to read "the exclusion set that gated this call" —
+            # self._assembler._assembly_as_of is reset to None before
+            # assemble() returns and is not a usable seam.
+            as_of_t = time.time()
             try:
                 assembly_result = self._assembler.assemble(
                     query_cues={"topic": self.item.query},
                     agent_id=self._agent_id,
+                    as_of=as_of_t,
                 )
                 for record in assembly_result.records:
                     try:
@@ -658,6 +821,65 @@ class ExternalScenario(Scenario):
             )
 
         retrieval_ms = (time.monotonic() - t0) * 1000
+
+        # Supersession observability (#692). n_excluded_keys and
+        # n_excluded_hits are what turn AC2 from an assertion into an
+        # observation. Guarded to arm C only (content-identity + gating
+        # currently on + assembler path) per Risk 5 / critique R2-C1: arms A
+        # and B have nothing to diff, and the extra assemble() call would
+        # double retrieval_ms per item on those arms.
+        n_excluded_keys = 0
+        n_excluded_hits = 0
+        measurement_failures = 0
+        if (
+            self._supersession_arm != "none"
+            and self._assembler is not None
+            and "validity" in self._model_class._meta.fields
+        ):
+            n_excluded_keys = len(
+                ValidityField.resolve_excluded_keys(
+                    self._model_class, "validity", as_of=as_of_t
+                )
+            )
+            if Defaults.VALIDITY_GATING_ENABLED:
+                # Unconditionally True inside this branch (#692 review, nit 1).
+                prev_gating = True
+                Defaults.VALIDITY_GATING_ENABLED = False
+                ungated_result = None
+                try:
+                    ungated_result = self._assembler.assemble(
+                        query_cues={"topic": self.item.query},
+                        agent_id=self._agent_id,
+                        as_of=as_of_t,
+                    )
+                except Exception as e:
+                    # Measurement-only (#692 review, finding 3): this second
+                    # call exists purely to diff key sets for
+                    # n_excluded_hits and its records never reach
+                    # ScenarioResult. Letting a failure here propagate would
+                    # error the WHOLE item on arm C only -- arms A/B never
+                    # make this call -- biasing arm C's n_ok against A/B in
+                    # exactly the comparison this instrumentation exists to
+                    # support. Count it (mirrors producer_failures) and
+                    # report n_excluded_hits=0 for this item instead.
+                    logger.debug(
+                        "Measurement-only ungated assemble() failed for " "item %s: %s",
+                        self.item.item_id,
+                        e,
+                    )
+                    measurement_failures += 1
+                finally:
+                    Defaults.VALIDITY_GATING_ENABLED = prev_gating
+                if ungated_result is not None:
+                    gated_key_set = set(retrieved_keys)
+                    ungated_key_set = set()
+                    for record in ungated_result.records:
+                        try:
+                            ungated_key_set.add(record.db_key.redis_key)
+                        except Exception:
+                            pass
+                    # Measurement-only: these records never reach ScenarioResult.
+                    n_excluded_hits = len(ungated_key_set - gated_key_set)
 
         # Collapse retrieved Redis keys to ranked IDs at ONE granularity — the
         # dataset's ground-truth unit (session for LongMemEval-S, turn for
@@ -686,6 +908,11 @@ class ExternalScenario(Scenario):
                 "question_type": self.item.metadata.get("question_type", ""),
                 "retrieval_method": retrieval_method,
                 "retrieved_contents": retrieved_contents,
+                "supersession_arm": self._supersession_arm,
+                "n_excluded_keys": n_excluded_keys,
+                "n_excluded_hits": n_excluded_hits,
+                "measurement_failures": measurement_failures,
+                **self._supersession_stats.to_dict(),
             },
         )
 
@@ -696,6 +923,44 @@ class ExternalScenario(Scenario):
                 record.delete()
             except Exception:
                 pass
+
+        # Validity keyspace cleanup (#692, spike-2 side finding). REQUIRED,
+        # not hygiene: _build_external_model_class's per-item key isolation
+        # renames __name__/__qualname__ AFTER class creation, but
+        # _meta.db_class_key is captured by the metaclass at creation time
+        # from the original "ExternalBenchmarkMemory" name. ValidityField is
+        # not partition_by-scoped, so unlike the other fields these five keys
+        # (plus the per-digest open pointers) are SHARED across every item in
+        # a run, and neither of the two SCANs below matches their
+        # "$ValidityF:ExternalBenchmarkMemory:validity:*" name shape. Without
+        # this the exclusion set would grow monotonically across a run.
+        #
+        # Guarded on the DECLARED FIELD, not on the arm (Technical Approach
+        # step 5, authoritative shape): a future arm that declares validity
+        # is cleaned without editing this branch, and an arm-"none" item
+        # takes a real no-op — an unconditional DEL of names arm "none"
+        # never wrote would mask the very leak this exists to catch.
+        if (
+            self._model_class is not None
+            and "validity" in self._model_class._meta.fields
+        ):
+            try:
+                keys = ValidityField.get_all_keys(self._model_class, "validity")
+                get_REDIS_DB().delete(*keys.values())
+                prefix = ValidityField.get_prefix_db_key(
+                    self._model_class, "validity"
+                ).redis_key
+                cursor = 0
+                while True:
+                    cursor, open_keys = get_REDIS_DB().scan(
+                        cursor, match=f"{prefix}:open:*", count=200
+                    )
+                    if open_keys:
+                        get_REDIS_DB().delete(*open_keys)
+                    if cursor == 0:
+                        break
+            except Exception:
+                pass  # matches the file's existing teardown idiom below
 
         # Scan and clean by model class name
         if self._model_class:

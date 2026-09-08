@@ -56,6 +56,8 @@ from tests.benchmarks.metrics.retrieval import (
 from tests.benchmarks.scenarios.external_base import ExternalScenario
 from tests.benchmarks import judge as judge_mod
 from tests.benchmarks import extraction_axis
+from tests.benchmarks import supersession_axis
+from src.popoto.fields.constants import Defaults
 
 logging.basicConfig(
     level=logging.INFO,
@@ -299,6 +301,7 @@ def run_item(
     retrieval_mode: str = "lexical",
     extraction_provider=None,
     extraction_stats=None,
+    supersession_arm: str = "none",
 ) -> QuestionResult:
     """Run a single benchmark item through ExternalScenario.
 
@@ -307,6 +310,9 @@ def run_item(
         retrieval_mode: ``"lexical"`` (BM25 only), ``"hybrid"`` (BM25 +
             vector via RRF), or ``"vector"`` (EmbeddingField-only, pure
             cosine — harness-local diagnostic). Threaded into the scenario.
+        supersession_arm: ``"none"`` (default, byte-identical to the
+            committed baseline) or ``"content-identity"`` (#692's label-blind
+            supersession producer; see ``supersession_axis``).
 
     Returns:
         QuestionResult with recall metrics and latency.
@@ -316,6 +322,7 @@ def run_item(
         retrieval_mode=retrieval_mode,
         extraction_provider=extraction_provider,
         extraction_stats=extraction_stats,
+        supersession_arm=supersession_arm,
     )
     scenario_result = scenario.execute()
 
@@ -392,6 +399,7 @@ def compute_aggregate(
     extraction: dict = None,
     fixture: str = None,
     corpus_sampled_from: int = None,
+    supersession_arm: str = "none",
 ) -> dict:
     """Compute aggregate metrics over all question results.
 
@@ -523,11 +531,46 @@ def compute_aggregate(
         except ValueError:
             fixture_str = str(fixture_path)
 
+    # Supersession producer (#692): sum the per-item SupersessionStats dicts
+    # (each item builds its own scenario, hence its own stats instance — this
+    # is the run-level aggregate). Only meaningful for a non-"none" arm; "none"
+    # writes no supersession keys into per-item metadata at all, so the block
+    # is present but zeroed rather than absent (mirrors extraction's always-
+    # present "raw" default above — a number is never read without a label).
+    supersession_keys = (
+        "units_seen",
+        "units_with_identity",
+        "identity_groups",
+        "plain_writes",
+        "identity_writes",
+        "n_supersessions",
+        "producer_failures",
+    )
+    sup_totals = {k: 0 for k in supersession_keys}
+    sup_excluded_keys_total = 0
+    sup_excluded_hits_total = 0
+    sup_measurement_failures_total = 0
+    for r in results:
+        md = r.metadata or {}
+        for k in supersession_keys:
+            sup_totals[k] += md.get(k, 0) or 0
+        sup_excluded_keys_total += md.get("n_excluded_keys", 0) or 0
+        sup_excluded_hits_total += md.get("n_excluded_hits", 0) or 0
+        sup_measurement_failures_total += md.get("measurement_failures", 0) or 0
+    supersession_block = {
+        "arm": supersession_arm,
+        "n_excluded_keys_total": sup_excluded_keys_total,
+        "n_excluded_hits_total": sup_excluded_hits_total,
+        "measurement_failures": sup_measurement_failures_total,
+        **sup_totals,
+    }
+
     now = datetime.now(timezone.utc)
     aggregate = {
         "dataset": dataset,
         "retrieval_mode": retrieval_mode,
         "ranking_unit": ranking_unit,
+        "supersession": supersession_block,
         # Ingest arm (#489): which extraction path produced the records this
         # run retrieved over. Always present so a number can never be read
         # without knowing whether it came from raw turns or extracted facts.
@@ -916,6 +959,7 @@ def save_reports(
     dry_run: bool = False,
     judged: bool = False,
     extraction_label: str = "",
+    supersession_label: str = "",
 ) -> tuple[Path, Path]:
     """Save JSON and Markdown report files.
 
@@ -948,10 +992,15 @@ def save_reports(
     # A third dimension (#489) composes the same way: the ``raw`` ingest arm
     # keeps the unsuffixed committed-baseline name, every extraction arm adds
     # ``_ext-{label}``, so an extraction run can never clobber the baseline.
+    # A fourth dimension (#692) mirrors it again: the ``none`` supersession
+    # arm keeps the unsuffixed name, ``content-identity`` adds ``_sup-{arm}``
+    # (plus ``_nogate`` when --no-validity-gating disabled read-time exclusion),
+    # so a supersession run can never clobber the committed baseline either.
     mode_suffix = "" if retrieval_mode == "lexical" else f"_{retrieval_mode}"
     judged_suffix = "_judged" if judged else ""
     ext_suffix = f"_{extraction_label}" if extraction_label else ""
-    suffix = f"{mode_suffix}{ext_suffix}{judged_suffix}"
+    sup_suffix = f"_{supersession_label}" if supersession_label else ""
+    suffix = f"{mode_suffix}{ext_suffix}{sup_suffix}{judged_suffix}"
 
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     json_name = f"{dataset_slug}_{date_str}{suffix}.json"
@@ -1126,6 +1175,33 @@ def main():
         action="store_true",
         help="Disable the on-disk extraction cache (forces fresh API calls).",
     )
+    parser.add_argument(
+        "--supersession",
+        choices=supersession_axis.ARM_CHOICES,
+        default="none",
+        help=(
+            "Supersession producer arm (#692). 'none' (default) is "
+            "byte-identical to the committed baseline: no ValidityField, no "
+            "protocol call. 'content-identity' declares a ValidityField and "
+            "routes every write through a label-blind identity_of()/"
+            "save_and_supersede() pair, gated at read time by "
+            "Defaults.VALIDITY_GATING_ENABLED (on by default — see "
+            "--no-validity-gating). Non-'none' arms write "
+            "{slug}_{date}[_mode]_sup-{arm}[_nogate][_judged].{json,md}."
+        ),
+    )
+    parser.add_argument(
+        "--no-validity-gating",
+        action="store_true",
+        help=(
+            "With --supersession content-identity, disable read-time validity "
+            "gating (Defaults.VALIDITY_GATING_ENABLED = False) so superseded "
+            "records are still written and closed but never excluded from "
+            "retrieval — arm B of the plan's three-arm design (arm A is "
+            "--supersession none; arm C is --supersession content-identity "
+            "with gating on, the default). No effect with --supersession none."
+        ),
+    )
     args = parser.parse_args()
 
     # Judged mode is a factual-match judge over retrieved *content*; the vector
@@ -1146,6 +1222,14 @@ def main():
     # by prior/interrupted runs BEFORE any ingestion. Scoped to this entrypoint
     # so it never affects import-time behavior or the pytest db15 plugin.
     bench_db = _select_bench_db()
+    # --no-validity-gating flips the process-global Defaults.VALIDITY_GATING_ENABLED
+    # ONCE, here, before any scenario is constructed — never per-item (#692). It is
+    # restored in `finally` regardless of how the run exits, so a benchmark process
+    # never leaves the flag in a non-default state for anything importing this
+    # module (e.g. a REPL session or a future orchestrator).
+    prev_gating = Defaults.VALIDITY_GATING_ENABLED
+    if args.no_validity_gating:
+        Defaults.VALIDITY_GATING_ENABLED = False
     try:
         return _run_benchmark(args, bench_db)
     finally:
@@ -1153,6 +1237,7 @@ def main():
         # clean (issue #490). Runs on every exit path — success, error, or
         # non-zero return — because ingestion has already written keys by then.
         _teardown_bench_db(bench_db)
+        Defaults.VALIDITY_GATING_ENABLED = prev_gating
 
 
 def _run_benchmark(args, bench_db):
@@ -1323,6 +1408,7 @@ def _run_benchmark(args, bench_db):
             retrieval_mode=args.retrieval_mode,
             extraction_provider=extraction_provider,
             extraction_stats=extraction_stats,
+            supersession_arm=args.supersession,
         )
         results.append(q_result)
 
@@ -1373,6 +1459,7 @@ def _run_benchmark(args, bench_db):
         extraction=extraction_block,
         fixture=args.fixture,
         corpus_sampled_from=corpus_sampled_from,
+        supersession_arm=args.supersession,
     )
     s = aggregate["summary"]
 
@@ -1420,6 +1507,32 @@ def _run_benchmark(args, bench_db):
             f"  failures={_es['extraction_failures']}"
         )
         print(f"    Est. cost (USD)   : ${_es.get('estimated_cost_usd', 0.0):.4f}")
+    _sup = aggregate["supersession"]
+    print(
+        f"  Supersession arm    : {_sup['arm']}"
+        + (" (--no-validity-gating)" if args.no_validity_gating else "")
+    )
+    if _sup["arm"] != "none":
+        print(
+            f"    identity writes   : {_sup['identity_writes']} "
+            f"(groups={_sup['identity_groups']} "
+            f"units_with_identity={_sup['units_with_identity']}/"
+            f"{_sup['units_seen']})"
+        )
+        print(f"    supersessions     : {_sup['n_supersessions']}")
+        print(
+            f"    excluded keys/hits: {_sup['n_excluded_keys_total']} / "
+            f"{_sup['n_excluded_hits_total']}"
+        )
+        # producer_failures is printed unconditionally, even at zero
+        # (Verification row 10) -- "nothing to report" vs "producer errored
+        # on everything" must never look the same in the output.
+        print(f"    producer failures : {_sup['producer_failures']}")
+        # measurement_failures mirrors producer_failures (#692 review,
+        # finding 3): a failure in the measurement-only ungated assemble()
+        # call no longer errors the item, so this is the only signal that
+        # n_excluded_hits_total is an undercount for this run.
+        print(f"    measurement fails : {_sup['measurement_failures']}")
     print(f"  Questions evaluated : {s['n_ok']} / {s['n_total']}")
     print(f"  Errors              : {s['n_errors']}")
     print(f"  Recall@1            : {s['recall_at_1']:.4f}")
@@ -1443,6 +1556,11 @@ def _run_benchmark(args, bench_db):
 
     # Save reports
     if not args.dry_run:
+        supersession_label = ""
+        if args.supersession != "none":
+            supersession_label = f"sup-{args.supersession}"
+            if args.no_validity_gating:
+                supersession_label += "_nogate"
         json_path, md_path = save_reports(
             aggregate,
             dataset_slug,
@@ -1452,6 +1570,7 @@ def _run_benchmark(args, bench_db):
             extraction_label=extraction_axis.arm_label(
                 args.extraction, args.extraction_model
             ),
+            supersession_label=supersession_label,
         )
         print(f"\nReports saved:")
         print(f"  JSON: {json_path}")
