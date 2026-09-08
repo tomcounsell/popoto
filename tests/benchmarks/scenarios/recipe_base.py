@@ -45,6 +45,11 @@ def _build_recipe_model_class(prefix, overrides):
 
     Returns:
         A Popoto Model class configured for benchmarks.
+
+    Built with ``type()`` so the metaclass captures the unique
+    ``db_class_key`` at class creation (#701) — a post-hoc ``__name__``
+    rename would not reach ``_meta``, leaving every field's Redis namespace
+    shared across benchmark runs.
     """
     decay_rate = overrides.get("decay_rate", 0.5)
     initial_confidence = overrides.get("initial_confidence", 0.5)
@@ -53,25 +58,29 @@ def _build_recipe_model_class(prefix, overrides):
 
     # Use a unique class name to avoid Redis key collisions
     safe_prefix = prefix.replace(":", "").replace("-", "")[:8]
+    class_name = f"RecipeMem{safe_prefix}"
 
-    class RecipeMemory(WriteFilterMixin, popoto.Model):
-        _wf_min_threshold = wf_min
-        _wf_priority_threshold = wf_priority
+    def compute_filter_score(self):
+        return self.importance or 0.0
 
-        agent_id = popoto.KeyField()
-        content = popoto.StringField(default="")
-        importance = popoto.FloatField(default=0.5)
-        relevance = DecayingSortedField(
-            decay_rate=decay_rate, base_score_field="importance"
-        )
-        certainty = ConfidenceField(initial_confidence=initial_confidence)
-
-        def compute_filter_score(self):
-            return self.importance or 0.0
-
-    # Rename the class to include prefix for key isolation
-    RecipeMemory.__name__ = f"RecipeMem{safe_prefix}"
-    RecipeMemory.__qualname__ = f"RecipeMem{safe_prefix}"
+    RecipeMemory = type(
+        class_name,
+        (WriteFilterMixin, popoto.Model),
+        {
+            "__module__": __name__,
+            "__qualname__": class_name,
+            "_wf_min_threshold": wf_min,
+            "_wf_priority_threshold": wf_priority,
+            "agent_id": popoto.KeyField(),
+            "content": popoto.StringField(default=""),
+            "importance": popoto.FloatField(default=0.5),
+            "relevance": DecayingSortedField(
+                decay_rate=decay_rate, base_score_field="importance"
+            ),
+            "certainty": ConfidenceField(initial_confidence=initial_confidence),
+            "compute_filter_score": compute_filter_score,
+        },
+    )
 
     return RecipeMemory
 

@@ -798,10 +798,22 @@ class TestStaleKeySweep:
         from tests.benchmarks.run_external import _sweep_stale_benchmark_keys
 
         stale = {
+            # Pre-#701 residue shape: pre-fix classes shared the base
+            # ExternalBenchmarkMemory namespace regardless of the per-item
+            # rename, so this shape can still exist in an interrupted run
+            # that predates the fix.
             "ExternalBenchmarkMemory:abc": "1",
+            "$BM25:ExternalBenchmarkMemory:doc": "1",
+            "$ValidityF:ExternalBenchmarkMemory:validity:valid_from": "1",
             "ExtMem12345678:xyz": "1",
             "ExtMem12345678:_relevance": "1",
             "$BM25:ExtMem12345678:doc": "1",
+            # Post-#701 residue shapes: each per-item class now owns its
+            # namespace, so leaked keys carry the item's own ExtMem<hash>
+            # name across every affected field-key family.
+            "$ValidityF:ExtMem12345678:validity:valid_from": "1",
+            "$Class:ExtMem12345678": "1",
+            "$KeyF:ExtMem12345678:agent_id:x": "1",
         }
         keeper = "SomeOtherModel:keepme"
         for k, v in stale.items():
@@ -814,6 +826,35 @@ class TestStaleKeySweep:
         for k in stale:
             assert POPOTO_REDIS_DB.exists(k) == 0
         # Unrelated keys are untouched.
+        assert POPOTO_REDIS_DB.exists(keeper) == 1
+        POPOTO_REDIS_DB.delete(keeper)
+
+    def test_sweeps_pre_701_shared_name_field_keys(self):
+        """Regression (#701 review): the README states that the retained
+        pre-#701 patterns keep sweeping residue from older runs. That was true
+        only of the *model* keys until ``*:ExternalBenchmarkMemory*`` was
+        added: a pre-fix run wrote its field keys under the shared base-class
+        name, and ``*:ExtMem*`` cannot match those ("ExternalBenchmarkMemory"
+        does not contain the substring "ExtMem"). This pins the claim with a
+        test instead of prose."""
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+        from tests.benchmarks.run_external import _sweep_stale_benchmark_keys
+
+        pre_701 = {
+            "$BM25:ExternalBenchmarkMemory:doc": "1",
+            "$ValidityF:ExternalBenchmarkMemory:validity:valid_from": "1",
+            "ExternalBenchmarkMemory:abc": "1",
+        }
+        keeper = "SomeOtherModel:keepme"
+        for k, v in pre_701.items():
+            POPOTO_REDIS_DB.set(k, v)
+        POPOTO_REDIS_DB.set(keeper, "1")
+
+        swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB)
+
+        assert swept >= len(pre_701)
+        for k in pre_701:
+            assert POPOTO_REDIS_DB.exists(k) == 0
         assert POPOTO_REDIS_DB.exists(keeper) == 1
         POPOTO_REDIS_DB.delete(keeper)
 
@@ -1203,7 +1244,18 @@ class TestSupersessionArm:
 
     def test_no_leaked_validity_keys_after_teardown(self):
         """Verification row 8 / Success Criterion 7 -- direct regression test
-        for the spike-2 side finding's key-leak hazard."""
+        for the spike-2 side finding's key-leak hazard.
+
+        Widened for coverage (#701, critique C2): the plan's original
+        `$ValidityF:*` scan is not vacuous post-fix (it is a field-type-wide
+        wildcard that keeps matching under any class name), but it misses
+        `$Class:*`, `$ConfidencF:*`, `$KeyF:*`, `$DecayingSortF:*` and the
+        record hashes that spike-2 showed are equally affected. Assert the
+        pre-teardown keyspace is non-empty first (Risk 2's vacuity guard),
+        then assert zero keys survive under either the un-renamed base class
+        name or this item's own ExtMem<hash> name -- derived independently
+        here, not imported from teardown()'s own pattern constant (C1).
+        """
         from src.popoto.redis_db import get_REDIS_DB
         from tests.benchmarks.scenarios.external_base import ExternalScenario
 
@@ -1212,41 +1264,124 @@ class TestSupersessionArm:
             retrieval_mode="lexical",
             supersession_arm="content-identity",
         )
-        scenario.execute()
+        scenario.setup()
+        class_name = scenario._model_class.__name__
+        try:
+            scenario.run()
 
-        cursor = 0
-        found: list = []
-        while True:
-            cursor, keys = get_REDIS_DB().scan(cursor, match="$ValidityF:*", count=200)
-            found.extend(keys)
-            if cursor == 0:
-                break
-        assert found == []
+            def _scan_all(match):
+                cursor = 0
+                found: list = []
+                while True:
+                    cursor, keys = get_REDIS_DB().scan(cursor, match=match, count=200)
+                    found.extend(keys)
+                    if cursor == 0:
+                        break
+                return found
+
+            pre_teardown = _scan_all(f"*{class_name}*")
+            assert pre_teardown, (
+                "expected a non-empty keyspace before teardown -- an empty "
+                "pre-teardown scan would make the post-teardown assertion "
+                "vacuous (Risk 2)"
+            )
+        finally:
+            scenario.teardown()
+
+        assert _scan_all("*ExternalBenchmarkMemory*") == []
+        assert _scan_all(f"*{class_name}*") == []
 
     def test_teardown_on_arm_none_is_real_noop(self):
-        """Verification row 8b: teardown on an arm-none item does not raise,
-        AND a pre-seeded sentinel under the shared validity keyspace
-        survives -- proving the guard is not vacuous (critique C1)."""
+        """Verification row 8b / Success Criterion 5: the explicit validity
+        branch in teardown() is evaluated conditionally, not unconditionally.
+
+        Rebuilt, not merely re-pointed (#701, critique C3/C7). After #701
+        each per-item class owns a distinct namespace, so a foreign sentinel
+        seeded under a *different* class's validity keys is unreachable by
+        any teardown behavior and would pass unconditionally -- the #661
+        vacuity trap. A key-count assertion on the arm-none class's own
+        keyspace does not repair this either: `ValidityField.get_all_keys()`
+        derives its five key names purely from `_meta.db_class_key`, never
+        consulting `_meta.fields`, so on a class that declares no `validity`
+        field an *unconditional* delete removes nothing and a before/after
+        count is identical whether the guard is present or not.
+
+        The only mutation-falsifiable proof is that the guard's condition
+        (`"validity" in self._model_class._meta.fields`) is actually what
+        gates the call to `ValidityField.get_all_keys`. Two independent legs:
+
+        (a) Guard-evaluation leg -- the falsifiability proof. Spy on
+            `ValidityField.get_all_keys` and assert the arm-none scenario's
+            own `_model_class` never appears as the call's first positional
+            argument (matched by identity, not by name), while a
+            validity-declaring scenario's class does. Deleting the
+            `"validity" in ...` guard (making the delete unconditional) turns
+            this red immediately.
+        (b) Key-deletion leg -- independent. A validity-declaring scenario's
+            seeded sentinel is actually removed by teardown(). This catches
+            deletion of the branch; it is not the falsifiability proof.
+        """
+        from unittest.mock import patch
+
         from src.popoto.fields.validity_field import ValidityField
         from src.popoto.redis_db import get_REDIS_DB
-        from tests.benchmarks.scenarios.external_base import (
-            ExternalScenario,
-            _build_external_model_class,
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        none_scenario = ExternalScenario(
+            item=self._update_item(), retrieval_mode="lexical"
+        )
+        validity_scenario = ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
         )
 
-        validity_cls = _build_external_model_class("teardownchk", with_validity=True)
-        keys = ValidityField.get_all_keys(validity_cls, "validity")
-        sentinel_key = next(iter(keys.values()))
+        with patch.object(
+            ValidityField, "get_all_keys", wraps=ValidityField.get_all_keys
+        ) as spy:
+            none_result = none_scenario.execute()  # arm "none" -- must not raise
+            assert none_result.status == "ok"
+            none_model_class = none_scenario._model_class
+            assert "validity" not in none_model_class._meta.fields
+
+            validity_result = validity_scenario.execute()
+            assert validity_result.status == "ok"
+            validity_model_class = validity_scenario._model_class
+            assert "validity" in validity_model_class._meta.fields
+
+        # (a) Guard-evaluation leg: the arm-none class's own instance is
+        # never passed to get_all_keys (identity, not name -- a same-named
+        # class from another factory must not satisfy this).
+        none_calls = [
+            c for c in spy.call_args_list if c.args and c.args[0] is none_model_class
+        ]
+        assert none_calls == []
+
+        validity_calls = [
+            c
+            for c in spy.call_args_list
+            if c.args and c.args[0] is validity_model_class
+        ]
+        assert validity_calls, (
+            "expected teardown() to call ValidityField.get_all_keys for a "
+            "scenario whose class declares a validity field"
+        )
+
+        # (b) Key-deletion leg (independent): seed a sentinel under a fresh
+        # validity-declaring class's own keyspace and confirm teardown()
+        # actually removes it.
+        seed_scenario = ExternalScenario(
+            item=self._update_item(),
+            retrieval_mode="lexical",
+            supersession_arm="content-identity",
+        )
+        seed_scenario.setup()
+        seed_keys = ValidityField.get_all_keys(seed_scenario._model_class, "validity")
+        sentinel_key = next(iter(seed_keys.values()))
         get_REDIS_DB().zadd(sentinel_key, {"sentinel-member": 1})
-        try:
-            scenario = ExternalScenario(
-                item=self._update_item(), retrieval_mode="lexical"
-            )
-            result = scenario.execute()  # arm "none" -- must not raise
-            assert result.status == "ok"
-            assert get_REDIS_DB().zscore(sentinel_key, "sentinel-member") == 1.0
-        finally:
-            get_REDIS_DB().delete(sentinel_key)
+        seed_scenario.run()
+        seed_scenario.teardown()
+        assert get_REDIS_DB().zscore(sentinel_key, "sentinel-member") is None
 
     def test_ordered_history_unchanged_on_none_sorted_on_content_identity(self):
         """Verification row 8c, asserted directly on the helper."""

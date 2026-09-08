@@ -107,12 +107,28 @@ BENCH_DB_DEFAULT = 14
 # Key patterns left behind by prior/interrupted runs. ExtMem* covers the
 # per-item model keys and their sorted-index keys (ExtMem<hash>:_relevance,
 # etc.); $BM25:ExtMem* covers the BM25 index keys; ExternalBenchmarkMemory:*
-# covers any keys written under the un-renamed base class name. All are literal
-# outside the trailing glob (``$`` is not a Redis SCAN metacharacter).
+# covers any keys written under the pre-#701 un-renamed base class name (kept
+# so residue from pre-fix runs is still swept). *:ExtMem* covers every
+# special-use field key family that carries the class name *after* a colon
+# rather than as a leading prefix — $Class:ExtMem<hash>, $ValidityF:ExtMem
+# <hash>:validity:*, $ConfidencF:ExtMem<hash>:certainty:data,
+# $KeyF:ExtMem<hash>:agent_id:*, $DecayingSortF:ExtMem<hash>:relevance:* (#701
+# spike-2) — none of which the plain "ExtMem*" prefix pattern reaches. All are
+# literal outside the trailing glob (``$`` is not a Redis SCAN metacharacter).
+#
+# *:ExternalBenchmarkMemory* is the pre-#701 counterpart of *:ExtMem* (#701
+# review): a pre-fix run wrote its field keys under the shared base-class name,
+# producing $BM25:ExternalBenchmarkMemory:*, $ValidityF:ExternalBenchmarkMemory:*
+# and friends. "ExternalBenchmarkMemory:*" only reaches that era's *model* keys,
+# and "*:ExtMem*" cannot match these at all ("ExternalBenchmarkMemory" does not
+# contain the substring "ExtMem"), so without this pattern the sweep silently
+# left the older field-key families behind.
 _STALE_KEY_PATTERNS = (
     "ExternalBenchmarkMemory:*",
+    "*:ExternalBenchmarkMemory*",
     "ExtMem*",
     "$BM25:ExtMem*",
+    "*:ExtMem*",
 )
 
 

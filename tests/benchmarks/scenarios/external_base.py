@@ -80,7 +80,7 @@ from src.popoto.fields.embedding_field import (
 )
 from src.popoto.fields.validity_field import ValidityField
 from src.popoto.recipes.context_assembler import ContextAssembler
-from src.popoto.redis_db import POPOTO_REDIS_DB, get_REDIS_DB
+from src.popoto.redis_db import get_REDIS_DB
 
 from .. import supersession_axis
 from ..datasets import GROUND_TRUTH_UNITS, BenchmarkItem, ground_truth_unit
@@ -143,37 +143,51 @@ def _build_graph_model_class(safe_prefix: str, with_validity: bool = False):
     datasets without inventing an extraction model, and it is stated
     explicitly in the report so the number is not read as "popoto's semantic
     graph".
+
+    Built with ``type()`` so the metaclass captures the unique
+    ``db_class_key`` at class creation (#701) — a post-hoc ``__name__``
+    rename would not reach ``_meta``, leaving every field's Redis namespace
+    shared across items.
     """
     from src.popoto.fields.relationship import Relationship
 
-    class ExternalBenchmarkMemory(popoto.Model):
-        turn_id = popoto.AutoKeyField()
-        agent_id = popoto.KeyField()
-        content = popoto.StringField(default="")
-        importance = popoto.FloatField(default=0.5)
-        relevance = DecayingSortedField(
-            decay_rate=0.5,
-            base_score_field="importance",
-            partition_by="agent_id",
-        )
-        certainty = ConfidenceField(initial_confidence=0.5)
-        content_index = BM25Field(source="content")
-        associations = CoOccurrenceField(symmetric=True, max_edges=100)
+    class_name = f"ExtMem{safe_prefix}"
+    ExternalBenchmarkMemory = type(
+        class_name,
+        (popoto.Model,),
+        {
+            "__module__": __name__,
+            "__qualname__": class_name,
+            "turn_id": popoto.AutoKeyField(),
+            "agent_id": popoto.KeyField(),
+            "content": popoto.StringField(default=""),
+            "importance": popoto.FloatField(default=0.5),
+            "relevance": DecayingSortedField(
+                decay_rate=0.5,
+                base_score_field="importance",
+                partition_by="agent_id",
+            ),
+            "certainty": ConfidenceField(initial_confidence=0.5),
+            "content_index": BM25Field(source="content"),
+            "associations": CoOccurrenceField(symmetric=True, max_edges=100),
+        },
+    )
 
     if with_validity:
         # Declared iff the supersession arm is active (#692). See the module
         # docstring and docs/plans/sdlc-692.md for why this is a benchmark
         # harness decision, not a src/ default (#693 owns that question).
+        # Name-independent: ValidityField derives its keys at call time from
+        # _meta.db_class_key, which is already correct once the class is
+        # born with its final name.
         ExternalBenchmarkMemory.validity = ValidityField()
         ExternalBenchmarkMemory._meta.add_field(
             "validity", ExternalBenchmarkMemory.validity
         )
 
-    ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
-    ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
     # Self-referential Relationship must be registered post-hoc — the class
     # object does not exist inside its own body (same pattern as
-    # tests/test_graph_traversal.py).
+    # tests/test_graph_traversal.py). Name-independent, stays post-hoc.
     ExternalBenchmarkMemory.prev_turn = Relationship(
         model=ExternalBenchmarkMemory, null=True
     )
@@ -219,73 +233,103 @@ def _build_external_model_class(
     Returns:
         A new Popoto Model class with agent_id, content, importance, relevance,
         certainty, and the selected retrieval field(s).
+
+    Built with ``type()`` so the metaclass captures the unique
+    ``db_class_key`` at class creation (#701) — a post-hoc ``__name__``
+    rename would not reach ``_meta``, leaving every field's Redis namespace
+    shared across items. One literal ``type()`` call per mutually exclusive
+    variant, mirroring the pre-conversion ``class`` blocks 1:1.
     """
+
+    class_name = f"ExtMem{safe_prefix}"
 
     if with_bm25 and with_embedding:
 
-        class ExternalBenchmarkMemory(popoto.Model):
-            turn_id = popoto.AutoKeyField()
-            agent_id = popoto.KeyField()
-            content = popoto.StringField(default="")
-            importance = popoto.FloatField(default=0.5)
-            relevance = DecayingSortedField(
-                decay_rate=0.5,
-                base_score_field="importance",
-                partition_by="agent_id",
-            )
-            certainty = ConfidenceField(initial_confidence=0.5)
-            content_index = BM25Field(source="content")
-            embedding = EmbeddingField(
-                source="content",
-                provider=_get_shared_provider(),
-            )
+        ExternalBenchmarkMemory = type(
+            class_name,
+            (popoto.Model,),
+            {
+                "__module__": __name__,
+                "__qualname__": class_name,
+                "turn_id": popoto.AutoKeyField(),
+                "agent_id": popoto.KeyField(),
+                "content": popoto.StringField(default=""),
+                "importance": popoto.FloatField(default=0.5),
+                "relevance": DecayingSortedField(
+                    decay_rate=0.5,
+                    base_score_field="importance",
+                    partition_by="agent_id",
+                ),
+                "certainty": ConfidenceField(initial_confidence=0.5),
+                "content_index": BM25Field(source="content"),
+                "embedding": EmbeddingField(
+                    source="content",
+                    provider=_get_shared_provider(),
+                ),
+            },
+        )
 
     elif with_embedding:
 
         # Vector-only: EmbeddingField, no BM25Field. Ranked by pure cosine in
         # ExternalScenario.run() (the assembler is bypassed for this mode).
-        class ExternalBenchmarkMemory(popoto.Model):
-            turn_id = popoto.AutoKeyField()
-            agent_id = popoto.KeyField()
-            content = popoto.StringField(default="")
-            importance = popoto.FloatField(default=0.5)
-            relevance = DecayingSortedField(
-                decay_rate=0.5,
-                base_score_field="importance",
-                partition_by="agent_id",
-            )
-            certainty = ConfidenceField(initial_confidence=0.5)
-            embedding = EmbeddingField(
-                source="content",
-                provider=_get_shared_provider(),
-            )
+        ExternalBenchmarkMemory = type(
+            class_name,
+            (popoto.Model,),
+            {
+                "__module__": __name__,
+                "__qualname__": class_name,
+                "turn_id": popoto.AutoKeyField(),
+                "agent_id": popoto.KeyField(),
+                "content": popoto.StringField(default=""),
+                "importance": popoto.FloatField(default=0.5),
+                "relevance": DecayingSortedField(
+                    decay_rate=0.5,
+                    base_score_field="importance",
+                    partition_by="agent_id",
+                ),
+                "certainty": ConfidenceField(initial_confidence=0.5),
+                "embedding": EmbeddingField(
+                    source="content",
+                    provider=_get_shared_provider(),
+                ),
+            },
+        )
 
     else:
 
-        class ExternalBenchmarkMemory(popoto.Model):
-            turn_id = popoto.AutoKeyField()
-            agent_id = popoto.KeyField()
-            content = popoto.StringField(default="")
-            importance = popoto.FloatField(default=0.5)
-            relevance = DecayingSortedField(
-                decay_rate=0.5,
-                base_score_field="importance",
-                partition_by="agent_id",
-            )
-            certainty = ConfidenceField(initial_confidence=0.5)
-            content_index = BM25Field(source="content")
+        ExternalBenchmarkMemory = type(
+            class_name,
+            (popoto.Model,),
+            {
+                "__module__": __name__,
+                "__qualname__": class_name,
+                "turn_id": popoto.AutoKeyField(),
+                "agent_id": popoto.KeyField(),
+                "content": popoto.StringField(default=""),
+                "importance": popoto.FloatField(default=0.5),
+                "relevance": DecayingSortedField(
+                    decay_rate=0.5,
+                    base_score_field="importance",
+                    partition_by="agent_id",
+                ),
+                "certainty": ConfidenceField(initial_confidence=0.5),
+                "content_index": BM25Field(source="content"),
+            },
+        )
 
     if with_validity:
         # Declared iff the supersession arm is active (#692); see module
         # docstring and docs/plans/sdlc-692.md. Not a src/ change — #693 owns
         # whether save-only inertness should gain a default producer.
+        # Name-independent: ValidityField derives its keys at call time from
+        # _meta.db_class_key, which is already correct once the class is
+        # born with its final name.
         ExternalBenchmarkMemory.validity = ValidityField()
         ExternalBenchmarkMemory._meta.add_field(
             "validity", ExternalBenchmarkMemory.validity
         )
 
-    ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
-    ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
     return ExternalBenchmarkMemory
 
 
@@ -924,16 +968,18 @@ class ExternalScenario(Scenario):
             except Exception:
                 pass
 
-        # Validity keyspace cleanup (#692, spike-2 side finding). REQUIRED,
-        # not hygiene: _build_external_model_class's per-item key isolation
-        # renames __name__/__qualname__ AFTER class creation, but
-        # _meta.db_class_key is captured by the metaclass at creation time
-        # from the original "ExternalBenchmarkMemory" name. ValidityField is
-        # not partition_by-scoped, so unlike the other fields these five keys
-        # (plus the per-digest open pointers) are SHARED across every item in
-        # a run, and neither of the two SCANs below matches their
-        # "$ValidityF:ExternalBenchmarkMemory:validity:*" name shape. Without
-        # this the exclusion set would grow monotonically across a run.
+        # Validity keyspace cleanup (#692, spike-2 side finding). Every
+        # per-item class is now born with its final ExtMem<hash> name (#701),
+        # so _meta.db_class_key — and every field's Redis namespace,
+        # including ValidityField's — is unique per item from class creation.
+        # This branch is therefore no longer required for correctness: the
+        # unanchored *{class_name}* SCAN two blocks below already reaches
+        # these keys. It stays as targeted, cheap cleanup that runs before
+        # that broader scan, and its guard is still load-bearing for a
+        # different reason: it is what test_teardown_on_arm_none_is_real_noop
+        # exercises to prove that an item declaring no validity field takes a
+        # genuine no-op path rather than an unconditional (and therefore
+        # unfalsifiable) delete.
         #
         # Guarded on the DECLARED FIELD, not on the arm (Technical Approach
         # step 5, authoritative shape): a future arm that declares validity
@@ -962,17 +1008,35 @@ class ExternalScenario(Scenario):
             except Exception:
                 pass  # matches the file's existing teardown idiom below
 
-        # Scan and clean by model class name
+        # Scan and clean by model class name. Two passes: the prefix-anchored
+        # {class_name}:* pass is the cheap sweep for record hashes; the
+        # unanchored *{class_name}* pass (#701) additionally catches keys
+        # with nothing after the class name, e.g. $Class:ExtMem<hash>
+        # (ModelOptions.__init__ creates it as DB_key("$Class", db_class_key)
+        # — a *:{class_name}:* form cannot match it). Kept additive so the
+        # cheaper prefix-anchored scan still runs first.
         if self._model_class:
             class_name = self._model_class.__name__
             try:
                 cursor = 0
                 while True:
-                    cursor, keys = POPOTO_REDIS_DB.scan(
+                    cursor, keys = get_REDIS_DB().scan(
                         cursor, match=f"{class_name}:*", count=200
                     )
                     if keys:
-                        POPOTO_REDIS_DB.delete(*keys)
+                        get_REDIS_DB().delete(*keys)
+                    if cursor == 0:
+                        break
+            except Exception:
+                pass
+            try:
+                cursor = 0
+                while True:
+                    cursor, keys = get_REDIS_DB().scan(
+                        cursor, match=f"*{class_name}*", count=200
+                    )
+                    if keys:
+                        get_REDIS_DB().delete(*keys)
                     if cursor == 0:
                         break
             except Exception:
@@ -983,11 +1047,11 @@ class ExternalScenario(Scenario):
             agent_prefix = self._agent_id.replace(":", "").replace("-", "")[:12]
             cursor = 0
             while True:
-                cursor, keys = POPOTO_REDIS_DB.scan(
+                cursor, keys = get_REDIS_DB().scan(
                     cursor, match=f"*{agent_prefix}*", count=200
                 )
                 if keys:
-                    POPOTO_REDIS_DB.delete(*keys)
+                    get_REDIS_DB().delete(*keys)
                 if cursor == 0:
                     break
         except Exception:

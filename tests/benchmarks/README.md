@@ -128,8 +128,11 @@ pytest tests/benchmarks/ -x -q
 
 The external harness (`run_external.py`) is a **benchmark, not a pytest test**,
 so the pytest db15 test-isolation plugin does **not** apply to it. Each
-benchmark item writes `ExternalBenchmarkMemory` / `ExtMem<hash>` model keys (and
-`$BM25:ExtMem<hash>*` BM25 index keys) to Redis. `ExternalScenario.teardown()`
+benchmark item writes `ExtMem<hash>` model keys plus the special-use field keys
+derived from that name (`$BM25:ExtMem<hash>*`, `$Class:ExtMem<hash>`,
+`$ValidityF:`/`$ConfidencF:`/`$KeyF:`/`$DecayingSortF:ExtMem<hash>*`) to Redis.
+Runs from before #701 wrote those field keys under the shared
+`ExternalBenchmarkMemory` name instead. `ExternalScenario.teardown()`
 deletes them per-item, but a **killed / interrupted / wedged** run leaves that
 residue behind permanently — and if the harness shares db0 with a live store,
 the residue pollutes it (a dogfood machine accumulated **1,825** leaked keys).
@@ -145,8 +148,16 @@ collection and the db15 plugin are unaffected):
    misconfiguration can't repollute the live database. Host/port/auth from
    `REDIS_URL` are preserved.
 2. **Startup sweep.** Before any ingestion the harness `SCAN`s (non-blocking,
-   Valkey-safe) and `DEL`s any stale `ExternalBenchmarkMemory:*` / `ExtMem*` /
-   `$BM25:ExtMem*` keys left by a prior run on the bench DB, logging the count.
+   Valkey-safe) and `DEL`s any stale `ExternalBenchmarkMemory:*` /
+   `*:ExternalBenchmarkMemory*` / `ExtMem*` / `$BM25:ExtMem*` / `*:ExtMem*`
+   keys left by a prior run on the bench DB, logging the count. The
+   unanchored `*:ExtMem*` pattern (#701) is what reaches the field-key
+   families that carry the class name *after* a colon rather than as a
+   leading prefix; `*:ExternalBenchmarkMemory*` is its pre-#701 counterpart,
+   so residue from older runs is swept for both the model keys and those
+   field-key families (pinned by
+   `test_sweeps_pre_701_shared_name_field_keys`). The authoritative list is
+   `_STALE_KEY_PATTERNS` in `run_external.py`.
 
 ### Cleaning existing db0 pollution
 
@@ -155,12 +166,12 @@ non-blocking `SCAN`+`DEL` (works on both Redis and Valkey — no modules):
 
 ```bash
 # Dry run first — list what would be deleted (per pattern):
-for p in 'ExternalBenchmarkMemory:*' 'ExtMem*' '$BM25:ExtMem*'; do
+for p in 'ExternalBenchmarkMemory:*' '*:ExternalBenchmarkMemory*' 'ExtMem*' '$BM25:ExtMem*' '*:ExtMem*'; do
   redis-cli -n 0 --scan --pattern "$p"
 done
 
 # Delete them (redis-cli --scan streams via SCAN, not the blocking KEYS):
-for p in 'ExternalBenchmarkMemory:*' 'ExtMem*' '$BM25:ExtMem*'; do
+for p in 'ExternalBenchmarkMemory:*' '*:ExternalBenchmarkMemory*' 'ExtMem*' '$BM25:ExtMem*' '*:ExtMem*'; do
   redis-cli -n 0 --scan --pattern "$p" | xargs -r -L 100 redis-cli -n 0 DEL
 done
 ```
@@ -264,14 +275,18 @@ Every number produced under this axis carries Python version, redis-py
 version, platform, Redis DB, and the baseline commit SHA, per repo doctrine.
 Numbers from different redis-py versions are not compared.
 
-**Known limitation (tracked separately, not fixed by this axis):** every
-externally-built model class shares one Redis key namespace for `ValidityField`
-regardless of its per-item `safe_prefix`, because `_meta.db_class_key` is
-captured at class-creation time, before `_build_external_model_class`'s
-post-hoc `__name__`/`__qualname__` rename reaches it. `ExternalScenario.teardown()`
-explicitly deletes the shared keys after every item specifically to contain
-this, so cross-item contamination does not leak into results — but a true
-per-item namespace is still open work. See the follow-up issue filed from #692.
+**Fixed (#701):** every per-item benchmark model class is now built with
+`type(class_name, bases, namespace_dict)` rather than a `class` statement
+followed by a post-hoc `cls.__name__` rename. `_meta.db_class_key` (and
+every field's derived Redis key — `$Class:`, `$ValidityF:`, `$ConfidencF:`,
+`$KeyF:`, `$DecayingSortF:`, and the record hash itself) is captured once,
+at class-creation time, from the name the metaclass actually sees — so a
+post-hoc rename never reached it and every affected field shared one
+namespace across items, not only `ValidityField`. `ExternalScenario.teardown()`
+still deletes the per-item and per-class-name keyspace as before, now as
+cheap targeted cleanup rather than the sole thing preventing cross-item
+contamination — see `tests/benchmarks/test_model_class_namespacing.py` for
+the construction-invariant coverage.
 
 ## Adding a New Constant
 

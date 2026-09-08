@@ -110,6 +110,11 @@ def _build_model(prefix, with_cooccur=True):
     ``graph`` arms share identical field sets and differ only by the
     ``graph_traversal_relationship_fields`` kwarg, so the cooccur→graph delta
     isolates PR #483's relationship-walk contribution exactly.
+
+    Built with ``type()`` so the metaclass captures the unique
+    ``db_class_key`` at class creation (#701) — a post-hoc ``__name__``
+    rename would not reach ``_meta``, leaving every field's Redis namespace
+    shared across trials.
     """
     from src import popoto
     from src.popoto.fields.bm25_field import BM25Field
@@ -118,39 +123,56 @@ def _build_model(prefix, with_cooccur=True):
     from src.popoto.fields.decaying_sorted_field import DecayingSortedField
     from src.popoto.fields.relationship import Relationship
 
+    class_name = f"Assoc{prefix}"
+
     if with_cooccur:
 
-        class AssocMemory(popoto.Model):
-            mem_id = popoto.AutoKeyField()
-            agent_id = popoto.KeyField()
-            content = popoto.StringField(default="")
-            importance = popoto.FloatField(default=0.5)
-            relevance = DecayingSortedField(
-                decay_rate=0.5,
-                base_score_field="importance",
-                partition_by="agent_id",
-            )
-            certainty = ConfidenceField(initial_confidence=0.5)
-            content_index = BM25Field(source="content")
-            associations = CoOccurrenceField(symmetric=True, max_edges=100)
+        AssocMemory = type(
+            class_name,
+            (popoto.Model,),
+            {
+                "__module__": __name__,
+                "__qualname__": class_name,
+                "mem_id": popoto.AutoKeyField(),
+                "agent_id": popoto.KeyField(),
+                "content": popoto.StringField(default=""),
+                "importance": popoto.FloatField(default=0.5),
+                "relevance": DecayingSortedField(
+                    decay_rate=0.5,
+                    base_score_field="importance",
+                    partition_by="agent_id",
+                ),
+                "certainty": ConfidenceField(initial_confidence=0.5),
+                "content_index": BM25Field(source="content"),
+                "associations": CoOccurrenceField(symmetric=True, max_edges=100),
+            },
+        )
 
     else:
 
-        class AssocMemory(popoto.Model):
-            mem_id = popoto.AutoKeyField()
-            agent_id = popoto.KeyField()
-            content = popoto.StringField(default="")
-            importance = popoto.FloatField(default=0.5)
-            relevance = DecayingSortedField(
-                decay_rate=0.5,
-                base_score_field="importance",
-                partition_by="agent_id",
-            )
-            certainty = ConfidenceField(initial_confidence=0.5)
-            content_index = BM25Field(source="content")
+        AssocMemory = type(
+            class_name,
+            (popoto.Model,),
+            {
+                "__module__": __name__,
+                "__qualname__": class_name,
+                "mem_id": popoto.AutoKeyField(),
+                "agent_id": popoto.KeyField(),
+                "content": popoto.StringField(default=""),
+                "importance": popoto.FloatField(default=0.5),
+                "relevance": DecayingSortedField(
+                    decay_rate=0.5,
+                    base_score_field="importance",
+                    partition_by="agent_id",
+                ),
+                "certainty": ConfidenceField(initial_confidence=0.5),
+                "content_index": BM25Field(source="content"),
+            },
+        )
 
-    AssocMemory.__name__ = f"Assoc{prefix}"
-    AssocMemory.__qualname__ = f"Assoc{prefix}"
+    # Self-referential Relationship must be registered post-hoc — the class
+    # object does not exist inside its own body. Name-independent, stays
+    # post-hoc.
     AssocMemory.related = Relationship(model=AssocMemory, null=True)
     AssocMemory._meta.add_field("related", AssocMemory.related)
     return AssocMemory
