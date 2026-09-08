@@ -446,35 +446,235 @@ which is out of scope.
 
 ## No-Gos (Out of Scope)
 
-_(skeleton)_
+Nothing deferred — every relevant item is in scope for this plan. What this plan
+does not touch is not deferred work: `resolve_pressure`, `import_state` and
+`on_delete` are single blind writes that are *already* atomic (spike-4), so there
+is nothing to fix in them; whole-`save()` transactionality, unifying the scoring
+script, and the `write_filter.py` import straggler are named under **Rabbit Holes**
+as avenues to avoid, not as promises. The anti-criteria in **Verification** assert
+that the untouched writers stay untouched.
 
 ## Update System
 
-_(skeleton)_
+No update-system changes required. popoto is a library plus an mkdocs site; this
+change is internal to two modules, adds no dependency, no config, and no data
+migration — the stored payload shape is byte-compatible before and after (the only
+difference is msgpack integer-vs-float encoding of integral values, which every
+reader already accepts, including the pre-existing `CYCLIC_DECAY_LUA` scorer and
+older popoto versions).
 
 ## Agent Integration
 
-_(skeleton)_
+No agent integration required. This is a field-internal correctness fix; no new
+public surface, no MCP tool, no entry point. `popoto.get_redis()` and the field's
+public methods keep their signatures.
 
 ## Documentation
 
-_(skeleton)_
+### Feature Documentation
+- [ ] `docs/features/cyclic-decay-field.md:165-180` — **delete** the "queue the
+      **save first**" pipeline caveat and its worked example; replace with a short
+      statement that both writers are atomic server-side and pipeline ordering no
+      longer matters for them, plus the one new fact a user can observe (the
+      companion write executes eagerly, not at `pipeline.execute()`).
+- [ ] Same file — note that integral amplitudes may read back as `int` (Risk 1) and
+      that popoto coerces at its own boundaries.
+- [ ] `docs/features/README.md` — index entry already exists; verify no text there
+      repeats the deleted caveat.
+
+### External Documentation Site
+- [ ] `mkdocs build --strict` passes.
+
+### Inline Documentation
+- [ ] `CyclicDecayField.on_save` docstring (`:542-597`) — remove the "an amplitude
+      adjustment queued on the *same* pipeline as this save is still lost" paragraph;
+      state instead that the companion write is one eager atomic script, and why it
+      is eager (Risk 2 / #476 precedent).
+- [ ] `Model._adjust_cycle_amplitudes` docstring (`:2703-2723`) — the long comment
+      explaining why the 4th slot is repacked untouched must survive the port; the
+      property is now enforced by the Lua, so the comment moves next to it.
+- [ ] Both Lua scripts get header comments in the style of `CYCLIC_DECAY_LUA`
+      (`:60-68`): KEYS/ARGV layout, and an explicit note that the return value is
+      `cmsgpack`-packed because bare Lua numbers are truncated to integers over the
+      protocol.
 
 ## Success Criteria
 
-_(skeleton)_
+- [ ] A concurrency test (N threads interleaving `save()` with `strengthen_cycle()`
+      on one member) ends with the amplitude equal to `declared * factor**K` for the
+      K adjustments performed — no lost updates.
+- [ ] The same test, run against pre-fix `main`, **fails** — red-state output pasted
+      into the PR description (spike-3).
+- [ ] A concurrency test for `save()` vs `resolve_pressure()` shows `last_resolved`
+      never regresses.
+- [ ] Every existing test in `tests/test_cyclic_decay_field.py` passes **unmodified**,
+      except where a test spied on `hget`/`hset` directly (Test Impact).
+- [ ] `grep` confirms no client-side `hget` of either companion hash remains in
+      `on_save` or `_adjust_cycle_amplitudes`.
+- [ ] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
+- [ ] The "queue the save first" caveat is gone from the docstring and the docs page.
+- [ ] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
+- [ ] `scripts/mypy_ratchet.py`, `ruff check src/`, `black --check src/ tests/`,
+      `mkdocs build --strict` all pass.
+- [ ] Documentation updated (`/do-docs`).
+- [ ] No xfail conversions needed (none exist for this bug).
 
 ## Team Orchestration
 
-_(skeleton)_
+### Team Members
+
+- **Builder (lua-scripts)**
+  - Name: `cycles-lua-builder`
+  - Role: Write both Lua scripts and port the two call sites.
+  - Agent Type: builder
+  - Domain: Redis/Popoto data — see `DOMAIN_FRAMING.md`
+  - Resume: true
+
+- **Builder (tests)**
+  - Name: `atomicity-test-builder`
+  - Role: Concurrency tests plus the red-state proof against pre-fix code.
+  - Agent Type: test-engineer
+  - Domain: async/concurrency — see `DOMAIN_FRAMING.md`
+  - Resume: true
+
+- **Validator**
+  - Name: `cycles-validator`
+  - Role: Verify #698/#679 semantics are bit-identical after the port and run the
+    verification table.
+  - Agent Type: validator
+  - Resume: true
+
+- **Documentarian**
+  - Name: `cycles-doc`
+  - Role: Docstrings + `docs/features/cyclic-decay-field.md`.
+  - Agent Type: documentarian
+  - Resume: true
 
 ## Step by Step Tasks
 
-_(skeleton)_
+### 1. Write `CYCLES_MERGE_LUA` and port `on_save`
+- **Task ID**: build-merge-script
+- **Depends On**: none
+- **Validates**: `tests/test_cyclic_decay_field.py`, `tests/test_transfer_fidelity_fields.py`
+- **Informed By**: spike-1 (cmsgpack round-trips the payload; string periods exist), spike-2 (Lua repacks integral floats as ints), spike-4 (pressure is asymmetric — only `on_save` reads)
+- **Assigned To**: `cycles-lua-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- Add `CYCLES_MERGE_LUA` to `src/popoto/fields/cyclic_decay_field.py` with the
+  KEYS/ARGV layout from Technical Approach and a header comment.
+- Port `on_save` (`:598-736`) to a single eager `run_lua(get_REDIS_DB(), …)` call —
+  cycles merge, pressure merge, and both `HDEL` branches — keeping `super().on_save()`
+  and its `pipeline` forwarding exactly as they are.
+- Unpack the returned report with `msgpack.unpackb`; emit the #698 `logger.info` reset
+  line (model, field, `member_key`, period, old baseline, new declared, discarded
+  learned amplitude) and the `logger.warning` decode line from it. Normalize an empty
+  report defensively — `cmsgpack` may pack an empty Lua table as either an array or a map.
+- Match periods through the `%.17g` / string key function; do not compare raw values.
+- Keep the clamp/threshold constants where they are; do **not** add a new
+  `Defaults` constant (every new one must be registered in
+  `tests/benchmarks/test_defaults_sync.py`, which narrow lane test selection never reaches).
+
+### 2. Write `CYCLES_ADJUST_LUA` and port `_adjust_cycle_amplitudes`
+- **Task ID**: build-adjust-script
+- **Depends On**: none
+- **Validates**: `tests/test_cyclic_decay_field.py`, `tests/test_observation_protocol.py`
+- **Informed By**: spike-2 (return values must be `cmsgpack`-packed or fractions truncate)
+- **Assigned To**: `cycles-lua-builder`
+- **Agent Type**: builder
+- **Parallel**: true
+- Add the script beside `CYCLES_MERGE_LUA`; import it into `models/base.py` next to the
+  existing `from ..fields.cyclic_decay_field import CyclicDecayField`.
+- Port `base.py:2749-2789` to `run_lua`, passing `factor`, `max_amplitude` and
+  `min_threshold` as ARGV. Preserve both return contracts: the pipeline when a
+  pipeline is given, the 3-slot truncated list otherwise.
+- Coerce amplitude and phase to `float` on the public return (Risk 1); leave `period`
+  untouched.
+- Preserve the "never write or strip slot 3" property in the Lua and keep the comment
+  that explains why.
+
+### 3. Convert the module's stale `POPOTO_REDIS_DB` import
+- **Task ID**: build-redis-accessor
+- **Depends On**: build-merge-script
+- **Validates**: `tests/test_popoto_redis_db_rebind.py`, `tests/test_connection.py`
+- **Assigned To**: `cycles-lua-builder`
+- **Agent Type**: builder
+- **Parallel**: false
+- Replace the seven `POPOTO_REDIS_DB` uses in `fields/cyclic_decay_field.py`
+  (`:286`, `:301`, `:379`, `:387`, `:493`, `:501`, and whatever survives in the
+  ported code) with `get_REDIS_DB()`; drop the name from the import at `:49`.
+- Do not touch `fields/write_filter.py`.
+- Verify in a **full-suite** run, not a file-scoped one: a stale snapshot and a
+  converted call agree until `tests/test_connection.py` rebinds the global.
+
+### 4. Concurrency tests + red-state proof
+- **Task ID**: build-atomicity-tests
+- **Depends On**: none
+- **Validates**: `tests/test_cyclic_decay_atomicity.py` (create)
+- **Informed By**: spike-3 (the race is reachable; the test must be shown failing first)
+- **Assigned To**: `atomicity-test-builder`
+- **Agent Type**: test-engineer
+- **Parallel**: true
+- New file `tests/test_cyclic_decay_atomicity.py`.
+- Test A: K threads each load the record fresh and call `strengthen_cycle`, while
+  other threads call `save()`; assert the final amplitude equals
+  `declared * factor**K` (`pytest.approx`). The chain of same-factor multiplies is
+  order-independent in value, so the assertion is deterministic under any interleaving.
+- Test B: threads interleave `save()` with `resolve_pressure()`; assert the stored
+  `last_resolved` never moves backwards.
+- Test C: no client-side read remains — spy on the client's `hget` during `save()`
+  and assert the cycles/pressure hashes are not read from Python.
+- Run A and B against pre-fix `main` (same worktree, `git stash`) and capture the
+  failure output for the PR description. A test that passes on both sides is not the test.
+- Use `POPOTO_TEST_DB=9`; keep thread counts modest so the suite stays fast.
+
+### 5. Validation
+- **Task ID**: validate-cycles
+- **Depends On**: build-merge-script, build-adjust-script, build-redis-accessor, build-atomicity-tests
+- **Assigned To**: `cycles-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Confirm every pre-existing `tests/test_cyclic_decay_field.py` test passes and report
+  exactly which ones were modified and why.
+- Run the Verification table; state the environment (redis-py version, server version,
+  `POPOTO_TEST_DB`) alongside every count.
+
+### 6. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-cycles
+- **Assigned To**: `cycles-doc`
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Everything in the **Documentation** section.
+
+### 7. Final validation
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: `cycles-validator`
+- **Agent Type**: validator
+- **Parallel**: false
+- Full suite + all gates; verify every Success Criterion including the red-state paste.
 
 ## Verification
 
-_(skeleton)_
+| Check | Command | Expected |
+|-------|---------|----------|
+| Targeted tests pass | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py tests/test_cyclic_decay_atomicity.py tests/test_transfer_fidelity_fields.py tests/test_cyclic_subclass_companion_keys.py -q` | exit code 0 |
+| Full suite passes | `POPOTO_TEST_DB=9 python -m pytest -q` | exit code 0 |
+| Lint clean | `python -m ruff check src/` | exit code 0 |
+| Format clean | `python -m black --check src/ tests/` | exit code 0 |
+| Type ratchet holds | `python scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `python -m mkdocs build --strict` | exit code 0 |
+| Merge script exists | `grep -c "CYCLES_MERGE_LUA" src/popoto/fields/cyclic_decay_field.py` | output > 1 |
+| Adjust script exists | `grep -c "CYCLES_ADJUST_LUA" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
+| Anti-criterion: no client-side cycles read in `on_save` | `grep -c "hget(cycles_hash_key" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Anti-criterion: no client-side pressure read in `on_save` | `grep -c "hget(pressure_hash_key" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Anti-criterion: no client-side cycles RMW in `_adjust_cycle_amplitudes` | `grep -c "hget(cycles_hash_key" src/popoto/models/base.py` | match count == 0 |
+| Anti-criterion: stale client import gone | `grep -c "POPOTO_REDIS_DB" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Anti-criterion: `resolve_pressure` body left alone | `git diff origin/main -- src/popoto/models/base.py \| grep -c "^[-+][^-+].*resolve_pressure"` | match count == 0 |
+| Anti-criterion: pipeline caveat removed from docs | `grep -c "save first" docs/features/cyclic-decay-field.md` | match count == 0 |
+| Anti-criterion: pipeline caveat removed from docstring | `grep -c "queued on the \*same\* pipeline" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Anti-criterion: no new `Defaults` constant | `git diff origin/main -- src/popoto/fields/constants.py \| grep -c "^+"` | match count == 0 |
+| No stale xfails for this bug | `grep -rn 'pytest.mark.xfail\|pytest.xfail(' tests/ \| grep -ci "cycl\|amplitude\|pressure"` | match count == 0 |
 
 ## Critique Results
 
@@ -484,4 +684,34 @@ _(skeleton)_
 
 ## Open Questions
 
-_(skeleton)_
+The issue's own three open questions are **answered in this plan**, by evidence
+rather than by assumption:
+
+1. *Do both writers become Lua, or does `_adjust_cycle_amplitudes` fold into the
+   save-side script?* → **Two separate scripts.** They have different KEYS sets
+   (the merge touches both companion hashes, the adjust only cycles), different
+   ARGV shapes, and different call frequencies; folding them would force every
+   `strengthen_cycle` to carry the full declared-cycle list it has no reason to know.
+2. *Does the pipeline contract at `cyclic_decay_field.py:533-536` (now `:590-593`)
+   survive?* → **It is deleted.** The hazard it documents is the bug; once the read
+   and the write are one operation, "queue the save first" describes nothing.
+3. *Does the pressure companion hash have the same shape?* → **No — it is
+   asymmetric** (spike-4). `resolve_pressure` never reads, so only `on_save` needs
+   fixing and `resolve_pressure` is left untouched.
+
+What still needs supervisor input:
+
+1. **The eager-write placement.** `on_save`'s companion write stops being queued on
+   the caller's pipeline (Solution → Placement, Risk 2, Race 3). The alternative
+   keeps it in the pipeline but loses the #698 reset log and the decode warning.
+   Confirm the trade — accepting a possible inert orphan entry after a failed save,
+   in exchange for keeping the logging #698's critique specifically hardened.
+2. **Numeric type drift (Risk 1).** Values round-trip exactly, but integral
+   amplitudes come back as `int` instead of `float` once Lua does the packing
+   (measured, spike-2). The plan coerces at popoto's own read boundaries and
+   documents it. Is that acceptable, or is preserving the stored msgpack *type* a
+   requirement — which would mean a different on-disk encoding and a migration?
+3. **Straggler scope (Task 3).** Converting this module's stale
+   `POPOTO_REDIS_DB` import is small, is called for by `CLAUDE.md`, and fixes a
+   latent wrong-database read on the pressure path at `:719` — but it is not this
+   bug. Keep it in, or split it out?
