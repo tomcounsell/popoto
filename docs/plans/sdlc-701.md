@@ -1024,6 +1024,140 @@ in a harness CI never runs.
 
 ## Critique Results
 
+### Round 2 (2026-09-08) — verdict: READY TO BUILD (with concerns)
+
+FULL depth, independent roster (Risk & Robustness, Scope & Value, History &
+Consistency). **0 blockers, 3 concerns, 1 nit.** Critique cycle 2 of 2, so the
+concerns below are accepted on the record; embed their implementation notes and
+build.
+
+**Round-1 fold-in verified as landed.** The revised body was re-read against
+source, not against the resolution table. C1's `*{class_name}*` shape is stated
+identically in Technical Approach "Pattern updates", Flow, Task 1, Success
+Criterion 4 and the Verification row; C2's vacuity claim is retracted and the
+real assertion (`match="$ValidityF:*"`, `test_external.py:1220`) is quoted
+correctly; C4's parametrize-on-real-caller-expression rule is in both Failure
+Path Test Strategy and Task 2; C5's 1:1 `type()` rule is in Technical Approach,
+Task 1 and Risk 3; C6's task merge landed (6 tasks → 5, `build-factories`, and
+`validate-conversions` depends on the merged ID). N2 and N3 are corrected. No
+round-1 finding is unaddressed.
+
+Three of the four findings below are **new defects introduced or left by the
+revision itself**, not re-litigation.
+
+#### R2-C7 — The C3 replacement test is not falsifiable by the mutation Success Criteria names as its proof
+
+*Critic: Risk & Robustness (Adversary). Verified independently against source.*
+*Location: Technical Approach ("Explicit-validity branch in `teardown()`");
+Test Impact; Success Criteria bullet 5; Task 2.*
+
+The revision replaced `test_teardown_on_arm_none_is_real_noop` with a two-part
+assertion, and added a Success Criterion that the replacement is "**falsifiable
+after the fix**: demonstrated by showing it goes red when the explicit validity
+branch's guard is removed (i.e. made unconditional)." The specified replacement
+cannot go red under that mutation.
+
+`ValidityField.get_all_keys()` (`src/popoto/fields/validity_field.py:781-796`)
+computes its five key names *purely* from `_meta.db_class_key`, via
+`get_special_use_field_db_key` → `DB_key(cls.field_class_key,
+model._meta.db_class_key, *field_names)` (`src/popoto/fields/field.py:629`). It
+never consults whether the model declares a `validity` field. On the arm-none
+class those five names were therefore never written, so an *unconditional*
+`get_REDIS_DB().delete(*keys.values())` deletes nothing. Part (b) — "assert the
+arm-none class produced zero `$ValidityF:{arm_none_class_name}:*` keys, before
+and after teardown" — is true in both the guarded and the unguarded build. Part
+(a) is falsifiable by *deleting the branch*, but not by *removing its guard*,
+which is the mutation the criterion names. So the plan replaces one vacuous test
+with another and ships a build gate that the specified code cannot pass. This is
+the #661 trap surviving its own remedy.
+
+**Implementation Note:** assert that the branch was *evaluated conditionally*,
+not that its output looks empty. Wrap the scenario run in
+`unittest.mock.patch.object(ValidityField, "get_all_keys", wraps=ValidityField.get_all_keys)`
+and assert (i) for the arm-none scenario, no entry in `mock.call_args_list` has
+that scenario's `_model_class` as its first positional argument, and (ii) for a
+validity-declaring scenario, exactly such a call is present. Removing the
+`"validity" in self._model_class._meta.fields` guard turns (i) red immediately,
+which a key-count assertion never can. Keep part (a)'s key-deletion assertion as
+a second, independent leg — it catches deletion of the branch — but do not let
+it stand alone as the falsifiability proof.
+
+#### R2-C8 — The new `teardown()` SCAN pass would inherit a stale `POPOTO_REDIS_DB` snapshot, silently scanning the wrong database
+
+*Critic: Structural check (independent). Verified against source and CLAUDE.md.*
+*Location: Step by Step Tasks > Task 1 ("add a second SCAN pass over
+`*{class_name}*` alongside the existing `{class_name}:*` pass").*
+
+`tests/benchmarks/scenarios/external_base.py:83` holds
+`from src.popoto.redis_db import POPOTO_REDIS_DB, get_REDIS_DB` — a **plain
+module-level import** of the rebindable global, exactly the shape CLAUDE.md
+names as stale ("Do not add a new one"). Inside `teardown()` the two idioms are
+already mixed: the explicit validity branch correctly calls `get_REDIS_DB()`
+(lines 949, 955, 959), while the class-name SCAN and the agent-prefix SCAN use
+the snapshot (`POPOTO_REDIS_DB.scan/.delete` at lines 971, 975, 986, 990).
+Task 1 says to add the new pass "alongside the existing `{class_name}:*` pass",
+so a builder mirroring the adjacent line inherits the stale binding.
+
+`tests/test_connection.py:117` calls `set_REDIS_DB_settings(host=..., port=...)`,
+which *rebinds* `redis_db`'s module global. After that point the snapshot at
+line 83 addresses the pre-reconfiguration client. The plan's own highest-value
+new assertion — Success Criterion 4, "after `teardown()`, zero keys match
+`*ExtMem<hash>*`" — is written to be checked through `get_REDIS_DB()` (the
+existing leak test at `test_external.py:1207` already does). So in a **full-suite
+run** teardown would sweep one database while the assertion reads another: the
+widened glob deletes nothing observable and the leak test fails, and the failure
+presents as a namespacing regression rather than as a connection-binding bug.
+File-scoped it passes. This is precisely the #655/#661 full-suite-only failure
+mode CLAUDE.md documents.
+
+**Implementation Note:** write the new pass as
+`get_REDIS_DB().scan(cursor, match=f"*{class_name}*", count=200)` /
+`get_REDIS_DB().delete(*keys)` — never `POPOTO_REDIS_DB.scan`. Convert the four
+adjacent pre-existing call sites (`external_base.py:971,975,986,990`) in the same
+edit so the function has one idiom, and drop `POPOTO_REDIS_DB` from the line-83
+import if no other site in the file uses it. This is a two-line-per-site
+mechanical change, in scope because Task 1 is already editing this function; it
+is not the #655 sweep. Add it to Task 1's bullet list and to the Task 3
+diff-review checklist.
+
+#### R2-C9 — The C6-revised Appetite line still contradicts Team Orchestration
+
+*Critics: Scope & Value (Simplifier) and History & Consistency (Consistency
+Auditor) — independently, the strongest convergence this round.*
+*Location: Appetite ("Team") vs. Team Orchestration.*
+
+C6's fix rewrote the Appetite team line but described the wrong roster. It reads
+"Two builders (one for the harness conversion + tests, one validator) plus a
+documentarian and a code reviewer". Team Orchestration names four members with
+Agent Types builder / test-engineer / documentarian / validator: exactly **one**
+is a builder, the tests are owned by a separate `namespace-test-engineer`, the
+validator is not a builder, and **no code-reviewer role exists anywhere in the
+plan**. The prose also misstates what C6 merged — the merge was builder+builder
+(`ext-factory-builder` + `sibling-factory-builder`), never builder+test-engineer.
+So the section C6 existed to reconcile is still inconsistent, in a new way.
+
+**Implementation Note:** replace the Appetite Team line with the roster verbatim:
+"One builder (`harness-factory-builder`), one test engineer
+(`namespace-test-engineer`), one documentarian (`bench-documentarian`), one
+validator (`namespace-validator`) — four roles across five tasks." Delete the
+"code reviewer" mention or add the role to Team Orchestration; do not leave the
+two sections describing different teams going into build. Purely editorial — no
+task, dependency or Success Criterion changes.
+
+#### Nit
+
+**N4 — The C1 Verification row is itself a source-text grep proxy, the shape N1
+flagged.** `grep -c 'match=f"\*{class_name}\*"' tests/benchmarks/scenarios/external_base.py`
+== 1 (plan Verification table) pins one exact f-string spelling and false-fails
+any behaviorally equivalent rewrite; Success Criterion 4 and Task 2's widened
+leak test already gate the real behavior. It can only false-fail, never
+false-pass, so it is harmless — but N1 asked for exactly this row to become a
+real assertion and it did not. Consider dropping it. (Scope & Value)
+
+---
+
+### Round 1 (2026-09-08) — verdict: READY TO BUILD (with concerns)
+
 **Critics**: Risk & Robustness, Scope & Value, History & Consistency (FULL depth)
 **Mode**: independent roster (3 critics)
 **Findings**: 9 total (0 blockers, 6 concerns, 3 nits)
