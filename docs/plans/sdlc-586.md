@@ -519,9 +519,14 @@ tests → run arm A (~24 min) → run arm B → run arm C → commit artifacts u
   `test_teardown_on_arm_none_is_real_noop` green. The stale-key-pattern addition
   touches a module constant these tests do not assert on; if any of them *does*
   assert the tuple's contents, update the expectation.
-- `tests/benchmarks/test_external.py` (report-shape assertions) — **UPDATE if
-  present**: any test asserting the exact key set of the `machine` block must
-  gain `redis_version` and `bench_db`.
+- `tests/benchmarks/test_external.py` (report-shape assertions) — **resolved to
+  NO CHANGE (critique C3)**: the *"if present"* was checked during critique and
+  **no such assertion exists**. Nothing in the test tree or in
+  `build_markdown_report` enumerates the exact `machine` key set (the renderer
+  reads only `python_version` and `platform`, `run_external.py:803-804`), and
+  the RLT harness uses its own `build_machine_metadata`. build-3 is therefore
+  purely additive; the residue is a disclosure obligation, not a test update
+  (Risk 8, Documentation).
 - **New**: a test asserting the teardown cleanup failure is logged rather than
   swallowed (see Failure Path Test Strategy).
 - **New**: a test asserting `machine` carries `redis_version` and `bench_db`,
@@ -640,6 +645,29 @@ whose environment is not recoverable from the artifact.
 `machine` block **before** the runs, so all three committed artifacts carry
 them. Verified by a Verification row reading the committed JSON.
 
+### Risk 8: build-3 diverges a harness-wide report schema from every prior artifact
+
+**Impact:** The `machine` dict at `run_external.py:597-601` lives in the single
+shared `aggregate` builder used by **every** dataset run through
+`run_external.py` — LoCoMo, the extraction axis, graph-eval — not just this
+study. Adding `redis_version` and `bench_db` means every report generated after
+this PR carries a five-key `machine` block while every artifact committed before
+it carries three. A later reader diffing an old artifact against a new one sees
+a schema difference that no note explains.
+**Assessed as a disclosure gap, not a breakage risk.** Verified during critique
+(C3): **no test or renderer enumerates the exact `machine` key set.**
+`build_markdown_report` reads only `machine['python_version']` and
+`machine['platform']` (`run_external.py:803-804`), and the RLT harness builds
+its own metadata via a separate `build_machine_metadata` (`rlt/run_rlt.py`). The
+addition is therefore purely additive and cannot break an existing consumer.
+**Mitigation:** disclosure rather than avoidance — the change is kept in this PR
+(the artifacts this plan commits are the first ones the README's
+every-number-carries-its-environment promise is measured against, so splitting
+it out would ship them unstamped), and the divergence is recorded explicitly in
+`docs/benchmarks.md` and `validity_586/README.md`: *artifacts dated before this
+PR carry a three-key `machine` block and are not directly diffable against the
+new five-key one.*
+
 ## Race Conditions
 
 **No race conditions identified.** The benchmark driver is synchronous and
@@ -723,6 +751,14 @@ that nothing in `src/` imports, and this plan does not change that.
 - [ ] Add a short `tests/benchmarks/results/external/validity_586/README.md`
       naming the three arms, the exact commands that produced them, and the
       environment — so the directory is self-describing without the plan.
+- [ ] **Disclose the `machine`-block schema divergence (critique C3)** in both
+      `docs/benchmarks.md` and `validity_586/README.md`: build-3 adds
+      `redis_version` and `bench_db` to the report builder shared by *every*
+      dataset run through `run_external.py`, so artifacts generated from this PR
+      onward carry a five-key `machine` block while every previously committed
+      artifact carries three. Additive and non-breaking (no consumer enumerates
+      the key set — see Risk 8), but state it, because it is the reason an old
+      and a new artifact are not directly diffable on that field.
 - [ ] Update `tests/benchmarks/README.md`'s "External-harness supersession axis
       (#692)" section to point at the real n=500 result, replacing the
       "that run is a follow-up" framing.
@@ -883,6 +919,14 @@ that nothing in `src/` imports, and this plan does not change that.
 - Add a test asserting both keys are present and that an unresolvable version
   yields `"unknown"`.
 - Comment the addition with CLAUDE.md's redis-py-version-dependent-metric rule.
+- **This edits a harness-wide schema, not a study-local one (critique C3).**
+  That `machine` dict is built once in the `aggregate` builder shared by every
+  dataset run through `run_external.py` (LoCoMo, extraction axis, graph-eval),
+  so every future report diverges from every artifact committed before this PR.
+  It is kept here deliberately — see Risk 8 — and the divergence must be
+  disclosed in `docs/benchmarks.md` and `validity_586/README.md` as part of
+  document-findings. Do **not** treat the disclosure as optional; it is the
+  whole mitigation.
 
 ### 4. Validate the hardening before spending an hour of wall clock
 
