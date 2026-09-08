@@ -115,8 +115,17 @@ BENCH_DB_DEFAULT = 14
 # $KeyF:ExtMem<hash>:agent_id:*, $DecayingSortF:ExtMem<hash>:relevance:* (#701
 # spike-2) — none of which the plain "ExtMem*" prefix pattern reaches. All are
 # literal outside the trailing glob (``$`` is not a Redis SCAN metacharacter).
+#
+# *:ExternalBenchmarkMemory* is the pre-#701 counterpart of *:ExtMem* (#701
+# review): a pre-fix run wrote its field keys under the shared base-class name,
+# producing $BM25:ExternalBenchmarkMemory:*, $ValidityF:ExternalBenchmarkMemory:*
+# and friends. "ExternalBenchmarkMemory:*" only reaches that era's *model* keys,
+# and "*:ExtMem*" cannot match these at all ("ExternalBenchmarkMemory" does not
+# contain the substring "ExtMem"), so without this pattern the sweep silently
+# left the older field-key families behind.
 _STALE_KEY_PATTERNS = (
     "ExternalBenchmarkMemory:*",
+    "*:ExternalBenchmarkMemory*",
     "ExtMem*",
     "$BM25:ExtMem*",
     "*:ExtMem*",

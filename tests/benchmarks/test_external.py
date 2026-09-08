@@ -803,6 +803,8 @@ class TestStaleKeySweep:
             # rename, so this shape can still exist in an interrupted run
             # that predates the fix.
             "ExternalBenchmarkMemory:abc": "1",
+            "$BM25:ExternalBenchmarkMemory:doc": "1",
+            "$ValidityF:ExternalBenchmarkMemory:validity:valid_from": "1",
             "ExtMem12345678:xyz": "1",
             "ExtMem12345678:_relevance": "1",
             "$BM25:ExtMem12345678:doc": "1",
@@ -824,6 +826,35 @@ class TestStaleKeySweep:
         for k in stale:
             assert POPOTO_REDIS_DB.exists(k) == 0
         # Unrelated keys are untouched.
+        assert POPOTO_REDIS_DB.exists(keeper) == 1
+        POPOTO_REDIS_DB.delete(keeper)
+
+    def test_sweeps_pre_701_shared_name_field_keys(self):
+        """Regression (#701 review): the README states that the retained
+        pre-#701 patterns keep sweeping residue from older runs. That was true
+        only of the *model* keys until ``*:ExternalBenchmarkMemory*`` was
+        added: a pre-fix run wrote its field keys under the shared base-class
+        name, and ``*:ExtMem*`` cannot match those ("ExternalBenchmarkMemory"
+        does not contain the substring "ExtMem"). This pins the claim with a
+        test instead of prose."""
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+        from tests.benchmarks.run_external import _sweep_stale_benchmark_keys
+
+        pre_701 = {
+            "$BM25:ExternalBenchmarkMemory:doc": "1",
+            "$ValidityF:ExternalBenchmarkMemory:validity:valid_from": "1",
+            "ExternalBenchmarkMemory:abc": "1",
+        }
+        keeper = "SomeOtherModel:keepme"
+        for k, v in pre_701.items():
+            POPOTO_REDIS_DB.set(k, v)
+        POPOTO_REDIS_DB.set(keeper, "1")
+
+        swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB)
+
+        assert swept >= len(pre_701)
+        for k in pre_701:
+            assert POPOTO_REDIS_DB.exists(k) == 0
         assert POPOTO_REDIS_DB.exists(keeper) == 1
         POPOTO_REDIS_DB.delete(keeper)
 

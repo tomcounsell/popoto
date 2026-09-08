@@ -148,13 +148,16 @@ collection and the db15 plugin are unaffected):
    misconfiguration can't repollute the live database. Host/port/auth from
    `REDIS_URL` are preserved.
 2. **Startup sweep.** Before any ingestion the harness `SCAN`s (non-blocking,
-   Valkey-safe) and `DEL`s any stale `ExternalBenchmarkMemory:*` / `ExtMem*` /
-   `$BM25:ExtMem*` / `*:ExtMem*` keys left by a prior run on the bench DB,
-   logging the count. The unanchored `*:ExtMem*` pattern (#701) is what reaches
-   the field-key families that carry the class name *after* a colon rather than
-   as a leading prefix; the pre-#701 patterns are kept so residue from older
-   runs is still swept. The authoritative list is `_STALE_KEY_PATTERNS` in
-   `run_external.py`.
+   Valkey-safe) and `DEL`s any stale `ExternalBenchmarkMemory:*` /
+   `*:ExternalBenchmarkMemory*` / `ExtMem*` / `$BM25:ExtMem*` / `*:ExtMem*`
+   keys left by a prior run on the bench DB, logging the count. The
+   unanchored `*:ExtMem*` pattern (#701) is what reaches the field-key
+   families that carry the class name *after* a colon rather than as a
+   leading prefix; `*:ExternalBenchmarkMemory*` is its pre-#701 counterpart,
+   so residue from older runs is swept for both the model keys and those
+   field-key families (pinned by
+   `test_sweeps_pre_701_shared_name_field_keys`). The authoritative list is
+   `_STALE_KEY_PATTERNS` in `run_external.py`.
 
 ### Cleaning existing db0 pollution
 
