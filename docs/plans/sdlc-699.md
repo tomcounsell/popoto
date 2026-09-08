@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: Valor Engels
 created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/699
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-08T05:30:28Z
 ---
 
 # #699 — Make the cycles/pressure companion read-modify-write atomic
@@ -86,7 +88,7 @@ true.
 - **PR #700 (#698)** — *an edited declared amplitude can override an already-learned one*. Added the `declared_baseline` 4th slot **inside the same entry**, explicitly so no second key could tear independently, and explicitly deferred atomicity to this issue.
 - **PR #594 / #588 (`SUPERSEDE_LUA`)** — the closest precedent for the shape of this fix: a membership guard that had to move *into* the Lua script because a client-side check plus a server-side write is not one operation. The maintainer decision there ("patch options rejected, root fix demanded") is the governing precedent for preferring the script over a client-side lock.
 - **`CAPPED_BAYESIAN_UPDATE_LUA` (`fields/confidence_field.py:63-120`)** and **`RESOLVE_PREDICTION_LUA` (`fields/prediction_ledger.py:52-83`)** — existing `HGET` → `cmsgpack.unpack` → mutate → `cmsgpack.pack` → `HSET` scripts in this repo. This plan copies their structure; they are the reference implementations.
-- **#476 / `base.py:1755-1780`** — indexed/unique `on_save` hooks were made **eager direct EVALs** rather than pipeline-queued, precisely because a queued script cannot report its outcome in time to change the caller's behavior. That is the precedent for the placement decision in Solution.
+- **#476 / `base.py:1773-1786`** — indexed/unique `on_save` hooks were made **eager direct EVALs** rather than pipeline-queued, precisely because a queued script cannot report its outcome in time to change the caller's behavior. That is the shape precedent for the placement decision in Solution — but note it applies **only** to the internal-pipeline `else:` branch (`:1760`+); the caller-supplied-pipeline branch queues indexed `on_save` through the generic loop at `:1720-1729`. See Technical Approach → Placement.
 - No prior attempt to fix *this* race exists. Nothing to analyze under "Why Previous Fixes Failed" — the two prior PRs are the code being made atomic, not failed fixes of it.
 
 ## Research
@@ -147,7 +149,7 @@ All three spikes ran against the live server on this machine (Redis 8.6.2,
 
 - **New dependencies**: none. `cmsgpack` is built into the Lua interpreter Redis and Valkey both ship; `run_lua` / `lua_script` already exist.
 - **Interface changes**: no public signature changes. `strengthen_cycle`/`weaken_cycle`/`save` keep their arguments and return contracts. One *documented* contract is deleted (the "queue save first" pipeline rule) because the hazard it warned about ceases to exist.
-- **Behavioral change at the seam**: `on_save`'s companion-hash writes stop being queued on the caller's pipeline and execute eagerly (see Solution → Placement, and Risk 2). This mirrors #476's eager indexed-field EVALs.
+- **Behavioral change at the seam**: `on_save`'s companion-hash writes stop being queued on the caller's pipeline and execute eagerly, in **both** the internal-pipeline and the caller-supplied-pipeline branches of `Model.save` (see Solution → Placement, and Risk 2). #476's eager indexed-field EVALs (`base.py:1773-1786`) are the shape precedent but cover only the internal-pipeline branch; extending it to the caller-pipeline branch is new and is Open Question 1.
 - **Coupling**: slightly increased — the #698 merge rule moves from Python into Lua, so the rule now has one authoritative implementation in a language with no test-time introspection. Mitigated by keeping the *decision report* in the return value so Python tests can assert on decisions, not just outcomes.
 - **Data ownership**: unchanged; the field still owns both companion hashes.
 - **Reversibility**: high. Each script is additive; reverting the two call sites restores the old code with no data migration — the stored payload shape is identical before and after.
@@ -190,13 +192,29 @@ All three spikes ran against the live server on this machine (Redis 8.6.2,
 - **`resolve_pressure` and `import_state` are untouched** — both are blind single
   writes and already atomic (spike-4).
 - **Straggler cleanup**: the module-level `from ..redis_db import POPOTO_REDIS_DB`
-  in `cyclic_decay_field.py:49` and its seven use sites go away in favour of
-  `get_REDIS_DB()`. `CLAUDE.md` names this file as one of the two remaining stale
-  importers, held back only because #679/#698 were editing it; four of the seven
-  sites (`:705`, `:719`, `:755`, plus the merge write) are inside the code this
-  plan rewrites, and the file *already* mixes both forms (`:623` uses the accessor,
-  `:719` does not), which is a latent read-from-the-wrong-database bug on the
-  pressure path. `fields/write_filter.py` stays stale — #494 owns it.
+  in `cyclic_decay_field.py:49` and its **nine** use sites go away in favour of
+  `get_REDIS_DB()`. Measured at `9986c086`, the grep is one import (`:49`) plus
+  `:286`, `:301`, `:379`, `:387`, `:493`, `:501`, `:705`, `:719`, `:755` (N1 —
+  an earlier draft said "seven"). **Three** of those nine (`:705`, `:719`, `:755`)
+  sit inside the code this plan rewrites; the other six are in `export_state`
+  (`:286`, `:301`), `import_state` (`:379`, `:387`) and the ranking path (`:493`,
+  `:501`). `CLAUDE.md` names this file as one of the two remaining stale importers,
+  held back only because #679/#698 were editing it; the file *already* mixes both
+  forms (`:623` uses the accessor, `:719` does not), which is a latent
+  read-from-the-wrong-database bug on the pressure path.
+  `fields/write_filter.py` stays stale — #494 owns it.
+
+  **Scope decision on the six out-of-path sites (critique C3): kept, with an
+  explicit escape hatch.** The critic is right that this is import hygiene rather
+  than atomicity. It is kept because a *partial* conversion leaves the file in the
+  exact half-converted state #655 warns about — and because the conversion is nine
+  single-token edits in one file with no behavior change, which is a smaller review
+  burden than the split-issue bookkeeping. The escape hatch is structural, not a
+  promise: **Task 3 depends on nothing that depends on it**, so if a reviewer or the
+  supervisor wants it out (Open Question 3), dropping Task 3 wholesale requires no
+  change to Tasks 1, 2 or 4 — only the removal of the
+  `grep -c "POPOTO_REDIS_DB" … == 0` anti-criterion, which holds only when all nine
+  sites convert.
 
 ### Flow
 
@@ -218,13 +236,37 @@ return its decision until `execute()`, which `save()` does not surface. Two opti
    unreachable from `on_save` — an observability regression on the exact line #698's
    critique round 2 (C8) fought to make specific.
 2. **Run the EVAL eagerly and directly (chosen).** Ignore the `pipeline` kwarg for
-   these two writes, exactly as `Model.save` already does for `IndexedFieldMixin`
-   hooks (`base.py:1755-1780`, #476), where the reason was identical: a script whose
-   outcome must change the caller's behavior cannot be queued. The log and the
-   warning keep working, and the "read direct / write queued" split that caused this
-   bug disappears rather than being narrowed.
+   these two writes. The log and the warning keep working, and the "read direct /
+   write queued" split that caused this bug disappears rather than being narrowed.
 
 Chosen: **(2)**. The cost is stated in Risk 2 and is not hidden.
+
+**Corrected #476 citation, and how far this plan actually goes (critique C1).** An
+earlier draft justified option 2 as "exactly what `Model.save` already does for
+`IndexedFieldMixin` hooks (`base.py:1755-1780`)". That citation was wrong twice and
+the claim it supported was too strong:
+
+- The eager loop is `_eager_indexed_fields` at **`base.py:1773-1786`**. The range
+  `1755-1780` straddles a branch boundary and points partly at the
+  `EventStreamMixin` block at `:1754-1757`.
+- That loop sits **only** inside the internal-pipeline `else:` branch beginning at
+  `base.py:1760`. In the **caller-supplied-pipeline** branch (`base.py:1690-1758`,
+  which returns `pipeline` for the caller to `.execute()` later), indexed-field
+  `on_save()` is queued through the same generic per-field loop as every other
+  field, at `base.py:1720-1729`. No eager special-casing exists there.
+
+This plan ignores the `pipeline` kwarg **unconditionally, in both branches**, which
+is *new ground*, not a repeat of #476. Concretely: in the caller-pipeline branch the
+ported `CyclicDecayField.on_save` runs its `EVAL` synchronously inside the
+`field.on_save(...)` call at `base.py:1721` — so the companion write commits to Redis
+**before** `pipe.execute()` commits the model hash and index writes queued alongside
+it on the same `pipe`. That is precisely the ordering exercised by the worked example
+this plan deletes from `docs/features/cyclic-decay-field.md:171-175`.
+
+#476 remains the right *shape* precedent — a script whose outcome must change the
+caller's behavior cannot be queued — but it is a precedent for eager execution on the
+internal-pipeline path only. Extending it to the caller-pipeline path is this plan's
+own decision, and it is what Open Question 1 now asks the supervisor to sign off on.
 
 **`CYCLES_MERGE_LUA` contract:**
 
@@ -251,7 +293,35 @@ ARGV[3N+4] now               (only used on a pressure first-save)
   Normalize both sides through one key function: `tonumber(v)` succeeds →
   `'n:' .. string.format('%.17g', n)`, else `'s:' .. tostring(v)`. Declared periods
   arrive as `str(period)` in ARGV and take the same path, so the two sides agree by
-  construction.
+  construction. **The match key is for matching only — it is never written into the
+  entry.**
+- **Every ARGV-sourced numeric slot must be converted before it is written back
+  (critique B1).** `ARGV` is always a Lua string, and `period`/`amplitude`/`phase`/
+  `declared_baseline` are all re-read from the declared side on each save, so a
+  literal port would store *string*-typed values. Three distinct consequences, one
+  of them a hard crash:
+
+  | Slot | If left as an ARGV string | Required conversion |
+  |---|---|---|
+  | 1 `period` | **Hard error.** The pre-existing scorer does `local period = c[1] … if period > 0 then` at `cyclic_decay_field.py:163-166`, a bare relational comparison **outside** the `pcall` that guards only `cmsgpack.unpack` (`:159-160`). Lua 5.1 raises on `string > number`, aborting the whole script — every `rank_decayed`/`top_by_decay` against that partition raises `ResponseError`. This is the majority path for any model that declares cycles. | `coerce_period(raw)` — see below. Numeric-looking periods become numbers; a genuinely non-numeric (string) period stays a string, exactly as today. |
+  | 2 `amplitude` | Silent type drift; arithmetic auto-coerces. | `tonumber()` |
+  | 3 `phase` | No crash today — the scorer only uses phase in arithmetic (`now - phase`), which Lua 5.1 auto-coerces from a numeric string — but the same `isinstance` surprise as Risk 1 reaches Python. | `tonumber()` |
+  | 4 `declared_baseline` | **Silent, total defeat of #698.** Lua's `==` never coerces across types and never errors, so an unconverted string baseline makes the `baseline == declared` branch evaluate false on *every* save, discarding every learned amplitude with no crash and no distinguishing log line. | `tonumber()` — and say so in the script header, because nothing about the failure is visible. |
+
+  The helper, verbatim:
+
+  ```lua
+  local function coerce_period(raw)
+      local n = tonumber(raw)
+      if n then return n end
+      return raw
+  end
+  ```
+
+  Each output entry is built as
+  `{coerce_period(argv_period), tonumber(amplitude), tonumber(phase), tonumber(new_baseline)}`
+  — slot 1 is the **coerced value**, never the raw ARGV string and never the
+  `'n:'`/`'s:'` match key.
 - Baseline rule, verbatim from #698: slot 4 absent or non-numeric → baseline unknown
   → keep the learned amplitude; baseline `==` declared → keep the learned amplitude;
   baseline `~=` declared → take the declared amplitude and append a record to the
@@ -268,18 +338,49 @@ ARGV[3N+4] now               (only used on a pressure first-save)
 ```
 KEYS[1] cycles hash key
 ARGV[1] member key   ARGV[2] factor   ARGV[3] max_amplitude   ARGV[4] min_threshold
--> cmsgpack.pack(cycles) after the write, or an empty bulk reply when no entry exists
+-> cmsgpack.pack(cycles) after the write
+-> nil (Lua `return nil` -> Python None) when the member has no stored entry
 ```
 
 Mutates only index 2 of each entry; re-packs the same tables, so a 4-slot entry
 keeps its baseline (the property `base.py:2770-2779` currently documents at length).
 The clamp constants stay Python-side and arrive as ARGV so they remain single-sourced.
 
+**The no-entry case is a `nil` return, not an empty bulk string (critique B2).**
+Today's code short-circuits on a falsy `HGET` before it ever unpacks —
+`base.py:2748-2754`: `raw = get_REDIS_DB().hget(...)`, then `if not raw:` returns
+`pipeline` or `[]`. That check does not disappear in the port; it **moves to the
+EVAL's return value**. The Lua takes an early exit:
+
+```lua
+local raw = redis.call('HGET', KEYS[1], ARGV[1])
+if not raw then return nil end
+```
+
+and Python guards before unpacking, mirroring the `if not raw:` it replaces:
+
+```python
+result = run_lua(...)
+if isinstance(pipeline, redis.client.Pipeline):
+    return pipeline
+if not result:
+    return []
+return [c[:3] for c in msgpack.unpackb(result, raw=False)]
+```
+
+An unconditional `msgpack.unpackb(run_lua(...))` crashes `strengthen_cycle()` /
+`weaken_cycle()` for any member with no stored cycles, where the pre-fix code
+cleanly returned `[]`. Task 2 carries this as an explicit step.
+
 **Return-value encoding is load-bearing.** Redis converts Lua numbers to *integers*
 when returning them over the protocol — `return 2.4` reaches the client as `2`.
-Both scripts must therefore return `cmsgpack.pack(...)` as a bulk string and let
-Python `msgpack.unpackb` it. Returning bare tables would silently truncate every
-fractional amplitude in `strengthen_cycle`'s return value.
+Both scripts must therefore return **either** `cmsgpack.pack(...)` as a bulk string
+(the value-carrying case, which Python `msgpack.unpackb`s) **or** `nil` (the
+explicitly-nothing-to-report case above). Those are the only two shapes; what is
+forbidden is returning a bare Lua table or number, which would silently truncate
+every fractional amplitude in `strengthen_cycle`'s return value. The `nil` carve-out
+is not an exception to the rule — `nil` carries no numbers to truncate, and it is
+distinguishable from a packed empty result, which an empty bulk string is not.
 
 **Pipeline handling after the change:**
 
@@ -342,6 +443,18 @@ fractional amplitude in `strengthen_cycle`'s return value.
       derivation only); listed so the builder confirms rather than skips it.
 - [ ] **New**: `tests/test_cyclic_decay_atomicity.py` — the concurrency tests
       (Task 4). No existing coverage of concurrent writers exists.
+- [ ] **New coverage for critique B1** — no listed file asserts the stored period's
+      *type* (`test_transfer_fidelity_fields.py`'s arity check is period-blind). Add,
+      in `tests/test_cyclic_decay_field.py`: (a) after a `save()`, the stored cycles
+      entry decodes with a **numeric** period (and a declared string period stays a
+      string); (b) a scoring-path test — `top_by_decay` / `rank_decayed` over a model
+      that declares cycles — that does not raise `ResponseError` post-port; (c) a
+      #698 baseline-preservation test that would fail if slot 4 were stored as a
+      string (save, `strengthen_cycle`, save again with an unchanged declaration →
+      learned amplitude survives).
+- [ ] **New coverage for critique B2** — `strengthen_cycle()` / `weaken_cycle()` on a
+      member with no stored cycles entry returns `[]` (or the pipeline) and does not
+      raise.
 - [ ] No xfail markers relate to this bug — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
       tests/` returns nothing matching cycles/amplitude/pressure. Nothing to convert.
 
@@ -441,8 +554,22 @@ closes the race without touching it.
 **Trigger:** the companion entry is written before the model hash / zset commit, so a
 later failure in the same `save()` leaves an orphan entry.
 **Mitigation:** none, deliberately — see Risk 2. Inert data, existing purge path,
-matches the #476 precedent. Closing it means making the whole save one transaction,
-which is out of scope.
+follows the #476 precedent's shape (with the scope correction in Placement: this
+plan extends eager execution to the caller-pipeline branch, which #476 did not).
+Closing it means making the whole save one transaction, which is out of scope.
+
+### Race 4 (not fixed, stated): mixed-version writers during a rolling deploy
+**Location:** any pre-fix process running `cyclic_decay_field.py:623`/`:710` or
+`base.py:2749`/`:2784` concurrently with a post-fix process's `EVAL`
+**Trigger:** the server serializes scripts against each other, but a pre-fix
+process's client-side `HGET` … `HSET` pair is two independent commands; its read can
+interleave with a new script's read-and-write and its write then clobbers the
+script's output. Races 1 and 2 remain reachable in exactly their pre-fix form.
+**Data/state prerequisite:** at least one un-upgraded writer process for the same
+`(cycles_hash_key, member_key)`.
+**Mitigation:** none available in code — no client-side protocol can exclude a writer
+that does not participate in it. Handled as a **documented deployment requirement**:
+the fix is complete only once every writer is upgraded. See Update System and Task 6.
 
 ## No-Gos (Out of Scope)
 
@@ -456,12 +583,30 @@ that the untouched writers stay untouched.
 
 ## Update System
 
-No update-system changes required. popoto is a library plus an mkdocs site; this
-change is internal to two modules, adds no dependency, no config, and no data
-migration — the stored payload shape is byte-compatible before and after (the only
-difference is msgpack integer-vs-float encoding of integral values, which every
-reader already accepts, including the pre-existing `CYCLIC_DECAY_LUA` scorer and
-older popoto versions).
+No update-system changes required in the mechanical sense: popoto is a library plus
+an mkdocs site; this change is internal to two modules, adds no dependency, no
+config, and no data migration — the stored payload shape is byte-compatible before
+and after (the only difference is msgpack integer-vs-float encoding of integral
+values, which every reader already accepts, including the pre-existing
+`CYCLIC_DECAY_LUA` scorer and older popoto versions).
+
+**But "no migration" is not "safe to roll out gradually" (critique C2).** Script
+atomicity serializes against other *scripts and single commands on the server*. It
+gives **no** exclusion whatsoever against a concurrent **pre-fix process** still
+doing client-side `HGET` → merge in Python → `HSET`: that process's read can land
+between the new script's read and its write, and its later `HSET` clobbers the
+script's result exactly as before. The race being closed here therefore stays fully
+reachable for the entire duration of a rolling deploy, and is closed only once
+**every** process that writes a given `CyclicDecayField`-bearing model is on
+post-fix code.
+
+This is a deployment caveat, not a defect in the fix, and it is the same class of
+hazard the repo already documents for the sibling #698 mechanism at
+`docs/features/cyclic-decay-field.md:150-152` ("a rolling deploy where old- and
+new-version processes save the same record with different in-process
+declarations"). It must be stated **next to that existing caveat in the user-facing
+docs**, not only here — an operator reading "no update-system changes" without it
+will reasonably conclude gradual rollout carries no caveat. Task 6 carries this.
 
 ## Agent Integration
 
@@ -479,6 +624,12 @@ public methods keep their signatures.
       companion write executes eagerly, not at `pipeline.execute()`).
 - [ ] Same file — note that integral amplitudes may read back as `int` (Risk 1) and
       that popoto coerces at its own boundaries.
+- [ ] `docs/features/cyclic-decay-field.md:150-152` — **extend the existing rolling-
+      deploy caveat** (critique C2, Race 4). It currently covers mixed in-process
+      *declarations*; add that during a rolling deploy the atomicity guarantee itself
+      does not hold, because a pre-fix process's client-side read-modify-write is not
+      excluded by a server-side script, so the lost update stays reachable until every
+      writer of that model is upgraded.
 - [ ] `docs/features/README.md` — index entry already exists; verify no text there
       repeats the deleted caveat.
 
@@ -511,6 +662,13 @@ public methods keep their signatures.
       except where a test spied on `hget`/`hset` directly (Test Impact).
 - [ ] `grep` confirms no client-side `hget` of either companion hash remains in
       `on_save` or `_adjust_cycle_amplitudes`.
+- [ ] A saved record's stored cycles entry decodes with a **numeric** period, and a
+      ranked query (`top_by_decay`) over a cycle-declaring model returns without
+      `ResponseError` (critique B1).
+- [ ] `strengthen_cycle()` on a member with no stored cycles entry returns `[]`
+      rather than raising (critique B2).
+- [ ] The rolling-deploy caveat (Race 4 / critique C2) is present in
+      `docs/features/cyclic-decay-field.md`, not only in this plan.
 - [ ] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
 - [ ] The "queue the save first" caveat is gone from the docstring and the docs page.
 - [ ] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
@@ -570,6 +728,15 @@ public methods keep their signatures.
   learned amplitude) and the `logger.warning` decode line from it. Normalize an empty
   report defensively — `cmsgpack` may pack an empty Lua table as either an array or a map.
 - Match periods through the `%.17g` / string key function; do not compare raw values.
+- **Convert every ARGV-sourced slot before writing it back (critique B1).** Add the
+  `coerce_period()` helper and build each entry as
+  `{coerce_period(argv_period), tonumber(amp), tonumber(phase), tonumber(baseline)}`.
+  Slot 1 must never be the raw ARGV string (the scorer's bare `if period > 0` at
+  `cyclic_decay_field.py:163-166` sits outside the `pcall` and hard-errors on
+  `string > number`) and never the `'n:'`/`'s:'` match key. Slot 4 must be
+  `tonumber()`-ed or #698's `baseline == declared` branch is false forever, silently.
+  Note both in the script header comment — the slot-4 failure has no crash and no
+  distinguishing log line.
 - Keep the clamp/threshold constants where they are; do **not** add a new
   `Defaults` constant (every new one must be registered in
   `tests/benchmarks/test_defaults_sync.py`, which narrow lane test selection never reaches).
@@ -587,6 +754,17 @@ public methods keep their signatures.
 - Port `base.py:2749-2789` to `run_lua`, passing `factor`, `max_amplitude` and
   `min_threshold` as ARGV. Preserve both return contracts: the pipeline when a
   pipeline is given, the 3-slot truncated list otherwise.
+- **Carry the no-entry short-circuit across the port (critique B2).** The Lua early-
+  exits with `local raw = redis.call('HGET', KEYS[1], ARGV[1]); if not raw then return nil end`
+  — explicit `nil`, never `''`. Python guards on the EVAL's return value before
+  unpacking, mirroring today's `if not raw: return []` at `base.py:2748-2754`:
+  `result = run_lua(...)`; return `pipeline` if a pipeline was given; `[]` if
+  `not result`; otherwise `[c[:3] for c in msgpack.unpackb(result, raw=False)]`. An
+  unconditional `msgpack.unpackb(run_lua(...))` crashes `strengthen_cycle()` /
+  `weaken_cycle()` for a member with no stored cycles.
+- Add a test for exactly that case: `strengthen_cycle()` on a member with no stored
+  cycles entry returns `[]` and does not raise, in both the pipeline and non-pipeline
+  forms.
 - Coerce amplitude and phase to `float` on the public return (Risk 1); leave `period`
   untouched.
 - Preserve the "never write or strip slot 3" property in the Lua and keep the comment
@@ -599,10 +777,20 @@ public methods keep their signatures.
 - **Assigned To**: `cycles-lua-builder`
 - **Agent Type**: builder
 - **Parallel**: false
-- Replace the seven `POPOTO_REDIS_DB` uses in `fields/cyclic_decay_field.py`
-  (`:286`, `:301`, `:379`, `:387`, `:493`, `:501`, and whatever survives in the
-  ported code) with `get_REDIS_DB()`; drop the name from the import at `:49`.
+- Replace the **nine** `POPOTO_REDIS_DB` uses in `fields/cyclic_decay_field.py`
+  measured at `9986c086` — `:286`, `:301`, `:379`, `:387`, `:493`, `:501`, `:705`,
+  `:719`, `:755` (the last three, or whatever survives of them, live in the code
+  Tasks 1-2 rewrite) — with `get_REDIS_DB()`; drop the name from the import at `:49`.
 - Do not touch `fields/write_filter.py`.
+- **Scope note (critique C3):** six of the nine are outside this bug's code path.
+  They are kept to avoid leaving the file half-converted (#655), and no build task
+  depends on this one (Task 5 merely lists it in `Depends On`, a sequencing entry) —
+  so if the supervisor answers Open Question 3
+  with "split it out", delete this task and the
+  `grep -c "POPOTO_REDIS_DB" … == 0` Verification anti-criterion (which only holds
+  on a full conversion) and drop `tests/test_popoto_redis_db_rebind.py` /
+  `tests/test_connection.py` from the Validates list. Tasks 1, 2 and 4 are unaffected
+  either way.
 - Verify in a **full-suite** run, not a file-scoped one: a stale snapshot and a
   converted call agree until `tests/test_connection.py` rebinds the global.
 
@@ -644,7 +832,9 @@ public methods keep their signatures.
 - **Assigned To**: `cycles-doc`
 - **Agent Type**: documentarian
 - **Parallel**: false
-- Everything in the **Documentation** section.
+- Everything in the **Documentation** section — including the rolling-deploy caveat
+  extension at `docs/features/cyclic-decay-field.md:150-152` (critique C2 / Race 4),
+  which is a Success Criterion and a Verification row, not optional prose.
 
 ### 7. Final validation
 - **Task ID**: validate-all
@@ -669,7 +859,11 @@ public methods keep their signatures.
 | Anti-criterion: no client-side cycles read in `on_save` | `grep -c "hget(cycles_hash_key" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
 | Anti-criterion: no client-side pressure read in `on_save` | `grep -c "hget(pressure_hash_key" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
 | Anti-criterion: no client-side cycles RMW in `_adjust_cycle_amplitudes` | `grep -c "hget(cycles_hash_key" src/popoto/models/base.py` | match count == 0 |
-| Anti-criterion: stale client import gone | `grep -c "POPOTO_REDIS_DB" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Anti-criterion: stale client import gone (drop with Task 3 if split out — see C3) | `grep -c "POPOTO_REDIS_DB" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
+| Stored period is numeric, not an ARGV string (B1) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "period_type or scoring_path"` | exit code 0 |
+| Ranked query does not raise post-port (B1) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "top_by_decay"` | exit code 0 |
+| No-entry adjust returns `[]` (B2) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "no_stored_cycles"` | exit code 0 |
+| Rolling-deploy caveat documented (C2) | `grep -c "rolling deploy" docs/features/cyclic-decay-field.md` | output >= 2 |
 | Anti-criterion: `resolve_pressure` body left alone | `git diff origin/main -- src/popoto/models/base.py \| grep -c "^[-+][^-+].*resolve_pressure"` | match count == 0 |
 | Anti-criterion: pipeline caveat removed from docs | `grep -c "save first" docs/features/cyclic-decay-field.md` | match count == 0 |
 | Anti-criterion: pipeline caveat removed from docstring | `grep -c "queued on the \*same\* pipeline" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
@@ -846,6 +1040,25 @@ The plan says "seven use sites"; the measured grep of
 Low risk — the Verification anti-criterion greps for zero regardless of the
 narrative number — but the enumeration should be traceable to the grep.
 
+### Round 1 fold-in — applied 2026-09-08T05:30:28Z
+
+| Finding | Disposition | Where the plan now says it |
+|---|---|---|
+| B1 period/phase/baseline coercion | **Fixed** | Technical Approach → `CYCLES_MERGE_LUA` contract (per-slot table + `coerce_period` helper); Task 1 (new step); Test Impact (3 new tests); Success Criteria; Verification (2 rows) |
+| B2 no-entry return shape | **Fixed** | Technical Approach → `CYCLES_ADJUST_LUA` contract (explicit `nil`, Python guard shown); "Return-value encoding is load-bearing" reconciled to two shapes; Task 2 (new steps); Test Impact; Success Criteria; Verification |
+| C1 mis-cited #476 precedent | **Fixed** | Technical Approach → Placement (corrected to `base.py:1773-1786`, branch scope spelled out); Prior Art; Architectural Impact; Race 3; Open Question 1 restated at the true scope |
+| C2 rolling-deploy window | **Fixed** | Update System (second paragraph); new Race 4; Documentation checklist; Task 6; Success Criteria; Verification |
+| C3 Task 3 scope creep | **Kept, with rationale + escape hatch** | Solution → Straggler cleanup (scope-decision paragraph); Task 3 (scope note + exact removal procedure); Verification row annotated; Open Question 3 restated as non-blocking |
+| N1 site count | **Fixed** | Solution → Straggler cleanup and Task 3 now say one import + **nine** sites, enumerated to the grep at `9986c086` |
+
+Verified against the tree at `9986c086` while folding in: `grep -n POPOTO_REDIS_DB
+src/popoto/fields/cyclic_decay_field.py` → 1 import + 9 uses (N1 confirmed);
+`base.py:1773-1786` is `_eager_indexed_fields` inside the `else:` at `:1760`, and
+`base.py:1720-1729` is the generic per-field `on_save` queue in the caller-pipeline
+branch (C1 confirmed); `cyclic_decay_field.py:163-166` is a bare `if period > 0`
+outside the `pcall` at `:159-160` (B1 confirmed); `base.py:2748-2754` is the
+`if not raw: return []` short-circuit (B2 confirmed).
+
 ### Structural check results
 
 | Check | Status | Detail |
@@ -878,17 +1091,32 @@ rather than by assumption:
 
 What still needs supervisor input:
 
-1. **The eager-write placement.** `on_save`'s companion write stops being queued on
-   the caller's pipeline (Solution → Placement, Risk 2, Race 3). The alternative
-   keeps it in the pipeline but loses the #698 reset log and the decode warning.
-   Confirm the trade — accepting a possible inert orphan entry after a failed save,
-   in exchange for keeping the logging #698's critique specifically hardened.
+1. **The eager-write placement — restated with the corrected scope (critique C1).**
+   `on_save`'s companion write stops being queued, in **both** branches of
+   `Model.save`. The #476 precedent originally cited for this covers only the
+   internal-pipeline branch (`base.py:1773-1786`, inside the `else:` at `:1760`); in
+   the caller-supplied-pipeline branch, indexed `on_save` is queued through the
+   generic loop at `:1720-1729` and nothing runs eagerly today. So the actual
+   decision is broader than the precedent: **a caller who builds their own pipeline
+   and calls `record.save(pipeline=pipe)` will have the companion hashes written
+   before their `pipe.execute()` runs** — the companion write lands ahead of the
+   model hash and index writes queued alongside it, and a failure at `execute()`
+   leaves an inert orphan companion entry (Risk 2, Race 3).
+   The alternative (queue the EVAL) keeps the write inside the caller's transaction
+   but makes the #698 reset log and the decode warning unreachable from `on_save` —
+   the exact observability #698's round-2 critique (C8) hardened.
+   Confirm the trade at that scope, not merely at #476's.
 2. **Numeric type drift (Risk 1).** Values round-trip exactly, but integral
    amplitudes come back as `int` instead of `float` once Lua does the packing
    (measured, spike-2). The plan coerces at popoto's own read boundaries and
    documents it. Is that acceptable, or is preserving the stored msgpack *type* a
    requirement — which would mean a different on-disk encoding and a migration?
-3. **Straggler scope (Task 3).** Converting this module's stale
-   `POPOTO_REDIS_DB` import is small, is called for by `CLAUDE.md`, and fixes a
-   latent wrong-database read on the pressure path at `:719` — but it is not this
-   bug. Keep it in, or split it out?
+3. **Straggler scope (Task 3) — critique C3.** Converting this module's stale
+   `POPOTO_REDIS_DB` import is small (one import + nine sites, one file, no behavior
+   change), is called for by `CLAUDE.md`, and fixes a latent wrong-database read on
+   the pressure path at `:719` — but six of the nine sites (`export_state`,
+   `import_state`, the ranking path) are unrelated to atomicity. **The plan's default
+   is to keep it**, on the grounds that a partial conversion leaves the file in the
+   half-converted state #655 warns about. This question is now non-blocking: Task 3
+   is isolated, and the removal procedure if the answer is "split it out" is written
+   into the task itself. Answer at leisure; the build can proceed on the default.
