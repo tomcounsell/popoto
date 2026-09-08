@@ -1317,7 +1317,172 @@ detect its violation.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Verdict:** READY TO BUILD (with concerns) — 0 blockers, 5 concerns, 1 nit.
+**Depth:** FULL. **Mode:** independent roster (3 critics) — Risk & Robustness,
+Scope & Value, History & Consistency. Run `d46186192d5346478dc7853b5e958068`,
+2026-09-08, against baseline `952c46b5`.
+
+**Lead verification performed during critique** (executed, not read):
+
+- The planner's spike-3 claim — *the `turn_id` half of #688 needs no adapter code*
+  — is **confirmed by execution** at the baseline commit:
+  `PYTHONPATH=src python -c "…hooks.normalize({'hook_event_name':'pre_llm_call',
+  'session_id':'s','turn_id':'t-1','user_message':'health checks'})"` yields
+  `turn_id='t-1'`, `kind='read'`, `text='health checks'`, `cwd=None` with no code
+  change. The **vacuity hazard the plan names is therefore real and reproduced**: a
+  turn-id test written at the `normalize()` layer passes today. The plan's rule —
+  every new turn-id assertion runs against the replaced fixture or the plugin
+  envelope, plus a recorded red state — is the correct and sufficient answer.
+- The counterpart is **genuinely falsifiable**: the same call with
+  `{'hook_event_name':'post_llm_call','assistant_response':'automatic rollback'}`
+  yields `text=''` today, so the one-line `_RESPONSE_FIELDS` change does have a test
+  that fails without it. Success Criterion 4 is achievable as written.
+- Prerequisites re-run: `redis-cli -n 9 PING` → PONG; the lane worktree exists;
+  `import hermes_cli` → `ModuleNotFoundError` (the collision guard holds today);
+  `grep -rn 'pytest.mark.xfail\|pytest.xfail(' tests/` → 0 hits.
+- Structural checks all PASS: required sections present; tasks 1–8 with valid,
+  acyclic `Depends On` and a `Validates` on every build task; every referenced path
+  exists except the four the plan creates; success criteria map to tasks; no No-Go
+  or Rabbit Hole reappears as planned work.
+
+### C1 — Contract-test assertion (e) can pass vacuously without a seeded Redis
+
+- **Severity:** CONCERN · **Critics:** Risk & Robustness
+- **Location:** Solution → Technical Approach, assertion (e); Task 4 `build-contract`
+- **Finding:** Assertion (e) — `invoke_hook("pre_llm_call", **kwargs)` returns a list
+  whose first element is a dict with a `"context"` key — is only meaningful when
+  memory has something to inject. `handle_payload` does not guard `service.assemble()`
+  (`src/popoto/integrations/hooks.py:305-313`), so with Redis down the plugin's own
+  mandated `except Exception: return None` swallows it and `invoke_hook` returns
+  `[None]` — indistinguishable from "nothing to inject". Task 4 hedges with "Redis
+  service **if the test needs one**", leaving exactly that condition unresolved.
+- **Suggestion:** Make the contract job's Redis service unconditional, and seed a
+  known record before assertion (e).
+- **Implementation Note:** In `tests/test_hermes_plugin_contract.py`, build a real
+  `MemoryService` bound to the job's Redis, `.capture()` a known sentinel string,
+  then assert `invoke_hook("pre_llm_call", **kwargs)[0]["context"]` **contains that
+  sentinel**. A bare `isinstance(result[0], dict)` passes on the swallowed-exception
+  path. If a Redis service is judged too heavy for this job, split (e) into its own
+  test marked so its skip is visible, and keep (a)–(d) as the Redis-free gate.
+
+### C2 — The plan never says `hermes-contract.yml` must not be a required check
+
+- **Severity:** CONCERN · **Critics:** Risk & Robustness
+- **Location:** Update System; Risk 3
+- **Finding:** Risk 3 accepts that a pinned `hermes-agent==0.19.0` can go stale or be
+  transiently unfetchable, but never draws the operational conclusion. Branch
+  protection is not configured in-repo (no `.github/settings.yml`, no CODEOWNERS), so
+  whoever wires the new workflow could reasonably mark it required — after which a
+  PyPI outage or a yanked release blocks every unrelated PR.
+- **Suggestion:** State in the workflow header comment *and* in Update System that
+  this job is advisory and must not be added to required status checks.
+- **Implementation Note:** This is a repo-settings action the PR diff cannot enforce,
+  so it must be written down as a manual post-merge note rather than assumed. Word it
+  next to the existing pin rationale so the two are read together: "green proves the
+  manifest satisfies *0.19.0's* loader; this job is advisory and must not gate merge."
+
+### C3 — The pinned `hermes-agent` version has no staleness signal at all
+
+- **Severity:** CONCERN · **Critics:** Scope & Value
+- **Location:** Risk 3; Architectural Impact
+- **Finding:** The pin is deliberately kept out of `pyproject.toml`, `uv.lock` and
+  `scripts/check_lock_imports.py` — correctly — but the consequence is that **no
+  configured Dependabot lane can ever see it**. `.github/dependabot.yml` runs `uv` at
+  `/` (line 24) and `/examples` (line 70) and `github-actions` at `/` (line 108);
+  none of the three reads a `pip install hermes-agent==0.19.0` inside a workflow `run`
+  step. Risk 3's remedy is "accept and document", with no owner and no cadence — the
+  same class of silent rot this lane exists to close, one level up.
+- **Suggestion:** Give the accepted risk a self-limiting mechanism rather than prose
+  alone.
+- **Implementation Note:** Cheapest form that survives review: a
+  `# pinned 2026-09-08; re-check against latest hermes-agent by 2027-03` comment on
+  the `pip install` line, plus one sentence in `docs/guides/harness-hermes.md` naming
+  the pinned version and date so a reader can tell how stale the claim is. A
+  `schedule:`-triggered non-gating re-run against unpinned `hermes-agent` is the
+  stronger option and is acceptable **only** if it cannot report failure on a PR.
+
+### C4 — "the remaining four" corrects to two, not three
+
+- **Severity:** CONCERN · **Critics:** History & Consistency, Scope & Value
+  (independently converged)
+- **Location:** Test Impact → fixtures README bullet; Documentation → Inline
+  Documentation; Task 3 `build-fixtures`
+- **Finding:** `tests/fixtures/harness_payloads/README.md` reads verbatim "Two pairs
+  now test the harness -- Claude Code and OpenClaw -- and the remaining four are
+  still the maintainer's acceptance pass". That bucket holds exactly four *files* —
+  the Codex pair and the Hermes pair — and fixtures move in pairs, so the count can
+  only stay at four or drop to **two**. The plan's instruction to write "three" is
+  arithmetically unreachable under either grading, and shipping a wrong count in the
+  one file whose job is honest bookkeeping is the issue's own failure mode in
+  miniature.
+- **Suggestion:** Correct the instruction to "two remain, not four", and pair the
+  number with the third-tier label so count and grade agree.
+- **Implementation Note:** The sentence must be rewritten as a unit with the new
+  three-tier table, not patched by digit: after this lane the buckets are *live turn*
+  (Claude Code, OpenClaw = 4 files), *real dispatcher, not a live turn* (Hermes = 2),
+  *binary/docs, not a live turn* (Codex = 2). Add a Verification row pinning it:
+  `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md` → 0.
+
+### C5 — Risk 2's mitigation omits the invariant that actually decides the collision
+
+- **Severity:** CONCERN · **Critics:** Structural (lead), extending Risk &
+  Robustness's namespace analysis
+- **Location:** Risk 2; Success Criteria; Verification
+- **Finding:** Risk 2's three layers (temp cwd, `importlib` by path, hermes-free dev
+  venv) are all sound but none names the property the resolution actually turns on.
+  `hermes-agent` ships `plugins` as a **regular** package; popoto's `plugins/` has no
+  `__init__.py`, so it is only a PEP 420 namespace *portion* — and a namespace portion
+  never wins over a regular package found later on `sys.path`, whatever the order.
+  That is why the collision is survivable. Adding `plugins/__init__.py` at the repo
+  root — a plausible future "tidy-up", and exactly the kind of edit `plugins/hermes/__init__.py`
+  invites — would silently flip it and shadow the vendor package inside the one job
+  built to exercise it. Nothing in the plan pins this.
+- **Suggestion:** State the invariant in Risk 2 and pin it with an anti-criterion.
+- **Implementation Note:** Add to Verification: `test ! -e plugins/__init__.py` →
+  exit 0, and add the same line to Success Criteria. Note in Risk 2 that
+  `plugins/hermes/__init__.py` is required (Hermes imports the *plugin directory*)
+  while `plugins/__init__.py` must never exist. Related: neither `ruff check src/`
+  nor `black --check src/ tests/` covers `plugins/`, so the new module lands
+  ungated — either widen `black --check` to `plugins/` or accept it explicitly.
+
+### N1 — `integrations/__init__.py:11-12` carries no `handler.py` reference
+
+- **Severity:** NIT · **Critics:** History & Consistency
+- **Location:** Documentation → Inline Documentation; Task 2 `build-adapter`
+- **Finding:** The plan lists `src/popoto/integrations/__init__.py:11-12` alongside
+  `config.py:129,:383` as needing a "a Hermes `handler.py`" correction. Verified at
+  baseline: `grep -rn "handler.py" src/popoto/integrations/` returns **only**
+  `config.py:383`. `__init__.py:11-12` names the event pair
+  `pre_llm_call`/`post_llm_call`, which stays true after the re-target;
+  `config.py:129` says "a Hermes handler" in prose and does want rewording.
+- **Suggestion:** Change that row to "confirm, no change expected" for
+  `__init__.py:11-12` rather than sending the builder to edit a correct line.
+
+### Open Question Rulings (resolved in critique; not escalated)
+
+1. **Is a `hermes-agent==0.19.0` CI job acceptable?** — **Yes, build it.** It is the
+   only mechanism that makes this integration falsifiable by machine rather than by a
+   human re-reading vendor docs, which is precisely what failed in #515, and its cost
+   is confined to one job's own venv. Conditions: C1 (seed Redis or split assertion
+   (e)), C2 (advisory, never a required check), C3 (dated pin), C5 (no
+   `plugins/__init__.py`, ever).
+2. **What should the new fixture grade say?** — **Adopt the plan's three-level
+   framing.** Hermes's grade is backed by the real `PluginManager` and `invoke_hook`;
+   Codex's is backed by a binary's schema and a *failed* live attempt. Collapsing
+   them onto one phrase would destroy a distinction the project paid to establish.
+   Word the Hermes rows: *"real `hermes-agent` 0.19.0 plugin loader and `invoke_hook`
+   dispatcher; kwargs verbatim from the 0.19.0 invoke sites; not a live model turn."*
+   Fix the count per C4.
+3. **Should `POPOTO_MEMORY_AGENT_ID` be required on Hermes?** — **No — recommended,
+   documented, not enforced.** The plan's own argument defeats the alternative:
+   Hermes swallows plugin logging into `~/.hermes/logs/agent.log`, so a first-use
+   warning adds a branch and buys nothing. Keep it as guide text next to the absent-`cwd`
+   explanation; do not add the warning branch and do not raise.
+4. **Does this PR close #688 outright?** — **Yes, outright.** #688 asked whether
+   Hermes carries a per-turn id; its own comment answered yes, and resolution path (a)
+   ("plumb it through as `turn_id`") is fully inside this lane's Success Criteria. No
+   #688-owned work is deferred to a No-Go. The PR body carries `Closes #704` and
+   `Closes #688`; it must **not** hedge with "partially addresses".
 
 ---
 
