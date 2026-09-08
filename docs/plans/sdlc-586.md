@@ -967,7 +967,138 @@ that nothing in `src/` imports, and this plan does not change that.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique. -->
+**Round 1 — 2026-09-08. Depth: FULL. Mode: independent roster (3 critics —
+Risk & Robustness, Scope & Value, History & Consistency).**
+**Verdict: READY TO BUILD (with concerns) — 0 blockers, 4 concerns, 1 nit.**
+
+Structural checks: all required sections present; task IDs build-1..validate-all
+contiguous with valid, acyclic `Depends On` edges; every cited file path exists;
+all cited line references re-verified at `c2e1102b`
+(`validity_field.py:915-931`, `:781-797`; `base.py:95-116`;
+`external_base.py:919-1012`; `run_external.py:112-116`, `:597-601`,
+`:1021-1034`). Prerequisites re-run and passing: corpus present at
+277,383,467 bytes; `redis-cli -n 9 PING` → PONG with `DBSIZE` 0. The
+Verification table's artifact filenames were re-derived from the harness's own
+suffix composition (`run_external.py:999-1003`, `:1559-1563`) and are correct
+for all three arms, including arm B's `_sup-content-identity_nogate`.
+
+### C1 — `stop_invalidation_listeners()` is the one unguarded step in teardown
+
+- **Severity**: CONCERN — *Risk & Robustness*
+- **Location**: Race Conditions / spike-1
+- **Finding**: `external_base.py:1010` calls `stop_invalidation_listeners()`
+  bare, while every sibling cleanup block in the same `teardown()` is wrapped in
+  `try/except Exception: pass`. `Scenario.execute()`'s `except Exception`
+  (`base.py:107-114`) wraps only `setup()`/`run()`; `teardown()` runs in the
+  `finally`, so a raise there propagates out of `execute()` uncaught and kills
+  the whole driver loop mid-arm rather than producing the `status="error"`
+  single-item containment spike-1 claims.
+- **Suggestion**: Wrap the call in the file's existing `try/except Exception:
+  pass` idiom, or state in the plan why it is safe left bare.
+- **Implementation Note**: The exposure is real but latent for this run — the
+  code's own comment at `external_base.py:1009` says *"No-op in lexical mode (no
+  listener ever starts)"*, and Key Elements pins `--retrieval-mode lexical` on
+  all three arms. That safety rests on an inline comment, not a cited test.
+  Fold one line into **build-2** (it is already editing this method): wrap
+  `stop_invalidation_listeners()` in `try/except Exception:` logging a warning,
+  keeping teardown non-raising. Do not move the call or reorder it relative to
+  the validity cleanup — Race Conditions depends on it running *after* the
+  `DEL`.
+
+### C2 — Risk 2's `--output` mitigation is detection, and it is checked ~75 minutes late
+
+- **Severity**: CONCERN — *Risk & Robustness*
+- **Location**: Risk 2 / tasks run-arm-a, commit-artifacts
+- **Finding**: `--output` is per-invocation with no code-level guard (`global
+  RESULTS_DIR; if args.output: RESULTS_DIR = args.output`,
+  `run_external.py:1216-1218`), so the mitigation depends on the flag being typed
+  correctly on three separately-issued commands. The anti-criterion that would
+  catch an omission is not evaluated until task 8, after all three ~24-minute
+  arms — a clobbered `longmemeval_s_latest` pointer from arm A stays undetected
+  for the full session, and the plan states no recovery procedure.
+- **Suggestion**: Check the pointer inline immediately after run-arm-a, before
+  starting run-arm-b.
+- **Implementation Note**: Add to **run-arm-a** as a blocking step: `readlink
+  tests/benchmarks/results/external/longmemeval_s_latest.md` must still print
+  `longmemeval_s_20260630.md`. Recovery does **not** require re-running the arm:
+  `save_reports()` still writes the correctly-dated, uniquely-named
+  `longmemeval_s_{date}.{json,md}` even when `--output` is omitted, so the fix is
+  `ln -sf longmemeval_s_20260630.md tests/benchmarks/results/external/longmemeval_s_latest.md`
+  (and the `.json` twin) plus moving the misplaced dated pair into
+  `validity_586/`. Record that recovery path in the plan so an operator does not
+  spend 24 minutes re-running arm A.
+
+### C3 — build-3 changes a harness-wide report schema inside a single-study plan
+
+- **Severity**: CONCERN — *Scope & Value*
+- **Location**: Solution / Key Elements ("Three pre-run harness hardenings"), task build-3
+- **Finding**: The `machine` dict at `run_external.py:597-601` lives in the
+  single shared `aggregate` builder used by **every** dataset run through
+  `run_external.py`, not just this study. Adding `redis_version`/`bench_db`
+  therefore diverges every future benchmark report (LoCoMo, the extraction axis,
+  graph-eval) from every artifact committed before this PR, and no Risk, No-Go,
+  or Documentation entry says so.
+- **Suggestion**: Either split build-3 into its own reviewable change, or keep it
+  and add an explicit note that the `machine` block schema now diverges from all
+  previously committed artifacts.
+- **Implementation Note**: The breakage half of this was checked during critique
+  and is **absent** — no test or renderer enumerates the exact `machine` key set;
+  `build_markdown_report` reads only `machine['python_version']` and
+  `machine['platform']` (`run_external.py:803-804`), and the RLT harness uses a
+  separate `build_machine_metadata` (`rlt/run_rlt.py`), so the addition is purely
+  additive and safe. What remains is disclosure, not risk: add one line to the
+  Documentation section (and the `validity_586/README.md`) recording that
+  artifacts dated before this PR carry a three-key `machine` block and are not
+  directly diffable against the new five-key one. Test Impact's *"UPDATE if
+  present"* can be resolved to "no such assertion exists".
+
+### C4 — Open Question 1 is load-bearing but gates no task
+
+- **Severity**: CONCERN — *History & Consistency*
+- **Location**: Open Questions item 1 vs. Appetite / Step by Step Tasks
+- **Finding**: Open Question 1 says of the three-arm reinterpretation of
+  acceptance criterion 2 that *"Everything downstream follows from that call"*,
+  and Appetite budgets a PM check-in to confirm it — but no task carries a
+  `Depends On` edge to that confirmation. Tasks 1-10, including the ~75 minutes
+  of wall clock, run unconditionally.
+- **Suggestion**: Either gate the runs on the confirmation, or state that the
+  plan proceeds on a self-approved assumption regardless of the answer.
+- **Implementation Note**: Insert a zero-cost task `confirm-reinterpretation`
+  (`Depends On: validate-harness`, `Parallel: false`) and add it to
+  **run-arm-a**'s `Depends On`, so the question fails fast *before* the wall
+  clock is spent rather than after arm C is committed. Placing it after
+  `validate-harness` rather than at the top keeps the three harness edits — which
+  are correct under either framing — off the critical path of the PM answer.
+
+### N1 — Verification has no arm-B row
+
+- **Severity**: NIT — structural cross-reference check
+- **Location**: Verification table vs. Success Criteria
+- **Finding**: Success Criteria require *all three* arms at `n_total == 500`,
+  `n_ok == 500`, `n_errors == 0`, but the Verification table carries rows for
+  arms A and C only; arm B is checked inline in task 6 and nowhere else. Add the
+  row against
+  `validity_586/longmemeval_s_latest_sup-content-identity_nogate.json` (filename
+  re-derived from `run_external.py:1559-1563` and confirmed).
+
+### Checked and cleared
+
+- The n=5 → n=25 → n=500 wall-clock extrapolation. Both spike runs used
+  `--supersession content-identity` with gating on, i.e. arm-C-equivalent cost
+  including the second measurement-only `assemble()`
+  (`external_base.py:844-882`), applied uniformly to arms A and B — the error is
+  in the safe direction. `--dry-run` was confirmed to skip only report saving
+  (`run_external.py:982-983`), not the run, so the timings are representative.
+- The anti-vacuity inference from `193 keys / 11 hits` at n=25. Sound as an
+  inductive step; note it is a low bar that is near-certain to pass, so it
+  establishes the gate *fires*, not that the delta is meaningful.
+- spike-1's #701 containment argument. Verified against `base.py:95-116` and
+  `external_base.py:919-964`: `finally: teardown()` does run on every exit path,
+  the cleanup is guarded on the declared field, and it deletes all six key
+  shapes. The one hole is C1, above.
+- Metric-family and environment doctrine. The plan never cross-compares
+  judge-accuracy with recall, forbids `--judged`, and does not cross-compare its
+  redis-py 7.1.1 spike numbers against the 2026-09-07 redis-py 8.1.0 probe.
 
 ---
 
