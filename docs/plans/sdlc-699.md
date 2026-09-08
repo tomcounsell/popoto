@@ -682,6 +682,15 @@ public methods keep their signatures.
 Robustness, Scope & Value, History & Consistency) · **Verdict: NEEDS REVISION**
 (2 blockers, 3 concerns, 1 nit).
 
+| Severity | Critic(s) | Finding | Location |
+|---|---|---|---|
+| BLOCKER | Risk & Robustness | B1 — the rewritten cycles entry's `period` slot takes its value from ARGV, which is always a Lua string; the pre-existing scorer's bare `if period > 0` comparison (outside the pcall) then hard-errors, aborting every ranked query for that partition. The plan's `%.17g` key function covers matching only, never what is written into slot 1. | Technical Approach — `CYCLES_MERGE_LUA` contract |
+| BLOCKER | Risk & Robustness + History & Consistency | B2 — `CYCLES_ADJUST_LUA`'s "empty bulk reply when no entry exists" contradicts the absolute "both scripts must return `cmsgpack.pack(...)`" rule two paragraphs later, and Task 2 never specifies the falsy-reply guard that replaces today's `if not raw: return []`; an unconditional `msgpack.unpackb` crashes `strengthen_cycle()` for a member with no stored cycles. | Technical Approach — `CYCLES_ADJUST_LUA` contract; Task 2 |
+| CONCERN | History & Consistency | C1 — the #476 eager-EVAL precedent is mis-cited: that loop is at `base.py:1773-1786` and lives only in the internal-pipeline `else:` branch, while this plan ignores the `pipeline` kwarg in both branches, so the companion write now commits ahead of a caller's own explicit `pipe.execute()`. | Technical Approach — Placement |
+| CONCERN | Risk & Robustness | C2 — the rolling-deploy mixed-version window is undocumented: script atomicity gives no exclusion against a still-running pre-fix process's client-side read-modify-write, so the race stays reachable until every writer is upgraded, yet Update System says no update-system changes are required. | Update System; Race Conditions |
+| CONCERN | Scope & Value | C3 — Task 3's `POPOTO_REDIS_DB` conversion is import hygiene unrelated to atomicity; six of the sites sit in `export_state` / `import_state` / the ranking path, outside everything this plan rewrites. Already raised as the plan's own Open Question 3. | Task 3; Solution — Straggler cleanup |
+| NIT | History & Consistency | N1 — the plan says "seven use sites"; the measured grep at `9986c086` shows one import plus nine use sites, and the "four of the seven sites" phrasing counts a fourth item against three grep hits. | Solution — Straggler cleanup; Task 3 |
+
 ### B1 (BLOCKER) — the rewritten cycles entry's `period` slot may become a Lua string, crashing the scoring script
 
 *Critics: Risk & Robustness (corroborated by the aggregator's own read of
