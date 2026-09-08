@@ -264,14 +264,18 @@ Every number produced under this axis carries Python version, redis-py
 version, platform, Redis DB, and the baseline commit SHA, per repo doctrine.
 Numbers from different redis-py versions are not compared.
 
-**Known limitation (tracked separately, not fixed by this axis):** every
-externally-built model class shares one Redis key namespace for `ValidityField`
-regardless of its per-item `safe_prefix`, because `_meta.db_class_key` is
-captured at class-creation time, before `_build_external_model_class`'s
-post-hoc `__name__`/`__qualname__` rename reaches it. `ExternalScenario.teardown()`
-explicitly deletes the shared keys after every item specifically to contain
-this, so cross-item contamination does not leak into results — but a true
-per-item namespace is still open work. See the follow-up issue filed from #692.
+**Fixed (#701):** every per-item benchmark model class is now built with
+`type(class_name, bases, namespace_dict)` rather than a `class` statement
+followed by a post-hoc `cls.__name__` rename. `_meta.db_class_key` (and
+every field's derived Redis key — `$Class:`, `$ValidityF:`, `$ConfidencF:`,
+`$KeyF:`, `$DecayingSortF:`, and the record hash itself) is captured once,
+at class-creation time, from the name the metaclass actually sees — so a
+post-hoc rename never reached it and every affected field shared one
+namespace across items, not only `ValidityField`. `ExternalScenario.teardown()`
+still deletes the per-item and per-class-name keyspace as before, now as
+cheap targeted cleanup rather than the sole thing preventing cross-item
+contamination — see `tests/benchmarks/test_model_class_namespacing.py` for
+the construction-invariant coverage.
 
 ## Adding a New Constant
 
