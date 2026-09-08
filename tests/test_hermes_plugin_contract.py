@@ -46,8 +46,8 @@ PLUGIN_SRC = REPO_ROOT / "plugins" / "hermes"
 AGENT = "test-hermes-plugin-contract"
 
 # The kwargs the 0.19.0 invoke sites pass, verbatim:
-#   pre_llm_call  -- agent/turn_context.py:692-703
-#   post_llm_call -- agent/turn_finalizer.py:483-494
+#   pre_llm_call  -- agent/turn_context.py:696-707
+#   post_llm_call -- agent/turn_finalizer.py:484-493
 SESSION = "sess-c0ffee"
 TASK = "task-1a2b"
 TURN = f"{SESSION}:{TASK}:5e6f7a8b"

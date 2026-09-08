@@ -125,7 +125,7 @@ OpenClaw sends one, though not on the event: its hooks take a second
 Observe hook whose handlers run concurrently and may overlap the next turn --
 keyed pairing makes the overlap correct by construction. Hermes sends one too:
 both plugin invoke sites carry `turn_id` as a flat kwarg
-(`agent/turn_context.py:696-707`, `agent/turn_finalizer.py:485-494`), so its
+(`agent/turn_context.py:696-707`, `agent/turn_finalizer.py:484-493`), so its
 sessions are keyed the same way (#704 closed #688 with this). A session
 using a harness that genuinely sends no turn id, or a queue written entirely
 before this behavior shipped, still falls back to positional FIFO pairing so

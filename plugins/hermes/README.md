@@ -39,10 +39,12 @@ the read path costs one Redis round trip with no interpreter startup at
 all, which is the fastest of the four harnesses.
 
 Injected context lands in the user message, never the system prompt --
-confirmed against the installed 0.19.0 source
-(`agent/turn_context.py:720-741`) and upstream's open feature request to
-change it (hermes-agent#23739, not granted as of this writing). That is
-what keeps the cached system prefix intact across turns.
+confirmed against the installed 0.19.0 source. `pre_llm_call` results are
+joined into `plugin_user_context` (`agent/turn_context.py:708-741`) and
+appended by `compose_user_api_content` (`agent/turn_context.py:44-73`),
+whose own docstring says the injections go on "the *API copy* of the user
+message only -- the stored content stays clean". That is what keeps the
+cached system prefix intact across turns.
 
 ## Environment
 

@@ -3,7 +3,7 @@
 Install to ``~/.hermes/plugins/popoto-memory/`` (copy this file and
 ``plugin.yaml``), then run ``hermes plugins enable popoto-memory`` --
 plugins are opt-in via ``plugins.enabled`` in ``~/.hermes/config.yaml``
-(``hermes_cli/config.py:749-751``, read at ``plugins.py:256-270``). A
+(read by ``_get_enabled_plugins()``, ``hermes_cli/plugins.py:243-270``). A
 plugin on disk but absent from that list is recorded as ``enabled=False``
 and never loaded.
 
@@ -12,7 +12,8 @@ in-process: no subprocess, no interpreter startup, just the Redis round
 trip. The service is built once and reused for the life of the gateway.
 
 Hermes's plugin manager calls a registered callback synchronously
-(``ret = cb(**kwargs)``, ``hermes_cli/plugins.py:1911-1927``, never
+(``ret = cb(**kwargs)`` at ``hermes_cli/plugins.py:1917``, inside
+``invoke_hook`` at 1892-1927, never
 awaited) -- an ``async def`` callback would return an un-awaited coroutine
 that is silently dropped. Both callbacks here are therefore plain ``def``
 and take ``**kwargs`` only, since the manager injects
@@ -22,10 +23,10 @@ a ``TypeError`` on a positional signature.
 The exact invoke-site kwargs (read from the installed hermes-agent==0.19.0
 package):
 
-    pre_llm_call  (agent/turn_context.py:692-703):
+    pre_llm_call  (agent/turn_context.py:696-707):
         session_id, task_id, turn_id, user_message, conversation_history,
         is_first_turn, model, platform, sender_id
-    post_llm_call (agent/turn_finalizer.py:483-494):
+    post_llm_call (agent/turn_finalizer.py:484-493):
         session_id, task_id, turn_id, user_message, assistant_response,
         conversation_history, model, platform
 

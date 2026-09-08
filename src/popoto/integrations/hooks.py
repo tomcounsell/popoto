@@ -100,7 +100,7 @@ _RESPONSE_FIELDS = (
     # ``_reduce_value`` is what turns it back into one string.
     "assistantTexts",
     # Hermes's ``post_llm_call`` invoke site carries the turn's final text
-    # as ``assistant_response`` (agent/turn_finalizer.py:483-494, read off
+    # as ``assistant_response`` (agent/turn_finalizer.py:484-493, read off
     # the installed hermes-agent==0.19.0 package). Without this entry a
     # Hermes write event normalizes to an empty ``text`` and the capture
     # path silently does nothing.
@@ -130,8 +130,8 @@ class NormalizedEvent:
             plugin forwards as ``turn_id``. Hermes **does** send a turn id: it
             mints one once per turn (``agent/turn_context.py:370``) and passes
             the same local to both ``pre_llm_call`` and ``post_llm_call``
-            (``agent/turn_context.py:692-703``,
-            ``agent/turn_finalizer.py:483-494``); the plugin forwards it
+            (``agent/turn_context.py:696-707``,
+            ``agent/turn_finalizer.py:484-493``); the plugin forwards it
             verbatim as ``turn_id``, which this function already reads flat
             with no code change (see #688, #704). The session-wide FIFO
             fallback now applies only when ``POPOTO_MEMORY_TURN_KEYED=0`` or a

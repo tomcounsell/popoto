@@ -324,7 +324,7 @@ def test_hermes_pre_and_post_share_one_turn_id():
 def test_assistant_response_is_the_field_hermes_writes_from():
     """Fixture-independent: the field name alone must reach the write path.
 
-    `assistant_response` is what `agent/turn_finalizer.py:483-494` passes and
+    `assistant_response` is what `agent/turn_finalizer.py:484-493` passes and
     it was missing from `_RESPONSE_FIELDS` before #704, which is the whole
     defect. Built by hand rather than loaded so it stays a test of the
     adapter even if the fixture is recaptured with different wording.

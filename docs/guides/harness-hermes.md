@@ -29,7 +29,7 @@ hermes mcp add popoto-memory --command popoto-memory --args mcp
 
 Two files, no config file to edit -- but the enable step is not optional.
 Plugins are opt-in via `plugins.enabled` in `~/.hermes/config.yaml`
-(`hermes_cli/config.py:749-751`, read at `plugins.py:256-270`); a plugin
+(read by `_get_enabled_plugins()`, `hermes_cli/plugins.py:243-270`); a plugin
 present on disk but absent from that list is recorded as `enabled=False`
 and never loaded, with no startup warning. Confirm with:
 
@@ -60,11 +60,13 @@ Troubleshooting below.
 ## Injection lands in the user message
 
 Hermes places `pre_llm_call` context in the user message rather than the
-system prompt, confirmed against the installed 0.19.0 source
-(`agent/turn_context.py:720-741`) and upstream's open feature request to
-change it (hermes-agent#23739, not granted as of this writing). That is the
-same placement Claude Code's `additionalContext` gets, and it is why
-per-turn injection does not invalidate a cached prefix.
+system prompt, confirmed against the installed 0.19.0 source: `pre_llm_call`
+results are joined into `plugin_user_context` (`agent/turn_context.py:708-741`)
+and appended by `compose_user_api_content` (`agent/turn_context.py:44-73`),
+whose docstring records that the injections reach "the *API copy* of the user
+message only -- the stored content stays clean". That is the same placement
+Claude Code's `additionalContext` gets, and it is why per-turn injection does
+not invalidate a cached prefix.
 
 `MemoryService` returns a context string and never touches a message array,
 so this stays the harness's decision.
