@@ -11723,8 +11723,10 @@ CLI --dataset longmemeval-s
   → write results/external/{dataset}_{YYYYMMDD}.{json,md}
 ```
 
-**Model class:** `ExternalBenchmarkMemory` — a fresh Popoto Model per
-benchmark item with:
+**Model class:** `ExtMem<hash>` — a fresh Popoto Model per benchmark item,
+built with `type(class_name, bases, namespace_dict)` so the metaclass captures
+the per-item name (and therefore `_meta.db_class_key`, from which every field
+derives its Redis keys) at class creation. Fields:
 - `agent_id`: KeyField (partitions per item)
 - `content`: StringField (turn text)
 - `importance`: FloatField (fixed at 0.5 for baseline)

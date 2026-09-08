@@ -4298,8 +4298,10 @@ arm off unless you have real association edges, not adjacency ones.</p>
 <a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>  → compute Recall@1/5/10, MRR, p50/p95 latency
 <a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>  → write results/external/{dataset}_{YYYYMMDD}.{json,md}
 </code></pre></div>
-<p><strong>Model class:</strong> <code>ExternalBenchmarkMemory</code> — a fresh Popoto Model per
-benchmark item with:
+<p><strong>Model class:</strong> <code>ExtMem&lt;hash&gt;</code> — a fresh Popoto Model per benchmark item,
+built with <code>type(class_name, bases, namespace_dict)</code> so the metaclass captures
+the per-item name (and therefore <code>_meta.db_class_key</code>, from which every field
+derives its Redis keys) at class creation. Fields:
 - <code>agent_id</code>: KeyField (partitions per item)
 - <code>content</code>: StringField (turn text)
 - <code>importance</code>: FloatField (fixed at 0.5 for baseline)
