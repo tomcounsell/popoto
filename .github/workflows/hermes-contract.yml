@@ -1,0 +1,134 @@
+name: Hermes contract
+
+# ADVISORY, NOT A GATE. This workflow must never be made a required status
+# check in branch protection, and nothing in the merge path may depend on it.
+#
+# Why: it installs `hermes-agent` from PyPI on every run. That is a third
+# party's release cadence sitting in front of popoto's merges — a yanked
+# version, a renamed module, or a slow index would block unrelated PRs from
+# merging, and the failure would say nothing about popoto's own correctness.
+# The information it produces is "the shipped plugin still fits the Hermes
+# version we pinned against", which is worth a red X to read and never worth
+# a blocked merge.
+#
+# What it protects: `tests/test_hermes_plugin_contract.py` skips itself
+# whenever `hermes_cli.plugins` cannot be imported, and `tests.yml` does not
+# install hermes-agent. Without this job the whole contract suite is a
+# permanent, invisible skip — which is precisely the shape of #704, where a
+# plugin that could never fire looked fine because nothing executed it.
+#
+# A skip here is a failure of this workflow's purpose even when the run is
+# green, so the final step fails the job if the suite reports zero tests run.
+
+on:
+  pull_request:
+    paths:
+      - "plugins/hermes/**"
+      - "src/popoto/integrations/**"
+      - "tests/test_hermes_plugin_contract.py"
+      - "tests/fixtures/harness_payloads/hermes_*.json"
+      - ".github/workflows/hermes-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "plugins/hermes/**"
+      - "src/popoto/integrations/**"
+      - "tests/test_hermes_plugin_contract.py"
+      - "tests/fixtures/harness_payloads/hermes_*.json"
+      - ".github/workflows/hermes-contract.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: hermes-contract-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: shipped plugin against a real hermes-agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Unconditional, not gated on a path filter or an `if:` — a Redis that is
+    # only sometimes present turns a missing service into a confusing test
+    # error instead of an obvious one, and every test in this suite needs it.
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      # Named rather than omitted, for the reason tests.yml records: an unset
+      # REDIS_URL resolves to DEFAULT_URL's database 0 and hits the #584
+      # refusal. No POPOTO_TEST_DB here — CI has no parallel lanes to isolate.
+      REDIS_URL: redis://localhost:6379/15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install popoto and a pinned hermes-agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          # Wheels only: hermes-agent's sdist build pulls a toolchain this job
+          # has no reason to hold, and a source build failure here would read
+          # as a popoto failure.
+          # pinned 2026-09-08 (hermes-agent 0.19.0); re-check against latest by 2027-03
+          pip install --only-binary :all: "hermes-agent==0.19.0"
+
+      - name: Record the versions under test
+        run: |
+          python -c "import importlib.metadata as m; print('hermes-agent', m.version('hermes-agent'))"
+          python -c "import importlib.metadata as m; print('redis', m.version('redis'))"
+          python -V
+
+      - name: Run the plugin contract suite
+        # Run from a temp directory: hermes-agent ships a top-level regular
+        # package named `plugins`, and popoto's repo-root `plugins/` is a PEP
+        # 420 namespace portion. With the repo root as the working directory,
+        # '' on sys.path lets popoto's directory shadow hermes-agent's package
+        # and the import fails in a way that has nothing to do with the code
+        # under test. `--rootdir` keeps pyproject.toml's pytest config.
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m pytest \
+            --rootdir "$GITHUB_WORKSPACE" \
+            -c "$GITHUB_WORKSPACE/pyproject.toml" \
+            "$GITHUB_WORKSPACE/tests/test_hermes_plugin_contract.py" \
+            -v --junitxml "$GITHUB_WORKSPACE/hermes-contract.xml"
+
+      - name: Fail if the suite skipped itself
+        # A green run that ran nothing is the exact failure this workflow
+        # exists to prevent, so it is checked rather than assumed: without
+        # this step, `pip install hermes-agent` silently no-oping would leave
+        # the job green and the plugin unexercised forever.
+        run: |
+          python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          suite = ET.parse("hermes-contract.xml").getroot()
+          if suite.tag == "testsuites":
+              suite = suite[0]
+          tests = int(suite.get("tests", 0))
+          skipped = int(suite.get("skipped", 0))
+          print(f"tests={tests} skipped={skipped}")
+          if tests == 0 or tests == skipped:
+              sys.exit(
+                  "the Hermes contract suite ran nothing — hermes_cli.plugins "
+                  "was not importable, so the shipped plugin went unexercised"
+              )
+          PY
+        working-directory: ${{ github.workspace }}

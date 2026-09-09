@@ -12,7 +12,11 @@ sees the prompt, ``Stop`` after the turn with the assistant's text in
 the injection channel. One executable dispatching on ``hook_event_name``
 therefore serves both harnesses with no per-harness code. Hermes and
 OpenClaw send different field names for the same four facts, so they are
-handled by normalizing their payloads into the same shape.
+handled by normalizing their payloads into the same shape. Hermes's plugin
+hooks (``plugins/hermes/``, registered via ``ctx.register_hook``) pass flat
+keyword args in-process, with no ``cwd`` and no sub-object nesting; the
+service is called directly rather than through this module's stdin/stdout
+``run()`` entry point.
 
 Output rules that are not negotiable:
 
@@ -95,6 +99,12 @@ _RESPONSE_FIELDS = (
     # strings, which its plugin passes through unflattened;
     # ``_reduce_value`` is what turns it back into one string.
     "assistantTexts",
+    # Hermes's ``post_llm_call`` invoke site carries the turn's final text
+    # as ``assistant_response`` (agent/turn_finalizer.py:484-493, read off
+    # the installed hermes-agent==0.19.0 package). Without this entry a
+    # Hermes write event normalizes to an empty ``text`` and the capture
+    # path silently does nothing.
+    "assistant_response",
 )
 
 
@@ -117,9 +127,15 @@ class NormalizedEvent:
             it. OpenClaw sends one too, but not on the event: its hooks take a
             second ``ctx`` argument carrying ``runId``, identical across the
             ``before_prompt_build`` and ``llm_output`` of one turn, which the
-            plugin forwards as ``turn_id``. Hermes sends none in the payloads
-            popoto sees, so this is ``None`` there and the service falls back
-            to its session-wide FIFO (see #688). Populated on
+            plugin forwards as ``turn_id``. Hermes **does** send a turn id: it
+            mints one once per turn (``agent/turn_context.py:370``) and passes
+            the same local to both ``pre_llm_call`` and ``post_llm_call``
+            (``agent/turn_context.py:696-707``,
+            ``agent/turn_finalizer.py:484-493``); the plugin forwards it
+            verbatim as ``turn_id``, which this function already reads flat
+            with no code change (see #688, #704). The session-wide FIFO
+            fallback now applies only when ``POPOTO_MEMORY_TURN_KEYED=0`` or a
+            harness genuinely sends no id. Populated on
             read, write and ignore events alike: it is a fact about the
             payload, not about the branch.
     """
@@ -166,8 +182,11 @@ def _reduce_value(value: Any) -> str:
 
 def _first_string(payload: Dict[str, Any], names: Tuple[str, ...]) -> str:
     """Return the first non-empty value among ``names``, reduced to text by
-    :func:`_reduce_value`, searching one level into an
-    ``extra``/``context``/``data`` sub-object (Hermes nests there)."""
+    :func:`_reduce_value`, searching the flat payload first and then one
+    level into an ``extra``/``context``/``data``/``input`` sub-object.
+    Hermes's plugin hooks pass flat keyword args -- there is no sub-object
+    for them -- so the nested search exists for other payload shapes, not
+    for Hermes."""
     sources = [payload]
     for nested in ("extra", "context", "data", "input"):
         value = payload.get(nested)
@@ -250,9 +269,13 @@ def render_context(event: NormalizedEvent, context: str) -> Dict[str, Any]:
     """Wrap assembled context in the harness's own response shape.
 
     Claude Code and Codex read ``hookSpecificOutput.additionalContext``.
-    Hermes reads ``context``. OpenClaw reads ``appendContext``. All three
-    place the text in the *user* turn rather than the system prompt, which
-    is what keeps the cached system prefix intact across turns.
+    Hermes reads ``context`` (confirmed against the installed
+    hermes-agent==0.19.0 source, ``agent/turn_context.py:720-741``: the
+    return dict's ``"context"`` key, or an equally-accepted bare string, is
+    joined with other plugins' pieces and appended to the user message).
+    OpenClaw reads ``appendContext``. All three place the text in the *user*
+    turn rather than the system prompt, which is what keeps the cached
+    system prefix intact across turns.
 
     Args:
         event: The normalized event, whose raw ``event`` name selects the
@@ -282,8 +305,12 @@ def handle_payload(payload: Dict[str, Any], service: Any = None) -> Optional[str
         payload: The decoded hook JSON.
         service: An optional :class:`~popoto.integrations.service.MemoryService`.
             Defaults to one built from the environment and the payload's
-            ``cwd``. Passing one is how the in-process Hermes handler and
-            the tests avoid rebuilding the service per event.
+            ``cwd``. Plugin-hook payloads (Hermes) carry no ``cwd`` at all,
+            so that fallback never applies to them in practice -- the Hermes
+            plugin always passes a prebuilt service, which is how it and the
+            tests avoid rebuilding the service per event and how operators
+            are expected to set ``POPOTO_MEMORY_AGENT_ID`` explicitly instead
+            of relying on a derived one.
 
     Returns:
         The exact string to write to stdout, or ``None`` when the hook must

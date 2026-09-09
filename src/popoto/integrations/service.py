@@ -159,10 +159,10 @@ class MemoryService:
         self._redis_down: bool = False
         # The single place the connection is bound. Every entry point --
         # the hook, the MCP server, doctor, demo, the examples, the Hermes
-        # handler -- reaches Redis through a MemoryService, so binding here
+        # plugin -- reaches Redis through a MemoryService, so binding here
         # is what makes POPOTO_MEMORY_URL mean the same thing on all of
         # them. Binding in the CLI instead left demo, seed.py, verify.py and
-        # the Hermes handler writing to database 0 while printing the URL
+        # the Hermes plugin writing to database 0 while printing the URL
         # they were not using.
         #
         # Safe for in-process callers: bind_connection is a no-op unless
@@ -630,11 +630,14 @@ class MemoryService:
         session popping more than it pushed shift every later pairing by one
         and report an outcome against the wrong turn's records (#574).
         OpenClaw's plugin forwards ``ctx.runId`` as ``turn_id``, so it is
-        keyed too. Harnesses that send no turn id (Hermes) and sessions with
-        ``POPOTO_MEMORY_TURN_KEYED=0`` keep writing the bare key array and
-        keep the positional pairing. The ``RPUSH``/``LTRIM``/``EXPIRE``
-        pipeline, the key name, the cap, and the TTL are unchanged either
-        way.
+        keyed too. Hermes's plugin now forwards its own per-turn id the same
+        way (``plugins/hermes/__init__.py``, #704) -- it mints one once per
+        turn and passes the same value to both ``pre_llm_call`` and
+        ``post_llm_call``. Only a harness that genuinely sends no turn id, or
+        a session with ``POPOTO_MEMORY_TURN_KEYED=0``, keeps writing the bare
+        key array and the positional pairing. The
+        ``RPUSH``/``LTRIM``/``EXPIRE`` pipeline, the key name, the cap, and
+        the TTL are unchanged either way.
         """
         try:
             keys = []
