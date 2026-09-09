@@ -1107,46 +1107,46 @@ Research section documents two places where that site is currently wrong.
 
 ## Success Criteria
 
-- [ ] `plugins/hermes/` contains `plugin.yaml` + `__init__.py` + `README.md` and no
+- [x] `plugins/hermes/` contains `plugin.yaml` + `__init__.py` + `README.md` and no
       `HOOK.yaml`, `handler.py`, or `__pycache__`.
-- [ ] `plugins/hermes/__init__.py` defines `register(ctx)`, registers exactly
+- [x] `plugins/hermes/__init__.py` defines `register(ctx)`, registers exactly
       `pre_llm_call` and `post_llm_call`, and contains **no** `async def`.
-- [ ] The real `hermes_cli.plugins.PluginManager` loads the plugin from a scratch
+- [x] The real `hermes_cli.plugins.PluginManager` loads the plugin from a scratch
       `HERMES_HOME` with `error is None`, both hooks registered, every registered
       name in `VALID_HOOKS`, and **does not** load it when `plugins.enabled` is
       empty.
-- [ ] `hooks.normalize()` extracts non-empty `text` from a `post_llm_call` payload
+- [x] `hooks.normalize()` extracts non-empty `text` from a `post_llm_call` payload
       carrying `assistant_response`, proven by a test that fails on the current
       `_RESPONSE_FIELDS`.
-- [ ] Hermes read and write fixtures carry the **same** `turn_id`, and
+- [x] Hermes read and write fixtures carry the **same** `turn_id`, and
       `TURN_IDS[hermes_pre] == TURN_IDS[hermes_post] is not None`.
-- [ ] `service._push_pending` stages a **tagged** entry (`{"t": …, "k": […]}`) for a
+- [x] `service._push_pending` stages a **tagged** entry (`{"t": …, "k": […]}`) for a
       Hermes-shaped payload, and `feedback` claims it by value — asserted on the
       encoding, not on a return count.
-- [ ] No file in `src/` or `tests/` still claims Hermes sends no turn id.
-- [ ] The Hermes rows in `tests/fixtures/harness_payloads/README.md` no longer read
+- [x] No file in `src/` or `tests/` still claims Hermes sends no turn id.
+- [x] The Hermes rows in `tests/fixtures/harness_payloads/README.md` no longer read
       "docs only", and the replacement grade names what executed and what did not.
-- [ ] `plugins/hermes/README.md` and `docs/guides/harness-hermes.md` both install to
+- [x] `plugins/hermes/README.md` and `docs/guides/harness-hermes.md` both install to
       `~/.hermes/plugins/popoto-memory/` and both teach
       `hermes plugins enable popoto-memory`; neither contains
       `mkdir -p ~/.hermes/hooks`.
-- [ ] `hermes-agent` appears in no published dependency surface — not
+- [x] `hermes-agent` appears in no published dependency surface — not
       `pyproject.toml`, not `uv.lock`, not `scripts/check_lock_imports.py`.
-- [ ] **`plugins/__init__.py` does not exist** (critique C5) — popoto's `plugins/`
+- [x] **`plugins/__init__.py` does not exist** (critique C5) — popoto's `plugins/`
       stays a PEP 420 namespace portion so it can never shadow `hermes-agent`'s
       regular `plugins` package.
-- [ ] The contract test's assertion (e) asserts on a **seeded sentinel's presence in
+- [x] The contract test's assertion (e) asserts on a **seeded sentinel's presence in
       the injected context**, not merely that a dict came back (critique C1), and the
       contract job declares a Redis service unconditionally. The *wiring* is checked,
       not the word (round-2 R2-C2): the file must contain a real `.capture(` call and
       an `assert … in …["context"]` containment assertion, since a comment, docstring
       or unused local named `sentinel` satisfies a bare `grep -ci 'sentinel'` while
       the corner-cut version of (e) survives.
-- [ ] `.github/workflows/hermes-contract.yml` states in its header that the job is
+- [x] `.github/workflows/hermes-contract.yml` states in its header that the job is
       **advisory and must not be a required status check**, and its `hermes-agent`
       install line carries a **dated pin comment** (critique C2, C3). The PR body
       carries the matching post-merge note about branch protection.
-- [ ] `tests/fixtures/harness_payloads/README.md` no longer contains the phrase
+- [x] `tests/fixtures/harness_payloads/README.md` no longer contains the phrase
       "remaining four" **even across a line break** — the check is
       `tr '\n' ' ' < … | grep -cE 'remaining +four'` → 0, because the phrase is
       currently wrapped between lines 19-20 and a plain `grep -c 'remaining four'`
@@ -1155,21 +1155,21 @@ Research section documents two places where that site is currently wrong.
       not-yet-live-verified bucket, and the new middle tier label is positively
       asserted present (`grep -c 'real harness, no model' …` → output > 0), so the
       criterion is red before the edit and green only after it.
-- [ ] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
+- [x] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
       (`black --check plugins/hermes/`, `ruff check plugins/hermes/`) since no CI job
       covers `plugins/` and this lane deliberately does not widen `lint.yml`
       (critique C5, second half).
-- [ ] Red-state proof recorded in the PR: the new tests, run against the pre-fix
+- [x] Red-state proof recorded in the PR: the new tests, run against the pre-fix
       tree, fail — specifically the plugin-envelope turn-id assertion and the
       `assistant_response` assertion.
-- [ ] Tests pass (`/do-test`), stating the environment and the DB (`POPOTO_TEST_DB=9`).
-- [ ] Documentation updated (`/do-docs`); `mkdocs build --strict` green.
-- [ ] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` all
+- [x] Tests pass (`/do-test`), stating the environment and the DB (`POPOTO_TEST_DB=9`).
+- [x] Documentation updated (`/do-docs`); `mkdocs build --strict` green.
+- [x] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` all
       green.
-- [ ] The PR body carries `Closes #704` **and** `Closes #688` outright, with no
+- [x] The PR body carries `Closes #704` **and** `Closes #688` outright, with no
       "partially addresses" hedge (critique ruling 4), plus the red-state proof and
       the C2 post-merge branch-protection note.
-- [ ] No xfail conversions needed — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
+- [x] No xfail conversions needed — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
       tests/` returns nothing at the baseline commit, so there is no expected-failure
       marker documenting this bug.
 
