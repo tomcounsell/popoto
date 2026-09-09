@@ -914,6 +914,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verify" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -929,6 +940,17 @@
     <span class="md-ellipsis">
       
         MCP tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification status
       
     </span>
   </a>
@@ -3041,6 +3063,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verify" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3056,6 +3089,17 @@
     <span class="md-ellipsis">
       
         MCP tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification status
       
     </span>
   </a>
@@ -3094,18 +3138,17 @@
 
 
 <h1 id="add-memory-to-hermes">Add Memory to Hermes<a class="headerlink" href="#add-memory-to-hermes" title="Permanent link">&para;</a></h1>
-<p>Hermes is the only harness here whose hooks are Python. The handler runs
+<p>Hermes is the only harness here whose hooks are Python. The plugin runs
 inside the gateway process, so the read path is a single Redis round trip
 with no interpreter startup at all -- the fastest of the four.</p>
-<div class="admonition warning">
-<p class="admonition-title">Verified against documentation, not a live run</p>
-<p>Hermes is not installed on any machine this integration is developed on.
-The hook contract below comes from Nous Research's documentation, and
-the payload fixtures in <code>tests/fixtures/harness_payloads/hermes_*.json</code>
-are docs-derived, so the round-trip tests prove our reading of the docs
-rather than the harness itself. If the field names have moved,
-<code>popoto-memory doctor</code> will show no <code>last assemble</code> timestamp and the
-fix is one function in <code>popoto/integrations/hooks.py</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Two hook systems, not one</p>
+<p>Hermes 0.19.0 ships two independent mechanisms: gateway <strong>hooks</strong>
+(<code>~/.hermes/hooks/</code>, shell-invoked) and <strong>plugins</strong>
+(<code>~/.hermes/plugins/</code>, Python, loaded in-process). This integration is a
+plugin. If you set up an earlier version of this guide that installed
+into <code>~/.hermes/hooks/popoto-memory</code>, remove it first:
+<code>rm -rf ~/.hermes/hooks/popoto-memory</code>.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Pre-release</p>
@@ -3115,58 +3158,101 @@ checkout: <code>pip install -e '.[mcp]'</code>.</p>
 <h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[mcp]'</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>popoto-memory<span class="w"> </span>doctor
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.hermes/hooks/popoto-memory
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>cp<span class="w"> </span>plugins/hermes/HOOK.yaml<span class="w"> </span>plugins/hermes/handler.py<span class="w"> </span>~/.hermes/hooks/popoto-memory/
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>hermes<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>popoto-memory<span class="w"> </span>--<span class="w"> </span>popoto-memory<span class="w"> </span>mcp
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.hermes/plugins/popoto-memory
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>cp<span class="w"> </span>plugins/hermes/plugin.yaml<span class="w"> </span>plugins/hermes/__init__.py<span class="w"> </span>~/.hermes/plugins/popoto-memory/
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>hermes<span class="w"> </span>plugins<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>popoto-memory
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>hermes<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>popoto-memory<span class="w"> </span>--command<span class="w"> </span>popoto-memory<span class="w"> </span>--args<span class="w"> </span>mcp
 </code></pre></div>
-<p>Two files, no config file to edit.</p>
-<p><code>HOOK.yaml</code> declares the events:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">popoto-memory</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">events</span><span class="p">:</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pre_llm_call</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">post_llm_call</span>
+<p>Two files, no config file to edit -- but the enable step is not optional.
+Plugins are opt-in via <code>plugins.enabled</code> in <code>~/.hermes/config.yaml</code>
+(read by <code>_get_enabled_plugins()</code>, <code>hermes_cli/plugins.py:243-270</code>); a plugin
+present on disk but absent from that list is recorded as <code>enabled=False</code>
+and never loaded, with no startup warning. Confirm with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>hermes<span class="w"> </span>plugins<span class="w"> </span>list<span class="w">   </span><span class="c1"># must show "popoto-memory  enabled"</span>
 </code></pre></div>
-<p><code>handler.py</code> exposes <code>async def handle(event_type, context)</code> and forwards
-straight to the shared adapter. It builds one <code>MemoryService</code> and keeps it
-for the life of the gateway, so there is no per-turn setup cost.</p>
+<p><code>plugin.yaml</code> declares the plugin's identity and the events it registers
+for (<code>pre_llm_call</code>, <code>post_llm_call</code>); <code>__init__.py</code> builds one
+<code>MemoryService</code> at first use and keeps it for the life of the gateway, so
+there is no per-turn setup cost.</p>
 <h2 id="why-in-process-matters-here">Why in-process matters here<a class="headerlink" href="#why-in-process-matters-here" title="Permanent link">&para;</a></h2>
 <p>On Claude Code and Codex the read hook is a subprocess: p95 200 ms,
 essentially all of it Python startup. On Hermes none of that applies. The
 same assembly measures 1-2 ms in-process, which is what <code>popoto-memory
 doctor</code> reports as <code>hook read</code>.</p>
-<p>The tradeoff is that a bug in the handler is a bug in the gateway process.
-The handler is written accordingly: it catches everything, returns <code>None</code> on
-any failure, and lets the reason land in <code>~/.popoto/memory.log</code> and in
-<code>popoto-memory doctor</code>.</p>
+<p>The tradeoff is that a bug in the plugin is a bug in the gateway process.
+It is written accordingly: every callback catches everything, returns
+<code>None</code> on any failure, and lets the reason land in <code>~/.popoto/memory.log</code>
+and in <code>popoto-memory doctor</code>. Hermes also swallows callback exceptions a
+second time at the invoke site, so nothing a broken plugin does can break a
+user's turn -- and nothing it does surfaces there either. See
+Troubleshooting below.</p>
 <h2 id="injection-lands-in-the-user-message">Injection lands in the user message<a class="headerlink" href="#injection-lands-in-the-user-message" title="Permanent link">&para;</a></h2>
 <p>Hermes places <code>pre_llm_call</code> context in the user message rather than the
-system prompt, and documents that the choice is to preserve prompt caching.
-That is the same placement Claude Code's <code>additionalContext</code> gets, and it is
-why per-turn injection does not invalidate a cached prefix.</p>
+system prompt, confirmed against the installed 0.19.0 source: <code>pre_llm_call</code>
+results are joined into <code>plugin_user_context</code> (<code>agent/turn_context.py:708-741</code>)
+and appended by <code>compose_user_api_content</code> (<code>agent/turn_context.py:44-73</code>),
+whose docstring records that the injections reach "the <em>API copy</em> of the user
+message only -- the stored content stays clean". That is the same placement
+Claude Code's <code>additionalContext</code> gets, and it is why per-turn injection does
+not invalidate a cached prefix.</p>
 <p><code>MemoryService</code> returns a context string and never touches a message array,
 so this stays the harness's decision.</p>
+<h2 id="environment">Environment<a class="headerlink" href="#environment" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>POPOTO_MEMORY_AGENT_ID</code> -- <strong>set this explicitly.</strong> Plugin hook payloads
+  carry no working directory at all (only the separate <em>shell</em>-hook
+  subsystem serializes one), so without it popoto falls back to the Hermes
+  gateway process's own <code>os.getcwd()</code> -- stable for the life of the
+  gateway, but an arbitrary scope for a long-lived process serving multiple
+  projects.</li>
+<li><code>POPOTO_MEMORY_MAX_TOKENS</code> -- Hermes caps per-hook injected context at
+  roughly 10,000 characters (~2,400 tokens) and spills any overflow to
+  <code>$HERMES_HOME/hook_outputs/&lt;session_id&gt;/&lt;uuid&gt;.txt</code>, substituting a
+  head/tail preview plus that file path in the injected text. popoto's
+  default of 800 tokens (~3,200 characters) has comfortable headroom;
+  raising it much past ~2,400 tokens risks injecting a file path instead of
+  memories, silently.</li>
+</ul>
 <h2 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>popoto-memory<span class="w"> </span>doctor
 </code></pre></div>
 <p>After a few turns, <code>last assemble</code> and <code>last capture</code> carry recent
 timestamps and <code>records</code> climbs.</p>
-<p>If they stay at <code>never</code>, the handler is not being reached. Test the adapter
-directly, bypassing Hermes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">'{"event_type":"pre_llm_call","session_id":"t","extra":{"user_message":"how do deploys work?"}}'</span><span class="w"> </span><span class="se">\</span>
+<p>If they stay at <code>never</code>, walk these in order -- Hermes swallows every
+plugin error, so no single place shows all of it:</p>
+<ol>
+<li><code>hermes plugins list</code> -- the only place a <strong>load</strong> failure surfaces
+   (usually: the enable step above was skipped).</li>
+<li><code>~/.hermes/logs/agent.log</code> -- the only place a <strong>callback exception</strong>
+   surfaces.</li>
+<li><code>popoto-memory doctor</code> / <code>~/.popoto/memory.log</code> -- popoto's own
+   failures (a misconfigured <code>POPOTO_MEMORY_URL</code>, an unreachable Redis).</li>
+</ol>
+<p>You can also test the adapter directly, bypassing Hermes entirely:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">'{"hook_event_name":"pre_llm_call","session_id":"t","user_message":"how do deploys work?"}'</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>popoto-memory<span class="w"> </span>hook
 </code></pre></div>
 <p>If that returns <code>{"context": "..."}</code> but Hermes still shows nothing, the
-problem is the hook registration or the payload field names, not the memory
+problem is plugin registration or the payload field names, not the memory
 layer.</p>
 <h2 id="mcp-tools">MCP tools<a class="headerlink" href="#mcp-tools" title="Permanent link">&para;</a></h2>
-<p><code>hermes mcp add popoto-memory -- popoto-memory mcp</code> registers
+<p><code>hermes mcp add popoto-memory --command popoto-memory --args mcp</code> registers
 <code>memory_search</code>, <code>memory_save</code>, <code>memory_feedback</code>, and <code>memory_status</code> for
 deliberate use. Recall and capture do not depend on them.</p>
+<h2 id="verification-status">Verification status<a class="headerlink" href="#verification-status" title="Permanent link">&para;</a></h2>
+<p>Verified against the installed <code>hermes-agent==0.19.0</code> package (pinned
+2026-09-08; re-check by 2027-03): the real
+plugin loader (<code>hermes_cli.plugins.PluginManager</code>) loads this plugin from a
+scratch <code>HERMES_HOME</code>, both hooks register against the real <code>invoke_hook</code>
+dispatcher, and the payload shapes documented above were read verbatim from
+the 0.19.0 invoke sites and captured through that dispatcher into
+<code>tests/fixtures/harness_payloads/hermes_*.json</code>. <strong>No live model turn has
+been run</strong> -- that needs provider credentials this repo's CI cannot hold.</p>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Identical to every other harness, and all environment-driven. See
 <a href="../../features/harness-integration/">Harness Integration</a> for the table. The
 gateway must have these in its environment, not just your interactive shell,
-since the handler runs in the gateway process.</p>
+since the plugin runs in the gateway process.</p>
 
 
 

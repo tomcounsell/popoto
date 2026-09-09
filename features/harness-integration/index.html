@@ -3438,7 +3438,7 @@ means the turn is stored with no tool call.</p>
 <td>yes (<code>pre_llm_call</code>)</td>
 <td>yes (<code>post_llm_call</code>)</td>
 <td>yes (MCP)</td>
-<td>2-file hook directory</td>
+<td>2-file plugin directory</td>
 </tr>
 <tr>
 <td>OpenClaw</td>
@@ -3469,7 +3469,7 @@ capability table:</p>
 </tr>
 <tr>
 <td>Hermes</td>
-<td>vendor documentation only</td>
+<td>the real <code>hermes-agent</code> 0.19.0 plugin loader and <code>invoke_hook</code> dispatcher; no live model turn</td>
 </tr>
 <tr>
 <td>OpenClaw</td>
@@ -3496,8 +3496,10 @@ capability table:</p>
 <a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>next turn's assembly is better
 </code></pre></div>
 <p><strong>Read path.</strong> The harness fires its pre-model event with the user's prompt.
-The adapter normalizes the payload to <code>(event, query_text, session_id, cwd)</code>,
-<code>MemoryService.assemble()</code> runs <code>ContextAssembler</code> over
+The adapter normalizes the payload to <code>(event, query_text, session_id, turn_id,
+cwd)</code> — <code>cwd</code> only when the harness sends one; Hermes's plugin hooks carry no
+<code>cwd</code> key at all, so that field is always <code>None</code> for Hermes and the plugin
+passes a prebuilt service instead. <code>MemoryService.assemble()</code> runs <code>ContextAssembler</code> over
 <a href="../agent-memory/"><code>DefaultMemory</code></a> on the lexical/BM25 path, and the
 formatted block goes back in the harness's own response shape:
 <code>{"hookSpecificOutput": {"additionalContext": "..."}}</code> for Claude Code and
@@ -3530,12 +3532,14 @@ resolves nothing rather than falling back to the head of the queue.</p>
 <code>before_prompt_build</code> and <code>llm_output</code>, and the plugin forwards it as
 <code>turn_id</code>. That matters more there than elsewhere, because <code>llm_output</code> is an
 Observe hook whose handlers run concurrently and may overlap the next turn --
-keyed pairing makes the overlap correct by construction. Hermes sends no turn
-identifier in the payloads popoto sees (#688), so those sessions keep the
-positional FIFO pairing, which is correct for it because its hooks are
-synchronous. A queue written entirely before this behavior shipped is also
-claimed positionally, so an in-flight upgrade loses no pending turn. Both
-paths are bounded by <code>MAX_PENDING_TURNS</code> (32) per session and a one-hour TTL.
+keyed pairing makes the overlap correct by construction. Hermes sends one too:
+both plugin invoke sites carry <code>turn_id</code> as a flat kwarg
+(<code>agent/turn_context.py:696-707</code>, <code>agent/turn_finalizer.py:484-493</code>), so its
+sessions are keyed the same way (#704 closed #688 with this). A session
+using a harness that genuinely sends no turn id, or a queue written entirely
+before this behavior shipped, still falls back to positional FIFO pairing so
+no pending turn is lost. Both paths are bounded by <code>MAX_PENDING_TURNS</code> (32)
+per session and a one-hour TTL.
 Set <code>POPOTO_MEMORY_TURN_KEYED=0</code> to restore the pre-1.9 session-wide FIFO for
 every harness. Shipped in
 <a href="https://github.com/tomcounsell/popoto/issues/574">#574</a>.</p>
@@ -3948,8 +3952,10 @@ themselves. See <code>examples/harness_memory/README.md</code>.</p>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    mcp_server.py   stdio MCP server, four frozen tool names
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    cli.py          popoto-memory: hook | mcp | doctor | demo
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    demo.py         the zero-key loop
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>plugins/            declarative harness assets, one directory per harness
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>.claude-plugin/     marketplace manifest for the Claude Code plugin
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>plugins/            one directory per harness -- declarative (Claude Code,
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>                    Codex) or an executable plugin with a register() entry
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>                    point (Hermes, OpenClaw)
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>.claude-plugin/     marketplace manifest for the Claude Code plugin
 </code></pre></div>
 <p><code>popoto.integrations</code> depends on <code>popoto.recipes</code> and <code>popoto.extraction</code>;
 nothing in core depends on it. The core install is unchanged, and the hook

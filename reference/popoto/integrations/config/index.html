@@ -3521,8 +3521,8 @@ cleanly, so the kill switch never breaks a turn.</p>
                 <p><code>True</code> when <code>POPOTO_MEMORY_URL</code> was set by the
 caller. :func:<code>bind_connection</code> refuses to rebind an already
 established Popoto connection unless this is <code>True</code>, which is
-what keeps an in-process caller (a test, a Hermes handler) on
-the connection it already configured.</p>
+what keeps an in-process caller (a test, the Hermes plugin's
+<code>_service()</code>) on the connection it already configured.</p>
               </div>
             </td>
           </tr>
@@ -3670,8 +3670,8 @@ code.</p>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">        url_is_explicit: ``True`` when ``POPOTO_MEMORY_URL`` was set by the</span>
 <a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">            caller. :func:`bind_connection` refuses to rebind an already</span>
 <a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">            established Popoto connection unless this is ``True``, which is</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">            what keeps an in-process caller (a test, a Hermes handler) on</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">            the connection it already configured.</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">            what keeps an in-process caller (a test, the Hermes plugin's</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">            ``_service()``) on the connection it already configured.</span>
 <a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">        turn_keyed: When ``True`` (the default) the read-to-write handoff is</span>
 <a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">            keyed on the harness's per-turn identifier, so an outcome report</span>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">            resolves the turn that actually staged it or resolves nothing.</span>
@@ -4420,8 +4420,9 @@ Popoto's own import-time resolution (<code>REDIS_URL</code>, else
 <code>localhost:6379/0</code>) already produced the same target, and leaving the
 live connection alone is the safe behavior for an in-process caller --
 a test running under the Popoto pytest plugin on an isolated database,
-or a Hermes <code>handler.py</code> inside a long-lived harness -- which has
-already chosen its connection. Rebinding those to a default would move
+or the Hermes plugin (<code>plugins/hermes/__init__.py</code>) inside a
+long-lived harness -- which has already chosen its connection. Rebinding
+those to a default would move
 writes to database 0 behind the caller's back.</p>
 <p>The rebind swaps the <em>pool</em> on the existing client object rather than
 replacing the client. Most of Popoto imports <code>POPOTO_REDIS_DB</code> at
@@ -4666,7 +4667,8 @@ believes it redirected them.</p>
 <span class="normal"><a href="#__codelineno-0-497">497</a></span>
 <span class="normal"><a href="#__codelineno-0-498">498</a></span>
 <span class="normal"><a href="#__codelineno-0-499">499</a></span>
-<span class="normal"><a href="#__codelineno-0-500">500</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="k">def</span><span class="w"> </span><span class="nf">bind_connection</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">MemoryConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-500">500</a></span>
+<span class="normal"><a href="#__codelineno-0-501">501</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-375" name="__codelineno-0-375"></a><span class="k">def</span><span class="w"> </span><span class="nf">bind_connection</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">MemoryConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <a id="__codelineno-0-376" name="__codelineno-0-376"></a><span class="w">    </span><span class="sd">"""Point Popoto's shared connection at ``config.url``.</span>
 <a id="__codelineno-0-377" name="__codelineno-0-377"></a>
 <a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="sd">    Only acts when ``POPOTO_MEMORY_URL`` was set explicitly. Without it,</span>
@@ -4674,124 +4676,125 @@ believes it redirected them.</p>
 <a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="sd">    ``localhost:6379/0``) already produced the same target, and leaving the</span>
 <a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="sd">    live connection alone is the safe behavior for an in-process caller --</span>
 <a id="__codelineno-0-382" name="__codelineno-0-382"></a><span class="sd">    a test running under the Popoto pytest plugin on an isolated database,</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">    or a Hermes ``handler.py`` inside a long-lived harness -- which has</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a><span class="sd">    already chosen its connection. Rebinding those to a default would move</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">    writes to database 0 behind the caller's back.</span>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">    The rebind swaps the *pool* on the existing client object rather than</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">    replacing the client. Most of Popoto imports ``POPOTO_REDIS_DB`` at</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">    module load for speed, so those references are bound to one object for</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">    the life of the process; assigning a new client to the module global</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="sd">    would leave every already-imported module writing to the old target.</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a><span class="sd">    This is the same in-place technique ``popoto.pytest_plugin._swap_db``</span>
-<a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">    uses, and for the same reason.</span>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="sd">        config: The resolved configuration whose ``url`` to bind.</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">        ``True`` when the connection was rebound, ``False`` when it was</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">        already correct or no explicit URL was given.</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        ValueError: If ``config.url`` carries no parseable database number.</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">            Refusing is the point: ``redis://localhost:6379/`` parses to a</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">            dict with no ``db`` key, so silently keeping the current</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">            connection would leave writes on database 0 while the caller</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">            believes it redirected them.</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">        Db0RefusedError: If the effective database is 0 and neither</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">            ``POPOTO_MEMORY_ALLOW_DB0`` nor ``config.allow_db0`` opts in.</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">    """</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>    <span class="c1"># A disabled memory layer writes to no database, so there is nothing to</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>    <span class="c1"># refuse. This has to come first: MemoryService.__init__ binds</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="c1"># unconditionally while config.enabled is consulted inside the</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>    <span class="c1"># operation methods, so guarding without this check turns the</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>    <span class="c1"># documented kill switch into a crash for the operator most likely to</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>    <span class="c1"># reach for it -- someone on a DB 0 machine turning memory off. It also</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>    <span class="c1"># skips the INFO keyspace probe and the POPOTO_REDIS_DB import on the</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a>    <span class="c1"># disabled path.</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">url_is_explicit</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">url_source</span> <span class="o">!=</span> <span class="s2">"REDIS_URL"</span><span class="p">:</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a>        <span class="c1"># Neither variable set: an in-process caller (a test under the</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="c1"># pytest plugin, a host application) chose this connection. Leave</span>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a>        <span class="c1"># it, timeouts included. ``url_is_explicit`` rather than</span>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a>        <span class="c1"># ``url_source`` because in-process callers build MemoryConfig</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>        <span class="c1"># directly and set only the former. No rebind happens, so the DB 0</span>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a>        <span class="c1"># guard judges the live connection -- the database that will</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="c1"># actually be written to. The zero-configuration path is exactly</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="c1"># the one #584 is about.</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="k">if</span> <span class="n">effective_db</span><span class="p">(</span><span class="n">config</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_db0</span><span class="p">:</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="k">raise</span> <span class="n">Db0RefusedError</span><span class="p">(</span><span class="n">_db0_refusal_message</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a>        <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a>
-<a id="__codelineno-0-435" name="__codelineno-0-435"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">redis</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">redis.backoff</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoBackoff</span>
-<a id="__codelineno-0-437" name="__codelineno-0-437"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">redis.connection</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_url</span>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">redis.retry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Retry</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="n">wanted</span> <span class="o">=</span> <span class="n">parse_url</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="k">if</span> <span class="s2">"db"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">wanted</span><span class="p">:</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">_no_db_message</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">url</span><span class="p">))</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a>    <span class="n">target_db</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wanted</span><span class="p">[</span><span class="s2">"db"</span><span class="p">])</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a>
-<a id="__codelineno-0-447" name="__codelineno-0-447"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">url_is_explicit</span><span class="p">:</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a>        <span class="c1"># REDIS_URL path. Popoto's own import-time resolution read the same</span>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a>        <span class="c1"># variable, so the live connection diverging from REDIS_URL means an</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="c1"># in-process caller deliberately swapped the pool afterwards -- the</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="c1"># pytest plugin moving the suite to an isolated database, or a host</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="c1"># application binding its own connection. Rebinding here would move</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>        <span class="c1"># the shared pool behind that caller's back (and, when REDIS_URL</span>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="c1"># names database 0, would do so on the exact path #584 refuses), so</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="c1"># keep the swapped connection and judge the refusal against it.</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="n">live_db</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"db"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>        <span class="p">)</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>        <span class="k">if</span> <span class="n">live_db</span> <span class="o">!=</span> <span class="n">target_db</span><span class="p">:</span>
-<a id="__codelineno-0-460" name="__codelineno-0-460"></a>            <span class="k">if</span> <span class="n">live_db</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_db0</span><span class="p">:</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>                <span class="c1"># The live connection, not REDIS_URL, is what would be</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>                <span class="c1"># written to -- word the refusal accordingly.</span>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a>                <span class="k">raise</span> <span class="n">Db0RefusedError</span><span class="p">(</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                    <span class="n">_db0_refusal_message</span><span class="p">(</span><span class="n">replace</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">url_source</span><span class="o">=</span><span class="s2">"default"</span><span class="p">))</span>
-<a id="__codelineno-0-467" name="__codelineno-0-467"></a>                <span class="p">)</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>    <span class="c1"># This call rebinds the pool to ``config.url``, so the refusal must</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>    <span class="c1"># judge that URL -- "this call will rebind" and "this URL's database"</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a>    <span class="c1"># are one decision. Judging the live connection here let a swapped-in</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a>    <span class="c1"># connection on another database mask a REDIS_URL naming database 0,</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="c1"># and the rebind below then silently moved the pool there.</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="k">if</span> <span class="n">target_db</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_db0</span><span class="p">:</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="k">raise</span> <span class="n">Db0RefusedError</span><span class="p">(</span><span class="n">_db0_refusal_message</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
-<a id="__codelineno-0-477" name="__codelineno-0-477"></a>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a>    <span class="n">client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="n">current</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>    <span class="n">target_matches</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span><span class="n">current</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">==</span> <span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">wanted</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>    <span class="k">if</span> <span class="n">target_matches</span> <span class="ow">and</span> <span class="n">current</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">)</span> <span class="o">==</span> <span class="n">HOOK_SOCKET_TIMEOUT_SECONDS</span><span class="p">:</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="n">current</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">wanted</span><span class="p">)</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>    <span class="c1"># The hook sits on the user's prompt path. One short attempt, no</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a>    <span class="c1"># retries: a hung server costs about a second, and the harness runs</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a>    <span class="c1"># the hook again next turn. redis-py's default is 5 s per attempt with</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a>    <span class="c1"># up to 10 retries, which turned one hung server into a 25 s stall.</span>
-<a id="__codelineno-0-489" name="__codelineno-0-489"></a>    <span class="n">current</span><span class="p">[</span><span class="s2">"socket_timeout"</span><span class="p">]</span> <span class="o">=</span> <span class="n">HOOK_SOCKET_TIMEOUT_SECONDS</span>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">current</span><span class="p">[</span><span class="s2">"socket_connect_timeout"</span><span class="p">]</span> <span class="o">=</span> <span class="n">HOOK_SOCKET_TIMEOUT_SECONDS</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="n">current</span><span class="p">[</span><span class="s2">"retry"</span><span class="p">]</span> <span class="o">=</span> <span class="n">Retry</span><span class="p">(</span><span class="n">NoBackoff</span><span class="p">(),</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a>    <span class="n">old_pool</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">connection_pool</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a>    <span class="n">client</span><span class="o">.</span><span class="n">connection_pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">ConnectionPool</span><span class="p">(</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="n">connection_class</span><span class="o">=</span><span class="n">old_pool</span><span class="o">.</span><span class="n">connection_class</span><span class="p">,</span> <span class="o">**</span><span class="n">current</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>    <span class="p">)</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a>        <span class="n">old_pool</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>        <span class="k">pass</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a>    <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">    or the Hermes plugin (``plugins/hermes/__init__.py``) inside a</span>
+<a id="__codelineno-0-384" name="__codelineno-0-384"></a><span class="sd">    long-lived harness -- which has already chosen its connection. Rebinding</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">    those to a default would move</span>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a><span class="sd">    writes to database 0 behind the caller's back.</span>
+<a id="__codelineno-0-387" name="__codelineno-0-387"></a>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">    The rebind swaps the *pool* on the existing client object rather than</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">    replacing the client. Most of Popoto imports ``POPOTO_REDIS_DB`` at</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">    module load for speed, so those references are bound to one object for</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="sd">    the life of the process; assigning a new client to the module global</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a><span class="sd">    would leave every already-imported module writing to the old target.</span>
+<a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">    This is the same in-place technique ``popoto.pytest_plugin._swap_db``</span>
+<a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">    uses, and for the same reason.</span>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">        config: The resolved configuration whose ``url`` to bind.</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">        ``True`` when the connection was rebound, ``False`` when it was</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">        already correct or no explicit URL was given.</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">        ValueError: If ``config.url`` carries no parseable database number.</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">            Refusing is the point: ``redis://localhost:6379/`` parses to a</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">            dict with no ``db`` key, so silently keeping the current</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">            connection would leave writes on database 0 while the caller</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">            believes it redirected them.</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">        Db0RefusedError: If the effective database is 0 and neither</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">            ``POPOTO_MEMORY_ALLOW_DB0`` nor ``config.allow_db0`` opts in.</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">    """</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>    <span class="c1"># A disabled memory layer writes to no database, so there is nothing to</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="c1"># refuse. This has to come first: MemoryService.__init__ binds</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>    <span class="c1"># unconditionally while config.enabled is consulted inside the</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>    <span class="c1"># operation methods, so guarding without this check turns the</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>    <span class="c1"># documented kill switch into a crash for the operator most likely to</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>    <span class="c1"># reach for it -- someone on a DB 0 machine turning memory off. It also</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a>    <span class="c1"># skips the INFO keyspace probe and the POPOTO_REDIS_DB import on the</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="c1"># disabled path.</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">url_is_explicit</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">url_source</span> <span class="o">!=</span> <span class="s2">"REDIS_URL"</span><span class="p">:</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="c1"># Neither variable set: an in-process caller (a test under the</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>        <span class="c1"># pytest plugin, a host application) chose this connection. Leave</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a>        <span class="c1"># it, timeouts included. ``url_is_explicit`` rather than</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a>        <span class="c1"># ``url_source`` because in-process callers build MemoryConfig</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a>        <span class="c1"># directly and set only the former. No rebind happens, so the DB 0</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>        <span class="c1"># guard judges the live connection -- the database that will</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="c1"># actually be written to. The zero-configuration path is exactly</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="c1"># the one #584 is about.</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a>        <span class="k">if</span> <span class="n">effective_db</span><span class="p">(</span><span class="n">config</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_db0</span><span class="p">:</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a>            <span class="k">raise</span> <span class="n">Db0RefusedError</span><span class="p">(</span><span class="n">_db0_refusal_message</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">redis</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">redis.backoff</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoBackoff</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">redis.connection</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_url</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">redis.retry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Retry</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="n">wanted</span> <span class="o">=</span> <span class="n">parse_url</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>    <span class="k">if</span> <span class="s2">"db"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">wanted</span><span class="p">:</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">_no_db_message</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">url</span><span class="p">))</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>    <span class="n">target_db</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wanted</span><span class="p">[</span><span class="s2">"db"</span><span class="p">])</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">url_is_explicit</span><span class="p">:</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>        <span class="c1"># REDIS_URL path. Popoto's own import-time resolution read the same</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="c1"># variable, so the live connection diverging from REDIS_URL means an</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="c1"># in-process caller deliberately swapped the pool afterwards -- the</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="c1"># pytest plugin moving the suite to an isolated database, or a host</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>        <span class="c1"># application binding its own connection. Rebinding here would move</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="c1"># the shared pool behind that caller's back (and, when REDIS_URL</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="c1"># names database 0, would do so on the exact path #584 refuses), so</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="c1"># keep the swapped connection and judge the refusal against it.</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="n">live_db</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"db"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>        <span class="p">)</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>        <span class="k">if</span> <span class="n">live_db</span> <span class="o">!=</span> <span class="n">target_db</span><span class="p">:</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>            <span class="k">if</span> <span class="n">live_db</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_db0</span><span class="p">:</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>                <span class="c1"># The live connection, not REDIS_URL, is what would be</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>                <span class="c1"># written to -- word the refusal accordingly.</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                <span class="k">raise</span> <span class="n">Db0RefusedError</span><span class="p">(</span>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>                    <span class="n">_db0_refusal_message</span><span class="p">(</span><span class="n">replace</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">url_source</span><span class="o">=</span><span class="s2">"default"</span><span class="p">))</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>                <span class="p">)</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>            <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>    <span class="c1"># This call rebinds the pool to ``config.url``, so the refusal must</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>    <span class="c1"># judge that URL -- "this call will rebind" and "this URL's database"</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>    <span class="c1"># are one decision. Judging the live connection here let a swapped-in</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="c1"># connection on another database mask a REDIS_URL naming database 0,</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>    <span class="c1"># and the rebind below then silently moved the pool there.</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>    <span class="k">if</span> <span class="n">target_db</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_db0</span><span class="p">:</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>        <span class="k">raise</span> <span class="n">Db0RefusedError</span><span class="p">(</span><span class="n">_db0_refusal_message</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="n">client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>    <span class="n">current</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">connection_pool</span><span class="o">.</span><span class="n">connection_kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>    <span class="n">target_matches</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span><span class="n">current</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">==</span> <span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">wanted</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>    <span class="k">if</span> <span class="n">target_matches</span> <span class="ow">and</span> <span class="n">current</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"socket_timeout"</span><span class="p">)</span> <span class="o">==</span> <span class="n">HOOK_SOCKET_TIMEOUT_SECONDS</span><span class="p">:</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>    <span class="n">current</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">wanted</span><span class="p">)</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>    <span class="c1"># The hook sits on the user's prompt path. One short attempt, no</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>    <span class="c1"># retries: a hung server costs about a second, and the harness runs</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>    <span class="c1"># the hook again next turn. redis-py's default is 5 s per attempt with</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>    <span class="c1"># up to 10 retries, which turned one hung server into a 25 s stall.</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">current</span><span class="p">[</span><span class="s2">"socket_timeout"</span><span class="p">]</span> <span class="o">=</span> <span class="n">HOOK_SOCKET_TIMEOUT_SECONDS</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="n">current</span><span class="p">[</span><span class="s2">"socket_connect_timeout"</span><span class="p">]</span> <span class="o">=</span> <span class="n">HOOK_SOCKET_TIMEOUT_SECONDS</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>    <span class="n">current</span><span class="p">[</span><span class="s2">"retry"</span><span class="p">]</span> <span class="o">=</span> <span class="n">Retry</span><span class="p">(</span><span class="n">NoBackoff</span><span class="p">(),</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>    <span class="n">old_pool</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">connection_pool</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>    <span class="n">client</span><span class="o">.</span><span class="n">connection_pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">ConnectionPool</span><span class="p">(</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="n">connection_class</span><span class="o">=</span><span class="n">old_pool</span><span class="o">.</span><span class="n">connection_class</span><span class="p">,</span> <span class="o">**</span><span class="n">current</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>    <span class="p">)</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>        <span class="n">old_pool</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="k">return</span> <span class="kc">True</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
