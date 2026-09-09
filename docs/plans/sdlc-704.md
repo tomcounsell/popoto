@@ -1153,7 +1153,7 @@ Research section documents two places where that site is currently wrong.
       returns 0 at baseline and therefore cannot detect its own violation
       (critique C4, round-2 R2-C1). Its replacement names **two** files in the
       not-yet-live-verified bucket, and the new middle tier label is positively
-      asserted present (`grep -c 'real dispatcher' …` → output > 0), so the
+      asserted present (`grep -c 'real harness, no model' …` → output > 0), so the
       criterion is red before the edit and green only after it.
 - [ ] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
       (`black --check plugins/hermes/`, `ruff check plugins/hermes/`) since no CI job
