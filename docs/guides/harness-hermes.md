@@ -125,7 +125,8 @@ deliberate use. Recall and capture do not depend on them.
 
 ## Verification status
 
-Verified against the installed `hermes-agent==0.19.0` package: the real
+Verified against the installed `hermes-agent==0.19.0` package (pinned
+2026-09-08; re-check by 2027-03): the real
 plugin loader (`hermes_cli.plugins.PluginManager`) loads this plugin from a
 scratch `HERMES_HOME`, both hooks register against the real `invoke_hook`
 dispatcher, and the payload shapes documented above were read verbatim from

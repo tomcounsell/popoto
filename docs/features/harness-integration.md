@@ -86,8 +86,10 @@ next turn's assembly is better
 ```
 
 **Read path.** The harness fires its pre-model event with the user's prompt.
-The adapter normalizes the payload to `(event, query_text, session_id, cwd)`,
-`MemoryService.assemble()` runs `ContextAssembler` over
+The adapter normalizes the payload to `(event, query_text, session_id, turn_id,
+cwd)` — `cwd` only when the harness sends one; Hermes's plugin hooks carry no
+`cwd` key at all, so that field is always `None` for Hermes and the plugin
+passes a prebuilt service instead. `MemoryService.assemble()` runs `ContextAssembler` over
 [`DefaultMemory`](agent-memory.md) on the lexical/BM25 path, and the
 formatted block goes back in the harness's own response shape:
 `{"hookSpecificOutput": {"additionalContext": "..."}}` for Claude Code and
@@ -490,7 +492,9 @@ src/popoto/integrations/
     mcp_server.py   stdio MCP server, four frozen tool names
     cli.py          popoto-memory: hook | mcp | doctor | demo
     demo.py         the zero-key loop
-plugins/            declarative harness assets, one directory per harness
+plugins/            one directory per harness -- declarative (Claude Code,
+                    Codex) or an executable plugin with a register() entry
+                    point (Hermes, OpenClaw)
 .claude-plugin/     marketplace manifest for the Claude Code plugin
 ```
 

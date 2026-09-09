@@ -236,18 +236,24 @@ def test_a_dispatched_post_hook_stores_the_response(manager):
 
 
 def test_a_dispatched_pre_hook_returns_the_seeded_memory(manager):
-    """The whole loop, with the seed placed in Redis by popoto itself.
+    """The whole loop, with the seed placed in Redis through the real write path.
 
     Deliberately not an ``isinstance(dict)`` check: a plugin that returned
     ``{"context": ""}`` for every turn would satisfy the shape and remember
     nothing. The assertion is that a sentinel this test wrote into Redis --
     and that appears nowhere in the query -- comes back inside the payload
     Hermes will inject.
+
+    Seeding goes through ``MemoryService.capture()`` -- the same write path
+    ``post_llm_call`` reaches via ``hooks.handle_payload`` -- rather than a
+    direct ``.model(...).save()``, so the read half is proven against a
+    record shape the write half actually produces.
     """
     from hermes_cli.plugins import invoke_hook
 
     service = MemoryService(MemoryConfig(agent_id=AGENT))
-    service.model(agent_id=AGENT, content=SENTINEL, importance=0.9).save()
+    written = service.capture(SENTINEL, importance=0.9)
+    assert written, "capture() wrote nothing -- seed did not reach Redis"
 
     returned = invoke_hook("pre_llm_call", **_pre_kwargs())
 

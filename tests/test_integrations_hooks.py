@@ -363,12 +363,20 @@ def test_a_blank_turn_id_falls_back_to_none_rather_than_empty_string():
     assert hooks.normalize(payload).turn_id is None
 
 
-def test_a_pre_hook_without_a_user_message_yields_no_query():
+def test_a_pre_hook_without_a_user_message_yields_no_query(tmp_path):
     payload = load("hermes_pre_llm_call.json")
     del payload["user_message"]
     event = hooks.normalize(payload)
     assert event.kind == "read"
     assert event.text == ""
+
+    # The claim this test is named for is at handle_payload's layer, not
+    # normalize()'s: an empty query must make the read path return None
+    # rather than assembling against "". Seed a memory first so a None
+    # result cannot be mistaken for "nothing was ever stored".
+    service = make_service(tmp_path)
+    seed(service, "Deploys are blue-green and roll back on failed health checks")
+    assert hooks.handle_payload(payload, service=service) is None
 
 
 def test_hermes_response_shape():
