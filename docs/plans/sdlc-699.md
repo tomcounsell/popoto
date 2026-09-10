@@ -1521,12 +1521,21 @@ What still needs supervisor input:
    The alternative (queue the EVAL) keeps the write inside the caller's transaction
    but makes the #698 reset log and the decode warning unreachable from `on_save` —
    the exact observability #698's round-2 critique (C8) hardened.
-   Confirm the trade at that scope, not merely at #476's.
+   ~~Confirm the trade at that scope, not merely at #476's.~~
+   **CLOSED — supervisor, 2026-09-10: CONFIRMED at the broader scope.** The eager
+   companion write proceeds in **both** branches of `Model.save`. The
+   caller-supplied-pipeline orphan risk is accepted and documented (the entry is
+   inert; Risk 2 / Race 3), and the queued-EVAL alternative was declined precisely
+   because it would sever the #698 reset log and decode warning from `on_save`.
 2. **Numeric type drift (Risk 1).** Values round-trip exactly, but integral
    amplitudes come back as `int` instead of `float` once Lua does the packing
    (measured, spike-2). The plan coerces at popoto's own read boundaries and
-   documents it. Is that acceptable, or is preserving the stored msgpack *type* a
-   requirement — which would mean a different on-disk encoding and a migration?
+   documents it.
+   ~~Is that acceptable, or is preserving the stored msgpack *type* a
+   requirement — which would mean a different on-disk encoding and a migration?~~
+   **CLOSED — supervisor, 2026-09-10: acceptable.** Coerce at popoto's read
+   boundaries and document it; no on-disk encoding change, no migration. The built
+   code already implements this default.
 3. **Straggler scope (Task 3) — critique C3.** Converting this module's stale
    `POPOTO_REDIS_DB` import is small (one import + nine sites, one file, no behavior
    change), is called for by `CLAUDE.md`, and fixes a latent wrong-database read on
