@@ -93,9 +93,7 @@ def resolve_policy(policy: dict | None) -> tuple[dict, list[str]]:
     merged = {
         "prefer": "self-stated",
         "staleness_threshold": Defaults.VIEW_RESOLVER_STALENESS_THRESHOLD,
-        "gate_overfetch_multiplier": (
-            Defaults.VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER
-        ),
+        "gate_overfetch_multiplier": (Defaults.VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER),
         "max_backfill_pulls": Defaults.VIEW_RESOLVER_MAX_BACKFILL_PULLS,
     }
     if not policy:
@@ -106,9 +104,7 @@ def resolve_policy(policy: dict | None) -> tuple[dict, list[str]]:
             continue
         merged[key] = value
     if merged["prefer"] not in PREFER_OPTIONS:
-        warnings.append(
-            f"unknown prefer {merged['prefer']!r}; using 'self-stated'"
-        )
+        warnings.append(f"unknown prefer {merged['prefer']!r}; using 'self-stated'")
         merged["prefer"] = "self-stated"
     return merged, warnings
 
@@ -172,9 +168,7 @@ class BeliefSheet:
                     "key": c.key,
                     "provenance": {
                         "confirmations": c.provenance.get("confirmations", 0),
-                        "disjunct_with": sorted(
-                            c.provenance.get("disjunct_with", [])
-                        ),
+                        "disjunct_with": sorted(c.provenance.get("disjunct_with", [])),
                         "superseded_by": c.provenance.get("superseded_by"),
                         "supersedes": sorted(c.provenance.get("supersedes", [])),
                     },
@@ -353,16 +347,15 @@ def resolve_entries(
             # surfacing it as a claim would invent provenance.
             stats["unresolved"] += 1
             warnings.append(
-                f"unresolved contradiction: {key} has kind "
-                f"{kind!r} with no target"
+                f"unresolved contradiction: {key} has kind " f"{kind!r} with no target"
             )
 
     # Union the journal chains with the selected-annotation index so a
     # correction that ranked into the candidate set is visible even when
     # the chain read predates it (same deterministic sort either way).
     chains: dict[str, list[Any]] = {}
-    for key, annotations in chains_by_key.items():
-        chains[key] = list(annotations or [])
+    for key, prior in chains_by_key.items():
+        chains[key] = list(prior or [])
     for target_key, pairs in annotations_in.items():
         chains.setdefault(target_key, []).extend(a for a, _ in pairs)
 
@@ -396,16 +389,9 @@ def resolve_entries(
                 continue
             winner_key = _safe_key(winner)
             winner_chain = chains.get(winner_key, [])
-            winner_confirms = sum(
-                1 for a in winner_chain if _safe_kind(a) == "confirm"
-            )
+            winner_confirms = sum(1 for a in winner_chain if _safe_kind(a) == "confirm")
             loser_keys = sorted(
-                {
-                    _safe_target(a)
-                    for a in supersedes
-                    if _safe_target(a)
-                }
-                or {key}
+                {_safe_target(a) for a in supersedes if _safe_target(a)} or {key}
             )
             sheet_claims.append(
                 _make_claim(
@@ -445,17 +431,13 @@ def resolve_entries(
             if _safe_kind(annotation) != "supersede":
                 continue
             try:
-                target_present = any(
-                    k == target_key for _, k in claims_in
-                )
+                target_present = any(k == target_key for _, k in claims_in)
             except Exception:
                 target_present = False
             if target_present:
                 continue
             winner_chain = chains.get(annotation_key, [])
-            winner_confirms = sum(
-                1 for a in winner_chain if _safe_kind(a) == "confirm"
-            )
+            winner_confirms = sum(1 for a in winner_chain if _safe_kind(a) == "confirm")
             sheet_claims.append(
                 _make_claim(
                     annotation,
@@ -479,8 +461,8 @@ def resolve_entries(
     for pairs in annotations_in.values():
         for record, record_key in pairs:
             objects_by_key.setdefault(record_key, record)
-    for annotations in chains.values():
-        for annotation in annotations:
+    for chain in chains.values():
+        for annotation in chain:
             annotation_key = _safe_key(annotation)
             if annotation_key:
                 objects_by_key.setdefault(annotation_key, annotation)
@@ -742,8 +724,7 @@ class BeliefSheetResolver:
             logger.warning("reader gate failed closed: %s", e)
             return BeliefSheet(
                 claims=[],
-                warnings=warnings
-                + [f"reader gate failed closed; empty sheet: {e}"],
+                warnings=warnings + [f"reader gate failed closed; empty sheet: {e}"],
                 metadata={
                     "counts": {
                         "admitted": 0,

@@ -26,7 +26,6 @@ from src.popoto.recipes.view_resolver import (
     resolve_policy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fakes (pure-fold tests touch no Redis)
 # ---------------------------------------------------------------------------
@@ -61,9 +60,7 @@ def _claim(key, statement="claim", **kwargs):
 
 
 def _annotation(key, kind, target, statement="", **kwargs):
-    return FakeRecord(
-        key, statement=statement, kind=kind, target=target, **kwargs
-    )
+    return FakeRecord(key, statement=statement, kind=kind, target=target, **kwargs)
 
 
 class ExplodingRecord:
@@ -157,9 +154,7 @@ class TestPureFold:
         loser = _claim("k:old", "old")
         w1 = _annotation("k:w1", "supersede", "k:old", "fix one")
         w2 = _annotation("k:w2", "supersede", "k:old", "fix two")
-        sheet = resolve_entries(
-            [loser], {"k:old": [w1, w2]}, {"prefer": "confirmed"}
-        )
+        sheet = resolve_entries([loser], {"k:old": [w1, w2]}, {"prefer": "confirmed"})
         assert sheet.claims == []
         assert sheet.metadata["counts"]["unresolved"] == 1
         assert any("unresolved contradiction" in w for w in sheet.warnings)
@@ -337,9 +332,7 @@ class TestResolverIntegration:
         _save(SheetMemory, agent_id="a1", content="fresh")
         old = _save(SheetMemory, agent_id="a1", content="stale")
         SupersessionProtocol.invalidate(old)
-        sheet = _resolver().resolve(
-            {"content": "stale"}, reader={"agent_id": "a1"}
-        )
+        sheet = _resolver().resolve({"content": "stale"}, reader={"agent_id": "a1"})
         contents = {c.content for c in sheet.claims}
         assert "stale" not in contents
         assert "fresh" in contents
@@ -375,23 +368,17 @@ class TestResolverIntegration:
         assert sheet.claims == []
         assert any("failed closed" in w for w in sheet.warnings)
 
-    def test_tagless_gate_adds_zero_tag_roundtrips(
-        self, clean_store, monkeypatch
-    ):
+    def test_tagless_gate_adds_zero_tag_roundtrips(self, clean_store, monkeypatch):
         _save(SheetMemory, agent_id="a1", content="hello", labels=["keep"])
 
         def forbidden(*args, **kwargs):
             raise AssertionError("tag membership must not be read tagless")
 
         monkeypatch.setattr(TagFieldMixin, "filter_query", forbidden)
-        sheet = _resolver().resolve(
-            {"content": "hello"}, reader={"agent_id": "a1"}
-        )
+        sheet = _resolver().resolve({"content": "hello"}, reader={"agent_id": "a1"})
         assert len(sheet.claims) == 1
 
-    def test_tagged_gate_is_one_batched_read(
-        self, clean_store, monkeypatch
-    ):
+    def test_tagged_gate_is_one_batched_read(self, clean_store, monkeypatch):
         _save(SheetMemory, agent_id="a1", content="hello", labels=["keep"])
         calls = []
         original = TagFieldMixin.filter_query
@@ -412,9 +399,7 @@ class TestResolverIntegration:
         # so cooperative scoping never double-reads.
         assert len(calls) == 1
 
-    def test_staleness_costs_no_second_pass(
-        self, clean_store, monkeypatch
-    ):
+    def test_staleness_costs_no_second_pass(self, clean_store, monkeypatch):
         for i in range(5):
             _save(SheetMemory, agent_id="a1", content=f"hello {i}")
         calls = []
@@ -443,9 +428,7 @@ class TestResolverIntegration:
         )
         bare_calls = len(calls)
         before_resolve = len(calls)
-        sheet = _resolver().resolve(
-            {"content": "hello"}, reader={"agent_id": "a1"}
-        )
+        sheet = _resolver().resolve({"content": "hello"}, reader={"agent_id": "a1"})
         added = len(calls) - before_resolve
         # The resolver folds the trace-handles pass plus one per-record
         # staleness pass and no per-record loop: constant in K, and no
@@ -469,9 +452,7 @@ class TestResolverIntegration:
             context_assembler_module, "_partition_scores_for_field", counting
         )
         resolver = _resolver(model_class=SheetNote, score=1.0)
-        sheet = resolver.resolve(
-            {"content": "plain"}, reader={"agent_id": "a1"}
-        )
+        sheet = resolver.resolve({"content": "plain"}, reader={"agent_id": "a1"})
         # The single pass is the trace proxy over the plain sorted field;
         # the per-record staleness path adds nothing without a decaying
         # field — and the sheet says so instead of scoring zeroes.
@@ -553,8 +534,7 @@ class TestResolverIntegration:
         assert sheet.claims == []
         assert sheet.metadata["counts"]["assembles"] == 1
         assert any(
-            "validity_excluded=0" in w and "gate_rejected=" in w
-            for w in sheet.warnings
+            "validity_excluded=0" in w and "gate_rejected=" in w for w in sheet.warnings
         )
 
     def test_unknown_policy_key_warns_alongside_claims(self, clean_store):
