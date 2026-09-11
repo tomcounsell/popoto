@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/565
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-09-11T07:26:38Z
 ---
 
 # #565 — M6 Belief-sheet view resolver
@@ -154,8 +156,22 @@ the Technical Approach.
 3. **Reader gate (pre-truncation)**: each candidate is checked against the reader/purpose
    before the `max_items` cut; rejected records are dropped and the sheet back-fills from
    over-fetched headroom up to `max_items`. Gate errors fail CLOSED (empty result, logged).
-4. **Membership (V0 pushdown)**: retracted/superseded entries are already excluded inside
-   the range read; this stage trusts that exclusion for membership and spends no chain walk.
+4. **Membership (V0 post-fetch exclusion, not in-range pushdown)**: `assemble()`
+   resolves `excluded_valid_keys` once via `_resolve_excluded_keys`
+   (`context_assembler.py:1844`) and applies it POST-fetch through
+   `_scope_by_validity` on each arm (`:1871` pull, `:1949` push, `:1875` pull
+   candidates). It is never excluded inside the range read — the decay-Lua /
+   composite layers cannot see the fuse/BM25/graph arms, so the exclusion-set
+   post-filter is the only mode-agnostic seam (same shape as tag scoping).
+   Retracted/superseded entries closed at `as_of` are therefore dropped from
+   the already-fetched candidate lists; this stage trusts that drop for
+   membership and spends no chain walk. **Headroom caveat (critique concern
+   1):** `_exclude_headroom` (`:1861`) currently compensates ONLY
+   caller-supplied `exclude_keys` (`len(exclude_keys)`), not the V0 set — a
+   large validity-exclusion set can consume the arms' `max_items * 2`
+   headroom and starve the sheet. Build task `build-gate` extends the
+   headroom to cover the merged (V0 ∪ caller) exclusion count, capped by
+   `EXCLUDE_HEADROOM_CAP` (`:139`, applied in `_fetch_limit` at `:1709`).
 5. **Chain resolution (pure function)**: for surviving records, `annotations_for`/`chain`
    are folded under the policy dict — drop retracted stragglers, collapse superseded to
    winners (with loser→winner handle links), count confirmations, pair M5 disjuncts as
@@ -203,9 +219,9 @@ data structures, no Lua, no LLM calls on the hot path.
 |-------------|---------------|---------|
 | Redis on localhost:6379 | `redis-cli ping` | Test isolation (DB 7 in this lane) |
 | M1 journal in tree | `python -c "from popoto.recipes.provenance_journal import ProvenanceJournal; print(hasattr(ProvenanceJournal,'chain'))"` | Chain data source |
-| V0 validity in tree | `python -c "from popoto.fields.validity_field import ValidityField; print(True)"` | Membership pushdown |
+| V0 validity in tree | `python -c "from popoto.fields.validity_field import ValidityField; print(True)"` | Membership exclusion |
 
-No prerequisites — no external dependencies beyond the above (all present, verified above).
+No further prerequisites — no external dependencies beyond the above (all present, verified above).
 
 ## Solution
 
@@ -222,7 +238,13 @@ No prerequisites — no external dependencies beyond the above (all present, ver
   at the tag-scoping seam but pre-truncation (between merge and the `max_items` cut),
   with over-fetch/back-fill to `max_items`. Fails CLOSED on error (today's silent-degrade
   to unscoped is a leak for privacy purposes and is inverted here without changing the
-  cooperative default of bare `assemble()`).
+  cooperative default of bare `assemble()`). **I/O budget (critique concern 2):** the
+  gate MUST NOT do one Redis round-trip per candidate. It resolves visibility from
+  already-fetched record fields where possible, else batches tag-membership checks
+  through a single pipeline/MGET — `_resolve_tag_keys` (`:1590`) is the batching
+  precedent (one SINTER/SUNION per tag set, not per record). The build documents the
+  gate's per-`resolve()` call budget alongside the chain budget (Risk 4) and adds a
+  call-count spy test asserting zero/bounded extra round-trips vs bare `assemble()`.
 - **Per-record staleness (extension 2)**: expose `_staleness_ratio`'s internals as a
   per-record accessor over the already-fetched `_partition_scores_for_field` dict —
   no second Redis pass.
@@ -246,7 +268,17 @@ contradictions flagged for LLM escalation.
 - Extension 1 anchor: gate sits between candidate merge and `selected = merged[: max_items]`
   (`context_assembler.py:1973`); reuses the arms' existing `max_items * 2` /
   `HYBRID_CANDIDATE_MULTIPLIER` headroom, plus one capped back-fill pull. Gate predicate
-  takes `(record_key, reader)` and returns allow/deny; errors → deny + log (fail closed).
+  takes `(record, reader)` — the full fetched record, NOT just the key, so visibility
+  resolves from already-fetched fields; any Redis tag check is batched via a single
+  pipeline/MGET per `resolve()` (`_resolve_tag_keys` at `:1590` is the precedent).
+  Errors → deny + log (fail closed).
+  Headroom fix (concern 1): `build-gate` changes `:1861` from
+  `len(exclude_keys)` to the merged (V0 ∪ caller) exclusion count — i.e.
+  `len(excluded_valid_keys or ()) + len(caller_excluded or ())`, still capped by
+  `EXCLUDE_HEADROOM_CAP` inside `_fetch_limit` (`:1709`) — so validity-excluded
+  shortfall is compensated at fetch time exactly like caller-suppressed shortfall.
+  Residual shortfall is reported split in `BeliefSheet.warnings` as
+  `validity_excluded` vs `gate_rejected` counts (never a single opaque number).
   Corrected line refs: stability surface `:1753`/`:1763`, tag seam `:1605`, cut `:1973`.
 - Extension 2 anchor: module-level `_staleness_ratio` (`:953`) gains a sibling returning
   the per-record `{key: (decayed_score, stale_bool)}` mapping from the same single
@@ -276,7 +308,11 @@ contradictions flagged for LLM escalation.
 - [ ] Empty candidate set → empty `BeliefSheet` (not an error).
 - [ ] `policy=None` → library defaults (documented `Defaults` values); unknown policy keys
   → ignored with warning, never crash.
-- [ ] `reader=None` → gate denies all with a clear error (fail closed), tested.
+- [ ] `reader=None` → `resolve()` raises `ValueError` immediately (programmer error,
+  fail fast — a missing reader is not a gate decision). Runtime gate failures (e.g.
+  Redis errors mid-gating) instead fail closed WITHOUT raising: empty sheet plus a
+  `warnings` entry. Both paths tested. This is deliberately asymmetric: `None` reader
+  is a caller bug, a mid-gate outage is an operational event.
 
 ### Error State Rendering
 - [ ] `BeliefSheet` carries a `warnings` list (gate failures, unresolved chains,
@@ -333,13 +369,16 @@ collapse branch stays dormant — nothing breaks.
 ### Risk 3: Gate-rejection starvation (back-fill never reaches `max_items`)
 **Impact:** A restrictive reader with a small candidate pool yields thin sheets.
 **Mitigation:** Capped back-fill (`max_backfill_pulls` in policy, default 1 extra bounded
-pull); residual shortfall is reported in `BeliefSheet.warnings`, never hidden.
+pull); residual shortfall is reported in `BeliefSheet.warnings` split as
+`validity_excluded` vs `gate_rejected` counts, never hidden and never conflated.
 
 ### Risk 4: Chain-walk cost on large annotation histories
 **Impact:** `annotations_for` per candidate could add round-trips linear in sheet size.
-**Mitigation:** Membership stays on the V0 pushdown path (no chain walk for it); chains
-are fetched only for display/replay handles on the already-truncated top-K. Bound and
-document the per-resolve call budget in the build.
+**Mitigation:** Membership stays on the V0 exclusion path (no chain walk for it); chains
+are fetched only for display/replay handles on the already-truncated top-K. The build
+documents the per-`resolve()` call budget as `1 assemble + ≤1 gate batch (pipeline/MGET,
+zero when visibility resolves from fetched fields) + ≤K chain reads`, stated next to
+the chain budget in the resolver docstring and enforced by the call-count spy test.
 
 ## Race Conditions
 
@@ -374,10 +413,6 @@ Both boundaries are named here as scope clarification, not promises.
 No update system changes required — pure library addition, no new dependencies, no
 config files, no migrations. Downstream adopters opt in by wrapping their assembler.
 
-## Update System
-
-placeholder
-
 ## Agent Integration
 
 No agent integration required — this is a library-level recipe. The resolver is consumed
@@ -411,7 +446,10 @@ Mapped 1:1 to the issue's Acceptance Criteria:
 - [ ] Resolution is deterministic: same journal + same policy dict → byte-identical
   belief sheet (replay test)
 - [ ] Reader gate runs pre-truncation, back-fills to `max_items`, and fails closed on
-  error (fault-injection test)
+  error (fault-injection test); gate adds zero/bounded extra round-trips vs bare
+  `assemble()` — visibility from fetched fields or one batched pipeline/MGET
+  (call-count spy test, per-`resolve()` budget `1 assemble + ≤1 gate batch + ≤K
+  chain reads` documented in the resolver docstring)
 - [ ] Each claim carries per-entry staleness; no second Redis round-trip vs current
   `assess_quality=True` cost (call-count spy test)
 - [ ] Existing `assemble()` behavior unchanged when the resolver is not used (existing
@@ -462,16 +500,23 @@ does not build directly.
 
 ### 2. Reader-gate hook point (pre-truncation, fail-closed)
 - **Task ID**: build-gate
-- **Depends On**: none
+- **Depends On**: build-staleness (both tasks edit `context_assembler.py` — run sequenced,
+  not parallel, to avoid same-file conflicts)
 - **Validates**: tag-scoping and validity-gating suites green unmodified;
   `tests/test_view_resolver.py::test_gate_*` (create)
 - **Informed By**: spike-2 (headroom reuse, capped single back-fill)
 - **Assigned To**: view-resolver-builder
 - **Agent Type**: builder
-- **Parallel**: true
+- **Parallel**: false
 - Add the gate hook between candidate merge and the `max_items` cut (`:1973`):
-  `gate(record_key, reader) -> allow/deny`, errors → deny + log
+  `gate(record, reader) -> allow/deny` (full record, not just key — see concern-2
+  budget rule in Solution), errors → deny + log
 - Implement over-fetch/back-fill to `max_items` with the capped extra pull
+- Extend `_exclude_headroom` (`:1861`) to the merged (V0 ∪ caller) exclusion count,
+  still capped by `EXCLUDE_HEADROOM_CAP` in `_fetch_limit` (`:1709`)
+- Gate tag checks resolve from fetched fields or a single pipeline/MGET per
+  `resolve()`; add the call-count spy test (zero/bounded extra round-trips vs bare
+  `assemble()`) here, not in a later task
 - Bare `assemble()` path keeps cooperative degrade — fail-closed only on the resolver path
 
 ### 3. BeliefSheetResolver + pure resolution function
@@ -485,12 +530,13 @@ does not build directly.
   `ContextAssembler`; pure `resolve_entries(entries, chains, policy)` — drop retracted,
   collapse superseded to winners with handles, count confirmations, pair structural
   disjuncts, flag unresolved contradictions, attach per-record staleness, emit
-  `BeliefSheet` with `warnings`
+  `BeliefSheet` with `warnings` (shortfall split as `validity_excluded` vs
+  `gate_rejected` counts)
 - M5-optional: duck-typed `class_id`/disjunction ids, per-record fallback without M5
 - Deterministic fold: sort chains by `(redis_key, kind, ts)`; no clock reads, no RNG
 - Cover: retraction drop, supersession collapse + traceability, disjunct surfacing,
   determinism replay (byte-identical), fault-injection fail-closed, no-extra-round-trip
-  spy, `reader=None` deny, `policy=None` defaults, empty-set empty-sheet
+  spy, `reader=None` raises `ValueError`, `policy=None` defaults, empty-set empty-sheet
 
 ### 4. Documentation
 - **Task ID**: document-feature
@@ -519,14 +565,20 @@ does not build directly.
 | Lint clean | `ruff check src/` | exit code 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
 | No stale-snapshot import | `grep -rn "from popoto.redis_db import POPOTO_REDIS_DB\|from .redis_db import POPOTO_REDIS_DB\|from ..redis_db import POPOTO_REDIS_DB" src/popoto/recipes/view_resolver.py src/popoto/recipes/context_assembler.py \| grep -v "function-local" ; test $? -eq 1` | exit code 0 |
-| Bare assemble unchanged | `grep -c "cooperative, not a security boundary" src/popoto/recipes/context_assembler.py` | output > 0 |
+| Bare assemble smoke | `grep -c "cooperative, not a security boundary" src/popoto/recipes/context_assembler.py` | output > 0 (smoke only — the assembler suites above are the real guard) |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 
 ## Critique Results
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| | | | | |
+| concern | critique | V0 pushdown mischaracterized: `assemble()` resolves `excluded_valid_keys` at `:1844` but applies post-fetch via `_scope_by_validity` at `:1871`/`:1949`; `_exclude_headroom` (`:1861`) compensates only caller `exclude_keys`, not the V0 set | Data Flow step 4 rewritten; Technical Approach ext-1 + `build-gate` task extended | Mechanism corrected to post-fetch exclusion-set; headroom extended to merged (V0 ∪ caller) count capped by `EXCLUDE_HEADROOM_CAP`; residual shortfall split as `validity_excluded` vs `gate_rejected` in `BeliefSheet.warnings` |
+| concern | critique | Reader-gate per-candidate I/O unbudgeted | Solution ext-1 bullet; Technical Approach ext-1; Risk 4; Success Criteria; `build-gate` task | Gate takes full `(record, reader)`; visibility from fetched fields or single pipeline/MGET per `resolve()` (`_resolve_tag_keys` `:1590` precedent); budget `1 assemble + ≤1 gate batch + ≤K chain reads` in resolver docstring; call-count spy test in `build-gate` |
+| nit | critique | Duplicate `## Update System` placeholder section | Deleted | Second `## Update System` (placeholder-only) removed; substantive one kept |
+| nit | critique | `build-staleness`/`build-gate` both `Parallel:true` despite same-file edits | `build-gate` task | `build-gate` now `Depends On: build-staleness`, `Parallel: false` — sequenced |
+| nit | critique | Bare-assemble grep guard overweighted | Verification table | Demoted to labeled smoke; assembler suites named as the real guard |
+| nit | critique | "No prerequisites" misreads as zero setup | Prerequisites | Rephrased to "No further prerequisites" |
+| nit | critique | `reader=None` contract ambiguous (raise vs empty sheet) | Failure Path; `build-resolver` cover line | `reader=None` → `ValueError` at `resolve()` entry (caller bug, fail fast); runtime gate errors → empty sheet + `warnings` entry (operational event, no raise) |
 
 ---
 
