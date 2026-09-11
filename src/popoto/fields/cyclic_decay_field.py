@@ -896,10 +896,16 @@ class CyclicDecayField(DecayingSortedField):
             # baseline round-trips as int rather than float. Coerce back to
             # float here so the log line matches the pre-#699 Python-float
             # formatting; period is left alone since it may legitimately be
-            # a non-numeric string.
-            old_baseline = float(old_baseline)
-            declared_amplitude = float(declared_amplitude)
-            learned_amplitude = float(learned_amplitude)
+            # a non-numeric string. Coercion is display-only and defensive:
+            # a hand-written/migrated payload can carry a non-numeric value
+            # that still decodes as valid msgpack, and the pre-#699 code
+            # logged such values fine — never raise out of save() here.
+            try:
+                old_baseline = float(old_baseline)
+                declared_amplitude = float(declared_amplitude)
+                learned_amplitude = float(learned_amplitude)
+            except (TypeError, ValueError):
+                pass
             # The developer edited the declared amplitude — the declaration
             # wins. The learned amplitude is discarded by design (#698); this
             # destroys real state, so it is logged loudly.
