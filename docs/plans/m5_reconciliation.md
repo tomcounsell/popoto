@@ -311,23 +311,119 @@ order and is never asked as its own question.
 
 ## Failure Path Test Strategy
 
-TODO
+### Exception Handling Coverage
+- [ ] The reconcile loop's `except` around `save_and_supersede`
+  (`ValidityMemberAbsentError` → re-read → `loser-absent` log) must have a test
+  asserting the merge-log entry, not a silent pass. Same for the judge
+  abstention path (logged, entry stays singleton).
+- [ ] Audit `except Exception` blocks in touched journal/supersession call sites
+  during build; each needs an observable-behavior assertion.
+
+### Empty/Invalid Input Handling
+- [ ] Empty/whitespace-only `statement` never reaches the judge (firewall, same
+  as `llm_verdict`'s `reject`/`empty_turn`); test asserts zero judge calls.
+- [ ] Entries with empty `subjects` skip the deterministic tier (no identity key
+  computable) and enter the judge path with subject-unbounded shortlist capped
+  by `Defaults`; test covers the cap.
+- [ ] Malformed judge replies (wrong schema, verdict outside fixed vocabulary,
+  reply about a different class) map to abstention — copy `verdict.py`'s
+  `_parse_reply` adversarial tests.
+
+### Error State Rendering
+- [ ] Disjunct pairs and supersession pointers must render in the M6-facing
+  representative read as explicit uncertainty markers; test asserts the marker
+  survives formatting rather than being dropped (no silent winner at read time).
 
 ## Test Impact
 
-TODO
+New module + additive fields; no existing behavior changes, so no UPDATE/DELETE
+— but three adjacent suites constrain the build:
+
+- [ ] `tests/` journal suites (`test_provenance_journal.py` et al) — MUST PASS
+  UNCHANGED: `class_id` defaults NULL, merge kinds are additive registrations.
+  Any failure here is a regression, not an expected update.
+- [ ] `tests/test_ci_workflow_redis_url.py`-style env contracts — new tests bind
+  via the pytest plugin (`popoto_test_db`), never `REDIS_URL` + DB 0.
+- [ ] `tests/benchmarks/test_defaults_sync.py` — MUST UPDATE: every new
+  `Defaults` constant registered (shortlist cap, probe flag, watermark,
+  judge caps). This gate fails only in CI under narrow test selection, so the
+  build must run it explicitly.
+- [ ] New `tests/test_reconciliation_m5.py` (name per issue's
+  `tests/test_<name>.py` criterion): restatement-joins, rule-fires-supersedes,
+  tie-disjoins, replay-reverses, zero-LLM-calls-for-rules, judge-call bound.
+
+No existing tests affected otherwise — greenfield recipe with additive-only
+journal changes.
 
 ## Rabbit Holes
 
-TODO
+- Full N-way transitivity closure over classes (quadratic judge calls; the
+  symmetry probe buys the safety cheaper).
+- General entailment checking ("does claim A entail claim B?") — unreliable on
+  small judges and unneeded; narrow sameness + type rules cover all four
+  outcomes (recon Dropped bucket).
+- LLM-extensible type schema — decidability of rules dies with an open enum;
+  `note` absorbs the tail (recon Dropped bucket).
+- Persisted union-find for classes — plain `class_id` relabel + merge log at
+  one-person scale (recon Revised bucket).
+- Rewriting `crystallize()` to share code with the reconciler — trajectory
+  fingerprints and claim sameness only rhyme; a shared abstraction couples both
+  to neither's benefit. Borrow the shape (watermark, modal+recency), not the code.
+- Backfilling classes over the entire historical journal at ship time — steady
+  state is incremental; genesis replay is an explicit repair op.
 
 ## Risks
 
-TODO
+### Risk 1: Judge non-transitivity compounds into mega-classes
+**Impact:** One class absorbs unrelated claims; downstream belief sheets present
+merged falsehoods as confirmed fact.
+**Mitigation:** Symmetry probe on every join (split verdict → disjunct pair);
+representative discipline (most-confirmed member only); merge log makes any bad
+join reversible by replay. Mega-class detector (class size velocity alert) as
+telemetry, not a gate.
+
+### Risk 2: Convention-book wording silently moves the sameness boundary
+**Impact:** Same code, different merges after a wording tweak; irreproducible
+history.
+**Mitigation:** Convention book is versioned config; version recorded on every
+merge-log entry; replay pins the entry's version. Wording changes need PM
+sign-off (appetite check-ins).
+
+### Risk 3: Post-turn background window overruns under burst capture
+**Impact:** Reconciliation lags; read path serves unreconciled duplicates.
+**Mitigation:** Judge calls bounded by shortlist cap; deterministic tier absorbs
+the common collisions with zero calls; lag is safe (unreconciled reads are
+today's status quo, and M6 falls back to per-record).
+
+### Risk 4: Embedding provider absent in consumer environments
+**Impact:** No cosine shortlist; judge path falls back to coarse index scan.
+**Mitigation:** Bounded subject+type scan fallback (correctness holds, recall
+narrows); deterministic tier unaffected. Documented in feature docs.
 
 ## Race Conditions
 
-TODO
+### Race 1: Two reconciler runs process the same fresh entry
+**Location:** new `recipes/reconciliation.py` run loop
+**Trigger:** Overlapping post-turn triggers (stream redelivery + direct call)
+both shortlist and judge the same entry concurrently.
+**Data prerequisite:** Entry persisted in journal before either run reads it.
+**State prerequisite:** `class_id` NULL on the fresh entry at both runs' read time.
+**Mitigation:** Claim-by-write: the join writes `class_id` conditionally
+(WATCH/MULTI or a Lua compare-and-set on NULL→id); the loser of the race sees
+non-NULL and re-runs that entry against its now-assigned class. Merge-log
+append is idempotent per `(entry_id, run_watermark)`. At-most-one reconciler
+per agent documented (mirrors `crystallize`'s one-crystallizer-per-partition).
+
+### Race 2: Loser deleted between shortlist and `save_and_supersede`
+**Location:** reconcile loop → `SupersessionProtocol.save_and_supersede`
+**Trigger:** Retraction/expiry removes the loser after the shortlist read.
+**Data prerequisite:** Shortlist holds a live key that is gone at write time.
+**State prerequisite:** None beyond the delete landing first.
+**Mitigation:** `ValidityMemberAbsentError` catch → re-read → `loser-absent`
+merge-log entry; winner stands. Specified in Technical Approach; tested.
+
+No other concurrency: merge-log appends are immutable inserts; representative
+reads are last-write-wins on confirmation counts and tolerate staleness.
 
 ## No-Gos (Out of Scope)
 
