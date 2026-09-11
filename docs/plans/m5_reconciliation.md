@@ -6,6 +6,8 @@ owner: agent-a773efcbae003f9f3
 created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/564
 last_comment_id: 5537009267
+revision_applied: true
+revision_applied_at: 2026-09-11T14:30:00Z
 ---
 
 # M5 — Reconciliation: claim equivalence classes, typed contradiction rules, explicit disjunctions
@@ -151,7 +153,9 @@ guides bear on the design.
    `"journal"` stream (metadata: `agent_id`, `kind`, `target`) wakes on new
    `kind="assert"` entries, or the capture pipeline calls the reconciler
    directly off M1's event emission. Input is one fresh `JournalEntry`
-   (`statement`, `subjects`, `stated`, `turn_id`).
+   (`statement`, `subjects`, `stated`, `turn_id`). (Two triggers means two
+   concurrent writers on the same fresh entry — see Race 1; resolving Open
+   Q5 to stream-only dissolves that race.)
 2. **Deterministic tier (zero LLM calls)**: compute the entry's identity key
    `subject|predicate` per the V0 amendment. Singleton-slot type rules (one
    birthdate per subject) and same-target deadline supersession express as
@@ -173,9 +177,12 @@ guides bear on the design.
    annotation (registered merge kind). Replay = revoke entry + recompute class
    assignment. Classes are tracked by plain relabeled `class_id`, never
    union-find.
-6. **Output**: M6 reads one representative per class (most-confirmed member);
-   without M5 it falls back to per-record. M7 consumes disjunct pairs as question
-   sources; M8 pools causal estimates by `class_id`, falling back to by-type.
+6. **Output**: M6 reads one representative per class — the most-confirmed
+   member among validity-open entries (`validity__current=True`; closed
+   losers stay in-class for audit but are never selected and accrue no
+   confirmations); without M5 it falls back to per-record. M7 consumes
+   disjunct pairs as question sources; M8 pools causal estimates by
+   `class_id`, falling back to by-type.
 
 ## Architectural Impact
 
@@ -234,6 +241,12 @@ functions and judge calls degrade to logged abstentions (same contract as
   relabeled on merge. A restatement joins the class and increments its
   confirmation count via `ProvenanceJournal.confirm` — confirmation instead of
   duplication.
+- **Per-entry claim type**: `claim_type = IndexedField(type=str, null=True)`
+  on `JournalEntry` alongside `class_id`; capture assigns it at capture time
+  from the extractor's type label (never inferred later). The deterministic
+  tier derives the V0 predicate as `(subjects[0], claim_type)` — zero LLM
+  calls, zero guessing. Round-trips through export/import per the #558
+  precedent, same task as `class_id`.
 - **Convention book**: short versioned config standard for "same claim"
   (converse phrasings merge, restatements confirm). The only prompt the judge
   sees; version recorded on every merge-log entry so replays are reproducible.
@@ -261,7 +274,7 @@ functions and judge calls degrade to logged abstentions (same contract as
 **Post-turn capture** → new assert entry → **Deterministic tier** (identity-key
 collision? → `save_and_supersede`, done, zero LLM calls) → **Embedding
 shortlist** (same subject + type, bounded N) → **Judge vs each class
-representative** (most-confirmed member only) → same → **join + confirm** /
+representative** (most-confirmed validity-open member only) → same → **join + confirm** /
 rule fires → **precedence + supersede** / tie → **disjunct pair** → **append
 merge-log entry** → M6/M7/M8 read classes downstream.
 
@@ -277,18 +290,24 @@ order and is never asked as its own question.
   escalation path for claims normalization cannot equate.
 - **Judge verdicts are not transitive — budget one symmetry re-check.**
   Recon and the design study both flag compounding false-"same" verdicts
-  (mega-classes) as the top threat. The plan decision: after a "same" verdict
-  joins entry E to class C, re-ask the judge once with E against C's
-  representative *as restated including E's phrasing* (symmetry probe). A "same"
-  both ways commits; a split verdict routes to a disjunct pair instead of a
-  join. Cost is bounded (one extra call per join, still within shortlist
-  budget) and it converts the worst failure (silent mega-class) into the safe
+  (mega-classes) as the top threat. The plan decision: the forward ask
+  compares entry E against class C's representative in that order
+  ("is E the same claim as C's representative?"); after a forward "same",
+  the symmetry probe re-asks once with SWAPPED claim order
+  ("is C's representative the same claim as E?"). The join commits only on
+  same/same; ANY split (forward-same/probe-different, or probe abstention)
+  routes to a disjunct pair instead of a join. Cost is bounded at most 2x
+  the shortlist cap per entry (one forward + one probe ask per candidate),
+  and the probe converts the worst failure (silent mega-class) into the safe
   failure (explicit uncertainty). Full N-way transitivity closure is a No-Go —
   quadratic judge calls for no additional safety over the symmetry probe.
 - **Representative discipline**: the judge always sees the class's
-  most-confirmed member, never a random sample; ties in confirmation count break
-  by recency (mirrors `crystallize`'s modal+recency shape without copying its
-  forced-winner semantics).
+  most-confirmed member among validity-open entries only
+  (`validity__current=True` filter, per the `JournalEntry` docstring's own
+  query precedent) — validity-closed losers stay in-class for audit but are
+  excluded from representative selection AND from confirmation counts.
+  Ties in confirmation count break by recency (mirrors `crystallize`'s
+  modal+recency shape without copying its forced-winner semantics).
 - **`ValidityMemberAbsentError` handling** (per #601 notice): the reconcile loop
   catches it around `save_and_supersede` — a loser deleted between shortlist and
   write is re-read; if gone, the merge-log records `loser-absent` and the winner
@@ -332,9 +351,11 @@ order and is never asked as its own question.
   `_parse_reply` adversarial tests.
 
 ### Error State Rendering
-- [ ] Disjunct pairs and supersession pointers must render in the M6-facing
-  representative read as explicit uncertainty markers; test asserts the marker
-  survives formatting rather than being dropped (no silent winner at read time).
+- [ ] Disjunct pairs and supersession pointers must surface in the M6-facing
+  representative read as explicit uncertainty markers; the test asserts the
+  flag on M5's own representative-selection return value — NOT at M6's
+  formatting layer (M6 is #565's module per the No-Gos). No silent winner at
+  write or read time.
 
 ## Test Impact
 
@@ -415,6 +436,13 @@ both shortlist and judge the same entry concurrently.
 non-NULL and re-runs that entry against its now-assigned class. Merge-log
 append is idempotent per `(entry_id, run_watermark)`. At-most-one reconciler
 per agent documented (mirrors `crystallize`'s one-crystallizer-per-partition).
+**Pre-build spike (before build-loop):** prove the conditional NULL→id write
+against the real journal model — `get_redis()` pipeline WATCH on the entry's
+class key, check `class_id` NULL, MULTI write; or a Lua CAS mirroring
+`SUPERSEDE_LUA`'s membership pattern in
+`src/popoto/fields/supersession.py`. If the spike fails, resolve Open Q5 to
+stream-only: a single trigger plus the one-reconciler discipline dissolves
+this race entirely (no second concurrent writer exists).
 
 ### Race 2: Loser deleted between shortlist and `save_and_supersede`
 **Location:** reconcile loop → `SupersessionProtocol.save_and_supersede`
@@ -483,8 +511,9 @@ invoke it".
   winner at write or read time (issue AC3).
 - [ ] Any merge is reversible: revoking a merge-log entry and replaying
   reproduces the pre-merge class assignment (issue AC4).
-- [ ] Type rules run with zero LLM calls; judge calls are bounded by the
-  embedding shortlist size (issue AC5).
+- [ ] Type rules run with zero LLM calls; judge calls are at most 2x the
+  shortlist cap per entry — one forward ask plus one swapped-order symmetry
+  probe per candidate class (issue AC5).
 - [ ] Tests at `tests/test_reconciliation_m5.py`; docs page under
   `docs/features/` (issue AC6).
 - [ ] Tests pass (`/do-test`); Documentation updated (`/do-docs`); every new
@@ -545,7 +574,11 @@ above.
 - **Assigned To**: model-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `class_id` IndexedField (NULL default) + disjunction-link fields to `JournalEntry`
+- Add `class_id` IndexedField (NULL default) + `claim_type =
+  IndexedField(type=str, null=True)` + disjunction-link fields to
+  `JournalEntry` (`claim_type` assigned by capture from the extractor's type
+  label; the deterministic tier reads it as the `(subjects[0], claim_type)`
+  predicate)
 - Register merge/disjoin annotation kinds via `register_kind`
 - Add numeric constants to `Defaults`; register each in `tests/benchmarks/test_defaults_sync.py`
 - Add/export round-trip coverage for the new fields (precedent: #558)
@@ -591,7 +624,9 @@ above.
 - **Agent Type**: validator
 - **Parallel**: false
 - Run full new suite + adjacent journal suites + `test_defaults_sync.py` explicitly (fails only in CI under narrow selection)
-- Verify judge-call bound under burst capture; verify disjunct marker survives representative read formatting
+- Verify judge-call bound (at most 2x shortlist cap per entry) under burst
+  capture; verify the disjunct/uncertainty flag on M5's
+  representative-selection return value (not at M6's formatting layer)
 - Report pass/fail status
 
 ### N-1. Documentation
@@ -635,8 +670,11 @@ above.
 ## Open Questions
 
 1. **Symmetry probe confirmed?** The issue leaves single-verdict vs re-check to
-   the planner; this plan budgets one symmetry re-check per join (split verdict
-   → disjunct pair). Veto = single-verdict joins with mega-class telemetry only.
+   the planner; this plan budgets one swapped-order symmetry re-check per
+   candidate (forward E-vs-representative, then probe representative-vs-E;
+   join commits only on same/same, any split → disjunct pair; bound at most
+   2x shortlist cap per entry). Veto = single-verdict joins with mega-class
+   telemetry only.
 2. **Convention-book v1 contents?** The "same claim" standard wording and the
    precedence rows for `relationship | goal | procedure` need PM sign-off
    (self-stated > inferred and deadline-recency / trait-confirmation rules are
@@ -651,3 +689,6 @@ above.
    former; flag if M1's model is meant to stay embedding-free.
 5. **Trigger shape?** Plan builds both `StreamConsumer`-on-`"journal"` and a
    direct-call entry off capture. If the host wants exactly one, which?
+   Note: answering stream-only plus the one-reconciler discipline dissolves
+   Race 1 (no second concurrent writer); answering both keeps the
+   claim-by-write spike mandatory before build-loop.
