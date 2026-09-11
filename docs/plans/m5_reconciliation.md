@@ -5,7 +5,7 @@ appetite: Large
 owner: agent-a773efcbae003f9f3
 created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/564
-last_comment_id: pending
+last_comment_id: 5537009267
 ---
 
 # M5 — Reconciliation: claim equivalence classes, typed contradiction rules, explicit disjunctions
@@ -427,35 +427,201 @@ reads are last-write-wins on confirmation counts and tolerate staleness.
 
 ## No-Gos (Out of Scope)
 
-TODO
+- [SEPARATE-SLUG #565] Belief-sheet representative surfacing — M5 guarantees one
+  representative per class is *selectable* (most-confirmed member) and that
+  per-record fallback works without it; the reader-facing view is M6's module.
+- [SEPARATE-SLUG #566] Disjunct-pair question generation — M5 stores ties as
+  retrievable-together pairs with a shared id; turning them into clarifying
+  questions is M7's module.
+- [SEPARATE-SLUG #567] Causal pooling by class — M5 guarantees `class_id`
+  stability for M8 to pool on; the pooling itself is M8's module.
 
 ## Update System
 
-TODO
+No update system changes required — this feature is purely additive library
+code. No migration: new journal fields default NULL, merge kinds register
+additively, and the reconciler runs only when the host invokes it. Downstream
+adoption is a normal version bump; unreconciled journals read exactly as today.
 
 ## Agent Integration
 
-TODO
+No agent-tool surface. The reconciler is library code the host process invokes
+post-turn (via `StreamConsumer` on the `"journal"` stream or a direct call off
+M1's event emission). No MCP wrapper, no bridge import, no new tool. Integration
+tests verify the consumer-driven trigger path end to end (stream append →
+reconcile → class assigned), which is the closest equivalent to "the agent can
+invoke it".
 
 ## Documentation
 
-TODO
+### Feature Documentation
+- [ ] Create `docs/features/reconciliation.md`: equivalence classes, convention
+  book (with version), frozen type enum + per-type rules + precedence tables,
+  disjunct-pair semantics, merge-log replay procedure, embedding-fallback behavior.
+- [ ] Add entry to `docs/features/` index (mkdocs nav if index-driven — follow
+  the precedent of the validity/journal feature pages).
+
+### External Documentation Site
+- [ ] Verify `mkdocs serve` builds with the new page (docs gate runs at merge).
+
+### Inline Documentation
+- [ ] Convention-book rationale comments on each per-type rule (why this
+  precedence, not just what).
+- [ ] Docstrings on the reconciler entry points, judge contract, and replay
+  procedure (watermark semantics mirror `crystallize`'s documented limits).
 
 ## Success Criteria
 
-TODO
+- [ ] A restatement of a stored claim increments its class's confirmation count
+  and creates no duplicate class (issue AC1).
+- [ ] A firing type rule resolves by the per-type precedence table, marking the
+  loser superseded (never deleted) with a pointer to the winner, written through
+  `save_and_supersede` (issue AC2).
+- [ ] A precedence tie produces a disjunct pair retrievable together; no silent
+  winner at write or read time (issue AC3).
+- [ ] Any merge is reversible: revoking a merge-log entry and replaying
+  reproduces the pre-merge class assignment (issue AC4).
+- [ ] Type rules run with zero LLM calls; judge calls are bounded by the
+  embedding shortlist size (issue AC5).
+- [ ] Tests at `tests/test_reconciliation_m5.py`; docs page under
+  `docs/features/` (issue AC6).
+- [ ] Tests pass (`/do-test`); Documentation updated (`/do-docs`); every new
+  `Defaults` constant registered in `tests/benchmarks/test_defaults_sync.py`.
+- [ ] Anti-criterion: M6 surfacing stays out (see Verification).
 
 ## Team Orchestration
 
-TODO
+When this plan is executed, the lead agent orchestrates work using Task tools. The lead NEVER builds directly - they deploy team members and coordinate.
+
+### Team Members
+
+- **Builder (journal-model)**
+  - Name: model-builder
+  - Role: `class_id` + disjunction fields, merge-kind registration, Defaults constants
+  - Agent Type: builder
+  - Resume: true
+
+- **Builder (deterministic-tier)**
+  - Name: rules-builder
+  - Role: identity-key mapping, frozen type enum, per-type rules + precedence, `save_and_supersede` wiring + `ValidityMemberAbsentError` path
+  - Agent Type: builder
+  - Resume: true
+  - Domain: Redis/Popoto data (single-writer atomicity via SUPERSEDE_LUA; Valkey-safe, no modules)
+
+- **Builder (judge-loop)**
+  - Name: judge-builder
+  - Role: convention book config, sameness judge (`llm_verdict` contract), embedding shortlist + fallback, symmetry probe, reconcile loop + watermark + merge log + replay
+  - Agent Type: builder
+  - Resume: true
+  - Domain: Redis/Popoto data (claim-by-write compare-and-set on `class_id`; one-reconciler-per-agent discipline)
+
+- **Validator (reconciliation)**
+  - Name: recon-validator
+  - Role: Verifies all success criteria, failure-path coverage, Defaults sync registration
+  - Agent Type: validator
+  - Resume: true
+
+- **Documentarian (reconciliation)**
+  - Name: recon-docs
+  - Role: Feature docs page, index entry, mkdocs build check
+  - Agent Type: documentarian
+  - Resume: true
+
+### Available Agent Types
+
+Tier 1 core (`builder`, `validator`, `code-reviewer`, `test-engineer`,
+`documentarian`, `plan-maker`, `frontend-tester`) per the skill baseline. No
+standing specialists — domain work is prompted Tier 1 with a `Domain:` line as
+above.
 
 ## Step by Step Tasks
 
-TODO
+### 1. Journal model surface
+- **Task ID**: build-model
+- **Depends On**: none
+- **Validates**: `tests/test_reconciliation_m5.py::test_class_id_defaults_null` (create), existing journal suites unchanged
+- **Assigned To**: model-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Add `class_id` IndexedField (NULL default) + disjunction-link fields to `JournalEntry`
+- Register merge/disjoin annotation kinds via `register_kind`
+- Add numeric constants to `Defaults`; register each in `tests/benchmarks/test_defaults_sync.py`
+- Add/export round-trip coverage for the new fields (precedent: #558)
+
+### 2. Deterministic tier
+- **Task ID**: build-rules
+- **Depends On**: build-model
+- **Validates**: `tests/test_reconciliation_m5.py::test_singleton_rule_zero_llm_calls`, `::test_deadline_supersession_uses_save_and_supersede` (create)
+- **Assigned To**: rules-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Frozen type enum (`preference | deadline | trait | relationship | goal | procedure | note`)
+- Per-type incompatibility rules + precedence tables (self-stated > inferred everywhere; recency for supersession types; confirmation count for stable types)
+- All outcomes through `SupersessionProtocol.save_and_supersede`; `ValidityMemberAbsentError` → re-read → `loser-absent` log
+- Assert zero judge calls on this path (spy on judge client)
+
+### 3. Judge + shortlist + symmetry probe
+- **Task ID**: build-judge
+- **Depends On**: build-model
+- **Validates**: `tests/test_reconciliation_m5.py::test_malformed_reply_abstains`, `::test_split_verdict_disjoins` (create; malformed-reply cases mirror `verdict.py` adversarial tests)
+- **Assigned To**: judge-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Versioned convention-book config; sameness judge copying `llm_verdict`'s contract (firewall, JSON schema, re-validate, never raise → abstention leaves singleton class)
+- Embedding shortlist (same subject + type, capped) with bounded subject+type index-scan fallback when numpy/provider absent
+- Symmetry probe on join (split verdict → disjunct pair, never a join)
+- Empty/whitespace statements short-circuit with zero judge calls
+
+### 4. Reconcile loop + merge log + replay
+- **Task ID**: build-loop
+- **Depends On**: build-rules, build-judge
+- **Validates**: `tests/test_reconciliation_m5.py::test_restatement_confirms`, `::test_replay_reverses_merge`, `::test_concurrent_runs_claim_by_write` (create)
+- **Assigned To**: judge-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- `StreamConsumer`-on-`"journal"` trigger + direct-call entry; claim-by-write compare-and-set on `class_id`; merge-log append `{class_a, class_b, rationale, ts, judge_version}`; watermark-bounded replay + explicit genesis repair op
+- Restatement path routes through `ProvenanceJournal.confirm` (confirmation count)
+
+### 5. Validate reconciliation
+- **Task ID**: validate-recon
+- **Depends On**: build-loop
+- **Assigned To**: recon-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run full new suite + adjacent journal suites + `test_defaults_sync.py` explicitly (fails only in CI under narrow selection)
+- Verify judge-call bound under burst capture; verify disjunct marker survives representative read formatting
+- Report pass/fail status
+
+### N-1. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-recon
+- **Assigned To**: recon-docs
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Create `docs/features/reconciliation.md`; index entry; `mkdocs` build check
+
+### N. Final Validation
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: recon-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run all validation commands
+- Verify all success criteria met (including documentation)
+- Generate final report
 
 ## Verification
 
-TODO
+| Check | Command | Expected |
+|-------|---------|----------|
+| New suite passes | `pytest tests/test_reconciliation_m5.py -q` | exit code 0 |
+| Journal suites unregressed | `pytest tests/ -q -k "journal or provenance or supersession or validity"` | exit code 0 |
+| Defaults sync registered | `pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
+| Lint clean | `ruff check src/` | exit code 0 |
+| Format clean | `black --check src/ tests/` | exit code 0 |
+| Type ratchet holds | `scripts/mypy_ratchet.py` | exit code 0 |
+| No M6 surfacing in M5 module | `grep -rn "belief_sheet\|belief-sheet\|representative_view" src/popoto/recipes/reconciliation.py \| wc -l` | output contains 0 |
+| No stale union-find machinery | `grep -rn "union.find\|UnionFind\|union_find" src/popoto/recipes/reconciliation.py \| wc -l` | output contains 0 |
 
 ## Critique Results
 
@@ -466,4 +632,20 @@ TODO
 
 ## Open Questions
 
-TODO
+1. **Symmetry probe confirmed?** The issue leaves single-verdict vs re-check to
+   the planner; this plan budgets one symmetry re-check per join (split verdict
+   → disjunct pair). Veto = single-verdict joins with mega-class telemetry only.
+2. **Convention-book v1 contents?** The "same claim" standard wording and the
+   precedence rows for `relationship | goal | procedure` need PM sign-off
+   (self-stated > inferred and deadline-recency / trait-confirmation rules are
+   set by the issue; the middle three types have no specified ordering).
+3. **Frozen type enum final?** The 7-type list (`preference | deadline | trait |
+   relationship | goal | procedure | note`) is the plan's proposal — merge or
+   split any slot now, since the enum is frozen at build and later changes break
+   decidability.
+4. **Embedding placement?** Add `EmbeddingField(source="statement")` to
+   `JournalEntry` (M1 schema change, shortlist native) vs a reconciler-side
+   sidecar index (no M1 touch, second store to keep in sync). Plan assumes the
+   former; flag if M1's model is meant to stay embedding-free.
+5. **Trigger shape?** Plan builds both `StreamConsumer`-on-`"journal"` and a
+   direct-call entry off capture. If the host wants exactly one, which?
