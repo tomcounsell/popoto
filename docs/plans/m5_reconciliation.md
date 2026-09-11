@@ -10,6 +10,8 @@ last_comment_id: 5537009267
 
 # M5 — Reconciliation: claim equivalence classes, typed contradiction rules, explicit disjunctions
 
+Tracking issue: #564.
+
 ## Problem
 
 Popoto's agent-memory layer stores each extracted fact as an independent record;
