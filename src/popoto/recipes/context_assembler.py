@@ -950,6 +950,47 @@ def _compute_fok(
     return fok_score, per_cue
 
 
+def _staleness_details(
+    records,
+    *,
+    model_class,
+    score_weights,
+    surfacing_threshold,
+    decaying_sorted_field_name,
+    now=None,
+):
+    """Per-record decayed relevance and staleness flag, in one Redis pass.
+
+    The single-pass source :func:`_staleness_ratio` aggregates: one
+    :func:`_partition_scores_for_field` call returning a per-record
+    ``{key: score}`` dict, mapped here to
+    ``{key: (decayed_score_or_None, stale_bool)}`` where ``stale_bool`` is
+    True when the score is missing or below ``surfacing_threshold``. Returns
+    ``{}`` when the model has no DecayingSortedField or that field is not in
+    ``score_weights`` — callers must treat that as "staleness unavailable",
+    never as "nothing stale". ``now`` pins the decay clock (replay uses a
+    fixed instant); None reads the wall clock like the historical path.
+    """
+    if not records or not decaying_sorted_field_name:
+        return {}
+    field_name = decaying_sorted_field_name
+    if field_name not in score_weights:
+        return {}
+    try:
+        field_scores = _partition_scores_for_field(
+            records, model_class=model_class, field_name=field_name, now=now
+        )
+    except Exception as e:
+        logger.warning("_staleness_details proxy failed: %s", e)
+        return {}
+    details = {}
+    for record in records:
+        key = _get_key(record)
+        val = field_scores.get(key)
+        details[key] = (val, val is None or val < surfacing_threshold)
+    return details
+
+
 def _staleness_ratio(
     records,
     *,
@@ -968,25 +1009,23 @@ def _staleness_ratio(
     and reported ``1.0`` (all records "stale") regardless of freshness. It now
     compares each record's decayed relevance against ``surfacing_threshold``,
     so freshly-updated partitioned records are correctly not stale.
-    """
-    if not records or not decaying_sorted_field_name:
-        return 0.0
-    field_name = decaying_sorted_field_name
-    if field_name not in score_weights:
-        return 0.0
-    try:
-        field_scores = _partition_scores_for_field(
-            records, model_class=model_class, field_name=field_name
-        )
-    except Exception as e:
-        logger.warning("_staleness_ratio proxy failed: %s", e)
-        return 0.0
 
-    stale_count = 0
-    for record in records:
-        val = field_scores.get(_get_key(record))
-        if val is None or val < surfacing_threshold:
-            stale_count += 1
+    Delegates to :func:`_staleness_details` so the ratio and the per-record
+    mapping can never disagree; output is bit-identical to the historical
+    inline computation.
+    """
+    details = _staleness_details(
+        records,
+        model_class=model_class,
+        score_weights=score_weights,
+        surfacing_threshold=surfacing_threshold,
+        decaying_sorted_field_name=decaying_sorted_field_name,
+    )
+    if not details:
+        # Either no records / no decaying field (0.0, as before) or the
+        # proxy failed mid-read (0.0 via the warning path, as before).
+        return 0.0
+    stale_count = sum(1 for _, stale in details.values() if stale)
     return stale_count / len(records)
 
 
@@ -1737,6 +1776,8 @@ class ContextAssembler:
         *,
         as_of=None,
         exclude_keys=None,
+        record_gate=None,
+        gate_overfetch=0,
     ):
         """Execute the full retrieval pipeline.
 
@@ -1819,6 +1860,21 @@ class ContextAssembler:
 
                 See the ``exclude_keys`` discussion in the Prompt Cache
                 Efficiency guide.
+            record_gate: Keyword-only. Optional per-record visibility predicate
+                ``gate(record) -> bool`` applied to the merged candidate list
+                BEFORE the ``max_items`` cut (issue #565). Rejected records
+                back-fill from the already-fetched arm headroom, so the
+                common case needs no new fetch. A predicate that raises on a
+                record denies that record and logs (fail closed). ``None``
+                (the default) skips the gate entirely and leaves every path
+                below byte-identical to the pre-#565 behavior.
+            gate_overfetch: Keyword-only. Extra candidate headroom requested
+                from each arm while ``record_gate`` is active, added to the
+                exclusion headroom inside :meth:`_fetch_limit` (still capped
+                by ``EXCLUDE_HEADROOM_CAP``). Ignored when ``record_gate``
+                is None. A tuning margin, not user config — the view
+                resolver passes
+                ``max_items * (Defaults.VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER - 1)``.
 
         Returns:
             AssemblyResult with records, proactive, formatted, and metadata.
@@ -1858,7 +1914,21 @@ class ContextAssembler:
             )
 
         self._assembly_as_of = as_of
-        self._exclude_headroom = len(exclude_keys) if exclude_keys else 0
+        # Headroom covers the MERGED (validity ∪ caller) exclusion count, so
+        # a large validity-exclusion set cannot consume the arms'
+        # ``max_items * 2`` headroom and starve retrieval (issue #565). When
+        # both sides are None this is 0 — byte-identical to pre-#565. While
+        # a reader gate is active the caller-supplied overfetch margin rides
+        # along, still capped by EXCLUDE_HEADROOM_CAP in _fetch_limit.
+        self._exclude_headroom = len(excluded_valid_keys) if excluded_valid_keys else 0
+        if record_gate is not None and gate_overfetch:
+            self._exclude_headroom += max(0, int(gate_overfetch))
+
+        # Reader-gate accounting (issue #565). Populated only while a gate
+        # is active; bare assemble() never sees these keys in metadata.
+        gate_stats = None
+        if record_gate is not None:
+            gate_stats = {"validity_excluded": 0, "gate_rejected": 0}
 
         pull_records = []
         push_records = []
@@ -1868,7 +1938,11 @@ class ContextAssembler:
         if query_cues:
             pull_records, all_pull_candidates = self._pull_path(query_cues, filters)
             pull_records = self._scope_by_tags(pull_records, allowed_tag_keys)
+            if gate_stats is not None:
+                _pre_validity = len(pull_records)
             pull_records = self._scope_by_validity(pull_records, excluded_valid_keys)
+            if gate_stats is not None:
+                gate_stats["validity_excluded"] += _pre_validity - len(pull_records)
             all_pull_candidates = self._scope_by_tags(
                 all_pull_candidates, allowed_tag_keys
             )
@@ -1946,7 +2020,11 @@ class ContextAssembler:
         if self._cyclic_decay_field_name is not None:
             push_records = self._push_path(filters)
             push_records = self._scope_by_tags(push_records, allowed_tag_keys)
+            if gate_stats is not None:
+                _pre_validity = len(push_records)
             push_records = self._scope_by_validity(push_records, excluded_valid_keys)
+            if gate_stats is not None:
+                gate_stats["validity_excluded"] += _pre_validity - len(push_records)
 
         # --- Merge + deduplicate ---
         seen_keys = set()
@@ -1967,6 +2045,27 @@ class ContextAssembler:
                 seen_keys.add(rk)
                 merged.append(record)
                 push_keys.add(rk)
+
+        # --- Reader gate (pre-truncation, issue #565) ---
+        # The gate runs on the merged candidate list BEFORE the max_items
+        # cut — never as a post-filter, which would silently shrink results.
+        # Rejected records back-fill from the already-fetched arm headroom
+        # (plus gate_overfetch), so the common case needs no new fetch. A
+        # predicate that raises denies that record and logs: fail closed.
+        # With record_gate=None this block is skipped and selection below is
+        # byte-identical to the pre-#565 behavior.
+        if record_gate is not None:
+            gated = []
+            for record in merged:
+                try:
+                    keep = record_gate(record)
+                except Exception as e:
+                    logger.warning("record_gate denied a record on error: %s", e)
+                    keep = False
+                if keep:
+                    gated.append(record)
+            gate_stats["gate_rejected"] = len(merged) - len(gated)
+            merged = gated
 
         # --- Budget selection ---
         # max_items cap
@@ -2068,6 +2167,13 @@ class ContextAssembler:
         # behavior (no "gate" key at all).
         if gate_meta is not None:
             metadata["gate"] = gate_meta
+
+        # [READER GATE] Attach only while a record_gate is active — bare
+        # assemble() callers see no new key. Split shortfall reporting:
+        # validity_excluded (V0 membership) vs gate_rejected (visibility),
+        # never one opaque number.
+        if gate_stats is not None:
+            metadata["reader_gate"] = dict(gate_stats)
 
         # [METACOGNITIVE] Quality assessment — opt-in, off-by-default so existing
         # callers see bit-for-bit identical metadata.

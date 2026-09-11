@@ -194,6 +194,15 @@ class TestDefaultsSync:
             "TOMBSTONE_PRIOR_LIMIT",
             "TOMBSTONE_PRIOR_DECAY",
             "TOMBSTONE_PRIOR_FLOOR",
+            # Belief-sheet view resolver (#565) — read directly from
+            # Defaults at call time by resolve_policy (per-resolve policy
+            # resolution, overridable per call via the policy dict); no
+            # module-level alias exists, so none are in MODULE_CONSTANTS.
+            # An alias would be actively wrong for the same reason as the
+            # tombstone constants above.
+            "VIEW_RESOLVER_STALENESS_THRESHOLD",
+            "VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER",
+            "VIEW_RESOLVER_MAX_BACKFILL_PULLS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
