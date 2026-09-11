@@ -201,15 +201,113 @@ guides bear on the design.
 
 ## Appetite
 
-TODO
+**Size:** Large
+
+**Team:** Solo dev, PM (convention-book wording + precedence table sign-off)
+
+**Interactions:**
+- PM check-ins: 2-3 (convention-book contents, type slots, precedence tables are
+  plan-level config decisions per the issue's Downstream note)
+- Review rounds: 2+ (judge-prompt wording, atomicity of class writes)
+
+Solo dev work is fast — the bottleneck is alignment and review. Appetite measures communication overhead, not coding time.
 
 ## Prerequisites
 
-TODO
+No prerequisites — this work has no external dependencies. The LLM judge reuses
+the existing optional `anthropic` extra; without it the deterministic tier still
+functions and judge calls degrade to logged abstentions (same contract as
+`llm_verdict`'s `LLM_UNAVAILABLE`). No API keys, services, or infra changes.
+
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis on localhost:6379 | `redis-cli ping` | test isolation (DB 15 via pytest plugin) |
+| embeddings extra for shortlist tests | `python -c "import numpy"` | cosine shortlist coverage |
 
 ## Solution
 
-TODO
+### Key Elements
+
+- **Equivalence classes**: plain `class_id` (IndexedField) on `JournalEntry`,
+  relabeled on merge. A restatement joins the class and increments its
+  confirmation count via `ProvenanceJournal.confirm` — confirmation instead of
+  duplication.
+- **Convention book**: short versioned config standard for "same claim"
+  (converse phrasings merge, restatements confirm). The only prompt the judge
+  sees; version recorded on every merge-log entry so replays are reproducible.
+- **Frozen type enum**: `preference | deadline | trait | relationship | goal |
+  procedure | note`, where `note` is the rule-free catch-all that absorbs the
+  tail (decidability of rules dies with an open enum — recon Dropped bucket).
+- **Typed contradiction rules**: per-type decidable checks with zero LLM calls
+  (singleton slots, same-target deadline supersession). Firing a rule resolves
+  through the per-type precedence table and writes via
+  `SupersessionProtocol.save_and_supersede` — exactly one supersession
+  mechanism.
+- **Provenance precedence**: per-type ordering. Self-stated beats inferred
+  everywhere (consumes M1's `stated` flag); recency wins for supersession types
+  (deadlines), confirmation count wins for stable types (traits).
+- **Disjunct pairs**: precedence ties stored with a shared disjunction id,
+  retrievable together, surfaced as uncertainty. This module's own contribution —
+  V0 always produces a deterministic winner within one identity key, so ties
+  arise only at the judgment layer and stay here.
+- **Append-only merge log**: `{class_a, class_b, rationale, ts, judge_version}`
+  as immutable journal annotations (registered merge kind). Replay reproduces
+  pre-merge assignment.
+
+### Flow
+
+**Post-turn capture** → new assert entry → **Deterministic tier** (identity-key
+collision? → `save_and_supersede`, done, zero LLM calls) → **Embedding
+shortlist** (same subject + type, bounded N) → **Judge vs each class
+representative** (most-confirmed member only) → same → **join + confirm** /
+rule fires → **precedence + supersede** / tie → **disjunct pair** → **append
+merge-log entry** → M6/M7/M8 read classes downstream.
+
+The new/revision/restatement/contradiction classification falls out of pipeline
+order and is never asked as its own question.
+
+### Technical Approach
+
+- **Deterministic tier is a special case of `class_id`, never a parallel
+  mechanism** (V0 amendment): an identity-key hit assigns both entries the same
+  `class_id` and writes the outcome through `save_and_supersede`. Singleton-slot
+  rules (one birthdate per subject) express as identity keys. The judge is the
+  escalation path for claims normalization cannot equate.
+- **Judge verdicts are not transitive — budget one symmetry re-check.**
+  Recon and the design study both flag compounding false-"same" verdicts
+  (mega-classes) as the top threat. The plan decision: after a "same" verdict
+  joins entry E to class C, re-ask the judge once with E against C's
+  representative *as restated including E's phrasing* (symmetry probe). A "same"
+  both ways commits; a split verdict routes to a disjunct pair instead of a
+  join. Cost is bounded (one extra call per join, still within shortlist
+  budget) and it converts the worst failure (silent mega-class) into the safe
+  failure (explicit uncertainty). Full N-way transitivity closure is a No-Go —
+  quadratic judge calls for no additional safety over the symmetry probe.
+- **Representative discipline**: the judge always sees the class's
+  most-confirmed member, never a random sample; ties in confirmation count break
+  by recency (mirrors `crystallize`'s modal+recency shape without copying its
+  forced-winner semantics).
+- **`ValidityMemberAbsentError` handling** (per #601 notice): the reconcile loop
+  catches it around `save_and_supersede` — a loser deleted between shortlist and
+  write is re-read; if gone, the merge-log records `loser-absent` and the winner
+  stands. Never a silent skip, never a crash.
+- **Replay cost bounded by watermark**: merge-log replay reprocesses only
+  entries newer than the last replay watermark (borrow `crystallize`'s watermark
+  shape: strict-`>` filter on `captured_at`, stored per reconciler run). Full
+  from-genesis replay stays available as an explicit repair operation, not the
+  steady state.
+- **Embedding fallback**: if numpy/provider is absent, the shortlist degrades
+  to same-subject + same-type index scan (bounded by `Defaults` cap) with zero
+  judge-call change — recall narrows, correctness properties hold.
+- **Numeric tuning constants live in `Defaults`** (per repo magic-numbers
+  doctrine) and every new one is registered in
+  `tests/benchmarks/test_defaults_sync.py`: shortlist cap, symmetry-probe
+  on/off, replay watermark field, judge model/token caps (mirroring
+  `VERDICT_MODEL` / `VERDICT_MAX_TOKENS`).
+- **Judge failure contract copies `llm_verdict`**: firewall before the call,
+  JSON-schema output, re-validate every field, never raise — failures map to a
+  logged abstention that leaves the entry unclassified (new singleton class),
+  never to a guessed join.
 
 ## Failure Path Test Strategy
 
