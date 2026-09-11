@@ -274,13 +274,13 @@ def clean_store():
     for model in (SheetMemory, SheetNote):
         try:
             model.delete_all()
-        except Exception:
+        except Exception:  # swallow-ok: best-effort store cleanup between tests
             pass
     yield
     for model in (SheetMemory, SheetNote):
         try:
             model.delete_all()
-        except Exception:
+        except Exception:  # swallow-ok: best-effort store cleanup between tests
             pass
 
 

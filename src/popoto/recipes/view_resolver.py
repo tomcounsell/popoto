@@ -201,7 +201,7 @@ def _record_text(record: Any) -> str:
     for attr in _CONTENT_ATTRS:
         try:
             value = getattr(record, attr, None)
-        except Exception:
+        except Exception:  # swallow-ok: bad record attribute tries next candidate
             continue
         if value:
             return str(value)
@@ -219,17 +219,17 @@ def _annotation_sort_key(
     """
     try:
         target = str(getattr(annotation, "target", None) or "")
-    except Exception:
+    except Exception:  # swallow-ok: corrupt annotation target degrades to empty string
         target = ""
     try:
         kind = str(getattr(annotation, "kind", None) or "")
-    except Exception:
+    except Exception:  # swallow-ok: corrupt annotation kind degrades to empty string
         kind = ""
     ts = 0.0
     for attr in ("valid_from", "captured_at"):
         try:
             candidate = getattr(annotation, attr, None)
-        except Exception:
+        except Exception:  # swallow-ok: bad timestamp attribute tries next candidate
             continue
         if candidate is not None:
             try:
@@ -239,7 +239,7 @@ def _annotation_sort_key(
             break
     try:
         key = _get_key(annotation)
-    except Exception:
+    except Exception:  # swallow-ok: unkeyed annotation sorts under empty key
         key = ""
     return (target, kind, ts, key, index)
 
@@ -250,7 +250,7 @@ def _is_closing_kind(kind: Any) -> bool:
         return True
     try:
         return bool(ProvenanceJournal.entry_model.kind_is_closing(kind))
-    except Exception:
+    except Exception:  # swallow-ok: kind registry failure treats kind as non-closing
         return False
 
 
@@ -259,7 +259,7 @@ def _is_targetless_kind(kind: Any) -> bool:
         return True
     try:
         return bool(ProvenanceJournal.entry_model.kind_is_targetless(kind))
-    except Exception:
+    except Exception:  # swallow-ok: kind registry failure treats kind as targeted
         return False
 
 
@@ -302,7 +302,7 @@ def resolve_entries(
     for record in records:
         try:
             key_of[id(record)] = _get_key(record)
-        except Exception:
+        except Exception:  # swallow-ok: unkeyed record drops out of the fold
             continue
 
     sheet_claims: list[Claim] = []
@@ -326,19 +326,19 @@ def resolve_entries(
             continue
         try:
             kind = getattr(record, "kind", None)
-        except Exception:
+        except Exception:  # swallow-ok: unreadable kind degrades to targetless claim
             kind = None
         has_target = False
         try:
             has_target = bool(getattr(record, "target", None))
-        except Exception:
+        except Exception:  # swallow-ok: unreadable target degrades to absent target
             has_target = False
         if kind is None or _is_targetless_kind(kind):
             claims_in.append((record, key))
         elif has_target:
             try:
                 target_key = str(getattr(record, "target"))
-            except Exception:
+            except Exception:  # swallow-ok: corrupt target degrades to empty key
                 target_key = ""
             annotations_in.setdefault(target_key, []).append((record, key))
         else:
@@ -432,7 +432,7 @@ def resolve_entries(
                 continue
             try:
                 target_present = any(k == target_key for _, k in claims_in)
-            except Exception:
+            except Exception:  # swallow-ok: probe failure assumes target absent
                 target_present = False
             if target_present:
                 continue
@@ -494,21 +494,21 @@ def resolve_entries(
 def _safe_kind(annotation: Any) -> Any:
     try:
         return getattr(annotation, "kind", None)
-    except Exception:
+    except Exception:  # swallow-ok: unreadable kind degrades to None
         return None
 
 
 def _safe_key(annotation: Any) -> str:
     try:
         return _get_key(annotation)
-    except Exception:
+    except Exception:  # swallow-ok: unkeyed annotation degrades to empty key
         return ""
 
 
 def _safe_target(annotation: Any) -> str:
     try:
         return str(getattr(annotation, "target", None) or "")
-    except Exception:
+    except Exception:  # swallow-ok: unreadable target degrades to empty string
         return ""
 
 
@@ -516,7 +516,7 @@ def _annotation_ts(annotation: Any) -> float:
     for attr in ("valid_from", "captured_at"):
         try:
             candidate = getattr(annotation, attr, None)
-        except Exception:
+        except Exception:  # swallow-ok: bad timestamp attribute tries next candidate
             continue
         if candidate is not None:
             try:
@@ -543,7 +543,7 @@ def _pick_winner(
         # self-stated: stated outright outranks inferred.
         try:
             stated = bool(getattr(annotation, "stated", False))
-        except Exception:
+        except Exception:  # swallow-ok: unreadable stated flag degrades to inferred
             stated = False
         return (1 if stated else 0, _annotation_ts(annotation))
 
@@ -597,7 +597,7 @@ def _structural_class_id(record: Any) -> str | None:
         return None
     try:
         class_id = getattr(record, "class_id", None)
-    except Exception:
+    except Exception:  # swallow-ok: unreadable class id skips disjunct pairing
         return None
     return str(class_id) if class_id is not None else None
 
@@ -695,7 +695,7 @@ class BeliefSheetResolver:
         model_class = self.inner.model_class
         try:
             model_fields = model_class._meta.fields
-        except Exception:
+        except Exception:  # swallow-ok: missing metadata degrades to unscoped gate
             model_fields = {}
         agent_scoped = "agent_id" in model_fields
 
@@ -805,12 +805,12 @@ class BeliefSheetResolver:
             # computed them inside assemble). First pull wins on overlap.
             try:
                 pull_trace = result.metadata.get("trace") or []
-            except Exception:
+            except Exception:  # swallow-ok: trace failure degrades to empty trace
                 pull_trace = []
             for entry in pull_trace:
                 try:
                     trace_key = entry.get("key")
-                except Exception:
+                except Exception:  # swallow-ok: corrupt entry skips handle stitching
                     continue
                 if trace_key and trace_key not in trace_by_key:
                     trace_by_key[trace_key] = entry
@@ -818,7 +818,7 @@ class BeliefSheetResolver:
             for record in result.records:
                 try:
                     record_key = _get_key(record)
-                except Exception:
+                except Exception:  # swallow-ok: unkeyed record drops from admission
                     continue
                 if record_key in seen_keys:
                     continue
@@ -848,7 +848,7 @@ class BeliefSheetResolver:
         for record in admitted:
             try:
                 record_key = _get_key(record)
-            except Exception:
+            except Exception:  # swallow-ok: unkeyed record skips chain resolution
                 continue
             try:
                 annotations = self.journal.annotations_for(record)
