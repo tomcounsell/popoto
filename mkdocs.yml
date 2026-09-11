@@ -56,6 +56,7 @@ nav:
                 - Composite Score Query: 'features/composite-score-query.md'
                 - PolicyCache: 'features/policy-cache.md'
                 - ContextAssembler: 'features/context-assembler.md'
+                - Belief-Sheet View: 'features/belief-sheet-view.md'
                 - Hybrid Retrieval (BM25 + RRF): 'features/hybrid-retrieval.md'
                 - Metacognitive Layer: 'features/metacognitive-layer.md'
                 - NeverRecordFirewall: 'features/never-record-firewall.md'

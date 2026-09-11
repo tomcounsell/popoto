@@ -297,25 +297,25 @@ contradictions flagged for LLM escalation.
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] Reader-gate Redis error path: fault-injection test asserts CLOSED (empty sheet +
+- [x] Reader-gate Redis error path: fault-injection test asserts CLOSED (empty sheet +
   logged warning), never silent unscoped fallback. This is the load-bearing inversion of
   `_resolve_tag_keys`' cooperative degrade (`:1605`).
-- [ ] Chain-walk fault tolerance: corrupt/missing annotation target resolves to
+- [x] Chain-walk fault tolerance: corrupt/missing annotation target resolves to
   "unresolved contradiction" flag, never a crash — test with a dangling `target`.
-- [ ] If no other `except` blocks are added in scope, state so in the build PR.
+- [x] If no other `except` blocks are added in scope, state so in the build PR.
 
 ### Empty/Invalid Input Handling
-- [ ] Empty candidate set → empty `BeliefSheet` (not an error).
-- [ ] `policy=None` → library defaults (documented `Defaults` values); unknown policy keys
+- [x] Empty candidate set → empty `BeliefSheet` (not an error).
+- [x] `policy=None` → library defaults (documented `Defaults` values); unknown policy keys
   → ignored with warning, never crash.
-- [ ] `reader=None` → `resolve()` raises `ValueError` immediately (programmer error,
+- [x] `reader=None` → `resolve()` raises `ValueError` immediately (programmer error,
   fail fast — a missing reader is not a gate decision). Runtime gate failures (e.g.
   Redis errors mid-gating) instead fail closed WITHOUT raising: empty sheet plus a
   `warnings` entry. Both paths tested. This is deliberately asymmetric: `None` reader
   is a caller bug, a mid-gate outage is an operational event.
 
 ### Error State Rendering
-- [ ] `BeliefSheet` carries a `warnings` list (gate failures, unresolved chains,
+- [x] `BeliefSheet` carries a `warnings` list (gate failures, unresolved chains,
   staleness-unavailable when no DecayingSortedField) — test asserts warnings render
   alongside surviving claims rather than being swallowed.
 
@@ -323,12 +323,12 @@ contradictions flagged for LLM escalation.
 
 New module plus two narrowly-scoped extensions; existing behavior contracts pin the rest:
 
-- [ ] `tests/test_context_assembler*.py` — UPDATE only if the per-record refactor changes
+- [x] `tests/test_context_assembler*.py` — UPDATE only if the per-record refactor changes
   the ratio: the sibling delegates so `_staleness_ratio` output must be bit-identical;
   any failure here is a regression, not an expected update.
-- [ ] Tag-scoping / validity-gating tests — no changes expected: bare `assemble()`
+- [x] Tag-scoping / validity-gating tests — no changes expected: bare `assemble()`
   keeps cooperative degrade; fail-closed lives only in the resolver path.
-- [ ] New `tests/test_view_resolver.py` (create): retraction drop, supersession collapse +
+- [x] New `tests/test_view_resolver.py` (create): retraction drop, supersession collapse +
   handle traceability, disjunct-pair surfacing, determinism replay, pre-truncation
   back-fill to `max_items`, fault-injection fail-closed, per-entry staleness with no
   extra Redis round-trip (assert via call-count spy), `assemble()`-unchanged guard.
@@ -422,41 +422,41 @@ as the host), not via a tool/MCP surface. No `tools/` wrapping, no bridge change
 ## Documentation
 
 ### Feature Documentation
-- [ ] Create `docs/features/belief-sheet-view.md` describing the resolver, policy dict,
+- [x] Create `docs/features/belief-sheet-view.md` describing the resolver, policy dict,
   reader gate semantics (fail-closed), and replay procedure
-- [ ] Add entry to `docs/features/README.md` index table
+- [x] Add entry to `docs/features/README.md` index table
 
 ### External Documentation Site
-- [ ] Verify docs build passes (`mkdocs build --strict` or the repo's docs gate)
+- [x] Verify docs build passes (`mkdocs build --strict` or the repo's docs gate)
 
 ### Inline Documentation
-- [ ] Docstrings on `BeliefSheetResolver`, the pure resolution function, and both
+- [x] Docstrings on `BeliefSheetResolver`, the pure resolution function, and both
   `context_assembler.py` extensions (including corrected line refs)
-- [ ] Code comments on the pre-truncation gate placement (why not post-filter) and the
+- [x] Code comments on the pre-truncation gate placement (why not post-filter) and the
   determinism sort key
 
 ## Success Criteria
 
 Mapped 1:1 to the issue's Acceptance Criteria:
 
-- [ ] A retracted entry never appears in the belief sheet; a superseded entry is replaced
+- [x] A retracted entry never appears in the belief sheet; a superseded entry is replaced
   by its winner with the chain traceable via provenance handle
-- [ ] Disjunct pairs (M5) surface together as explicit uncertainty (structural-id path;
+- [x] Disjunct pairs (M5) surface together as explicit uncertainty (structural-id path;
   per-record fallback verified without M5 present)
-- [ ] Resolution is deterministic: same journal + same policy dict → byte-identical
+- [x] Resolution is deterministic: same journal + same policy dict → byte-identical
   belief sheet (replay test)
-- [ ] Reader gate runs pre-truncation, back-fills to `max_items`, and fails closed on
+- [x] Reader gate runs pre-truncation, back-fills to `max_items`, and fails closed on
   error (fault-injection test); gate adds zero/bounded extra round-trips vs bare
   `assemble()` — visibility from fetched fields or one batched pipeline/MGET
   (call-count spy test, per-`resolve()` budget `1 assemble + ≤1 gate batch + ≤K
   chain reads` documented in the resolver docstring)
-- [ ] Each claim carries per-entry staleness; no second Redis round-trip vs current
+- [x] Each claim carries per-entry staleness; no second Redis round-trip vs current
   `assess_quality=True` cost (call-count spy test)
-- [ ] Existing `assemble()` behavior unchanged when the resolver is not used (existing
+- [x] Existing `assemble()` behavior unchanged when the resolver is not used (existing
   suites green, no updates)
-- [ ] Tests at `tests/test_view_resolver.py`; docs page under `docs/features/`
-- [ ] New `Defaults` constants registered in `tests/benchmarks/test_defaults_sync.py`
-- [ ] Tests pass; documentation updated
+- [x] Tests at `tests/test_view_resolver.py`; docs page under `docs/features/`
+- [x] New `Defaults` constants registered in `tests/benchmarks/test_defaults_sync.py`
+- [x] Tests pass; documentation updated
 
 ## Team Orchestration
 
