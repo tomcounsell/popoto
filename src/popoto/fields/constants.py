@@ -540,6 +540,24 @@ class Defaults:
     # magic-number rule.
     M3_ASSEMBLY_CLAIM_TTL_MS = 30_000
 
+    # -- belief-sheet view resolver (recipes/view_resolver.py, #565) ---------
+    # Policy numerics for the M6 read path. Read directly from Defaults at
+    # call time (per-resolve policy resolution), never via a module-level
+    # alias: an import-time-bound alias would defeat runtime overrides and
+    # per-call policy dicts. Registered as exemptions in
+    # tests/benchmarks/test_defaults_sync.py, same shape as the validity and
+    # journal switches above.
+    # Per-record staleness cutoff: a claim whose decayed relevance is below
+    # this is annotated stale. Mirrors DEFAULT_SURFACING_THRESHOLD (0.5).
+    VIEW_RESOLVER_STALENESS_THRESHOLD = 0.5
+    # Retrieval widening while the reader gate is active: the resolver asks
+    # the assembler for max_items * this many candidates so pre-truncation
+    # gating can back-fill from headroom instead of returning short.
+    VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER = 2
+    # Capped extra pulls when gate rejection still leaves the sheet short:
+    # at most this many re-retrievals excluding already-seen keys.
+    VIEW_RESOLVER_MAX_BACKFILL_PULLS = 1
+
     # -- reference resolution (extraction/resolution.py, #563) --
     # Deploy-level kill switch, not a tuning constant. Default True per the
     # repo's default-on doctrine; a PyPI adopter who cannot edit model code
