@@ -26,6 +26,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import msgpack
 import pytest
+import redis
 from src import popoto
 from src.popoto.fields.access_tracker import AccessTrackerMixin
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField
@@ -699,6 +700,36 @@ class TestCycleMethods:
         result = item.strengthen_cycle("relevance", factor=1.2, pipeline=pipe)
         assert result is pipe
         pipe.execute()
+
+    def test_pipeline_no_stored_entry_now_queues_one_command(self):
+        """#699 critique C6, disclosed not fixed: a pipelined strengthen_cycle/
+        weaken_cycle against a member with NO stored cycles entry used to
+        queue nothing (the pre-#699 client-side HGET missed and returned the
+        pipeline untouched, `base.py:2750-2753` on main). The existence check
+        now lives inside `CYCLES_ADJUST_LUA`, so `run_lua` unconditionally
+        queues one `EVALSHA` — the pipeline is one command longer than before
+        in this specific case, and `pipe.execute()` gains one extra result at
+        a position callers may not expect.
+        """
+        item = FullMemory(name="pipe-cycle-no-entry", content="piped")
+        item.save()
+        field = item._meta.fields["relevance"]
+        cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
+        member_key = item.db_key.redis_key
+        # Remove the entry save() just created, so strengthen_cycle sees "no
+        # stored cycles" for an otherwise-saved instance.
+        POPOTO_REDIS_DB.hdel(cycles_hash_key, member_key)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        result = item.strengthen_cycle("relevance", factor=1.2, pipeline=pipe)
+        assert result is pipe
+        results = pipe.execute()
+        assert len(results) == 1, (
+            "post-#699 `len(pipe.execute())` is exactly 1 for a no-entry "
+            f"pipelined strengthen_cycle (one EVALSHA, nil result), not "
+            f"zero: got {results!r}"
+        )
+        assert results[0] is None, "no-entry case: the script returns nil"
 
 
 # =========================================================================
@@ -1505,9 +1536,18 @@ class TestUnsavedDegradation:
 
     def test_corrupt_cycles_payload_on_saved_instance_stays_observable(self):
         """A corrupt, non-msgpack payload in a SAVED instance's cycles hash must still
-        produce an observable failure (amplitudes do not move). msgpack's
-        UnpackValueError is a ValueError subclass, so the new guards must not turn
-        real corruption into a silent success indistinguishable from a no-op."""
+        produce an observable failure (amplitudes do not move).
+
+        #699: ``strengthen_cycle``/``weaken_cycle`` decode the stored cycles
+        entry inside ``CYCLES_ADJUST_LUA`` now, not in Python — the script has
+        no guard around ``cmsgpack.unpack`` by design (a script error must not
+        be silently swallowed, see the plan's Failure Path Test Strategy), so
+        real corruption surfaces as ``redis.exceptions.ResponseError`` from the
+        Lua runtime instead of msgpack's ``UnpackValueError`` (a ``ValueError``
+        subclass) from Python. The prior guarantee — that corruption is never
+        silently treated as a no-op — still holds; only the exception type
+        changed.
+        """
         self._cleanup()
         try:
             item = FullMemory(name="corrupt-cycles", content="x")
@@ -1522,25 +1562,39 @@ class TestUnsavedDegradation:
                 cycles_hash_key, member_key, b"\xc1\xc1\xc1not-msgpack\xff\xfe"
             )
 
-            with pytest.raises(ValueError):
-                # Direct call: proves the corruption is real (msgpack raises a
-                # ValueError subclass, e.g. FormatError/UnpackValueError) and
-                # raises outside the protocol layer's guard.
+            with pytest.raises(redis.exceptions.ResponseError):
+                # Direct call: proves the corruption is real (the Lua script's
+                # cmsgpack.unpack raises a runtime error, surfaced to the
+                # client as ResponseError) and raises outside the protocol
+                # layer's guard.
                 item.strengthen_cycle("relevance", factor=1.2)
 
-            # Through the protocol layer, the guard swallows the exception (by
-            # design — same as the unsaved-instance case), but the corrupt bytes
-            # must NOT have been silently replaced with valid amplitude data.
+            # #699: the protocol layer's narrow `except (TypeError, ValueError)`
+            # around strengthen_cycle/weaken_cycle was never really "designed"
+            # to swallow data corruption — it exists for unsaved instances
+            # (whose model methods raise TypeError) and only *incidentally*
+            # also caught corruption before this change, because the old
+            # implementation decoded the stored cycles eagerly in Python (a
+            # ValueError, which the tuple lists) before ever touching the
+            # pipeline. Post-port, the decode happens inside the queued Lua
+            # script and only raises when the pipeline is executed — a
+            # ResponseError, which is deliberately outside that tuple (the
+            # plan's stated policy: a script-surfaced error must not be
+            # silently swallowed). So this now propagates instead of being
+            # absorbed. The corruption is still never mistaken for a
+            # successful write, which is the property this test protects.
             raw_before = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
-            ObservationProtocol.on_context_used(
-                [item], {item.db_key.redis_key: "acted"}
-            )
+            with pytest.raises(redis.exceptions.ResponseError):
+                ObservationProtocol.on_context_used(
+                    [item], {item.db_key.redis_key: "acted"}
+                )
             raw_after = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
 
             # The payload is untouched — still the corrupt bytes, not silently
-            # "fixed" or replaced with a fresh valid amplitude list. This is the
-            # observable signal that the guard swallowed a real failure rather
-            # than performing (and hiding) a successful write.
+            # "fixed" or replaced with a fresh valid amplitude list. The script
+            # errors out of cmsgpack.unpack before issuing any HSET, so no
+            # partial write lands even though other commands sharing the same
+            # transactional pipeline (e.g. the relevance ZADD) do apply.
             assert raw_after == raw_before == b"\xc1\xc1\xc1not-msgpack\xff\xfe"
         finally:
             self._cleanup()
