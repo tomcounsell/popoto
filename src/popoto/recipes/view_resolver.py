@@ -81,7 +81,7 @@ A complete tie is flagged as an unresolved contradiction for downstream
 """
 
 
-def resolve_policy(policy: dict | None) -> tuple[dict, list[str]]:
+def resolve_policy(policy: dict[str, Any] | None) -> tuple[dict[str, Any], list[str]]:
     """Merge a caller policy dict over library defaults.
 
     ``None`` selects every default (read from :class:`Defaults` at call
@@ -142,7 +142,7 @@ class Claim:
     content: str = ""
     staleness: float | None = None
     stale: bool | None = None
-    provenance: dict = field(default_factory=dict)
+    provenance: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -157,7 +157,7 @@ class BeliefSheet:
 
     claims: list[Claim] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def serialize(self) -> str:
         """Canonical JSON rendering for replay comparison."""
@@ -266,9 +266,9 @@ def _is_targetless_kind(kind: Any) -> bool:
 def resolve_entries(
     records: list[Any],
     chains_by_key: dict[str, list[Any]],
-    policy: dict | None,
+    policy: dict[str, Any] | None,
     *,
-    handles_by_key: dict[str, dict] | None = None,
+    handles_by_key: dict[str, dict[str, Any]] | None = None,
     staleness_by_key: dict[str, tuple[Any, bool]] | None = None,
 ) -> BeliefSheet:
     """Fold selected records + annotation chains into a belief sheet.
@@ -533,7 +533,7 @@ def _pick_winner(
     if len(supersedes) == 1:
         return supersedes[0]
 
-    def criterion(annotation: Any) -> tuple:
+    def criterion(annotation: Any) -> tuple[int | float, ...]:
         if prefer == "confirmed":
             chain = chains.get(_safe_key(annotation), [])
             confirms = sum(1 for a in chain if _safe_kind(a) == "confirm")
@@ -560,7 +560,7 @@ def _pick_winner(
 def _make_claim(
     record: Any,
     key: str,
-    handles_by_key: dict[str, dict],
+    handles_by_key: dict[str, dict[str, Any]],
     staleness_by_key: dict[str, tuple[Any, bool]],
     *,
     confirmations: int,
@@ -638,10 +638,10 @@ class BeliefSheetResolver:
 
     def resolve(
         self,
-        query_cues: dict | None = None,
+        query_cues: dict[str, Any] | None = None,
         *,
-        reader: dict | None = None,
-        policy: dict | None = None,
+        reader: dict[str, Any] | None = None,
+        policy: dict[str, Any] | None = None,
         as_of: float | None = None,
         exclude_keys: Any = None,
         now: float | None = None,
@@ -769,7 +769,7 @@ class BeliefSheetResolver:
 
         admitted: list[Any] = []
         seen_keys: set[str] = set()
-        trace_by_key: dict[str, dict] = {}
+        trace_by_key: dict[str, dict[str, Any]] = {}
         validity_excluded = 0
         gate_rejected = 0
         assembles = 0

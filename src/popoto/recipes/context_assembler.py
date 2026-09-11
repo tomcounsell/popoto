@@ -67,7 +67,7 @@ import statistics
 import time
 import warnings
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from ..batch import batch
 from ..fields.bm25_field import BM25Field
@@ -951,14 +951,14 @@ def _compute_fok(
 
 
 def _staleness_details(
-    records,
+    records: list[Any],
     *,
-    model_class,
-    score_weights,
-    surfacing_threshold,
-    decaying_sorted_field_name,
-    now=None,
-):
+    model_class: type[Any],
+    score_weights: dict[str, float],
+    surfacing_threshold: float,
+    decaying_sorted_field_name: str | None,
+    now: float | None = None,
+) -> dict[str, tuple[float | None, bool]]:
     """Per-record decayed relevance and staleness flag, in one Redis pass.
 
     The single-pass source :func:`_staleness_ratio` aggregates: one
@@ -983,7 +983,7 @@ def _staleness_details(
     except Exception as e:
         logger.warning("_staleness_details proxy failed: %s", e)
         return {}
-    details = {}
+    details: dict[str, tuple[float | None, bool]] = {}
     for record in records:
         key = _get_key(record)
         val = field_scores.get(key)
@@ -1776,8 +1776,8 @@ class ContextAssembler:
         *,
         as_of=None,
         exclude_keys=None,
-        record_gate=None,
-        gate_overfetch=0,
+        record_gate: Callable[[Any], bool] | None = None,
+        gate_overfetch: int = 0,
     ):
         """Execute the full retrieval pipeline.
 
@@ -1926,7 +1926,7 @@ class ContextAssembler:
 
         # Reader-gate accounting (issue #565). Populated only while a gate
         # is active; bare assemble() never sees these keys in metadata.
-        gate_stats = None
+        gate_stats: dict[str, int] | None = None
         if record_gate is not None:
             gate_stats = {"validity_excluded": 0, "gate_rejected": 0}
 
@@ -2055,7 +2055,7 @@ class ContextAssembler:
         # With record_gate=None this block is skipped and selection below is
         # byte-identical to the pre-#565 behavior.
         if record_gate is not None:
-            gated = []
+            gate_kept: list[Any] = []
             for record in merged:
                 try:
                     keep = record_gate(record)
@@ -2063,9 +2063,10 @@ class ContextAssembler:
                     logger.warning("record_gate denied a record on error: %s", e)
                     keep = False
                 if keep:
-                    gated.append(record)
-            gate_stats["gate_rejected"] = len(merged) - len(gated)
-            merged = gated
+                    gate_kept.append(record)
+            if gate_stats is not None:
+                gate_stats["gate_rejected"] = len(merged) - len(gate_kept)
+            merged = gate_kept
 
         # --- Budget selection ---
         # max_items cap
@@ -2149,7 +2150,7 @@ class ContextAssembler:
 
         timing_ms = round((time.time() - t0) * 1000, 2)
 
-        metadata = {
+        metadata: dict[str, Any] = {
             "pull_count": len([r for r in selected if _get_key(r) in pull_keys]),
             "push_count": len(proactive),
             "token_count": total_tokens,
