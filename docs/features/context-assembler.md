@@ -465,6 +465,7 @@ failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHO
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
+- [Belief-Sheet View](belief-sheet-view.md) — read-path claim resolver wrapping `assemble()` with a fail-closed reader gate (`record_gate` seam)
 - [ConfidenceField](confidence-field.md) — the field the confidence gate reads via `get_confidence()`
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [ValidityField and SupersessionProtocol](validity-and-supersession.md) — `assemble(as_of=t)` for point-in-time reconstruction, and how superseded records are excluded from default retrieval
