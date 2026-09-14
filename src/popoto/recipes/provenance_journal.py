@@ -308,6 +308,14 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
     stated = BooleanField(default=True)
     kind = IndexedField(type=str, null=True)
     target = IndexedField(type=str, null=True)
+    #: The claim's type, from ``reconciliation.CLAIM_TYPES``. Assigned by
+    #: capture **before the entry's first and only** ``save()``, which is what
+    #: makes it legal on an append-only record; M5 reads it and never writes
+    #: it, so there is no code path that could back-fill it on an old entry.
+    #: ``None`` on every entry captured before #564 shipped, which the
+    #: reconciler tolerates by falling back to the rule-free ``note`` type
+    #: rather than skipping the entry.
+    claim_type = IndexedField(type=str, null=True)
     validity = ValidityField()
 
     _stream_name = "journal"
@@ -574,6 +582,7 @@ class ProvenanceJournal:
         at: Optional[float] = None,
         kind: str = "assert",
         target: Optional[Union[str, "JournalEntry"]] = None,
+        claim_type: Optional[str] = None,
         pipeline: Optional["Pipeline"] = None,
     ) -> AnnotationResult:
         """Append one capture to the journal.
@@ -598,6 +607,11 @@ class ProvenanceJournal:
                 target's interval if it was registered ``closing=True``.
             target: Only for a non-``assert`` kind. A
                 :class:`JournalEntry` or its Redis key.
+            claim_type: The claim's type, from
+                ``recipes.reconciliation.CLAIM_TYPES``. Set here, at capture,
+                or never: the entry is append-only, so there is no later write
+                that could back-fill it. Left ``None`` the reconciler treats
+                the claim as the rule-free ``note`` type.
             pipeline: Optional caller pipeline. Must be transactional. When
                 supplied it is returned unexecuted on
                 :attr:`AnnotationResult.pipeline`. Open it with
@@ -639,6 +653,7 @@ class ProvenanceJournal:
             stated=stated,
             captured_at=captured_at,
             at=at,
+            claim_type=claim_type,
             pipeline=pipeline,
         )
 
@@ -895,6 +910,7 @@ class ProvenanceJournal:
         captured_at: Optional[float],
         at: Optional[float],
         pipeline: Optional["Pipeline"],
+        claim_type: Optional[str] = None,
     ) -> AnnotationResult:
         """Run the pre-flight, then append (and optionally close) in one go.
 
@@ -939,6 +955,9 @@ class ProvenanceJournal:
             stated=stated,
             kind=kind,
             target=target_key,
+            # Set at construction, like every other field: the record is
+            # append-only, so capture is the only chance to assign it (#564).
+            claim_type=claim_type,
             # Valid-time is set at CONSTRUCTION, not passed to the supersede
             # script. ValidityField.on_save uses the field value as valid_from
             # and its ZADD NX runs earlier in the pipeline, which makes the
@@ -1273,6 +1292,7 @@ _REQUIRED_ENTRY_FIELDS = frozenset(
         "stated",
         "kind",
         "target",
+        "claim_type",
         "validity",
     }
 )

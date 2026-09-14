@@ -594,6 +594,38 @@ class Defaults:
     # deadline reference then does emit.
     M4_VALID_FROM_ROLES = ("onset",)
 
+    # -- reconciliation (recipes/reconciliation.py, #564) ---------------------
+    # Upper bound on candidate classes the shortlist hands the judge for one
+    # entry. Bounds judge-call cost per entry at 2x this number (one forward
+    # ask plus one swapped-order symmetry probe per candidate), which is the
+    # bound AC5 asserts. Also bounds the degraded same-subject+type index scan
+    # used when no embedding provider is available.
+    M5_SHORTLIST_CAP = 8
+    # Whether a forward "same" verdict is re-asked with the claim order
+    # swapped before a join commits. On by default: the probe converts the
+    # worst failure mode (a silent mega-class built out of non-transitive
+    # "same" verdicts) into the safe one (an explicit disjunct pair). Pinned
+    # rather than exposed as a constructor kwarg per the magic-number rule;
+    # flipping it off is a measurement action, not a deployment one.
+    M5_SYMMETRY_PROBE_ENABLED = True
+    # Pinned model for the one sameness-judge call, mirroring
+    # ``extraction/verdict.py``'s ``VERDICT_MODEL``. A constrained two-value
+    # enum classification, not open-ended generation, so the smaller model is
+    # the right one.
+    M5_JUDGE_MODEL = "claude-haiku-4-5-20251001"
+    # Pinned max_tokens for the sameness-judge call. The reply is one enum
+    # key, so this mirrors ``VERDICT_MAX_TOKENS`` rather than sizing for prose.
+    M5_JUDGE_MAX_TOKENS = 256
+    # Name of the ``JournalEntry`` field the replay watermark filters on with a
+    # strict ``>`` (borrowing ``crystallize``'s watermark shape). A constant
+    # rather than a literal so the field rename is one edit.
+    M5_REPLAY_WATERMARK_FIELD = "captured_at"
+    # Joins into one class, within one reconciler pass, past which a
+    # class-size-velocity signal is logged. **Telemetry only, never a gate**
+    # (Risk 1): a legitimately large class must not be blocked, so this
+    # threshold reports and never refuses.
+    MEGA_CLASS_VELOCITY_ALERT = 5
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.

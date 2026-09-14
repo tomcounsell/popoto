@@ -1930,30 +1930,39 @@ class TestConcurrentDoubleClose:
 class TestKindRegistry:
     """``JournalEntry.register_kind`` — the extension seam that replaces the
     subclass seam an earlier revision advertised (see
-    :class:`TestEntryModelGuard` for why that one could never work)."""
+    :class:`TestEntryModelGuard` for why that one could never work).
+
+    The illustrative kind name here must stay one **no shipped module
+    registers**. ``_REGISTERED_KINDS`` is process-global and re-registering a
+    name with different flags is refused, so these tests used ``"merge"``
+    until ``recipes/reconciliation.py`` (#564) claimed it for real with
+    ``closing=False`` — at which point importing that module anywhere in the
+    session made every test below fail on the flag mismatch. That refusal is
+    the registry working; the example is what had to move.
+    """
 
     def test_a_registered_closing_kind_round_trips_end_to_end(self):
-        """``register_kind("merge", closing=True)`` must actually close.
+        """``register_kind("consolidate", closing=True)`` must actually close.
 
         The behaviour the frozen module-level ``_CLOSING_KINDS`` set could not
         express: before this, an extended kind was permanently membership-inert
         no matter how it was declared.
         """
-        JournalEntry.register_kind("merge", closing=True)
-        assert "merge" in JournalEntry.journal_kinds()
+        JournalEntry.register_kind("consolidate", closing=True)
+        assert "consolidate" in JournalEntry.journal_kinds()
 
         t0 = time.time() - 100.0
         target = _append(at=t0)
         result = ProvenanceJournal.append(
             agent_id=AGENT,
-            kind="merge",
+            kind="consolidate",
             target=target,
             statement="merged into the canonical claim",
             at=t0 + 50.0,
         )
 
         assert result.target_closed is True
-        assert result.entry.kind == "merge"
+        assert result.entry.kind == "consolidate"
         assert result.entry.target == target.db_key.redis_key
         assert _interval(target)[1] == pytest.approx(t0 + 50.0)
         assert target.db_key.redis_key not in _redis_keys(
@@ -2000,7 +2009,7 @@ class TestKindRegistry:
     def test_an_unregistered_kind_is_still_refused(self):
         with pytest.raises(ValueError, match="kind must be one of"):
             ProvenanceJournal.append(
-                agent_id=AGENT, kind="merge", statement="not registered"
+                agent_id=AGENT, kind="consolidate", statement="not registered"
             )
 
     @pytest.mark.parametrize(
@@ -2027,11 +2036,11 @@ class TestKindRegistry:
         and the unknown kind is inert for membership rather than being
         silently re-interpreted as a core closing kind.
         """
-        JournalEntry.register_kind("merge", closing=True)
+        JournalEntry.register_kind("consolidate", closing=True)
         target = _append(statement="the original claim")
         entry = ProvenanceJournal.append(
             agent_id=AGENT,
-            kind="merge",
+            kind="consolidate",
             target=target,
             statement="merged into the canonical claim",
         ).entry
@@ -2040,15 +2049,15 @@ class TestKindRegistry:
         journal_module._REGISTERED_KINDS.clear()
         try:
             reread = JournalEntry.query.get(redis_key=entry.db_key.redis_key)
-            assert reread.kind == "merge"
+            assert reread.kind == "consolidate"
             assert reread.statement == "merged into the canonical claim"
             assert reread.target == target.db_key.redis_key
 
             # Inert for membership: a reader that does not know the kind must
             # not treat it as a supersede or a retract.
-            assert "merge" not in JournalEntry.journal_kinds()
-            assert JournalEntry.kind_is_closing("merge") is False
-            assert JournalEntry.kind_is_targetless("merge") is False
+            assert "consolidate" not in JournalEntry.journal_kinds()
+            assert JournalEntry.kind_is_closing("consolidate") is False
+            assert JournalEntry.kind_is_targetless("consolidate") is False
             assert _redis_keys(ProvenanceJournal.annotations_for(target)) == [
                 entry.db_key.redis_key
             ]
@@ -2065,11 +2074,11 @@ class TestKindRegistry:
         the behaviour the docstring's caveat exists for; pinning it here keeps
         the doc from drifting away from the code.
         """
-        JournalEntry.register_kind("merge", closing=True)
+        JournalEntry.register_kind("consolidate", closing=True)
         target = _append(statement="the original claim")
         values = {
             "agent_id": AGENT,
-            "kind": "merge",
+            "kind": "consolidate",
             "target": target.db_key.redis_key,
             "statement": "merged into the canonical claim",
         }
@@ -2092,10 +2101,10 @@ class TestKindRegistry:
     def test_re_registering_the_same_kind_differently_is_refused(self):
         """Reclassifying a kind would reclassify every entry already stored
         under it, so it is refused; an identical re-registration is a no-op."""
-        JournalEntry.register_kind("merge", closing=True)
-        JournalEntry.register_kind("merge", closing=True)  # idempotent
+        JournalEntry.register_kind("consolidate", closing=True)
+        JournalEntry.register_kind("consolidate", closing=True)  # idempotent
         with pytest.raises(ValueError, match="already registered"):
-            JournalEntry.register_kind("merge")
+            JournalEntry.register_kind("consolidate")
 
 
 class TestEntryModelGuard:

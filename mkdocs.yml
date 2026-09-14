@@ -50,6 +50,7 @@ nav:
                 - ObservationProtocol: 'features/observation-protocol.md'
                 - ValidityField and Supersession: 'features/validity-and-supersession.md'
                 - Provenance Journal: 'features/provenance-journal.md'
+                - Reconciliation: 'features/reconciliation.md'
                 - Auditable Extraction: 'features/auditable-extraction.md'
                 - Reference Resolution: 'features/reference-resolution.md'
                 - PredictionLedger: 'features/prediction-ledger.md'
