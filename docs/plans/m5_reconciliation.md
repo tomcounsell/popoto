@@ -7,7 +7,8 @@ created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/564
 last_comment_id: 5537009267
 revision_applied: true
-revision_applied_at: 2026-09-11T14:30:00Z
+revision_applied_at: 2026-09-14T00:00:00Z
+critique_rounds: 2
 ---
 
 # M5 — Reconciliation: claim equivalence classes, typed contradiction rules, explicit disjunctions
@@ -132,8 +133,9 @@ line numbers are used inline in Technical Approach.
   Note `JournalEntry` carries NO `EmbeddingField` today — the shortlist needs one
   (source `"statement"`) or a bounded fallback.
 - **#558 (export/import round-trip, merged):** per-field round-trip fidelity
-  precedent — any new field M5 adds (`class_id`, disjunction links) must
-  round-trip through it.
+  precedent — the one new field M5 adds (`claim_type`) must round-trip through
+  it. Class membership and disjunction links are companion keys, not fields, so
+  they are covered by the replay-rebuilds-index check instead.
 
 No prior issues found attempting equivalence classes themselves — no
 **Why Previous Fixes Failed** section (greenfield module, not a re-fix).
@@ -174,9 +176,11 @@ guides bear on the design.
    (write disjunct pair with shared disjunction id).
 5. **Merge log**: every join / supersede / disjoin appends
    `{class_a, class_b, rationale, ts, judge_version}` as an immutable journal
-   annotation (registered merge kind). Replay = revoke entry + recompute class
-   assignment. Classes are tracked by plain relabeled `class_id`, never
-   union-find.
+   annotation (registered merge kind, naming a target entry). Replay = revoke
+   entry + recompute class assignment. Classes are tracked by a plain relabeled
+   `class_id` in reconciler-owned companion keys (never a field on the
+   append-only entry), never union-find. The merge log is authoritative; the
+   companion keys are a rebuildable index over it.
 6. **Output**: M6 reads one representative per class — the most-confirmed
    member among validity-open entries (`validity__current=True`; closed
    losers stay in-class for audit but are never selected and accrue no
@@ -192,21 +196,31 @@ guides bear on the design.
   `extraction/verdict.py`-shaped LLM client (anthropic extra, already optional).
   No new Redis modules — Valkey-safe by construction (memory:
   `feedback_valkey_compatibility`).
-- **Interface changes**: additive only. `JournalEntry` gains `class_id`
-  (IndexedField) and disjunction-link fields; new merge/disjoin kinds via
-  `register_kind`. `ProvenanceJournal` gains no signature changes (reconciler
-  calls existing `confirm` / `supersede`). M6/M7/M8 read the new fields; all
-  degrade to per-record behavior without them.
+- **Interface changes**: additive only. `JournalEntry` gains exactly ONE new
+  field, `claim_type` (IndexedField, assigned pre-first-save); `class_id` and
+  disjunction links are companion keys and annotation payloads, not fields,
+  because the model is append-only. New merge/disjoin kinds via `register_kind`.
+  `ProvenanceJournal` gains no signature changes (reconciler calls existing
+  `confirm` / `supersede`). M6/M7/M8 read the companion index through an M5
+  accessor rather than querying a field; all degrade to per-record behavior
+  when the index is absent or empty.
 - **Coupling**: reconciliation owns sameness; V0 owns closing; M1 owns
   annotation vocabulary. The amendment's invariant holds structurally: the
   deterministic tier calls `save_and_supersede`, so there is exactly one
   supersession mechanism and `class_id` subsumes identity keys (a deterministic
   hit is a class of size 2 merged without a judge call).
-- **Data ownership**: class membership lives on entries (`class_id`) + the
-  append-only merge log; no sidecar store to keep in sync.
+- **Data ownership**: the append-only merge log owns class membership
+  authoritatively; the reconciler owns a rebuildable companion index over it
+  (`Reconciliation:_class_of:*` / `_class_members:*` / `_disjunction:*`).
+  Nothing to "keep in sync" — a divergent index is recomputed from the log, not
+  reconciled against it. Single writer: one reconciler per agent.
 - **Reversibility**: merge-log replay reproduces pre-merge assignment
-  (acceptance criterion 4); the module itself is removable — entries remain
-  valid journal records with `class_id` NULL.
+  (acceptance criterion 4) — structurally, since the index is derived from the
+  log. The module itself is removable: entries remain valid journal records
+  (`claim_type` is inert without a reconciler) and the companion keys can be
+  dropped wholesale. That is also the break-glass procedure — `DEL` the three
+  key families and M6/M7/M8 fall back to per-record behavior with zero journal
+  data loss, because no journal record was ever mutated.
 
 ## Appetite
 
@@ -237,12 +251,29 @@ functions and judge calls degrade to logged abstentions (same contract as
 
 ### Key Elements
 
-- **Equivalence classes**: plain `class_id` (IndexedField) on `JournalEntry`,
-  relabeled on merge. A restatement joins the class and increments its
-  confirmation count via `ProvenanceJournal.confirm` — confirmation instead of
-  duplication.
+- **Equivalence classes**: a `class_id` label, relabeled on merge, held in
+  **reconciler-owned companion Redis keys — never as a mutable field on
+  `JournalEntry`**. `JournalEntry` composes `AppendOnlyMixin`
+  (`src/popoto/recipes/provenance_journal.py:282`), whose `save()` raises
+  `AppendOnlyViolation` on any re-save of an existing key — including a partial
+  `save(update_fields=[...])`, which its own docstring calls out as "still an
+  overwrite and ... still refused"
+  (`src/popoto/fields/append_only.py:166-167`, guard at `:202-207`). A
+  post-hoc `class_id` write to a persisted entry is therefore impossible
+  through the ORM. The companion shape follows V0's own precedent:
+  `save_and_supersede` never re-saves the incumbent either — it closes it
+  through `ValidityField.execute_supersede` against companion keys
+  (`src/popoto/fields/supersession.py:720-737`). A restatement joins the class
+  and increments its confirmation count via `ProvenanceJournal.confirm`, which
+  is already append-only-safe: it appends a new `kind="confirm"` annotation and
+  leaves the target untouched (`src/popoto/recipes/provenance_journal.py:646-661`),
+  so the count is *derived* by counting annotations, never stored on a record.
 - **Per-entry claim type**: `claim_type = IndexedField(type=str, null=True)`
-  on `JournalEntry` alongside `class_id`; capture assigns it at capture time
+  on `JournalEntry` — this one IS a real field, and legally so: capture assigns
+  it *before the entry's first and only `save()`*, so append-only is satisfied.
+  It is the only new `JournalEntry` field M5 adds; `class_id` and the
+  disjunction links are companion/annotation state per the bullet above.
+  Capture assigns it at capture time
   from the extractor's type label (never inferred later). The deterministic
   tier derives the V0 predicate as `(subjects[0], claim_type)` — zero LLM
   calls, zero guessing. Round-trips through export/import per the #558
@@ -261,8 +292,11 @@ functions and judge calls degrade to logged abstentions (same contract as
 - **Provenance precedence**: per-type ordering. Self-stated beats inferred
   everywhere (consumes M1's `stated` flag); recency wins for supersession types
   (deadlines), confirmation count wins for stable types (traits).
-- **Disjunct pairs**: precedence ties stored with a shared disjunction id,
-  retrievable together, surfaced as uncertainty. This module's own contribution —
+- **Disjunct pairs**: precedence ties stored as a **`disjoin` merge-log
+  annotation entry naming both sides plus a shared disjunction id** — an
+  *append*, not a field write on either entry (the second side would otherwise
+  hit the same `AppendOnlyViolation`). Retrievable together via the annotation
+  and a companion set, surfaced as uncertainty. This module's own contribution —
   V0 always produces a deterministic winner within one identity key, so ties
   arise only at the judgment layer and stay here.
 - **Append-only merge log**: `{class_a, class_b, rationale, ts, judge_version}`
@@ -283,6 +317,62 @@ order and is never asked as its own question.
 
 ### Technical Approach
 
+- **Class membership is companion state, and the merge log is authoritative.**
+  Concrete shape (all core Redis commands — Valkey-safe, no modules; every
+  access through `get_redis()` / `get_REDIS_DB()`, never a
+  `POPOTO_REDIS_DB` import):
+  - `Reconciliation:_class_of:{agent_id}` — HASH, `entry_redis_key → class_id`.
+  - `Reconciliation:_class_members:{agent_id}:{class_id}` — SET of entry keys.
+  - `Reconciliation:_disjunction:{agent_id}:{disjunction_id}` — SET of entry keys.
+
+  The **merge log is the source of truth**; these three keys are a *rebuildable
+  index* derived from it. That is what answers the "no sidecar to keep in sync"
+  objection the earlier draft raised against itself: there is nothing to keep in
+  sync, because a divergent index is discarded and recomputed from the log
+  rather than reconciled against it. It also makes acceptance criterion 4
+  (reversibility by replay) structural rather than a property to be tested into
+  existence — replay rebuilds the index by construction. A crash mid-relabel is
+  therefore a repair, not a corruption: rerun replay for that class.
+  Relabel-on-merge is `SMEMBERS` loser → `HSET` each member to the winner's
+  `class_id` → `SUNIONSTORE` winner ← winner ∪ loser → `DEL` loser set, safe
+  under the one-reconciler-per-agent discipline and idempotent on re-run.
+- **Nothing M5 writes ever mutates a persisted `JournalEntry`.** Build-time
+  rule, stated once so no builder has to rediscover it: the only legal writes
+  are (a) fields set before an entry's first `save()`, (b) new appended
+  annotation entries, (c) reconciler-owned companion keys above. Any design
+  that needs to "update" an entry is wrong by construction — `AppendOnlyMixin`
+  refuses it, and `hard_delete()` is scoped to "retention and erasure, not for
+  test teardown" (`src/popoto/fields/append_only.py:86-93`) and is not a route
+  around this.
+- **Register the merge kinds at `reconciliation.py` import, and document it.**
+  `_REGISTERED_KINDS` is a module-global, non-persisted registry
+  (`src/popoto/recipes/provenance_journal.py:228`), and *writing* an entry with
+  an unregistered kind raises `ValueError` in `pre_save` — its docstring records
+  this as a real bug found in PR #589 review, noting "**A restoring or importing
+  process must call the same** `register_kind` **calls before importing**"
+  (`:360-371`). So: call `JournalEntry.register_kind("merge", closing=False)` /
+  `("disjoin", closing=False)` at module import of `reconciliation.py`, and say
+
+  Both flags matter and neither is the docstring's example value. `closing=False`
+  because a join or a disjoin does **not** close anybody's validity interval —
+  only the deterministic/precedence path closes, and it does so through
+  `save_and_supersede`, not through a merge kind. And `targetless=False` (the
+  default) means **every merge-log annotation MUST name a `target`**:
+  `validate_kind_and_target` raises `ValueError` — "a {kind!r} entry annotates
+  another entry and must name a target" — on a falsy target for a non-targetless
+  kind (`src/popoto/recipes/provenance_journal.py:527-531`), and it is called
+  from `pre_save`, so this fails at write time, not at review time. Target the
+  entry the record is *about*: for `merge`, the joining entry E; for `disjoin`,
+  one side of the pair, with the other side and the shared disjunction id
+  carried in the annotation payload. `targetless=True` is not an option —
+  `register_kind` rejects `targetless and closing` together, and a targetless
+  kind must carry no target at all, which would strand the annotation with
+  nothing to hang off. Also say
+  in the feature docs that any process which *writes* or *imports* merge-log
+  annotations (a transfer restore, a backfill, a rolling deploy running the old
+  image) must import `reconciliation.py` first. Reading is unaffected — an
+  unrecognized kind reads back inert for membership per the reader rule, so an
+  old reader degrades safely rather than failing.
 - **Deterministic tier is a special case of `class_id`, never a parallel
   mechanism** (V0 amendment): an identity-key hit assigns both entries the same
   `class_id` and writes the outcome through `save_and_supersede`. Singleton-slot
@@ -324,7 +414,8 @@ order and is never asked as its own question.
   doctrine) and every new one is registered in
   `tests/benchmarks/test_defaults_sync.py`: shortlist cap, symmetry-probe
   on/off, replay watermark field, judge model/token caps (mirroring
-  `VERDICT_MODEL` / `VERDICT_MAX_TOKENS`).
+  `VERDICT_MODEL` / `VERDICT_MAX_TOKENS`), `RECONCILE_LOCK_TTL_SECONDS`
+  (Race 3), and `MEGA_CLASS_VELOCITY_ALERT` (Risk 1 telemetry).
 - **Judge failure contract copies `llm_verdict`**: firewall before the call,
   JSON-schema output, re-validate every field, never raise — failures map to a
   logged abstention that leaves the entry unclassified (new singleton class),
@@ -363,7 +454,8 @@ New module + additive fields; no existing behavior changes, so no UPDATE/DELETE
 — but three adjacent suites constrain the build:
 
 - [ ] `tests/` journal suites (`test_provenance_journal.py` et al) — MUST PASS
-  UNCHANGED: `class_id` defaults NULL, merge kinds are additive registrations.
+  UNCHANGED: `claim_type` defaults NULL, no entry is ever mutated, merge kinds
+  are additive registrations.
   Any failure here is a regression, not an expected update.
 - [ ] `tests/test_ci_workflow_redis_url.py`-style env contracts — new tests bind
   via the pytest plugin (`popoto_test_db`), never `REDIS_URL` + DB 0.
@@ -373,7 +465,11 @@ New module + additive fields; no existing behavior changes, so no UPDATE/DELETE
   build must run it explicitly.
 - [ ] New `tests/test_reconciliation_m5.py` (name per issue's
   `tests/test_<name>.py` criterion): restatement-joins, rule-fires-supersedes,
-  tie-disjoins, replay-reverses, zero-LLM-calls-for-rules, judge-call bound.
+  tie-disjoins, replay-reverses, zero-LLM-calls-for-rules, judge-call bound,
+  plus the four Verification-table suites — `append_only` (no entry is ever
+  mutated), `replay_rebuilds_index`, `no_m6_surfacing`, `command_allowlist` —
+  and the two Race 3 cases (siblings land in one class; a lock-missed entry is
+  deferred, not dropped).
 
 No existing tests affected otherwise — greenfield recipe with additive-only
 journal changes.
@@ -430,27 +526,73 @@ narrows); deterministic tier unaffected. Documented in feature docs.
 **Trigger:** Overlapping post-turn triggers (stream redelivery + direct call)
 both shortlist and judge the same entry concurrently.
 **Data prerequisite:** Entry persisted in journal before either run reads it.
-**State prerequisite:** `class_id` NULL on the fresh entry at both runs' read time.
-**Mitigation:** Claim-by-write: the join writes `class_id` conditionally
-(WATCH/MULTI or a Lua compare-and-set on NULL→id); the loser of the race sees
-non-NULL and re-runs that entry against its now-assigned class. Merge-log
-append is idempotent per `(entry_id, run_watermark)`. At-most-one reconciler
-per agent documented (mirrors `crystallize`'s one-crystallizer-per-partition).
-**Pre-build spike (before build-loop):** prove the conditional NULL→id write
-against the real journal model — `get_redis()` pipeline WATCH on the entry's
-class key, check `class_id` NULL, MULTI write; or a Lua CAS mirroring
-`SUPERSEDE_LUA`'s membership pattern in
-`src/popoto/fields/supersession.py`. If the spike fails, resolve Open Q5 to
-stream-only: a single trigger plus the one-reconciler discipline dissolves
-this race entirely (no second concurrent writer exists).
+**State prerequisite:** No `_class_of` entry for the fresh entry's key at both
+runs' read time.
+**Mitigation:** Claim-by-write, now a **single atomic core command** rather than
+a transaction: `HSETNX Reconciliation:_class_of:{agent_id} {entry_redis_key}
+{class_id}`. `HSETNX` returns 1 to exactly one caller and 0 to the other, so the
+loser reads the winner's `class_id` back with `HGET` and re-runs that entry
+against its now-assigned class. Merge-log append is idempotent per
+`(entry_id, run_watermark)`. At-most-one reconciler per agent documented
+(mirrors `crystallize`'s one-crystallizer-per-partition).
+**No pre-build spike needed — the earlier WATCH/MULTI-or-Lua-CAS spike is
+withdrawn.** It existed only because the draft stored `class_id` as a field on
+an append-only record, where a conditional NULL→id write has no primitive.
+Against companion state the operation *is* the primitive: `HSETNX` is
+atomic create-if-absent, core to both Redis and Valkey, needs no transaction, no
+`WATCH` (and so cannot trip `_validate_caller_pipeline`'s WATCH-without-MULTI
+refusal at `src/popoto/fields/supersession.py:614-651`), and no Lua. Resolving
+Open Q5 to stream-only remains *desirable for simplicity* but is no longer
+load-bearing for correctness here.
 
-### Race 2: Loser deleted between shortlist and `save_and_supersede`
+### Race 2: Loser leaves live membership between shortlist and `save_and_supersede`
 **Location:** reconcile loop → `SupersessionProtocol.save_and_supersede`
-**Trigger:** Retraction/expiry removes the loser after the shortlist read.
-**Data prerequisite:** Shortlist holds a live key that is gone at write time.
-**State prerequisite:** None beyond the delete landing first.
+**Trigger:** A retraction or supersession closes the loser's validity interval
+after the shortlist read.
+**Data prerequisite:** Shortlist holds a key that is no longer a live validity
+member at write time.
+**State prerequisite:** None beyond the close landing first.
 **Mitigation:** `ValidityMemberAbsentError` catch → re-read → `loser-absent`
 merge-log entry; winner stands. Specified in Technical Approach; tested.
+**Wording, because it changes the test:** the earlier draft said "deleted" /
+"removed", which would send a builder to check key existence. Nothing deletes
+here — the journal is append-only and `retract` "remove[s] the target from live
+membership while leaving it fully readable historically"
+(`src/popoto/recipes/provenance_journal.py:788-793`), which is also why AC2 says
+the loser is "superseded (never deleted)". The trigger to assert on is a
+**closed live-membership with the hash still present**, and the detection is
+catching `ValidityMemberAbsentError` from `save_and_supersede` — never an
+`EXISTS` check, which would pass and hide the case.
+
+### Race 3: Two sibling entries of the same claim each create a singleton class
+**Location:** new `recipes/reconciliation.py`, shortlist-read → commit-write span
+**Trigger:** Burst capture produces two *different* fresh entries asserting the
+same claim. Both are shortlisted before either has committed a `class_id`, so
+each finds no candidate class and each creates its own singleton. Race 1's
+`HSETNX` does not help: the two entries have different keys, so both writes
+succeed legitimately.
+**Data prerequisite:** Two persisted entries, same `agent_id`, same
+`claim_type`, overlapping `subjects`, neither yet in `_class_of`.
+**State prerequisite:** Both in the same reconciler window.
+**Why it matters:** this is the one failure the merge log cannot repair by
+replay, because no merge was ever *attempted* between the siblings — replay
+faithfully reproduces two separate classes. It is a permanent silent
+duplication, which is precisely the bug M5 exists to fix.
+**Mitigation:** serialize the shortlist→commit span per claim slot with an
+advisory lock: `SET Reconciliation:_lock:{agent_id}:{digest} {run_id} NX EX
+{Defaults.RECONCILE_LOCK_TTL_SECONDS}`, where `digest` is over
+`(agent_id, subjects[0], claim_type)` — the same identity shape the
+deterministic tier already computes, so no new notion of identity is
+introduced. On `NX` failure the entry is **deferred to the next reconciler
+pass, never dropped** (lag is safe per Risk 3; silent duplication is not).
+Release with a `DEL` guarded on the stored `run_id` so a pass that overran its
+TTL cannot delete a successor's lock. `SET ... NX EX` is core to Redis and
+Valkey. The lock is advisory only: the correctness floor if it is lost or
+expires early is "two singleton classes", i.e. today's behavior, never
+corruption.
+**Test:** two entries with identical `claim_type` + `subjects` reconciled
+concurrently land in ONE class; and a second test asserting a deferred entry is
+picked up by the following pass rather than skipped.
 
 No other concurrency: merge-log appends are immutable inserts; representative
 reads are last-write-wins on confirmation counts and tolerate staleness.
@@ -528,7 +670,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 
 - **Builder (journal-model)**
   - Name: model-builder
-  - Role: `class_id` + disjunction fields, merge-kind registration, Defaults constants
+  - Role: `claim_type` field, companion class/disjunction index + M5 accessor, merge-kind registration, Defaults constants
   - Agent Type: builder
   - Resume: true
 
@@ -544,7 +686,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
   - Role: convention book config, sameness judge (`llm_verdict` contract), embedding shortlist + fallback, symmetry probe, reconcile loop + watermark + merge log + replay
   - Agent Type: builder
   - Resume: true
-  - Domain: Redis/Popoto data (claim-by-write compare-and-set on `class_id`; one-reconciler-per-agent discipline)
+  - Domain: Redis/Popoto data (claim-by-write via `HSETNX` on the companion index; per-claim-slot advisory lock; one-reconciler-per-agent discipline)
 
 - **Validator (reconciliation)**
   - Name: recon-validator
@@ -570,16 +712,24 @@ above.
 ### 1. Journal model surface
 - **Task ID**: build-model
 - **Depends On**: none
-- **Validates**: `tests/test_reconciliation_m5.py::test_class_id_defaults_null` (create), existing journal suites unchanged
+- **Validates**: `tests/test_reconciliation_m5.py::test_claim_type_defaults_null`, `::test_reconcile_never_mutates_an_entry` (create), existing journal suites unchanged
 - **Assigned To**: model-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `class_id` IndexedField (NULL default) + `claim_type =
-  IndexedField(type=str, null=True)` + disjunction-link fields to
-  `JournalEntry` (`claim_type` assigned by capture from the extractor's type
-  label; the deterministic tier reads it as the `(subjects[0], claim_type)`
-  predicate)
-- Register merge/disjoin annotation kinds via `register_kind`
+- Add `claim_type = IndexedField(type=str, null=True)` to `JournalEntry` — the
+  ONLY new field (assigned by capture from the extractor's type label before the
+  entry's first `save()`; the deterministic tier reads it as the
+  `(subjects[0], claim_type)` predicate)
+- Do **NOT** add `class_id` or disjunction-link fields to `JournalEntry`: it is
+  `AppendOnlyMixin` and any post-hoc field write raises `AppendOnlyViolation`.
+  Build the companion index instead — `Reconciliation:_class_of:{agent_id}`
+  (HASH), `_class_members:{agent_id}:{class_id}` (SET),
+  `_disjunction:{agent_id}:{disjunction_id}` (SET) — plus the M5 accessor
+  M6/M7/M8 read class membership through
+- Register merge/disjoin annotation kinds via `register_kind("merge",
+  closing=False)` / `("disjoin", closing=False)` **at `reconciliation.py`
+  module import**; both kinds require a `target` (non-targetless), enforced in
+  `pre_save`
 - Add numeric constants to `Defaults`; register each in `tests/benchmarks/test_defaults_sync.py`
 - Add/export round-trip coverage for the new fields (precedent: #558)
 
@@ -614,8 +764,17 @@ above.
 - **Assigned To**: judge-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- `StreamConsumer`-on-`"journal"` trigger + direct-call entry; claim-by-write compare-and-set on `class_id`; merge-log append `{class_a, class_b, rationale, ts, judge_version}`; watermark-bounded replay + explicit genesis repair op
+- `StreamConsumer`-on-`"journal"` trigger + direct-call entry; claim-by-write via
+  `HSETNX` on `_class_of` (no WATCH/MULTI, no Lua — see Race 1); merge-log append
+  `{class_a, class_b, rationale, ts, judge_version}`; watermark-bounded replay +
+  explicit genesis repair op that rebuilds the companion index from the log
+- Per-claim-slot advisory lock (`SET ... NX EX`) over the shortlist→commit span,
+  with deferral (never drop) on lock-miss — see Race 3
 - Restatement path routes through `ProvenanceJournal.confirm` (confirmation count)
+- Mega-class detector: emit a class-size-velocity telemetry signal when a class
+  grows past `Defaults.MEGA_CLASS_VELOCITY_ALERT` joins per reconciler pass.
+  Telemetry only, never a gate (Risk 1 promises this; without a task line it
+  would ship unbuilt)
 
 ### 5. Validate reconciliation
 - **Task ID**: validate-recon
@@ -657,13 +816,35 @@ above.
 | Lint clean | `ruff check src/` | exit code 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
 | Type ratchet holds | `scripts/mypy_ratchet.py` | exit code 0 |
-| No M6 surfacing in M5 module | `grep -rn "belief_sheet\|belief-sheet\|representative_view" src/popoto/recipes/reconciliation.py \| wc -l` | output contains 0 |
-| No stale union-find machinery | `grep -rn "union.find\|UnionFind\|union_find" src/popoto/recipes/reconciliation.py \| wc -l` | output contains 0 |
+| No post-hoc writes to append-only entries | `pytest tests/test_reconciliation_m5.py -q -k "append_only"` | exit 0 — a test that reconciles an entry and then asserts `JournalEntry.get(entry_id)` is byte-identical to its pre-reconcile state, and that a deliberate `entry.save()` still raises `AppendOnlyViolation` |
+| Companion index is rebuildable from the log | `pytest tests/test_reconciliation_m5.py -q -k "replay_rebuilds_index"` | exit 0 — `DEL` the three companion key families, replay from genesis, assert class assignment is identical |
+| No M6 surfacing in M5 module | `pytest tests/test_reconciliation_m5.py -q -k "no_m6_surfacing"` | exit 0 — asserts M5's representative-selection returns a plain `(entry, uncertainty_flag)` value and that `reconciliation.py` imports nothing from M6's module |
+| Valkey-safe command set | `pytest tests/test_reconciliation_m5.py -q -k "command_allowlist"` | exit 0 — spies the client and asserts the reconciler issues only core commands (no `BF.*`/`CMS.*`/module calls) |
 
 ## Critique Results
 
+### Round 2 (2026-09-14) — FULL roster: Risk & Robustness, Scope & Value, History & Consistency
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | driver (structural, verified) | `JournalEntry` composes `AppendOnlyMixin`, so the plan's mutable `class_id` IndexedField — "relabeled on merge", plus a compare-and-set NULL→id write — is impossible: `save()` refuses any re-save of an existing key, and `update_fields` is explicitly "still an overwrite and ... still refused". Disjunction-link fields have the same defect. | Key Elements (equivalence classes, claim type, disjunct pairs); Technical Approach (companion-state contract + no-mutation rule); Data Flow 5; Architectural Impact (interface changes, data ownership, reversibility); Race 1; Task 1; Task 4; Verification | Class membership moves to reconciler-owned companion keys — `Reconciliation:_class_of:{agent_id}` (HASH `entry_key → class_id`), `_class_members:{agent_id}:{class_id}` (SET), `_disjunction:{agent_id}:{disjunction_id}` (SET) — with the merge log authoritative and the index rebuildable from it. Precedent is V0's own: `save_and_supersede` never re-saves the incumbent, it closes it via `ValidityField.execute_supersede` against companion keys (`src/popoto/fields/supersession.py:720-737`). `claim_type` stays a real field because capture sets it before the first `save()`. Guard: `src/popoto/fields/append_only.py:202-207`; docstring `:166-167`. |
+| CONCERN | Risk & Robustness | Race 1 only arbitrates two runs racing the *same* entry. Two *different* sibling entries asserting the same claim in one burst both find no candidate class and each create a singleton — permanent silent duplication that replay cannot repair, because no merge was ever attempted between them. | New Race 3; Task 4; Test Impact | Advisory lock over the shortlist→commit span: `SET Reconciliation:_lock:{agent_id}:{digest} {run_id} NX EX Defaults.RECONCILE_LOCK_TTL_SECONDS`, digest over `(agent_id, subjects[0], claim_type)` (the identity shape the deterministic tier already computes — no new identity notion). On `NX` miss, **defer to the next pass, never drop** (lag is safe per Risk 3; duplication is not). Release via `DEL` guarded on the stored `run_id` so an overrunning pass cannot delete a successor's lock. Correctness floor if the lock is lost: two singleton classes — today's behavior, never corruption. |
+| CONCERN | Risk & Robustness | The kind registry is process-global and non-persisted, and *writing* an unregistered kind raises `ValueError` in `pre_save` (a bug already hit in PR #589 review). The plan never said where the reconciler registers `merge`/`disjoin`, leaving a rolling-deploy / transfer-restore / backfill window where writes fail. | Technical Approach (register-the-merge-kinds bullet); Task 1 | Register at `reconciliation.py` **module import**: `register_kind("merge", closing=False)` and `("disjoin", closing=False)`. `closing=False` because a join/disjoin closes no validity interval (only `save_and_supersede` closes). `targetless=False` (default) means every merge-log annotation **MUST** name a `target` — `validate_kind_and_target` raises "a {kind!r} entry annotates another entry and must name a target" (`src/popoto/recipes/provenance_journal.py:527-531`), called from `pre_save`, so this fails at write time. Target the joining entry E for `merge`, one side for `disjoin` with the partner + disjunction id in the payload. `targetless=True` is not available: `register_kind` rejects `targetless and closing` together and a targetless kind must carry no target at all. Reading is safe — an unrecognized kind reads back inert for membership, so old readers degrade rather than fail. |
+| CONCERN | Scope & Value | Risk 1 promises a "mega-class detector (class size velocity alert) as telemetry", but no task builds it — grep for detector/telemetry/velocity across the task bodies returned nothing, so it would have shipped unbuilt. | Task 4; Technical Approach (Defaults list) | Add to build-loop: emit a class-size-velocity signal when a class exceeds `Defaults.MEGA_CLASS_VELOCITY_ALERT` joins per reconciler pass. Telemetry only, never a gate — a gate would block legitimate large classes. Register the constant in `tests/benchmarks/test_defaults_sync.py` (that gate fails only in CI under narrow test selection). |
+| CONCERN | Scope & Value | Task 4 commits to building *both* trigger shapes plus a spike to manage the race they jointly create, while the plan itself notes that resolving Open Q5 to stream-only dissolves that race — i.e. it builds the more complex answer by default before the cheaper question is asked. | Race 1 (spike withdrawn); Open Q5 | Half resolved structurally: the `HSETNX` claim-by-write makes both triggers correct, so the spike is gone and this is no longer a correctness risk. The **scope** half stands and is deliberately left open — Q5 remains a PM question, and answering it stream-only should shrink Task 4 rather than being discovered mid-build. Builder guidance: implement the stream trigger first and keep the direct-call entry a thin adapter over the same reconcile function, so a stream-only answer deletes an entry point rather than restructuring the loop. |
+| CONCERN | History & Consistency | The two grep rows in the Verification table checked the not-yet-written `reconciliation.py` for absence of identifier strings the builder alone chooses, so equivalent logic under different names passes trivially — they cannot detect the properties they claim to gate. | Verification table (both rows replaced by four behavioral suites) | Replaced with tests that can actually fail: `append_only` (reconcile an entry, assert it is byte-identical afterwards and that `entry.save()` still raises `AppendOnlyViolation`), `replay_rebuilds_index` (`DEL` the companion families, replay from genesis, assert identical assignment), `no_m6_surfacing` (assert the `(entry, uncertainty_flag)` return shape and that `reconciliation.py` imports nothing from M6's module), `command_allowlist` (spy the client, assert core commands only — no `BF.*`/`CMS.*`). |
+| NIT | History & Consistency | Race 2's "deleted"/"removed" wording contradicts retract semantics and AC2's "superseded (never deleted)", and would send a builder to an `EXISTS` check. | Race 2 (retitled + wording note) | Nothing is deleted: `retract` "remove[s] the target from live membership while leaving it fully readable historically" (`src/popoto/recipes/provenance_journal.py:788-793`). Assert on closed live-membership with the hash still present; detect by catching `ValidityMemberAbsentError` from `save_and_supersede`, never via `EXISTS` (which would pass and hide the case). |
+
+### Round 1 (2026-09-11) — folded in by revision commit `9699e4df`
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | round 1 | Symmetry probe underspecified — "re-ask with E's phrasing included" did not define what varies between the two asks, so the probe could be implemented as a no-op re-ask. | Technical Approach (judge non-transitivity); Open Q1 | The probe swaps **claim order**: forward asks "is E the same claim as C's representative?", probe asks "is C's representative the same claim as E?". Join commits only on same/same; any split — including probe abstention — routes to a disjunct pair. Bound: at most 2x shortlist cap per entry. |
+| CONCERN | round 1 | Race 1's conditional `class_id` write was asserted without evidence that Popoto could express it. | Race 1 pre-build spike | Spike the NULL→id write before build-loop, or resolve Open Q5 to stream-only. **Superseded in round 2**: the spike is withdrawn — against companion state the operation is `HSETNX`, an atomic core primitive needing no transaction or Lua. |
+| CONCERN | round 1 | The deterministic tier needed a V0 predicate but the plan never said where the claim type came from, leaving it to be inferred at reconcile time. | Key Elements (per-entry claim type); Task 1 | `claim_type = IndexedField(type=str, null=True)`, assigned by capture from the extractor's type label, never inferred later; predicate is `(subjects[0], claim_type)`. Round-trips per the #558 precedent. |
+| CONCERN | round 1 | "Most-confirmed member" as representative did not say how validity-closed losers are treated, so a superseded claim could be selected as its class's representative. | Data Flow 6; Technical Approach (representative discipline); Flow | Filter `validity__current=True`. Closed losers stay in-class for audit but are excluded from representative selection **and** from confirmation counts. Confirmation-count ties break by recency. |
+| NIT | round 1 | AC5 said judge calls are "bounded by the embedding shortlist size", which the symmetry probe makes false. | Success Criteria AC5 | Reworded to "at most 2x the shortlist cap per entry — one forward ask plus one swapped-order symmetry probe per candidate class". |
+| NIT | round 1 | The uncertainty-marker test targeted M6's formatting layer, which is #565's module and out of scope per the No-Gos. | Failure Path Test Strategy (error state rendering); Task 5 | Assert the flag on M5's own representative-selection return value, not at M6's formatting layer. |
 
 ---
 
@@ -686,9 +867,14 @@ above.
 4. **Embedding placement?** Add `EmbeddingField(source="statement")` to
    `JournalEntry` (M1 schema change, shortlist native) vs a reconciler-side
    sidecar index (no M1 touch, second store to keep in sync). Plan assumes the
-   former; flag if M1's model is meant to stay embedding-free.
+   former; flag if M1's model is meant to stay embedding-free. Note this is a
+   *field* question and stays legal either way: an `EmbeddingField` is populated
+   on the entry's first and only `save()`, so it does not collide with
+   append-only the way a post-hoc `class_id` did.
 5. **Trigger shape?** Plan builds both `StreamConsumer`-on-`"journal"` and a
    direct-call entry off capture. If the host wants exactly one, which?
    Note: answering stream-only plus the one-reconciler discipline dissolves
-   Race 1 (no second concurrent writer); answering both keeps the
-   claim-by-write spike mandatory before build-loop.
+   Race 1 and simplifies the loop. It is now a *simplicity* preference, not a
+   correctness dependency — the `HSETNX` claim-by-write handles both triggers
+   atomically, and the pre-build spike the earlier draft required is withdrawn.
+   Race 3 is unaffected by this answer either way.
