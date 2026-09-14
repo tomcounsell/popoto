@@ -252,7 +252,7 @@ functions and judge calls degrade to logged abstentions (same contract as
 ### Key Elements
 
 - **Equivalence classes**: a `class_id` label, relabeled on merge, held in
-  **reconciler-owned companion Redis keys — never as a mutable field on
+  **two reconciliation-owned mutable Popoto models — never as a mutable field on
   `JournalEntry`**. `JournalEntry` composes `AppendOnlyMixin`
   (`src/popoto/recipes/provenance_journal.py:282`), whose `save()` raises
   `AppendOnlyViolation` on any re-save of an existing key — including a partial
@@ -276,8 +276,10 @@ functions and judge calls degrade to logged abstentions (same contract as
   Capture assigns it at capture time
   from the extractor's type label (never inferred later). The deterministic
   tier derives the V0 predicate as `(subjects[0], claim_type)` — zero LLM
-  calls, zero guessing. Round-trips through export/import per the #558
-  precedent, same task as `class_id`.
+  calls, zero guessing. It round-trips through export/import per the #558
+  precedent, and it is the *only* new state that needs export coverage: the
+  companion index is not exported, because it is rebuilt from the merge log,
+  and the merge log is journal data that exports with the journal already.
 - **Convention book**: short versioned config standard for "same claim"
   (converse phrasings merge, restatements confirm). The only prompt the judge
   sees; version recorded on every merge-log entry so replays are reproducible.
@@ -351,9 +353,10 @@ order and is never asked as its own question.
   this as a real bug found in PR #589 review, noting "**A restoring or importing
   process must call the same** `register_kind` **calls before importing**"
   (`:360-371`). So: call `JournalEntry.register_kind("merge", closing=False)` /
-  `("disjoin", closing=False)` at module import of `reconciliation.py`, and say
+  `("disjoin", closing=False)` at module import of `reconciliation.py`.
 
-  Both flags matter and neither is the docstring's example value. `closing=False`
+  Both flags matter, and `closing` is NOT the docstring's example value
+  (`register_kind("merge", closing=True)` at `:351`). `closing=False`
   because a join or a disjoin does **not** close anybody's validity interval —
   only the deterministic/precedence path closes, and it does so through
   `save_and_supersede`, not through a merge kind. And `targetless=False` (the
@@ -367,8 +370,8 @@ order and is never asked as its own question.
   carried in the annotation payload. `targetless=True` is not an option —
   `register_kind` rejects `targetless and closing` together, and a targetless
   kind must carry no target at all, which would strand the annotation with
-  nothing to hang off. Also say
-  in the feature docs that any process which *writes* or *imports* merge-log
+  nothing to hang off. Also say, in the feature docs, that any process which
+  *writes* or *imports* merge-log
   annotations (a transfer restore, a backfill, a rolling deploy running the old
   image) must import `reconciliation.py` first. Reading is unaffected — an
   unrecognized kind reads back inert for membership per the reader rule, so an
@@ -731,7 +734,9 @@ above.
   module import**; both kinds require a `target` (non-targetless), enforced in
   `pre_save`
 - Add numeric constants to `Defaults`; register each in `tests/benchmarks/test_defaults_sync.py`
-- Add/export round-trip coverage for the new fields (precedent: #558)
+- Add export/import round-trip coverage for `claim_type` (precedent: #558) — the
+  only new field, and the only new state needing export coverage; the companion
+  index is deliberately not exported (it rebuilds from the merge log)
 
 ### 2. Deterministic tier
 - **Task ID**: build-rules
