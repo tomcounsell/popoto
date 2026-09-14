@@ -1143,6 +1143,54 @@ above.
 
 ## Critique Results
 
+### Round 3 (2026-09-14) — FULL roster, final concern round (`MAX_CONCERN_RECRITIQUE_ROUNDS = 3`)
+
+Round 3 opened as a re-critique of a revised plan and found the round-2 fold-ins
+substantially landed. The two round-2 structural remedies were re-verified in
+source rather than taken from the revision commit messages, and the three rows
+below are what remains. **No BLOCKER.** All three are BUILD-time obligations
+against a plan that is internally consistent; none requires another plan
+revision, and the first is already a live defect in the working tree.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | driver (structural, verified in the working tree) | **The `Defaults` sync gate is already tripped, not merely at risk.** `src/popoto/fields/constants.py` has six new uncommitted `Defaults` constants (`M5_SHORTLIST_CAP`, `M5_SYMMETRY_PROBE_ENABLED`, `M5_JUDGE_MODEL`, `M5_JUDGE_MAX_TOKENS`, `M5_REPLAY_WATERMARK_FIELD`, `MEGA_CLASS_VELOCITY_ALERT`) and `tests/` is entirely untouched — zero of the six are registered. This is the #685/#494 failure mode the plan itself documents at Technical Approach → Defaults registration, reproduced in the tree before CI ever sees it. | Task 1; Task 4; Verification row "Defaults sync registered" | `test_all_defaults_covered_by_module_constants` requires every uppercase `Defaults` attribute to appear in `MODULE_CONSTANTS` (`tests/benchmarks/overrides.py:37`) or in that test's hand-maintained exemption set. Add all six as `name -> (module, attr)` pointing at `popoto.recipes.reconciliation`, **and** expose each as a module-level alias in `reconciliation.py` — `test_module_alias_matches_defaults` dereferences the tuple, so a registry entry with no alias fails just as loudly as no entry. Verify with `pytest tests/benchmarks/test_defaults_sync.py -q` (exit 0); narrow `-k` selection on the M5 suite never reaches it, which is precisely why #685/#494 failed only in CI after review approval. `RECONCILE_LOCK_TTL_SECONDS` is correctly **absent** — do not add it back. |
+| CONCERN | Risk & Robustness | **The single-writer invariant has no runtime detection.** It is now the sole mitigation for Race 1 and Race 3, licensing the deletion of both `HSETNX` and the advisory lock, but it is a deployment discipline: nothing in the code notices a second reconciler for the same agent. The failure is silent duplication — two singleton classes replay cannot repair, because no merge was ever attempted — and the plan acknowledges as much ("a second reconciler re-opens the hazard"). A discipline that fails silently when violated is weaker than the primitives it replaced, even though it is correct when honored. | Race 1; Race 3; Task 4; Test Impact | The invariant does not need re-arming with a lock — that was correctly withdrawn — it needs to fail *loudly* instead of silently. Cheapest sufficient guard: on consumer startup register reconciler identity per agent (`SET Reconciliation:_owner:{agent_id} {run_id} NX EX <ttl>`, refreshed per pass) and on `NX` miss log an error and refuse to start rather than reconcile in parallel. Note this is a **startup** guard, not a per-entry lock, so it reintroduces no per-claim contention and no hot-path command. Correctness floor if the guard is lost: today's behavior. The existing `single_writer_invariant` test asserts the honored path (two siblings, one reconciler, one class) and cannot detect the violated one; a second test should start a second reconciler and assert it refuses. |
+| CONCERN | Risk & Robustness | **`claim_slot` is an unsalted truncated digest over a low-entropy preimage**, so it is a confirmation oracle: `sha256(f"{agent_id}|{subject}|{claim_type}")[:32]` over a guessable subject space lets a holder of the digest confirm a specific subject by brute force. This does not defeat the privacy remedy — no content is copied, and confirmation-by-guess is strictly weaker than the plaintext disclosure the digest replaced — but the residual should be recorded rather than discovered later. | Key Elements (privacy rule); Task 1 | **Do not "fix" this by salting.** A per-record salt breaks the exact-equality lookup `ClaimMembership.query.filter(claim_slot=...)` that is now Race 3's whole mitigation, and a process-global salt breaks replay from genesis across restarts — so salting trades a weak oracle for a correctness regression. Record the trade in the privacy rule as accepted, keep the digest one-way and the preimage out of the row, and let the erasure cascade bound exposure in time. If a future requirement demands unlinkability, the change is a keyed HMAC with the key persisted alongside the merge log, not a salt, and it must land together with a replay-compatibility note. |
+
+**Verified clear this round** (checked in source, no finding): the two round-2
+structural remedies both hold. `ClaimMembership` and `ClaimClass` are plain
+`Model`s with **no** `AppendOnlyMixin` — the reconciler mutates them, so
+composing it would have reproduced the round-2 BLOCKER one layer down. The
+privacy remedy is genuinely discharged rather than gestured at: the digest
+carries no subject text or plaintext `claim_type` in either model, and the
+erasure cascade has three legs (membership row, `ClaimClass` recount or
+deletion, embedding cache) with `hard_delete_cascades` asserting each. The
+withdrawn concurrency primitives are gone from every live design site — the
+seven surviving `HSETNX` mentions are all withdrawal records or the negative
+assertion in the `single_writer_invariant` test, which makes the withdrawal
+testable rather than merely stated. The single companion-key description that
+remains is inside this table's round-2 BLOCKER row, correctly carrying a
+"mechanism revised" rider: a critique row records what was found and how it was
+remedied, and rewriting its history would destroy the audit trail. Valkey
+safety holds — no `BF.*`/`CMS.*`/`TOPK.*`/`TDIGEST.*` outside the
+`command_allowlist` test's negative assertions.
+
+**Decision-basis audit (round 3's other product).** Of the five open questions
+closed in the 2026-09-14 revisions, one was closed against the recorded PM
+disposition: Q5's stream-only answer was carried into the plan as
+stream-*first* with a public direct call. That mattered technically, not just
+procedurally — the same revision deleted `HSETNX` and the advisory lock on the
+strength of a single-writer invariant that only the stream consumer enforces,
+so a second production entry point would have left a real correctness hole
+behind two removed primitives. D5 is restored to stream-only and the deletions
+now stand on a premise the document actually asserts. Q1, Q3 and Q4 were closed
+by agent judgment inside an explicit delegation, and Q2's requirement came from
+the PM while its literal convention-book text is authored here. The Resolved
+Decisions table now labels each decision's basis, and `status: Ready` should be
+read against that table rather than as a claim that all five were settled by
+evidence.
+
 ### Round 2 (2026-09-14) — FULL roster: Risk & Robustness, Scope & Value, History & Consistency
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
