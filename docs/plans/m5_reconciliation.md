@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Large
 owner: agent-a773efcbae003f9f3
@@ -7,7 +7,7 @@ created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/564
 last_comment_id: 5537009267
 revision_applied: true
-revision_applied_at: 2026-09-14T00:00:00Z
+revision_applied_at: 2026-09-14T02:50:35Z
 critique_rounds: 2
 ---
 
@@ -482,7 +482,7 @@ order and is never asked as its own question.
   escalation path for claims normalization cannot equate.
 - **Judge verdicts are not transitive — budget one symmetry re-check.**
   Recon and the design study both flag compounding false-"same" verdicts
-  (mega-classes) as the top threat. The plan decision: the forward ask
+  (mega-classes) as the top threat. The plan decision (confirmed as D1): the forward ask
   compares entry E against class C's representative in that order
   ("is E the same claim as C's representative?"); after a forward "same",
   the symmetry probe re-asks once with SWAPPED claim order
@@ -863,7 +863,11 @@ above.
 - **Agent Type**: builder
 - **Parallel**: false
 - Frozen type enum (`preference | deadline | trait | relationship | goal | procedure | note`)
-- Per-type incompatibility rules + precedence tables (self-stated > inferred everywhere; recency for supersession types; confirmation count for stable types)
+- Per-type incompatibility rules + the precedence table **exactly as fixed in
+  Solution → Precedence Table (v1)**: Rule 0 self-stated > inferred globally,
+  then `deadline` recency / the five stable types confirmation-count-then-recency,
+  `note` rule-free (never fires, never reaches precedence). Implement the
+  all-column tie as a disjunct pair, not a fallback winner
 - All outcomes through `SupersessionProtocol.save_and_supersede`; `ValidityMemberAbsentError` → re-read → `loser-absent` log
 - Assert zero judge calls on this path (spy on judge client)
 
@@ -874,8 +878,14 @@ above.
 - **Assigned To**: judge-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Versioned convention-book config; sameness judge copying `llm_verdict`'s contract (firewall, JSON schema, re-validate, never raise → abstention leaves singleton class)
-- Embedding shortlist (same subject + type, capped) with bounded subject+type index-scan fallback when numpy/provider absent
+- Versioned convention-book config — ship **Convention Book v1 verbatim** from
+  the Solution section as `CONVENTION_BOOK_V1` (version string `"v1"`), recorded
+  on every merge-log entry; sameness judge copying `llm_verdict`'s contract
+  (firewall, JSON schema, re-validate, never raise → abstention leaves singleton
+  class)
+- Embedding shortlist (same subject + type, capped), **reconciler-side — do NOT
+  add an `EmbeddingField` to `JournalEntry`** (D4), with bounded subject+type
+  index-scan fallback when numpy/provider absent
 - Symmetry probe on join (split verdict → disjunct pair, never a join)
 - Empty/whitespace statements short-circuit with zero judge calls
 
@@ -956,7 +966,7 @@ above.
 | CONCERN | Risk & Robustness | Race 1 only arbitrates two runs racing the *same* entry. Two *different* sibling entries asserting the same claim in one burst both find no candidate class and each create a singleton — permanent silent duplication that replay cannot repair, because no merge was ever attempted between them. | New Race 3; Task 4; Test Impact | Advisory lock over the shortlist→commit span: `SET Reconciliation:_lock:{agent_id}:{digest} {run_id} NX EX Defaults.RECONCILE_LOCK_TTL_SECONDS`, digest over `(agent_id, subjects[0], claim_type)` (the identity shape the deterministic tier already computes — no new identity notion). On `NX` miss, **defer to the next pass, never drop** (lag is safe per Risk 3; duplication is not). Release via `DEL` guarded on the stored `run_id` so an overrunning pass cannot delete a successor's lock. Correctness floor if the lock is lost: two singleton classes — today's behavior, never corruption. |
 | CONCERN | Risk & Robustness | The kind registry is process-global and non-persisted, and *writing* an unregistered kind raises `ValueError` in `pre_save` (a bug already hit in PR #589 review). The plan never said where the reconciler registers `merge`/`disjoin`, leaving a rolling-deploy / transfer-restore / backfill window where writes fail. | Technical Approach (register-the-merge-kinds bullet); Task 1 | Register at `reconciliation.py` **module import**: `register_kind("merge", closing=False)` and `("disjoin", closing=False)`. `closing=False` because a join/disjoin closes no validity interval (only `save_and_supersede` closes). `targetless=False` (default) means every merge-log annotation **MUST** name a `target` — `validate_kind_and_target` raises "a {kind!r} entry annotates another entry and must name a target" (`src/popoto/recipes/provenance_journal.py:527-531`), called from `pre_save`, so this fails at write time. Target the joining entry E for `merge`, one side for `disjoin` with the partner + disjunction id in the payload. `targetless=True` is not available: `register_kind` rejects `targetless and closing` together and a targetless kind must carry no target at all. Reading is safe — an unrecognized kind reads back inert for membership, so old readers degrade rather than fail. |
 | CONCERN | Scope & Value | Risk 1 promises a "mega-class detector (class size velocity alert) as telemetry", but no task builds it — grep for detector/telemetry/velocity across the task bodies returned nothing, so it would have shipped unbuilt. | Task 4; Technical Approach (Defaults list) | Add to build-loop: emit a class-size-velocity signal when a class exceeds `Defaults.MEGA_CLASS_VELOCITY_ALERT` joins per reconciler pass. Telemetry only, never a gate — a gate would block legitimate large classes. Register the constant in `tests/benchmarks/test_defaults_sync.py` (that gate fails only in CI under narrow test selection). |
-| CONCERN | Scope & Value | Task 4 commits to building *both* trigger shapes plus a spike to manage the race they jointly create, while the plan itself notes that resolving Open Q5 to stream-only dissolves that race — i.e. it builds the more complex answer by default before the cheaper question is asked. | Race 1 (spike withdrawn); Open Q5 | Half resolved structurally: the `HSETNX` claim-by-write makes both triggers correct, so the spike is gone and this is no longer a correctness risk. The **scope** half stands and is deliberately left open — Q5 remains a PM question, and answering it stream-only should shrink Task 4 rather than being discovered mid-build. Builder guidance: implement the stream trigger first and keep the direct-call entry a thin adapter over the same reconcile function, so a stream-only answer deletes an entry point rather than restructuring the loop. |
+| CONCERN | Scope & Value | Task 4 commits to building *both* trigger shapes plus a spike to manage the race they jointly create, while the plan itself notes that resolving Open Q5 to stream-only dissolves that race — i.e. it builds the more complex answer by default before the cheaper question is asked. | Race 1 (spike withdrawn); Resolved Decision D5 | Half resolved structurally: the `HSETNX` claim-by-write makes both triggers correct, so the spike is gone and this is no longer a correctness risk. The **scope** half was left open at round 2 as a PM question. **Closed in the 2026-09-14 revision as D5 (stream-first):** the `StreamConsumer` is the production trigger and the direct call is a thin adapter over the same reconcile function — exactly the builder guidance this row gave, now adopted as the decision, so a later stream-only answer deletes an entry point rather than restructuring the loop. |
 | CONCERN | History & Consistency | The two grep rows in the Verification table checked the not-yet-written `reconciliation.py` for absence of identifier strings the builder alone chooses, so equivalent logic under different names passes trivially — they cannot detect the properties they claim to gate. | Verification table (both rows replaced by four behavioral suites) | Replaced with tests that can actually fail: `append_only` (reconcile an entry, assert it is byte-identical afterwards and that `entry.save()` still raises `AppendOnlyViolation`), `replay_rebuilds_index` (`DEL` the companion families, replay from genesis, assert identical assignment), `no_m6_surfacing` (assert the `(entry, uncertainty_flag)` return shape and that `reconciliation.py` imports nothing from M6's module), `command_allowlist` (spy the client, assert core commands only — no `BF.*`/`CMS.*`). |
 | NIT | History & Consistency | Race 2's "deleted"/"removed" wording contradicts retract semantics and AC2's "superseded (never deleted)", and would send a builder to an `EXISTS` check. | Race 2 (retitled + wording note) | Nothing is deleted: `retract` "remove[s] the target from live membership while leaving it fully readable historically" (`src/popoto/recipes/provenance_journal.py:788-793`). Assert on closed live-membership with the hash still present; detect by catching `ValidityMemberAbsentError` from `save_and_supersede`, never via `EXISTS` (which would pass and hide the case). |
 
@@ -964,7 +974,7 @@ above.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| CONCERN | round 1 | Symmetry probe underspecified — "re-ask with E's phrasing included" did not define what varies between the two asks, so the probe could be implemented as a no-op re-ask. | Technical Approach (judge non-transitivity); Open Q1 | The probe swaps **claim order**: forward asks "is E the same claim as C's representative?", probe asks "is C's representative the same claim as E?". Join commits only on same/same; any split — including probe abstention — routes to a disjunct pair. Bound: at most 2x shortlist cap per entry. |
+| CONCERN | round 1 | Symmetry probe underspecified — "re-ask with E's phrasing included" did not define what varies between the two asks, so the probe could be implemented as a no-op re-ask. | Technical Approach (judge non-transitivity); Resolved Decision D1 | The probe swaps **claim order**: forward asks "is E the same claim as C's representative?", probe asks "is C's representative the same claim as E?". Join commits only on same/same; any split — including probe abstention — routes to a disjunct pair. Bound: at most 2x shortlist cap per entry. |
 | CONCERN | round 1 | Race 1's conditional `class_id` write was asserted without evidence that Popoto could express it. | Race 1 pre-build spike | Spike the NULL→id write before build-loop, or resolve Open Q5 to stream-only. **Superseded in round 2**: the spike is withdrawn — against companion state the operation is `HSETNX`, an atomic core primitive needing no transaction or Lua. |
 | CONCERN | round 1 | The deterministic tier needed a V0 predicate but the plan never said where the claim type came from, leaving it to be inferred at reconcile time. | Key Elements (per-entry claim type); Task 1 | `claim_type = IndexedField(type=str, null=True)`, assigned by capture from the extractor's type label, never inferred later; predicate is `(subjects[0], claim_type)`. Round-trips per the #558 precedent. |
 | CONCERN | round 1 | "Most-confirmed member" as representative did not say how validity-closed losers are treated, so a superseded claim could be selected as its class's representative. | Data Flow 6; Technical Approach (representative discipline); Flow | Filter `validity__current=True`. Closed losers stay in-class for audit but are excluded from representative selection **and** from confirmation counts. Confirmation-count ties break by recency. |
@@ -973,33 +983,86 @@ above.
 
 ---
 
-## Open Questions
+## Resolved Decisions (no open questions remain)
 
-1. **Symmetry probe confirmed?** The issue leaves single-verdict vs re-check to
-   the planner; this plan budgets one swapped-order symmetry re-check per
-   candidate (forward E-vs-representative, then probe representative-vs-E;
-   join commits only on same/same, any split → disjunct pair; bound at most
-   2x shortlist cap per entry). Veto = single-verdict joins with mega-class
-   telemetry only.
-2. **Convention-book v1 contents?** The "same claim" standard wording and the
-   precedence rows for `relationship | goal | procedure` need PM sign-off
-   (self-stated > inferred and deadline-recency / trait-confirmation rules are
-   set by the issue; the middle three types have no specified ordering).
-3. **Frozen type enum final?** The 7-type list (`preference | deadline | trait |
-   relationship | goal | procedure | note`) is the plan's proposal — merge or
-   split any slot now, since the enum is frozen at build and later changes break
-   decidability.
-4. **Embedding placement?** Add `EmbeddingField(source="statement")` to
-   `JournalEntry` (M1 schema change, shortlist native) vs a reconciler-side
-   sidecar index (no M1 touch, second store to keep in sync). Plan assumes the
-   former; flag if M1's model is meant to stay embedding-free. Note this is a
-   *field* question and stays legal either way: an `EmbeddingField` is populated
-   on the entry's first and only `save()`, so it does not collide with
-   append-only the way a post-hoc `class_id` did.
-5. **Trigger shape?** Plan builds both `StreamConsumer`-on-`"journal"` and a
-   direct-call entry off capture. If the host wants exactly one, which?
-   Note: answering stream-only plus the one-reconciler discipline dissolves
-   Race 1 and simplifies the loop. It is now a *simplicity* preference, not a
-   correctness dependency — the `HSETNX` claim-by-write handles both triggers
-   atomically, and the pre-build spike the earlier draft required is withdrawn.
-   Race 3 is unaffected by this answer either way.
+**Status: all five questions that were open after critique round 2 are RESOLVED
+in this revision (2026-09-14). Nothing in this plan is blocked on a human.**
+These are plan-level decisions, not discoveries — a builder implements them as
+written. Each is cross-referenced from the body as `D1`–`D5`; where a decision
+changes body text, the body is authoritative and this section is the rationale.
+
+### D1 — Symmetry probe: KEEP as specified
+
+One swapped-order symmetry re-check per candidate class. Forward ask compares
+E against C's representative; the probe re-asks with the order swapped. The join
+commits only on same/same; any split — including a probe abstention — routes to
+a disjunct pair.
+
+*Rationale:* the probe converts the worst failure mode (a silent mega-class,
+Risk 1) into the safe one (explicit uncertainty), at a bounded cost of 2x the
+shortlist cap per entry. The rejected alternative, single-verdict joins with
+mega-class telemetry only, detects the damage after it is done and leaves no
+structural barrier to it; telemetry is kept anyway (Task 4) as a second line,
+not as the first. See Technical Approach → judge non-transitivity, and AC5.
+
+### D2 — Convention book v1 and the precedence table: WRITTEN INTO THE PLAN
+
+The literal v1 standard is in Solution → **Convention Book v1**, and the
+complete per-type ordering is in Solution → **Precedence Table (v1)**. Both are
+build inputs to be implemented verbatim.
+
+*Rationale:* the three rows the critique flagged as unspecified
+(`relationship`, `goal`, `procedure`) all describe standing facts that get
+restated, so they join the **stable** family (confirmation count, then recency)
+rather than the supersession family. Family membership is not a taste call: the
+supersession family is exactly the set of types whose deterministic rule is
+same-target supersession, which today is `deadline` alone, and that rule is what
+makes "newest wins" right for it. Global Rule 0 (self-stated beats inferred) is
+set by the issue and applies to every type before any per-type row. `note` is
+rule-free — no incompatibility check, no precedence row — because a rule-free
+catch-all is the whole reason the enum can be frozen and stay decidable. The
+table is made **total** (an all-column tie yields a disjunct pair) so AC3's "no
+silent winner" is a property of the table rather than an assumption about data.
+
+### D3 — Frozen 7-type enum: ACCEPTED as proposed
+
+`preference | deadline | trait | relationship | goal | procedure | note`.
+
+*Rationale:* every type except `note` needs a decidable incompatibility rule and
+a precedence row, and D2 now supplies both for all six. `note` absorbs the tail,
+which is what lets the enum be frozen at build without an escape hatch that
+would reintroduce the open-enum decidability problem (recon Dropped bucket). No
+slot is merged or split: merging `goal` into `preference` would put an
+aspiration and a standing preference under one rule, and splitting any slot adds
+a rule family with no claim shape asking for it yet.
+
+### D4 — Embedding placement: RECONCILER-SIDE
+
+`JournalEntry` gains no `EmbeddingField`. The shortlist embeds the entry's
+`statement` inside the reconciler and keys the cache by `entry_redis_key`,
+alongside the three companion key families.
+
+*Rationale:* this holds the ownership line the append-only remedy already drew —
+M5 owns derived state, M1 owns the record — and it keeps `claim_type` the only
+new `JournalEntry` field, which is what makes Architectural Impact's "exactly
+ONE new field" literally true. Note this is a scope/ownership decision and not a
+constraint: an `EmbeddingField` would have been legal under append-only, since
+it populates on the entry's first and only `save()`. Recorded explicitly so a
+builder does not "fix" the absence by adding the field. Cost: a cache loss means
+a re-embed, acceptable because the cache is derived state behind a
+correctness-preserving fallback (Risk 4).
+
+### D5 — Trigger shape: STREAM-FIRST, direct call as a thin adapter
+
+The `StreamConsumer` on the `"journal"` stream is the production trigger. A
+public `reconcile_entry(...)` direct call exists as a thin adapter over the same
+reconcile function — the path tests drive, and the path a host without a
+consumer can call. One loop, two entry points; never two pipelines.
+
+*Rationale:* this is the shape the round-2 critique itself recommended, adopted
+as the decision rather than left as guidance. Correctness does not depend on the
+answer — Race 1's `HSETNX` claim-by-write arbitrates concurrent entry points
+atomically, and Race 3 is unaffected either way — so the only thing at stake was
+scope. Structuring it this way means a later stream-only answer *deletes an entry
+point* instead of restructuring the loop, which is strictly cheaper than
+discovering the question mid-build.
