@@ -858,6 +858,26 @@ invoke it".
 - [ ] Create `docs/features/reconciliation.md`: equivalence classes, convention
   book (with version), frozen type enum + per-type rules + precedence tables,
   disjunct-pair semantics, merge-log replay procedure, embedding-fallback behavior.
+- [ ] **Document the erasure cascade as an operator procedure, not a footnote.**
+  `JournalEntry.hard_delete()` is the retention/erasure primitive, and its
+  documented scope is the record plus "every trace of its **own** derived
+  state" — explicitly "**not** 'every trace of the record anywhere in the
+  keyspace'" (`src/popoto/fields/append_only.py:242-294`). M5 adds derived
+  state the primitive therefore does not reach, so the page must say: to erase
+  a reconciled entry, call M5's `erase_entry(entry)`, which (1) `hard_delete()`s
+  the journal record, (2) deletes its `ClaimMembership` row, (3) deletes its
+  cached reconciler-side embedding, and (4) recomputes the affected
+  `ClaimClass` row — reselecting `representative_key` and decrementing
+  `member_count`, or dropping the row when the class is left empty. Calling
+  `hard_delete()` directly leaves a dangling membership row and, worse, a
+  `ClaimClass` whose representative points at an erased key. State plainly why
+  the membership row is survivable at all: it carries only the one-way
+  `claim_slot` digest and no claim content, by the Key Elements invariant —
+  which matters because `JournalEntry` also composes `NeverRecordMixin`
+  (`src/popoto/recipes/provenance_journal.py:282`).
+- [ ] Document the **single-writer invariant** as a deployment constraint, with
+  the consequence named: running a second reconciler per agent re-opens Races 1
+  and 3 and requires an atomic claim plus per-claim-slot serialization.
 - [ ] Add entry to `docs/features/` index (mkdocs nav if index-driven — follow
   the precedent of the validity/journal feature pages).
 
@@ -898,7 +918,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 
 - **Builder (journal-model)**
   - Name: model-builder
-  - Role: `claim_type` field, companion class/disjunction index + M5 accessor, merge-kind registration, Defaults constants
+  - Role: `claim_type` field, the `ClaimMembership` / `ClaimClass` models + M5 accessor, merge-kind registration, Defaults constants
   - Agent Type: builder
   - Resume: true
 
@@ -914,7 +934,7 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
   - Role: convention book config, sameness judge (`llm_verdict` contract), embedding shortlist + fallback, symmetry probe, reconcile loop + watermark + merge log + replay
   - Agent Type: builder
   - Resume: true
-  - Domain: Redis/Popoto data (claim-by-write via `HSETNX` on the companion index; per-claim-slot advisory lock; one-reconciler-per-agent discipline)
+  - Domain: Redis/Popoto data (single-writer invariant — one reconciler per agent, sequential passes; `claim_slot` equality lookup before the embedding shortlist)
 
 - **Validator (reconciliation)**
   - Name: recon-validator
@@ -940,7 +960,7 @@ above.
 ### 1. Journal model surface
 - **Task ID**: build-model
 - **Depends On**: none
-- **Validates**: `tests/test_reconciliation_m5.py::test_claim_type_defaults_null`, `::test_reconcile_never_mutates_an_entry` (create), existing journal suites unchanged
+- **Validates**: `tests/test_reconciliation_m5.py::test_claim_type_defaults_null`, `::test_reconcile_never_mutates_an_entry`, `::test_membership_row_holds_no_claim_content`, `::test_hard_delete_cascades_to_membership_and_class` (create), existing journal suites unchanged
 - **Assigned To**: model-builder
 - **Agent Type**: builder
 - **Parallel**: true
@@ -950,18 +970,34 @@ above.
   `(subjects[0], claim_type)` predicate)
 - Do **NOT** add `class_id` or disjunction-link fields to `JournalEntry`: it is
   `AppendOnlyMixin` and any post-hoc field write raises `AppendOnlyViolation`.
-  Build the companion index instead — `Reconciliation:_class_of:{agent_id}`
-  (HASH), `_class_members:{agent_id}:{class_id}` (SET),
-  `_disjunction:{agent_id}:{disjunction_id}` (SET) — plus the M5 accessor
-  M6/M7/M8 read class membership through
+  Add the two M5-owned plain models instead, exactly as declared in Key
+  Elements — `ClaimMembership` (`entry_redis_key` KeyField; `class_id`,
+  `claim_slot`, `disjunction_id` indexed) and `ClaimClass` (`class_id`
+  KeyField; `agent_id`, `representative_key`, `member_count`, `updated_at`) —
+  plus the M5 accessor M6/M7/M8 read class membership through. Neither model
+  gets `AppendOnlyMixin`: a relabel must be an ordinary `save()`
+- **Privacy invariant, enforced by test:** `ClaimMembership` stores the
+  `claim_slot` **digest** (`sha256(f"{agent_id}|{subject}|{claim_type}")`,
+  32 hex chars), never the subject text and never `claim_type` in plaintext;
+  `ClaimClass` stores no claim content either. Implement the erasure cascade in
+  the same task: an `erase_entry(entry)` helper that calls
+  `JournalEntry.hard_delete()`, deletes that entry's `ClaimMembership` row and
+  cached embedding, and recomputes the affected `ClaimClass` row (drop it if
+  the class is now empty, otherwise reselect `representative_key` and decrement
+  `member_count`). `hard_delete()` alone does **not** reach these — its scope
+  is the record's own derived state, explicitly "not 'every trace of the record
+  anywhere in the keyspace'" (`src/popoto/fields/append_only.py:242-294`)
 - Register merge/disjoin annotation kinds via `register_kind("merge",
   closing=False)` / `("disjoin", closing=False)` **at `reconciliation.py`
   module import**; both kinds require a `target` (non-targetless), enforced in
   `pre_save`
 - Add numeric constants to `Defaults`; register each in `tests/benchmarks/test_defaults_sync.py`
 - Add export/import round-trip coverage for `claim_type` (precedent: #558) — the
-  only new field, and the only new state needing export coverage; the companion
-  index is deliberately not exported (it rebuilds from the merge log)
+  only new field, and the only new state needing export coverage; the two
+  reconciliation models are deliberately not exported (they rebuild from the
+  merge log, and they are plain Models, so the transfer declaration that guards
+  `Field` subclasses and model-level mixins does not apply to them —
+  `tests/test_transfer_roundtrip.py:729` and `:754`)
 
 ### 2. Deterministic tier
 - **Task ID**: build-rules
@@ -1000,19 +1036,25 @@ above.
 ### 4. Reconcile loop + merge log + replay
 - **Task ID**: build-loop
 - **Depends On**: build-rules, build-judge
-- **Validates**: `tests/test_reconciliation_m5.py::test_restatement_confirms`, `::test_replay_reverses_merge`, `::test_concurrent_runs_claim_by_write` (create)
+- **Validates**: `tests/test_reconciliation_m5.py::test_restatement_confirms`, `::test_replay_reverses_merge`, `::test_single_writer_invariant_joins_siblings`, `::test_sibling_found_by_claim_slot_without_shortlist` (create)
 - **Assigned To**: judge-builder
 - **Agent Type**: builder
 - **Parallel**: false
 - `StreamConsumer`-on-`"journal"` trigger as the **production** trigger (D5),
   plus a public `reconcile_entry(...)` direct call that is a thin adapter over
   the same reconcile function — one loop, two entry points, never two
-  pipelines; claim-by-write via
-  `HSETNX` on `_class_of` (no WATCH/MULTI, no Lua — see Race 1); merge-log append
+  pipelines, both behind the **single-writer invariant** (one reconciler per
+  agent, entries processed sequentially — Races 1 and 3). No claim-by-write and
+  no advisory lock: both were withdrawn, and neither `HSETNX` nor
+  `SET ... NX EX` should appear in this module. Merge-log append
   `{class_a, class_b, rationale, ts, judge_version}`; watermark-bounded replay +
-  explicit genesis repair op that rebuilds the companion index from the log
-- Per-claim-slot advisory lock (`SET ... NX EX`) over the shortlist→commit span,
-  with deferral (never drop) on lock-miss — see Race 3
+  explicit genesis repair op that rebuilds both reconciliation tables from the
+  log
+- Look up candidate siblings by exact `claim_slot` equality
+  (`ClaimMembership.query.filter(claim_slot=...)`) **before** the embedding
+  shortlist, so a sibling committed earlier in the same pass is found by index
+  rather than by similarity — this is what makes the single-writer invariant
+  sufficient against Race 3
 - Restatement path routes through `ProvenanceJournal.confirm` (confirmation count)
 - Mega-class detector: emit a class-size-velocity telemetry signal when a class
   grows past `Defaults.MEGA_CLASS_VELOCITY_ALERT` joins per reconciler pass.
@@ -1060,7 +1102,10 @@ above.
 | Format clean | `black --check src/ tests/` | exit code 0 |
 | Type ratchet holds | `scripts/mypy_ratchet.py` | exit code 0 |
 | No post-hoc writes to append-only entries | `pytest tests/test_reconciliation_m5.py -q -k "append_only"` | exit 0 — a test that reconciles an entry and then asserts `JournalEntry.get(entry_id)` is byte-identical to its pre-reconcile state, and that a deliberate `entry.save()` still raises `AppendOnlyViolation` |
-| Companion index is rebuildable from the log | `pytest tests/test_reconciliation_m5.py -q -k "replay_rebuilds_index"` | exit 0 — `DEL` the three companion key families, replay from genesis, assert class assignment is identical |
+| Derived index is rebuildable from the log | `pytest tests/test_reconciliation_m5.py -q -k "replay_rebuilds_index"` | exit 0 — delete every `ClaimMembership` and `ClaimClass` row, replay from genesis, assert class assignment is identical |
+| Membership rows hold no claim content | `pytest tests/test_reconciliation_m5.py -q -k "membership_row_holds_no_claim_content"` | exit 0 — reconcile an entry whose subject is a unique sentinel string, then assert the sentinel and the `claim_type` value appear in no field of its `ClaimMembership` row or its `ClaimClass` row (assert over the persisted field values, not over source text) |
+| Erasure cascades past `hard_delete` | `pytest tests/test_reconciliation_m5.py -q -k "hard_delete_cascades"` | exit 0 — reconcile two entries into one class, erase one via the M5 `erase_entry` helper, assert its `ClaimMembership` row and cached embedding are gone and the surviving `ClaimClass` row has a recomputed `representative_key` and `member_count`; erasing the last member drops the `ClaimClass` row |
+| No withdrawn concurrency primitives | `pytest tests/test_reconciliation_m5.py -q -k "single_writer_invariant"` | exit 0 — two sibling entries processed in sequence by one reconciler land in ONE class, and the client spy records no `HSETNX` and no `SET ... NX` (the withdrawn Race 1 / Race 3 mechanisms) |
 | No M6 surfacing in M5 module | `pytest tests/test_reconciliation_m5.py -q -k "no_m6_surfacing"` | exit 0 — asserts M5's representative-selection returns a plain `(entry, uncertainty_flag)` value and that `reconciliation.py` imports nothing from M6's module |
 | Valkey-safe command set | `pytest tests/test_reconciliation_m5.py -q -k "command_allowlist"` | exit 0 — spies the client and asserts the reconciler issues only core commands (no `BF.*`/`CMS.*`/module calls) |
 
