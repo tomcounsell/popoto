@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: Planning
 type: feature
 appetite: Large
 owner: agent-a773efcbae003f9f3
@@ -1187,9 +1187,11 @@ behind two removed primitives. D5 is restored to stream-only and the deletions
 now stand on a premise the document actually asserts. Q1, Q3 and Q4 were closed
 by agent judgment inside an explicit delegation, and Q2's requirement came from
 the PM while its literal convention-book text is authored here. The Resolved
-Decisions table now labels each decision's basis, and `status: Ready` should be
-read against that table rather than as a claim that all five were settled by
-evidence.
+Decisions table now labels each decision's basis. The earlier `status: Ready`
+stamp, and the commit messages claiming the revisions "close all open questions"
+and "spend the PM sign-off budget", overstated that basis; `status` is set back
+to `Planning` for the duration of this round and the post-round-3 `/do-plan` leg
+flips it, so readiness is asserted after the audit rather than alongside it.
 
 ### Round 2 (2026-09-14) — FULL roster: Risk & Robustness, Scope & Value, History & Consistency
 
