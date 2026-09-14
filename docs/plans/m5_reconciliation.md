@@ -487,15 +487,20 @@ order and is never asked as its own question.
 
 ### Technical Approach
 
-- **Class membership is companion state, and the merge log is authoritative.**
-  Concrete shape (all core Redis commands — Valkey-safe, no modules; every
-  access through `get_redis()` / `get_REDIS_DB()`, never a
-  `POPOTO_REDIS_DB` import):
-  - `Reconciliation:_class_of:{agent_id}` — HASH, `entry_redis_key → class_id`.
-  - `Reconciliation:_class_members:{agent_id}:{class_id}` — SET of entry keys.
-  - `Reconciliation:_disjunction:{agent_id}:{disjunction_id}` — SET of entry keys.
+- **Class membership lives in two M5-owned models, and the merge log is
+  authoritative.** The shape is declared in Key Elements: `ClaimMembership`
+  (keyed by `entry_redis_key`, carrying `class_id`, `claim_slot`,
+  `disjunction_id`) and `ClaimClass` (keyed by `class_id`, carrying `agent_id`,
+  `representative_key`, `member_count`, `updated_at`). Both are plain
+  `Model`s — no `AppendOnlyMixin` — so every write is an ordinary `save()` and
+  every read is an ordinary indexed query. No hand-rolled key layout, no
+  `HSET`/`SMEMBERS`/`SUNIONSTORE` sequence, and therefore nothing outside the
+  ORM to keep Valkey-safe: popoto's own writer issues only core commands. Where
+  M5 does touch Redis directly it goes through `get_redis()` /
+  `get_REDIS_DB()`, never a `POPOTO_REDIS_DB` import (memory:
+  `project_new_code_must_use_get_redis_db`).
 
-  The **merge log is the source of truth**; these three keys are a *rebuildable
+  The **merge log is the source of truth**; these two tables are a *rebuildable
   index* derived from it. That is what answers the "no sidecar to keep in sync"
   objection the earlier draft raised against itself: there is nothing to keep in
   sync, because a divergent index is discarded and recomputed from the log
@@ -503,13 +508,15 @@ order and is never asked as its own question.
   (reversibility by replay) structural rather than a property to be tested into
   existence — replay rebuilds the index by construction. A crash mid-relabel is
   therefore a repair, not a corruption: rerun replay for that class.
-  Relabel-on-merge is `SMEMBERS` loser → `HSET` each member to the winner's
-  `class_id` → `SUNIONSTORE` winner ← winner ∪ loser → `DEL` loser set, safe
-  under the one-reconciler-per-agent discipline and idempotent on re-run.
+  Relabel-on-merge is `ClaimMembership.query.filter(class_id=loser)` → set each
+  row's `class_id` to the winner and `save()` → update the winner's
+  `ClaimClass` counts → delete the loser's `ClaimClass` row. Safe under the
+  single-writer invariant (one reconciler per agent) and idempotent on re-run,
+  since a row already relabeled matches the winner's filter instead.
 - **Nothing M5 writes ever mutates a persisted `JournalEntry`.** Build-time
   rule, stated once so no builder has to rediscover it: the only legal writes
   are (a) fields set before an entry's first `save()`, (b) new appended
-  annotation entries, (c) reconciler-owned companion keys above. Any design
+  annotation entries, (c) rows in M5's own two models above. Any design
   that needs to "update" an entry is wrong by construction — `AppendOnlyMixin`
   refuses it, and `hard_delete()` is scoped to "retention and erasure, not for
   test teardown" (`src/popoto/fields/append_only.py:86-93`) and is not a route
@@ -584,8 +591,8 @@ order and is never asked as its own question.
 - **Embeddings are reconciler-side; `JournalEntry` stays embedding-free** (D4).
   M5 adds NO `EmbeddingField` to M1's model. The shortlist computes/caches
   embeddings over the entry's `statement` inside the reconciler and keys them by
-  `entry_redis_key` in reconciler-owned state, alongside the three companion key
-  families. This is the same ownership line the append-only remedy draws — M5
+  `entry_redis_key` in reconciler-owned state, alongside the two reconciliation
+  models. This is the same ownership line the append-only remedy draws — M5
   owns derived state, M1 owns the record — and it keeps `claim_type` the only
   new field, which is what makes the "exactly one new field" claim in
   Architectural Impact true rather than approximately true. The cost is that a
@@ -594,7 +601,11 @@ order and is never asked as its own question.
   truth. An `EmbeddingField` on `JournalEntry` would also have been legal under
   append-only (it populates on the first and only `save()`), so this is a
   scope/ownership decision, not a constraint — recorded so a builder does not
-  "fix" it by adding the field.
+  "fix" it by adding the field. One consequence follows from the Key Elements
+  privacy rule: an embedding is a lossy encoding of `statement`, so the
+  reconciler-side cache is content-derived state in a store `hard_delete()`
+  does not reach, and it joins the erasure cascade — erasing an entry drops its
+  cached vector along with its `ClaimMembership` row.
 - **Embedding fallback**: if numpy/provider is absent, the shortlist degrades
   to same-subject + same-type index scan (bounded by `Defaults` cap) with zero
   judge-call change — recall narrows, correctness properties hold.
@@ -602,8 +613,17 @@ order and is never asked as its own question.
   doctrine) and every new one is registered in
   `tests/benchmarks/test_defaults_sync.py`: shortlist cap, symmetry-probe
   on/off, replay watermark field, judge model/token caps (mirroring
-  `VERDICT_MODEL` / `VERDICT_MAX_TOKENS`), `RECONCILE_LOCK_TTL_SECONDS`
-  (Race 3), and `MEGA_CLASS_VELOCITY_ALERT` (Risk 1 telemetry).
+  `VERDICT_MODEL` / `VERDICT_MAX_TOKENS`), and `MEGA_CLASS_VELOCITY_ALERT`
+  (Risk 1 telemetry). Registration is not optional bookkeeping:
+  `test_all_defaults_covered_by_module_constants` collects *every* uppercase
+  `Defaults` attribute and fails on any that has neither a module-level alias
+  in `MODULE_CONSTANTS` nor an entry in that test's explicit
+  exemption set (`tests/benchmarks/test_defaults_sync.py:38-201`) — and a
+  narrow lane test selection never runs it, so the failure surfaces in CI after
+  review (memory: `project_defaults_sync_gate`). This is also why the
+  round-2 `RECONCILE_LOCK_TTL_SECONDS` constant is **not** in that list: with
+  the advisory lock withdrawn (Race 3) the constant has no reader, and an
+  unregistered constant is a red gate rather than harmless dead weight.
 - **Judge failure contract copies `llm_verdict`**: firewall before the call,
   JSON-schema output, re-validate every field, never raise — failures map to a
   logged abstention that leaves the entry unclassified (new singleton class),
@@ -714,27 +734,31 @@ narrows); deterministic tier unaffected. Documented in feature docs.
 **Trigger:** Overlapping post-turn triggers (stream redelivery + direct call)
 both shortlist and judge the same entry concurrently.
 **Data prerequisite:** Entry persisted in journal before either run reads it.
-**State prerequisite:** No `_class_of` entry for the fresh entry's key at both
-runs' read time.
-**Mitigation:** Claim-by-write, now a **single atomic core command** rather than
-a transaction: `HSETNX Reconciliation:_class_of:{agent_id} {entry_redis_key}
-{class_id}`. `HSETNX` returns 1 to exactly one caller and 0 to the other, so the
-loser reads the winner's `class_id` back with `HGET` and re-runs that entry
-against its now-assigned class. Merge-log append is idempotent per
-`(entry_id, run_watermark)`. At-most-one reconciler per agent documented
-(mirrors `crystallize`'s one-crystallizer-per-partition).
-**No pre-build spike needed — the earlier WATCH/MULTI-or-Lua-CAS spike is
-withdrawn.** It existed only because the draft stored `class_id` as a field on
-an append-only record, where a conditional NULL→id write has no primitive.
-Against companion state the operation *is* the primitive: `HSETNX` is
-atomic create-if-absent, core to both Redis and Valkey, needs no transaction, no
-`WATCH` (and so cannot trip `_validate_caller_pipeline`'s WATCH-without-MULTI
-refusal at `src/popoto/fields/supersession.py:614-651`), and no Lua.
-**D5 keeps both entry points** (stream-first, direct call as a thin adapter), so
-this race stays live by design rather than being dissolved by a stream-only
-answer — which is fine, because `HSETNX` is its whole mitigation and the
-direct-call path is the same reconcile function, not a second implementation
-that could arbitrate differently.
+**State prerequisite:** No `ClaimMembership` row for the fresh entry's key at
+both runs' read time.
+**Mitigation — the single-writer invariant, and nothing else.** M5 runs
+**at most one reconciler per agent, processing entries sequentially** (mirrors
+`crystallize`'s one-crystallizer-per-partition). Under that invariant there is
+no second run to race: both entry points (stream consumer and the `D5` direct
+adapter) funnel into the same reconcile function behind the same single writer,
+so "two runs" is a deployment error, not a state the code arbitrates. Merge-log
+append stays idempotent per `(entry_id, run_watermark)`, which makes a
+crash-and-rerun of the *same* writer safe — the property actually needed.
+**The round-2 `HSETNX` claim-by-write is withdrawn**, along with the round-1
+WATCH/MULTI-or-Lua-CAS spike it replaced. The spike existed only because an
+early draft stored `class_id` as a field on an append-only record, where a
+conditional NULL→id write has no primitive; `HSETNX` then became available once
+membership moved out of the entry. But under a single sequential reconciler it
+arbitrates a collision that cannot occur, and it is not free: it fixes a
+hand-rolled hash layout that the `ClaimMembership` model no longer uses, so
+keeping it would mean writing one piece of membership state outside the ORM for
+a benefit only a second writer could collect.
+**Deferred, not forgotten:** reintroducing a second reconciler (sharding by
+agent range, or a parallel pass) **requires reintroducing an atomic claim** at
+the same time — a `ClaimMembership` row created under a create-if-absent
+primitive rather than a plain `save()`. Whoever proposes the second writer owns
+that change; the single-writer invariant is the load-bearing assumption here and
+must be named in the feature docs, not just in this plan.
 
 ### Race 2: Loser leaves live membership between shortlist and `save_and_supersede`
 **Location:** reconcile loop → `SupersessionProtocol.save_and_supersede`
@@ -758,32 +782,44 @@ catching `ValidityMemberAbsentError` from `save_and_supersede` — never an
 ### Race 3: Two sibling entries of the same claim each create a singleton class
 **Location:** new `recipes/reconciliation.py`, shortlist-read → commit-write span
 **Trigger:** Burst capture produces two *different* fresh entries asserting the
-same claim. Both are shortlisted before either has committed a `class_id`, so
-each finds no candidate class and each creates its own singleton. Race 1's
-`HSETNX` does not help: the two entries have different keys, so both writes
-succeed legitimately.
+same claim, and both are shortlisted before either has committed a `class_id`,
+so each finds no candidate class and each creates its own singleton. The two
+entries have different keys, so no per-entry claim primitive would arbitrate
+them — both writes are legitimate.
 **Data prerequisite:** Two persisted entries, same `agent_id`, same
-`claim_type`, overlapping `subjects`, neither yet in `_class_of`.
-**State prerequisite:** Both in the same reconciler window.
+`claim_type`, overlapping `subjects`, neither yet holding a `ClaimMembership`
+row.
+**State prerequisite:** Both shortlisted inside one interleaved
+shortlist→commit span — i.e. *only reachable if the single-writer invariant is
+broken*.
 **Why it matters:** this is the one failure the merge log cannot repair by
 replay, because no merge was ever *attempted* between the siblings — replay
 faithfully reproduces two separate classes. It is a permanent silent
 duplication, which is precisely the bug M5 exists to fix.
-**Mitigation:** serialize the shortlist→commit span per claim slot with an
-advisory lock: `SET Reconciliation:_lock:{agent_id}:{digest} {run_id} NX EX
-{Defaults.RECONCILE_LOCK_TTL_SECONDS}`, where `digest` is over
-`(agent_id, subjects[0], claim_type)` — the same identity shape the
-deterministic tier already computes, so no new notion of identity is
-introduced. On `NX` failure the entry is **deferred to the next reconciler
-pass, never dropped** (lag is safe per Risk 3; silent duplication is not).
-Release with a `DEL` guarded on the stored `run_id` so a pass that overran its
-TTL cannot delete a successor's lock. `SET ... NX EX` is core to Redis and
-Valkey. The lock is advisory only: the correctness floor if it is lost or
-expires early is "two singleton classes", i.e. today's behavior, never
-corruption.
-**Test:** two entries with identical `claim_type` + `subjects` reconciled
-concurrently land in ONE class; and a second test asserting a deferred entry is
-picked up by the following pass rather than skipped.
+**Mitigation — the single-writer invariant, made effective by `claim_slot`.**
+A sequential reconciler commits entry A's `ClaimMembership` row *before* it
+shortlists entry B, so the interleaving this race needs never occurs. What
+makes the invariant sufficient rather than merely hopeful is that B's lookup
+does not depend on the embedding shortlist finding A: B computes its own
+`claim_slot` digest and queries `ClaimMembership.query.filter(claim_slot=...)`
+first. A sibling committed in the same pass is therefore found by exact slot
+equality — an indexed lookup, not a similarity guess — and B joins A's class
+instead of creating a second singleton. (This is the functional half of the
+digest whose privacy half is argued in Key Elements: slot *equality* is all
+reconciliation needs, which is why a one-way digest costs nothing here.)
+**The round-2 advisory lock is withdrawn**, and `Defaults.RECONCILE_LOCK_TTL_SECONDS`
+with it. Under a single sequential writer the lock is never contended, so it
+would buy nothing while adding an unread `Defaults` constant — which is a CI
+failure, not dead weight (see the `test_defaults_sync.py` note in Technical
+Approach).
+**Deferred, not forgotten:** a second reconciler re-opens this race in the form
+the lock addressed, and reintroducing one requires reintroducing per-claim-slot
+serialization along with Race 1's atomic claim. Same owner, same change.
+**Test:** two sibling entries with identical `claim_type` + `subjects`,
+processed in sequence by one reconciler, land in ONE class (the
+single-writer-invariant test); plus a test that the second entry is joined via
+the `claim_slot` lookup with the embedding shortlist stubbed to return nothing,
+so the test fails if the slot index is skipped.
 
 No other concurrency: merge-log appends are immutable inserts; representative
 reads are last-write-wins on confirmation counts and tolerate staleness.
