@@ -1425,6 +1425,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../../features/belief-sheet-view/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Belief-Sheet View
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
         
   
@@ -3474,7 +3502,25 @@ ignores <code>Defaults.DECAY_RATE</code>.</p>
 <span class="normal"><a href="#__codelineno-0-592">592</a></span>
 <span class="normal"><a href="#__codelineno-0-593">593</a></span>
 <span class="normal"><a href="#__codelineno-0-594">594</a></span>
-<span class="normal"><a href="#__codelineno-0-595">595</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="k">class</span><span class="w"> </span><span class="nc">Defaults</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span>
+<span class="normal"><a href="#__codelineno-0-598">598</a></span>
+<span class="normal"><a href="#__codelineno-0-599">599</a></span>
+<span class="normal"><a href="#__codelineno-0-600">600</a></span>
+<span class="normal"><a href="#__codelineno-0-601">601</a></span>
+<span class="normal"><a href="#__codelineno-0-602">602</a></span>
+<span class="normal"><a href="#__codelineno-0-603">603</a></span>
+<span class="normal"><a href="#__codelineno-0-604">604</a></span>
+<span class="normal"><a href="#__codelineno-0-605">605</a></span>
+<span class="normal"><a href="#__codelineno-0-606">606</a></span>
+<span class="normal"><a href="#__codelineno-0-607">607</a></span>
+<span class="normal"><a href="#__codelineno-0-608">608</a></span>
+<span class="normal"><a href="#__codelineno-0-609">609</a></span>
+<span class="normal"><a href="#__codelineno-0-610">610</a></span>
+<span class="normal"><a href="#__codelineno-0-611">611</a></span>
+<span class="normal"><a href="#__codelineno-0-612">612</a></span>
+<span class="normal"><a href="#__codelineno-0-613">613</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="k">class</span><span class="w"> </span><span class="nc">Defaults</span><span class="p">:</span>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="w">    </span><span class="sd">"""Central registry of tunable behavioral constants (Category 1).</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    Override any constant before model definition or at runtime::</span>
@@ -3828,59 +3874,77 @@ ignores <code>Defaults.DECAY_RATE</code>.</p>
 <a id="__codelineno-0-540" name="__codelineno-0-540"></a>    <span class="c1"># magic-number rule.</span>
 <a id="__codelineno-0-541" name="__codelineno-0-541"></a>    <span class="n">M3_ASSEMBLY_CLAIM_TTL_MS</span> <span class="o">=</span> <span class="mi">30_000</span>
 <a id="__codelineno-0-542" name="__codelineno-0-542"></a>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>    <span class="c1"># -- reference resolution (extraction/resolution.py, #563) --</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. Default True per the</span>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="c1"># repo's default-on doctrine; a PyPI adopter who cannot edit model code</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="c1"># still needs a way to turn the stage off (e.g. no `anthropic` client</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="c1"># available). Read from the environment at import</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>    <span class="c1"># (``POPOTO_M4_RESOLUTION_ENABLED``); assign directly to override at</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="c1"># runtime.</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="n">M4_RESOLUTION_ENABLED</span> <span class="o">=</span> <span class="n">_read_m4_resolution_switch</span><span class="p">()</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="c1"># Window truncation bound 1 of 2, in turns. A turn count alone does not</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="c1"># bound prompt size, so it is paired with a char bound below; whichever</span>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="c1"># binds first truncates oldest-first (Decision 1).</span>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="n">M4_WINDOW_MAX_TURNS</span> <span class="o">=</span> <span class="mi">8</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="c1"># Window truncation bound 2 of 2, in characters. A char bound alone can</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a>    <span class="c1"># slice a single turn in half, so it is paired with the turn-count bound</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="c1"># above (Decision 1).</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a>    <span class="n">M4_WINDOW_MAX_CHARS</span> <span class="o">=</span> <span class="mi">4000</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="c1"># Cap on references returned per candidate. Re-validation rejects a reply</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>    <span class="c1"># over this cap rather than truncating it, so a runaway model response</span>
-<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="c1"># cannot silently balloon a single candidate's evidence.</span>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="n">M4_MAX_REFERENCES_PER_CANDIDATE</span> <span class="o">=</span> <span class="mi">8</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a>    <span class="c1"># Lower bound on ``evidence_gap`` candidate referents. Below this there is</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a>    <span class="c1"># no genuine ambiguity to report -- a single candidate is a resolution,</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="c1"># not a gap.</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a>    <span class="n">M4_EVIDENCE_GAP_MIN_CANDIDATES</span> <span class="o">=</span> <span class="mi">2</span>
-<a id="__codelineno-0-567" name="__codelineno-0-567"></a>    <span class="c1"># Upper bound on ``evidence_gap`` candidate referents. Above this the</span>
-<a id="__codelineno-0-568" name="__codelineno-0-568"></a>    <span class="c1"># model is listing possibilities rather than narrowing them, which is not</span>
-<a id="__codelineno-0-569" name="__codelineno-0-569"></a>    <span class="c1"># useful evidence for the one clarifying question the record carries.</span>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a>    <span class="n">M4_EVIDENCE_GAP_MAX_CANDIDATES</span> <span class="o">=</span> <span class="mi">4</span>
-<a id="__codelineno-0-571" name="__codelineno-0-571"></a>    <span class="c1"># Max length of an ``assumed`` status's one-line assumption. Re-validation</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>    <span class="c1"># enforces this (and no newlines) so the assumption stays a scannable</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>    <span class="c1"># audit line, not free-form prose.</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="n">M4_ASSUMPTION_MAX_CHARS</span> <span class="o">=</span> <span class="mi">200</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>    <span class="c1"># Max length of an ``evidence_gap`` status's clarifying question, for the</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>    <span class="c1"># same scannability reason as ``M4_ASSUMPTION_MAX_CHARS`` above.</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>    <span class="n">M4_QUESTION_MAX_CHARS</span> <span class="o">=</span> <span class="mi">200</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="c1"># Multiplicative term of the ``statement`` length bound relative to</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>    <span class="c1"># ``verbatim`` (paired with ``M4_STATEMENT_MAX_GROWTH_CHARS`` below).</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>    <span class="c1"># Re-validation enforces this so the model cannot turn a clause into a</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="c1"># paragraph of invention.</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="n">M4_STATEMENT_MAX_GROWTH_FACTOR</span> <span class="o">=</span> <span class="mf">2.0</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>    <span class="c1"># Additive term of the ``statement`` length bound relative to</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>    <span class="c1"># ``verbatim``; see ``M4_STATEMENT_MAX_GROWTH_FACTOR`` above. The additive</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>    <span class="c1"># term keeps very short verbatims from being bounded to near-zero growth.</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="n">M4_STATEMENT_MAX_GROWTH_CHARS</span> <span class="o">=</span> <span class="mi">120</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a>    <span class="c1"># Temporal roles that emit ``valid_from`` (Decision 4). Onsets only, by</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="c1"># deliberate narrowing of the amendment that also named deadlines:</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>    <span class="c1"># emitting a future deadline as ``valid_from`` would hide the obligation</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>    <span class="c1"># from as-of retrieval until the deadline arrives, which is a data error.</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>    <span class="c1"># A constant rather than a literal in the emission code so a maintainer</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>    <span class="c1"># reversal ("deadlines also emit") is a one-tuple change, not a rewrite;</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>    <span class="c1"># a parameterised test flips it to ("onset", "deadline") and asserts a</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>    <span class="c1"># deadline reference then does emit.</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>    <span class="n">M4_VALID_FROM_ROLES</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"onset"</span><span class="p">,)</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>    <span class="c1"># -- belief-sheet view resolver (recipes/view_resolver.py, #565) ---------</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="c1"># Policy numerics for the M6 read path. Read directly from Defaults at</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="c1"># call time (per-resolve policy resolution), never via a module-level</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="c1"># alias: an import-time-bound alias would defeat runtime overrides and</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="c1"># per-call policy dicts. Registered as exemptions in</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>    <span class="c1"># tests/benchmarks/test_defaults_sync.py, same shape as the validity and</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="c1"># journal switches above.</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="c1"># Per-record staleness cutoff: a claim whose decayed relevance is below</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="c1"># this is annotated stale. Mirrors DEFAULT_SURFACING_THRESHOLD (0.5).</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="n">VIEW_RESOLVER_STALENESS_THRESHOLD</span> <span class="o">=</span> <span class="mf">0.5</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="c1"># Retrieval widening while the reader gate is active: the resolver asks</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="c1"># the assembler for max_items * this many candidates so pre-truncation</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="c1"># gating can back-fill from headroom instead of returning short.</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>    <span class="n">VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER</span> <span class="o">=</span> <span class="mi">2</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="c1"># Capped extra pulls when gate rejection still leaves the sheet short:</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a>    <span class="c1"># at most this many re-retrievals excluding already-seen keys.</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="n">VIEW_RESOLVER_MAX_BACKFILL_PULLS</span> <span class="o">=</span> <span class="mi">1</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="c1"># -- reference resolution (extraction/resolution.py, #563) --</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="c1"># Deploy-level kill switch, not a tuning constant. Default True per the</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>    <span class="c1"># repo's default-on doctrine; a PyPI adopter who cannot edit model code</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a>    <span class="c1"># still needs a way to turn the stage off (e.g. no `anthropic` client</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="c1"># available). Read from the environment at import</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>    <span class="c1"># (``POPOTO_M4_RESOLUTION_ENABLED``); assign directly to override at</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a>    <span class="c1"># runtime.</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a>    <span class="n">M4_RESOLUTION_ENABLED</span> <span class="o">=</span> <span class="n">_read_m4_resolution_switch</span><span class="p">()</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>    <span class="c1"># Window truncation bound 1 of 2, in turns. A turn count alone does not</span>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a>    <span class="c1"># bound prompt size, so it is paired with a char bound below; whichever</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a>    <span class="c1"># binds first truncates oldest-first (Decision 1).</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>    <span class="n">M4_WINDOW_MAX_TURNS</span> <span class="o">=</span> <span class="mi">8</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>    <span class="c1"># Window truncation bound 2 of 2, in characters. A char bound alone can</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="c1"># slice a single turn in half, so it is paired with the turn-count bound</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>    <span class="c1"># above (Decision 1).</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>    <span class="n">M4_WINDOW_MAX_CHARS</span> <span class="o">=</span> <span class="mi">4000</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>    <span class="c1"># Cap on references returned per candidate. Re-validation rejects a reply</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="c1"># over this cap rather than truncating it, so a runaway model response</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>    <span class="c1"># cannot silently balloon a single candidate's evidence.</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>    <span class="n">M4_MAX_REFERENCES_PER_CANDIDATE</span> <span class="o">=</span> <span class="mi">8</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="c1"># Lower bound on ``evidence_gap`` candidate referents. Below this there is</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="c1"># no genuine ambiguity to report -- a single candidate is a resolution,</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>    <span class="c1"># not a gap.</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>    <span class="n">M4_EVIDENCE_GAP_MIN_CANDIDATES</span> <span class="o">=</span> <span class="mi">2</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>    <span class="c1"># Upper bound on ``evidence_gap`` candidate referents. Above this the</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="c1"># model is listing possibilities rather than narrowing them, which is not</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>    <span class="c1"># useful evidence for the one clarifying question the record carries.</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="n">M4_EVIDENCE_GAP_MAX_CANDIDATES</span> <span class="o">=</span> <span class="mi">4</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>    <span class="c1"># Max length of an ``assumed`` status's one-line assumption. Re-validation</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>    <span class="c1"># enforces this (and no newlines) so the assumption stays a scannable</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>    <span class="c1"># audit line, not free-form prose.</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>    <span class="n">M4_ASSUMPTION_MAX_CHARS</span> <span class="o">=</span> <span class="mi">200</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>    <span class="c1"># Max length of an ``evidence_gap`` status's clarifying question, for the</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>    <span class="c1"># same scannability reason as ``M4_ASSUMPTION_MAX_CHARS`` above.</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>    <span class="n">M4_QUESTION_MAX_CHARS</span> <span class="o">=</span> <span class="mi">200</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>    <span class="c1"># Multiplicative term of the ``statement`` length bound relative to</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="c1"># ``verbatim`` (paired with ``M4_STATEMENT_MAX_GROWTH_CHARS`` below).</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>    <span class="c1"># Re-validation enforces this so the model cannot turn a clause into a</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>    <span class="c1"># paragraph of invention.</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>    <span class="n">M4_STATEMENT_MAX_GROWTH_FACTOR</span> <span class="o">=</span> <span class="mf">2.0</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>    <span class="c1"># Additive term of the ``statement`` length bound relative to</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>    <span class="c1"># ``verbatim``; see ``M4_STATEMENT_MAX_GROWTH_FACTOR`` above. The additive</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>    <span class="c1"># term keeps very short verbatims from being bounded to near-zero growth.</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>    <span class="n">M4_STATEMENT_MAX_GROWTH_CHARS</span> <span class="o">=</span> <span class="mi">120</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>    <span class="c1"># Temporal roles that emit ``valid_from`` (Decision 4). Onsets only, by</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>    <span class="c1"># deliberate narrowing of the amendment that also named deadlines:</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="c1"># emitting a future deadline as ``valid_from`` would hide the obligation</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="c1"># from as-of retrieval until the deadline arrives, which is a data error.</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>    <span class="c1"># A constant rather than a literal in the emission code so a maintainer</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="c1"># reversal ("deadlines also emit") is a one-tuple change, not a rewrite;</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="c1"># a parameterised test flips it to ("onset", "deadline") and asserts a</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>    <span class="c1"># deadline reference then does emit.</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>    <span class="n">M4_VALID_FROM_ROLES</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"onset"</span><span class="p">,)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3940,37 +4004,37 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-598">598</a></span>
-<span class="normal"><a href="#__codelineno-0-599">599</a></span>
-<span class="normal"><a href="#__codelineno-0-600">600</a></span>
-<span class="normal"><a href="#__codelineno-0-601">601</a></span>
-<span class="normal"><a href="#__codelineno-0-602">602</a></span>
-<span class="normal"><a href="#__codelineno-0-603">603</a></span>
-<span class="normal"><a href="#__codelineno-0-604">604</a></span>
-<span class="normal"><a href="#__codelineno-0-605">605</a></span>
-<span class="normal"><a href="#__codelineno-0-606">606</a></span>
-<span class="normal"><a href="#__codelineno-0-607">607</a></span>
-<span class="normal"><a href="#__codelineno-0-608">608</a></span>
-<span class="normal"><a href="#__codelineno-0-609">609</a></span>
-<span class="normal"><a href="#__codelineno-0-610">610</a></span>
-<span class="normal"><a href="#__codelineno-0-611">611</a></span>
-<span class="normal"><a href="#__codelineno-0-612">612</a></span>
-<span class="normal"><a href="#__codelineno-0-613">613</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalPeriod</span><span class="p">:</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="w">    </span><span class="sd">"""Named constants for common temporal cycle periods in seconds.</span>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a><span class="sd">    These values represent the approximate duration of each period:</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a><span class="sd">        DAILY     = 86,400 seconds (24 hours)</span>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a><span class="sd">        WEEKLY    = 604,800 seconds (7 days)</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a><span class="sd">        MONTHLY   = 2,592,000 seconds (30 days)</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a><span class="sd">        QUARTERLY = 7,776,000 seconds (90 days)</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="sd">        YEARLY    = 31,536,000 seconds (365 days)</span>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a><span class="sd">    """</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>    <span class="n">DAILY</span> <span class="o">=</span> <span class="mi">86_400</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="n">WEEKLY</span> <span class="o">=</span> <span class="mi">604_800</span>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="n">MONTHLY</span> <span class="o">=</span> <span class="mi">2_592_000</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>    <span class="n">QUARTERLY</span> <span class="o">=</span> <span class="mi">7_776_000</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>    <span class="n">YEARLY</span> <span class="o">=</span> <span class="mi">31_536_000</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-616">616</a></span>
+<span class="normal"><a href="#__codelineno-0-617">617</a></span>
+<span class="normal"><a href="#__codelineno-0-618">618</a></span>
+<span class="normal"><a href="#__codelineno-0-619">619</a></span>
+<span class="normal"><a href="#__codelineno-0-620">620</a></span>
+<span class="normal"><a href="#__codelineno-0-621">621</a></span>
+<span class="normal"><a href="#__codelineno-0-622">622</a></span>
+<span class="normal"><a href="#__codelineno-0-623">623</a></span>
+<span class="normal"><a href="#__codelineno-0-624">624</a></span>
+<span class="normal"><a href="#__codelineno-0-625">625</a></span>
+<span class="normal"><a href="#__codelineno-0-626">626</a></span>
+<span class="normal"><a href="#__codelineno-0-627">627</a></span>
+<span class="normal"><a href="#__codelineno-0-628">628</a></span>
+<span class="normal"><a href="#__codelineno-0-629">629</a></span>
+<span class="normal"><a href="#__codelineno-0-630">630</a></span>
+<span class="normal"><a href="#__codelineno-0-631">631</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalPeriod</span><span class="p">:</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="w">    </span><span class="sd">"""Named constants for common temporal cycle periods in seconds.</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">    These values represent the approximate duration of each period:</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        DAILY     = 86,400 seconds (24 hours)</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        WEEKLY    = 604,800 seconds (7 days)</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a><span class="sd">        MONTHLY   = 2,592,000 seconds (30 days)</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">        QUARTERLY = 7,776,000 seconds (90 days)</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a><span class="sd">        YEARLY    = 31,536,000 seconds (365 days)</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a><span class="sd">    """</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>    <span class="n">DAILY</span> <span class="o">=</span> <span class="mi">86_400</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>    <span class="n">WEEKLY</span> <span class="o">=</span> <span class="mi">604_800</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>    <span class="n">MONTHLY</span> <span class="o">=</span> <span class="mi">2_592_000</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>    <span class="n">QUARTERLY</span> <span class="o">=</span> <span class="mi">7_776_000</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>    <span class="n">YEARLY</span> <span class="o">=</span> <span class="mi">31_536_000</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -4025,25 +4089,7 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-616">616</a></span>
-<span class="normal"><a href="#__codelineno-0-617">617</a></span>
-<span class="normal"><a href="#__codelineno-0-618">618</a></span>
-<span class="normal"><a href="#__codelineno-0-619">619</a></span>
-<span class="normal"><a href="#__codelineno-0-620">620</a></span>
-<span class="normal"><a href="#__codelineno-0-621">621</a></span>
-<span class="normal"><a href="#__codelineno-0-622">622</a></span>
-<span class="normal"><a href="#__codelineno-0-623">623</a></span>
-<span class="normal"><a href="#__codelineno-0-624">624</a></span>
-<span class="normal"><a href="#__codelineno-0-625">625</a></span>
-<span class="normal"><a href="#__codelineno-0-626">626</a></span>
-<span class="normal"><a href="#__codelineno-0-627">627</a></span>
-<span class="normal"><a href="#__codelineno-0-628">628</a></span>
-<span class="normal"><a href="#__codelineno-0-629">629</a></span>
-<span class="normal"><a href="#__codelineno-0-630">630</a></span>
-<span class="normal"><a href="#__codelineno-0-631">631</a></span>
-<span class="normal"><a href="#__codelineno-0-632">632</a></span>
-<span class="normal"><a href="#__codelineno-0-633">633</a></span>
-<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-634">634</a></span>
 <span class="normal"><a href="#__codelineno-0-635">635</a></span>
 <span class="normal"><a href="#__codelineno-0-636">636</a></span>
 <span class="normal"><a href="#__codelineno-0-637">637</a></span>
@@ -4052,34 +4098,52 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 <span class="normal"><a href="#__codelineno-0-640">640</a></span>
 <span class="normal"><a href="#__codelineno-0-641">641</a></span>
 <span class="normal"><a href="#__codelineno-0-642">642</a></span>
-<span class="normal"><a href="#__codelineno-0-643">643</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="k">class</span><span class="w"> </span><span class="nc">InteractionWeight</span><span class="p">:</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="w">    </span><span class="sd">"""Weight constants for source/role-based importance scoring.</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">    Two axes combined by addition:</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">    With decay_rate=0.5, effective lifetime ~ score^2 days.</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a><span class="sd">    """</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>    <span class="n">HUMAN</span> <span class="o">=</span> <span class="mf">6.0</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>    <span class="n">AGENT</span> <span class="o">=</span> <span class="mf">1.0</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>    <span class="n">SYSTEM</span> <span class="o">=</span> <span class="mf">0.2</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>    <span class="n">EXECUTIVE</span> <span class="o">=</span> <span class="mf">44.0</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>    <span class="n">MANAGER</span> <span class="o">=</span> <span class="mf">16.0</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>    <span class="n">PEER</span> <span class="o">=</span> <span class="mf">6.0</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="n">SUBORDINATE</span> <span class="o">=</span> <span class="mf">1.0</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="w">        </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">        interaction yields weight 2.0.</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        """</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>        <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
+<span class="normal"><a href="#__codelineno-0-643">643</a></span>
+<span class="normal"><a href="#__codelineno-0-644">644</a></span>
+<span class="normal"><a href="#__codelineno-0-645">645</a></span>
+<span class="normal"><a href="#__codelineno-0-646">646</a></span>
+<span class="normal"><a href="#__codelineno-0-647">647</a></span>
+<span class="normal"><a href="#__codelineno-0-648">648</a></span>
+<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span>
+<span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span>
+<span class="normal"><a href="#__codelineno-0-657">657</a></span>
+<span class="normal"><a href="#__codelineno-0-658">658</a></span>
+<span class="normal"><a href="#__codelineno-0-659">659</a></span>
+<span class="normal"><a href="#__codelineno-0-660">660</a></span>
+<span class="normal"><a href="#__codelineno-0-661">661</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="k">class</span><span class="w"> </span><span class="nc">InteractionWeight</span><span class="p">:</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="w">    </span><span class="sd">"""Weight constants for source/role-based importance scoring.</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">    Two axes combined by addition:</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">    With decay_rate=0.5, effective lifetime ~ score^2 days.</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">    """</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>    <span class="n">HUMAN</span> <span class="o">=</span> <span class="mf">6.0</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>    <span class="n">AGENT</span> <span class="o">=</span> <span class="mf">1.0</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>    <span class="n">SYSTEM</span> <span class="o">=</span> <span class="mf">0.2</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="n">EXECUTIVE</span> <span class="o">=</span> <span class="mf">44.0</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>    <span class="n">MANAGER</span> <span class="o">=</span> <span class="mf">16.0</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>    <span class="n">PEER</span> <span class="o">=</span> <span class="mf">6.0</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="n">SUBORDINATE</span> <span class="o">=</span> <span class="mf">1.0</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="w">        </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">        interaction yields weight 2.0.</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a><span class="sd">        """</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -4119,23 +4183,23 @@ interaction yields weight 2.0.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-635">635</a></span>
-<span class="normal"><a href="#__codelineno-0-636">636</a></span>
-<span class="normal"><a href="#__codelineno-0-637">637</a></span>
-<span class="normal"><a href="#__codelineno-0-638">638</a></span>
-<span class="normal"><a href="#__codelineno-0-639">639</a></span>
-<span class="normal"><a href="#__codelineno-0-640">640</a></span>
-<span class="normal"><a href="#__codelineno-0-641">641</a></span>
-<span class="normal"><a href="#__codelineno-0-642">642</a></span>
-<span class="normal"><a href="#__codelineno-0-643">643</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-635" name="__codelineno-0-635"></a><span class="nd">@staticmethod</span>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="w">    </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a><span class="sd">    The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">    yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">    interaction yields weight 2.0.</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">    """</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>    <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span>
+<span class="normal"><a href="#__codelineno-0-657">657</a></span>
+<span class="normal"><a href="#__codelineno-0-658">658</a></span>
+<span class="normal"><a href="#__codelineno-0-659">659</a></span>
+<span class="normal"><a href="#__codelineno-0-660">660</a></span>
+<span class="normal"><a href="#__codelineno-0-661">661</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="nd">@staticmethod</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="w">    </span><span class="sd">"""Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">    The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">    yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">    interaction yields weight 2.0.</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a><span class="sd">    """</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>    <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

@@ -109,6 +109,10 @@
          <lastmod>2026-09-14</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/belief-sheet-view/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/co-occurrence-field/</loc>
          <lastmod>2026-09-14</lastmod>
     </url>
@@ -570,6 +574,10 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/trajectory_memory/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/recipes/view_resolver/</loc>
          <lastmod>2026-09-14</lastmod>
     </url>
     <url>
