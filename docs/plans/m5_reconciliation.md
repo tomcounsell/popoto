@@ -260,10 +260,15 @@ functions and judge calls degrade to logged abstentions (same contract as
   overwrite and ... still refused"
   (`src/popoto/fields/append_only.py:166-167`, guard at `:202-207`). A
   post-hoc `class_id` write to a persisted entry is therefore impossible
-  through the ORM. The companion shape follows V0's own precedent:
+  through the ORM. The two-tier split follows V0's own precedent:
   `save_and_supersede` never re-saves the incumbent either — it closes it
-  through `ValidityField.execute_supersede` against companion keys
-  (`src/popoto/fields/supersession.py:720-737`). A restatement joins the class
+  through `ValidityField.execute_supersede` against state the incumbent does
+  not own (`src/popoto/fields/supersession.py:720-737`). The mutable tier is
+  two ordinary (non-append-only) Popoto models M5 owns outright, so a relabel
+  is an ordinary `save()` rather than a hand-rolled key write:
+  `ClaimMembership` (one row per reconciled entry, carrying `class_id`) and
+  `ClaimClass` (one row per class, carrying the representative pointer and
+  counts — this is what M6 reads). A restatement joins the class
   and increments its confirmation count via `ProvenanceJournal.confirm`, which
   is already append-only-safe: it appends a new `kind="confirm"` annotation and
   leaves the target untouched (`src/popoto/recipes/provenance_journal.py:646-661`),
@@ -272,28 +277,47 @@ functions and judge calls degrade to logged abstentions (same contract as
   on `JournalEntry` — this one IS a real field, and legally so: capture assigns
   it *before the entry's first and only `save()`*, so append-only is satisfied.
   It is the only new `JournalEntry` field M5 adds; `class_id` and the
-  disjunction links are companion/annotation state per the bullet above.
-  Capture assigns it at capture time
-  from the extractor's type label (never inferred later). The deterministic
+  disjunction links live in the two reconciliation models per the bullet above.
+  **Write-once-at-append, never back-filled**: capture assigns it at capture
+  time from the extractor's type label (never inferred later), and M5 never
+  writes it — there is no code path that could, so "back-fill the type on old
+  entries" is not a build option. The corollary the reconciler MUST implement:
+  every entry captured before this ships has `claim_type=None`, so the
+  reconciler **tolerates `None` and falls back to `note`** (the rule-free
+  catch-all) rather than skipping the entry or raising. The deterministic
   tier derives the V0 predicate as `(subjects[0], claim_type)` — zero LLM
   calls, zero guessing. It round-trips through export/import per the #558
-  precedent, and it is the *only* new state that needs export coverage: the
-  companion index is not exported, because it is rebuilt from the merge log,
-  and the merge log is journal data that exports with the journal already.
+  precedent, and it is the only new *field* needing that coverage. The two
+  reconciliation models are plain Models, so they neither need nor may have a
+  `roundtrip_policy` declaration — the transfer declaration guards target
+  `Field` subclasses and model-level *mixins*, not plain Models
+  (`tests/test_transfer_roundtrip.py:729` and `:754`) — and their round-trip
+  correctness is covered by the `replay_rebuilds_index` check instead, because
+  the merge log they derive from is journal data that already exports with the
+  journal.
 - **Convention book**: short versioned config standard for "same claim"
   (converse phrasings merge, restatements confirm). The only prompt the judge
   sees; version recorded on every merge-log entry so replays are reproducible.
+  The concrete v1 text is fixed below in **Convention Book v1** — build it
+  verbatim rather than paraphrasing it (D2).
 - **Frozen type enum**: `preference | deadline | trait | relationship | goal |
   procedure | note`, where `note` is the rule-free catch-all that absorbs the
   tail (decidability of rules dies with an open enum — recon Dropped bucket).
+  `note` never fires a type rule at all: it has no incompatibility check and no
+  precedence row, so a `note` claim can only ever join, disjoin, or stay a
+  singleton via the judge path (D2/D3).
 - **Typed contradiction rules**: per-type decidable checks with zero LLM calls
   (singleton slots, same-target deadline supersession). Firing a rule resolves
   through the per-type precedence table and writes via
   `SupersessionProtocol.save_and_supersede` — exactly one supersession
   mechanism.
-- **Provenance precedence**: per-type ordering. Self-stated beats inferred
-  everywhere (consumes M1's `stated` flag); recency wins for supersession types
-  (deadlines), confirmation count wins for stable types (traits).
+- **Provenance precedence**: per-type ordering, given in full in **Precedence
+  Table (v1)** below (D2). Rule 0 is global — self-stated beats inferred for
+  every type (consumes M1's `stated` flag) — and the per-type row breaks ties
+  under it: recency for the supersession family (`deadline`), confirmation count
+  for the stable family (`preference`, `trait`, `relationship`, `goal`,
+  `procedure`) with recency as the final tiebreak. The table is **total**: when
+  every column ties, the outcome is a disjunct pair, never an arbitrary winner.
 - **Disjunct pairs**: precedence ties stored as a **`disjoin` merge-log
   annotation entry naming both sides plus a shared disjunction id** — an
   *append*, not a field write on either entry (the second side would otherwise
@@ -304,6 +328,77 @@ functions and judge calls degrade to logged abstentions (same contract as
 - **Append-only merge log**: `{class_a, class_b, rationale, ts, judge_version}`
   as immutable journal annotations (registered merge kind). Replay reproduces
   pre-merge assignment.
+
+### Convention Book v1
+
+Resolved in this revision (D2). This is the literal v1 standard: it ships as a
+versioned config constant (`CONVENTION_BOOK_V1`, version string `"v1"`), it is
+the only thing the judge is prompted with besides the two claims, and its
+version is recorded on every merge-log entry so a replay pins the wording that
+produced the merge. Changing any line of it is a version bump, not an edit —
+Risk 2 depends on that.
+
+> **Same-claim convention book, v1.**
+>
+> Two claims are the **same claim** when they assert the same thing about the
+> same subject, such that a reader who believed one would consider the other a
+> restatement rather than new information. Specifically:
+>
+> 1. **Converse phrasings are the same claim.** "A reports to B" and "B manages
+>    A" assert one fact from two directions.
+> 2. **Restatements and paraphrases are the same claim**, including changes in
+>    wording, tense, politeness, verbosity, or the presence of hedging.
+> 3. **Differences in precision are the same claim** when the less precise
+>    statement is entailed by the more precise one and the claims do not
+>    conflict ("prefers mornings" / "prefers meetings before 10am").
+> 4. **Different subjects are never the same claim**, even under identical
+>    predicates.
+> 5. **Different values in the same slot are NOT the same claim** — they are a
+>    conflict, and the type rule decides, not this judge ("prefers mornings" /
+>    "prefers evenings").
+> 6. **Different predicates about one subject are NOT the same claim**, however
+>    related ("lives in Berlin" / "works in Berlin").
+> 7. **A claim about a moment and a claim about a pattern are NOT the same
+>    claim** ("was late today" / "is often late").
+> 8. **When the two claims are not clearly on one side of the rules above,
+>    answer `different`.** Abstaining costs one extra class; a wrong `same`
+>    merges two beliefs irreversibly from the reader's point of view.
+
+Rule 8 is the load-bearing one for Risk 1: the judge's default is to *not*
+merge, so the failure mode under uncertainty is a duplicate class (today's
+behavior) rather than a mega-class.
+
+### Precedence Table (v1)
+
+Resolved in this revision (D2). Applied ONLY after a type rule fires — this
+table never decides sameness, and it never runs on a `note`.
+
+**Rule 0 (global, all types):** a self-stated claim beats an inferred one
+(M1's `stated` flag). Evaluated first for every type; the per-type row below
+applies only when both claims agree on `stated`.
+
+| `claim_type` | Family | Per-type order (after Rule 0) |
+|---|---|---|
+| `deadline` | supersession | recency (later `captured_at` wins) |
+| `preference` | stable | confirmation count, then recency |
+| `trait` | stable | confirmation count, then recency |
+| `relationship` | stable | confirmation count, then recency |
+| `goal` | stable | confirmation count, then recency |
+| `procedure` | stable | confirmation count, then recency |
+| `note` | rule-free | n/a — no incompatibility rule, so precedence never runs |
+
+The three rows the critique flagged as unspecified (`relationship`, `goal`,
+`procedure`) resolve to the **stable** family: all three describe standing facts
+that get restated, so a claim confirmed many times should not lose to a single
+fresh mention. `deadline` is the only member of the supersession family, and
+membership is not a judgment call — it is exactly the set of types whose
+deterministic rule is same-target supersession, which is what makes "the newest
+assertion is the truth" correct for it and wrong for the others.
+
+**Totality:** if Rule 0 ties, the family order ties, and recency ties (identical
+`captured_at`), the outcome is a **disjunct pair**, not a coin flip. This is
+what makes AC3's "no silent winner" hold as a property of the table rather than
+as a hope about the data.
 
 ### Flow
 
