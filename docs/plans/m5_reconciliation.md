@@ -130,8 +130,9 @@ line numbers are used inline in Technical Approach.
   M5's sameness judge copies this contract shape.
 - **`EmbeddingField`** (`src/popoto/fields/embedding_field.py`): provider-set
   embeddings cached as in-memory matrices for cosine shortlist; numpy optional.
-  Note `JournalEntry` carries NO `EmbeddingField` today — the shortlist needs one
-  (source `"statement"`) or a bounded fallback.
+  Note `JournalEntry` carries NO `EmbeddingField` today, and per D4 it does not
+  gain one: the shortlist embeds reconciler-side over the entry's `statement`,
+  with the bounded index-scan fallback when numpy/the provider is absent.
 - **#558 (export/import round-trip, merged):** per-field round-trip fidelity
   precedent — the one new field M5 adds (`claim_type`) must round-trip through
   it. Class membership and disjunction links are companion keys, not fields, so
@@ -151,13 +152,16 @@ guides bear on the design.
 
 ## Data Flow
 
-1. **Entry point**: post-turn background window. A `StreamConsumer` on the
-   `"journal"` stream (metadata: `agent_id`, `kind`, `target`) wakes on new
-   `kind="assert"` entries, or the capture pipeline calls the reconciler
-   directly off M1's event emission. Input is one fresh `JournalEntry`
-   (`statement`, `subjects`, `stated`, `turn_id`). (Two triggers means two
-   concurrent writers on the same fresh entry — see Race 1; resolving Open
-   Q5 to stream-only dissolves that race.)
+1. **Entry point**: post-turn background window, **stream-first** (D5). The
+   production trigger is a `StreamConsumer` on the `"journal"` stream
+   (metadata: `agent_id`, `kind`, `target`), waking on new `kind="assert"`
+   entries. A public `reconcile_entry(...)` direct call exists as a *thin
+   adapter over the same reconcile function* — the path tests drive, and the
+   path a host that does not run a consumer can call. It is an entry point, not
+   a second pipeline. Input either way is one fresh `JournalEntry`
+   (`statement`, `subjects`, `stated`, `turn_id`). Both entry points reaching
+   the same fresh entry concurrently is correct, not a hazard: the `HSETNX`
+   claim-by-write in Race 1 arbitrates it atomically.
 2. **Deterministic tier (zero LLM calls)**: compute the entry's identity key
    `subject|predicate` per the V0 amendment. Singleton-slot type rules (one
    birthdate per subject) and same-target deadline supersession express as
@@ -505,6 +509,20 @@ order and is never asked as its own question.
   shape: strict-`>` filter on `captured_at`, stored per reconciler run). Full
   from-genesis replay stays available as an explicit repair operation, not the
   steady state.
+- **Embeddings are reconciler-side; `JournalEntry` stays embedding-free** (D4).
+  M5 adds NO `EmbeddingField` to M1's model. The shortlist computes/caches
+  embeddings over the entry's `statement` inside the reconciler and keys them by
+  `entry_redis_key` in reconciler-owned state, alongside the three companion key
+  families. This is the same ownership line the append-only remedy draws — M5
+  owns derived state, M1 owns the record — and it keeps `claim_type` the only
+  new field, which is what makes the "exactly one new field" claim in
+  Architectural Impact true rather than approximately true. The cost is that a
+  re-embed is needed after a cache loss; that is acceptable because the cache is
+  derived state with a correctness-preserving fallback (below), not a source of
+  truth. An `EmbeddingField` on `JournalEntry` would also have been legal under
+  append-only (it populates on the first and only `save()`), so this is a
+  scope/ownership decision, not a constraint — recorded so a builder does not
+  "fix" it by adding the field.
 - **Embedding fallback**: if numpy/provider is absent, the shortlist degrades
   to same-subject + same-type index scan (bounded by `Defaults` cap) with zero
   judge-call change — recall narrows, correctness properties hold.
@@ -639,9 +657,12 @@ an append-only record, where a conditional NULL→id write has no primitive.
 Against companion state the operation *is* the primitive: `HSETNX` is
 atomic create-if-absent, core to both Redis and Valkey, needs no transaction, no
 `WATCH` (and so cannot trip `_validate_caller_pipeline`'s WATCH-without-MULTI
-refusal at `src/popoto/fields/supersession.py:614-651`), and no Lua. Resolving
-Open Q5 to stream-only remains *desirable for simplicity* but is no longer
-load-bearing for correctness here.
+refusal at `src/popoto/fields/supersession.py:614-651`), and no Lua.
+**D5 keeps both entry points** (stream-first, direct call as a thin adapter), so
+this race stays live by design rather than being dissolved by a stream-only
+answer — which is fine, because `HSETNX` is its whole mitigation and the
+direct-call path is the same reconcile function, not a second implementation
+that could arbitrate differently.
 
 ### Race 2: Loser leaves live membership between shortlist and `save_and_supersede`
 **Location:** reconcile loop → `SupersessionProtocol.save_and_supersede`
@@ -716,8 +737,9 @@ adoption is a normal version bump; unreconciled journals read exactly as today.
 ## Agent Integration
 
 No agent-tool surface. The reconciler is library code the host process invokes
-post-turn (via `StreamConsumer` on the `"journal"` stream or a direct call off
-M1's event emission). No MCP wrapper, no bridge import, no new tool. Integration
+post-turn — the `StreamConsumer` on the `"journal"` stream is the production
+trigger, with `reconcile_entry(...)` available as a direct call (D5). No MCP
+wrapper, no bridge import, no new tool. Integration
 tests verify the consumer-driven trigger path end to end (stream append →
 reconcile → class assigned), which is the closest equivalent to "the agent can
 invoke it".
@@ -864,7 +886,10 @@ above.
 - **Assigned To**: judge-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- `StreamConsumer`-on-`"journal"` trigger + direct-call entry; claim-by-write via
+- `StreamConsumer`-on-`"journal"` trigger as the **production** trigger (D5),
+  plus a public `reconcile_entry(...)` direct call that is a thin adapter over
+  the same reconcile function — one loop, two entry points, never two
+  pipelines; claim-by-write via
   `HSETNX` on `_class_of` (no WATCH/MULTI, no Lua — see Race 1); merge-log append
   `{class_a, class_b, rationale, ts, judge_version}`; watermark-bounded replay +
   explicit genesis repair op that rebuilds the companion index from the log
