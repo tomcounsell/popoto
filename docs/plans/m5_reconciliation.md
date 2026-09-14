@@ -7,7 +7,7 @@ created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/564
 last_comment_id: 5537009267
 revision_applied: true
-revision_applied_at: 2026-09-14T03:14:22Z
+revision_applied_at: 2026-09-14T03:31:18Z
 critique_rounds: 3
 ---
 
@@ -1220,14 +1220,18 @@ flips it, so readiness is asserted after the audit rather than alongside it.
 
 ## Implementation Notes (concern bound spent — read before building)
 
-**Why this section exists.** The critique loop ran its full
-`MAX_CONCERN_RECRITIQUE_ROUNDS` = 3 with-concerns rounds (verdicts
-2026-09-14T02:41:11Z, and 03:12:13Z closing round 3 with 0 BLOCKERs and 0
-tech-debt items). The bound is now spent, so the residual concerns are
-**accepted without a further critique round** and the lane proceeds to build.
-That acceptance is recorded here rather than enforced by a halt, because
-CONCERNs are non-blocking by definition — the accountability is this list, so
-treat every numbered item as a build obligation, not as advice.
+**Why this section exists.** The critique loop spent its full
+`MAX_CONCERN_RECRITIQUE_ROUNDS` = 3 with-concerns budget. Verdicts:
+2026-09-14T02:41:11Z, 03:12:13Z, and 03:28:06Z — the last closing round 3 with
+**0 BLOCKERs and 3 tech-debt items**, which are items 8, 9 and 10 below. The
+bound is now spent, so the residual concerns are **accepted without a further
+critique round** and the lane proceeds to build. That acceptance is recorded
+here rather than enforced by a halt, because CONCERNs are non-blocking by
+definition — the accountability is this list, so treat every one of the eleven
+numbered items as a build obligation, not as advice.
+
+Items 1–7 and 11 were folded in before the round-3 verdict; items 8, 9 and 10
+are round 3's own findings, added in the row-4b revision pass that followed it.
 
 1. **`Defaults` registration goes in the registry, never the gate.** Add each
    new constant to the `MODULE_CONSTANTS` dict at
@@ -1263,7 +1267,42 @@ treat every numbered item as a build obligation, not as advice.
    (a lossy encoding of `statement`, so content-derived state outside
    `hard_delete()`'s documented scope — `src/popoto/fields/append_only.py:242-294`),
    followed by a `ClaimClass` recomputation.
-8. **D1, D3 and the judgment half of D4 are agent decisions, not rulings.** If
+8. **The `Defaults` gate is already tripped, not merely at risk** (round 3,
+   found in the working tree). `src/popoto/fields/constants.py` carries six new
+   constants — `M5_SHORTLIST_CAP`, `M5_SYMMETRY_PROBE_ENABLED`,
+   `M5_JUDGE_MODEL`, `M5_JUDGE_MAX_TOKENS`, `M5_REPLAY_WATERMARK_FIELD`,
+   `MEGA_CLASS_VELOCITY_ALERT` — and **zero** are registered. All six need a
+   `MODULE_CONSTANTS` entry plus a module-level alias, per obligation 1. This
+   is the concrete instance of that obligation, not a second one; it is listed
+   separately because it is a present defect rather than a future risk.
+   (`RECONCILE_LOCK_TTL_SECONDS` is correctly absent — the tree is consistent
+   with stream-only.)
+9. **Make the single-writer invariant fail loudly.** It is now the *sole*
+   mitigation for Races 1 and 3 — it is what licensed deleting both `HSETNX`
+   and the advisory lock — but it is deployment discipline: nothing notices a
+   second reconciler for the same agent, and the failure mode is silent
+   duplication. Do **not** re-arm a per-entry lock. The sufficient guard is a
+   **startup** one: on consumer start, register reconciler identity per agent
+   (`SET Reconciliation:_owner:{agent_id} {run_id} NX EX <ttl>`, refreshed per
+   pass); on `NX` miss, log an error and refuse to start rather than reconcile
+   in parallel. No per-claim contention, no hot-path command. Correctness floor
+   if the guard is lost is today's behavior. The existing
+   `single_writer_invariant` test asserts only the *honored* path and cannot
+   detect a violation — add a second test that starts a second reconciler and
+   asserts it refuses.
+10. **`claim_slot` is a confirmation oracle, and salting is NOT the fix.**
+    `sha256(f"{agent_id}|{subject}|{claim_type}")[:32]` is unsalted and
+    truncated over a low-entropy preimage, so a digest holder can confirm a
+    guessed subject by brute force. A per-record salt breaks the exact-equality
+    lookup `ClaimMembership.query.filter(claim_slot=...)` that is now Race 3's
+    whole mitigation; a process-global salt breaks replay from genesis across
+    restarts. Either trades a weak oracle for a correctness regression. Record
+    the trade in the privacy rule as **accepted**, keep the digest one-way and
+    the preimage out of the row, and let the erasure cascade bound exposure in
+    time. If unlinkability is ever required, the change is a keyed HMAC with the
+    key persisted alongside the merge log — never a salt — and it must land with
+    a replay-compatibility note.
+11. **D1, D3 and the judgment half of D4 are agent decisions, not rulings.** If
    the build finds one of them materially more expensive than the plan assumes,
    raise it rather than silently redesigning around it — each was scoped to be
    a local edit precisely so that raising it is cheap. See the Basis table
