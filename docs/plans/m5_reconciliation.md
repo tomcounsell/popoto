@@ -136,8 +136,9 @@ line numbers are used inline in Technical Approach.
   with the bounded index-scan fallback when numpy/the provider is absent.
 - **#558 (export/import round-trip, merged):** per-field round-trip fidelity
   precedent — the one new field M5 adds (`claim_type`) must round-trip through
-  it. Class membership and disjunction links are companion keys, not fields, so
-  they are covered by the replay-rebuilds-index check instead.
+  it. Class membership and disjunction links live in M5's own two
+  reconciliation models, not as fields on `JournalEntry`, so they are covered
+  by the replay-rebuilds-index check instead.
 
 No prior issues found attempting equivalence classes themselves — no
 **Why Previous Fixes Failed** section (greenfield module, not a re-fix).
@@ -160,9 +161,10 @@ guides bear on the design.
    adapter over the same reconcile function* — the path tests drive, and the
    path a host that does not run a consumer can call. It is an entry point, not
    a second pipeline. Input either way is one fresh `JournalEntry`
-   (`statement`, `subjects`, `stated`, `turn_id`). Both entry points reaching
-   the same fresh entry concurrently is correct, not a hazard: the `HSETNX`
-   claim-by-write in Race 1 arbitrates it atomically.
+   (`statement`, `subjects`, `stated`, `turn_id`). Both entry points funnel
+   into the same reconcile function and run under the **single-writer
+   invariant** (one reconciler per agent, sequential passes — Race 1), so
+   there is no concurrent-entry-point hazard to arbitrate.
 2. **Deterministic tier (zero LLM calls)**: compute the entry's identity key
    `subject|predicate` per the V0 amendment. Singleton-slot type rules (one
    birthdate per subject) and same-target deadline supersession express as
@@ -183,9 +185,9 @@ guides bear on the design.
    `{class_a, class_b, rationale, ts, judge_version}` as an immutable journal
    annotation (registered merge kind, naming a target entry). Replay = revoke
    entry + recompute class assignment. Classes are tracked by a plain relabeled
-   `class_id` in reconciler-owned companion keys (never a field on the
-   append-only entry), never union-find. The merge log is authoritative; the
-   companion keys are a rebuildable index over it.
+   `class_id` on M5's own `ClaimMembership` / `ClaimClass` rows (never a field
+   on the append-only entry), never union-find. The merge log is authoritative;
+   those two models are a rebuildable index over it.
 6. **Output**: M6 reads one representative per class — the most-confirmed
    member among validity-open entries (`validity__current=True`; closed
    losers stay in-class for audit but are never selected and accrue no
@@ -203,29 +205,38 @@ guides bear on the design.
   `feedback_valkey_compatibility`).
 - **Interface changes**: additive only. `JournalEntry` gains exactly ONE new
   field, `claim_type` (IndexedField, assigned pre-first-save); `class_id` and
-  disjunction links are companion keys and annotation payloads, not fields,
-  because the model is append-only. New merge/disjoin kinds via `register_kind`.
-  `ProvenanceJournal` gains no signature changes (reconciler calls existing
-  `confirm` / `supersede`). M6/M7/M8 read the companion index through an M5
-  accessor rather than querying a field; all degrade to per-record behavior
-  when the index is absent or empty.
+  disjunction links live on M5's two new models (`ClaimMembership`,
+  `ClaimClass`) and in annotation payloads, not as fields on `JournalEntry`,
+  because that model is append-only. New merge/disjoin kinds via
+  `register_kind`. `ProvenanceJournal` gains no signature changes (reconciler
+  calls existing `confirm` / `supersede`). M6/M7/M8 read `ClaimClass` (M6) and
+  `ClaimMembership` (M7/M8) through an M5 accessor rather than querying a
+  `JournalEntry` field; all degrade to per-record behavior when those tables
+  are absent or empty.
 - **Coupling**: reconciliation owns sameness; V0 owns closing; M1 owns
   annotation vocabulary. The amendment's invariant holds structurally: the
   deterministic tier calls `save_and_supersede`, so there is exactly one
   supersession mechanism and `class_id` subsumes identity keys (a deterministic
   hit is a class of size 2 merged without a judge call).
 - **Data ownership**: the append-only merge log owns class membership
-  authoritatively; the reconciler owns a rebuildable companion index over it
-  (`Reconciliation:_class_of:*` / `_class_members:*` / `_disjunction:*`).
-  Nothing to "keep in sync" — a divergent index is recomputed from the log, not
-  reconciled against it. Single writer: one reconciler per agent.
+  authoritatively; the reconciler owns a rebuildable derived index over it, as
+  the two models `ClaimMembership` and `ClaimClass`. Nothing to "keep in sync"
+  — a divergent index is recomputed from the log, not reconciled against it.
+  Single writer: one reconciler per agent. The derived tier holds **no claim
+  content**: `ClaimMembership` carries a one-way `claim_slot` digest, never the
+  subject text or `claim_type` (see the privacy rule in Key Elements), because
+  `JournalEntry.hard_delete()` sweeps only the record's own derived state and
+  would never reach content copied into a sibling model
+  (`src/popoto/fields/append_only.py:242-294`).
 - **Reversibility**: merge-log replay reproduces pre-merge assignment
   (acceptance criterion 4) — structurally, since the index is derived from the
   log. The module itself is removable: entries remain valid journal records
-  (`claim_type` is inert without a reconciler) and the companion keys can be
-  dropped wholesale. That is also the break-glass procedure — `DEL` the three
-  key families and M6/M7/M8 fall back to per-record behavior with zero journal
-  data loss, because no journal record was ever mutated.
+  (`claim_type` is inert without a reconciler) and the two models can be
+  dropped wholesale. That is also the break-glass procedure — delete all
+  `ClaimMembership` and `ClaimClass` rows (`Model.query.filter(...)` +
+  `delete()`, or `DEL` on the two model key families) and M6/M7/M8 fall back to
+  per-record behavior with zero journal data loss, because no journal record
+  was ever mutated.
 
 ## Appetite
 
@@ -275,9 +286,54 @@ functions and judge calls degrade to logged abstentions (same contract as
   not own (`src/popoto/fields/supersession.py:720-737`). The mutable tier is
   two ordinary (non-append-only) Popoto models M5 owns outright, so a relabel
   is an ordinary `save()` rather than a hand-rolled key write:
-  `ClaimMembership` (one row per reconciled entry, carrying `class_id`) and
-  `ClaimClass` (one row per class, carrying the representative pointer and
-  counts — this is what M6 reads). A restatement joins the class
+
+  ```python
+  class ClaimMembership(Model):          # one row per reconciled entry
+      entry_redis_key = KeyField()       # the JournalEntry's redis_key
+      class_id = IndexedField(type=str)
+      claim_slot = IndexedField(type=str)            # digest, see below
+      disjunction_id = IndexedField(type=str, null=True)
+
+  class ClaimClass(Model):               # one row per class — M6's read surface
+      class_id = KeyField()
+      agent_id = IndexedField(type=str)
+      representative_key = IndexedField(type=str)
+      member_count = IntField(default=1)
+      updated_at = FloatField(null=True)
+  ```
+
+  Two things make this preferable to the hand-rolled companion hashes and sets
+  an earlier draft specified. First, every read M6/M7/M8 needs is an ORM query
+  against an index (`ClaimClass.query.filter(agent_id=...)`,
+  `ClaimMembership.query.filter(class_id=...)`) instead of an accessor wrapping
+  `HGET`/`SMEMBERS`, so `ClaimClass` is a *real* read surface for M6 rather
+  than a key convention M6 has to trust. Second, `KeyField` gives the
+  membership row the exact identity semantics wanted — one row per entry,
+  keyed by the entry's own `redis_key`. The colons inside that key are a
+  non-issue: `DB_key.clean()` escapes `":"` to `COLON_ESCAPE`
+  (`src/popoto/models/db_key.py:43` and `:191`) before it reaches the
+  keyspace, so a composite key value cannot forge a key boundary.
+
+  **Privacy rule — `ClaimMembership` stores a digest, never claim content.**
+  `claim_slot = sha256(f"{agent_id}|{subject}|{claim_type}").hexdigest()[:32]`,
+  computed at reconcile time and stored one-way. It must NOT store the subject
+  string or `claim_type` in plaintext, and neither must `ClaimClass`. The
+  reason is `hard_delete()`'s documented scope: it erases "a record and every
+  trace of its own **derived state**", and its docstring says outright that the
+  scope "is **not** 'every trace of the record anywhere in the keyspace'", the
+  surviving references being safe precisely because "neither carries the
+  record's field *values*"
+  (`src/popoto/fields/append_only.py:242-294`). A plaintext subject on a
+  mutable sibling model would be exactly such a field-value copy, outside the
+  reach of the only erasure primitive the append-only record has — a privacy
+  regression, and a sharper one because `JournalEntry` also composes
+  `NeverRecordMixin` (`src/popoto/recipes/provenance_journal.py:282`), i.e.
+  this data is already governed as never-record. A digest keeps what
+  reconciliation actually needs (slot *equality*, for grouping sibling claims)
+  and discards what it does not (the text). The matching erasure cascade is
+  specified in **Documentation** and gated by a named test.
+
+  A restatement joins the class
   and increments its confirmation count via `ProvenanceJournal.confirm`, which
   is already append-only-safe: it appends a new `kind="confirm"` annotation and
   leaves the target untouched (`src/popoto/recipes/provenance_journal.py:646-661`),
@@ -330,8 +386,16 @@ functions and judge calls degrade to logged abstentions (same contract as
 - **Disjunct pairs**: precedence ties stored as a **`disjoin` merge-log
   annotation entry naming both sides plus a shared disjunction id** — an
   *append*, not a field write on either entry (the second side would otherwise
-  hit the same `AppendOnlyViolation`). Retrievable together via the annotation
-  and a companion set, surfaced as uncertainty. This module's own contribution —
+  hit the same `AppendOnlyViolation`). The annotation is authoritative and is
+  the complete history; for retrieval, both sides' `ClaimMembership` rows carry
+  the shared `disjunction_id`, so M7 gets a pair with one indexed query
+  (`ClaimMembership.query.filter(disjunction_id=...)` → two rows). v1
+  simplification: the membership row holds the *most recent* open disjunction
+  for that entry, so an entry disjoined a second time repoints it; the full set
+  of pairs is always recoverable from the `disjoin` annotations
+  (`JournalEntry.query.filter(kind="disjoin")` — `kind` is an `IndexedField`,
+  `src/popoto/recipes/provenance_journal.py:309`), which is what replay reads.
+  This module's own contribution —
   V0 always produces a deterministic winner within one identity key, so ties
   arise only at the judgment layer and stay here.
 - **Append-only merge log**: `{class_a, class_b, rationale, ts, judge_version}`
