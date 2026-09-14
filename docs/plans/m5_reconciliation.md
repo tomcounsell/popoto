@@ -112,8 +112,9 @@ line numbers are used inline in Technical Approach.
   deterministic tier's write path; M5 must call it, never reimplement closing.
 - **#601 (supersession membership guard in LUA, merged):** membership decided
   atomically inside `SUPERSEDE_LUA`; absent member raises
-  `ValidityMemberAbsentError`. M5's reconcile loop must catch this (loser deleted
-  between shortlist and write) instead of relying on the old `None` contract.
+  `ValidityMemberAbsentError`. M5's reconcile loop must catch this (the loser's
+  *live membership* closed between shortlist and write — nothing is deleted; see
+  Race 2) instead of relying on the old `None` contract.
 - **`TrajectoryMemory.crystallize()`** (`src/popoto/recipes/trajectory_memory.py:390-469`):
   group → threshold → canonical representative → watermark idempotence. The shape
   M5 borrows; the specifics M5 rejects (fingerprint equality instead of judged
@@ -230,11 +231,15 @@ guides bear on the design.
 
 **Size:** Large
 
-**Team:** Solo dev, PM (convention-book wording + precedence table sign-off)
+**Team:** Solo dev. The PM sign-off this plan originally budgeted for —
+convention-book wording, type slots, precedence tables — is **spent**: those are
+decided as D2 and D3 and written into the Solution section verbatim, so build
+does not wait on them.
 
 **Interactions:**
-- PM check-ins: 2-3 (convention-book contents, type slots, precedence tables are
-  plan-level config decisions per the issue's Downstream note)
+- PM check-ins: 0 required before build. A check-in is needed only to *change* a
+  decision (Convention Book v1 wording is versioned config — a change is a
+  version bump per Risk 2, not an edit).
 - Review rounds: 2+ (judge-prompt wording, atomicity of class writes)
 
 Solo dev work is fast — the bottleneck is alignment and review. Appetite measures communication overhead, not coding time.
@@ -501,9 +506,12 @@ order and is never asked as its own question.
   Ties in confirmation count break by recency (mirrors `crystallize`'s
   modal+recency shape without copying its forced-winner semantics).
 - **`ValidityMemberAbsentError` handling** (per #601 notice): the reconcile loop
-  catches it around `save_and_supersede` — a loser deleted between shortlist and
-  write is re-read; if gone, the merge-log records `loser-absent` and the winner
-  stands. Never a silent skip, never a crash.
+  catches it around `save_and_supersede` — a loser whose live membership closed
+  between shortlist and write is re-read; if it is no longer a live validity
+  member, the merge-log records `loser-absent` and the winner stands. Never a
+  silent skip, never a crash. Per the Race 2 note, the loser's hash is still
+  present throughout: the condition is closed membership, not deletion, so the
+  detection is the caught exception and never an `EXISTS` check.
 - **Replay cost bounded by watermark**: merge-log replay reprocesses only
   entries newer than the last replay watermark (borrow `crystallize`'s watermark
   shape: strict-`>` filter on `captured_at`, stored per reconciler run). Full
