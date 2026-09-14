@@ -7,7 +7,7 @@ created: 2026-09-11
 tracking: https://github.com/tomcounsell/popoto/issues/564
 last_comment_id: 5537009267
 revision_applied: true
-revision_applied_at: 2026-09-14T03:11:00Z
+revision_applied_at: 2026-09-14T03:14:22Z
 critique_rounds: 3
 ---
 
@@ -1165,6 +1165,59 @@ above.
 | CONCERN | round 1 | "Most-confirmed member" as representative did not say how validity-closed losers are treated, so a superseded claim could be selected as its class's representative. | Data Flow 6; Technical Approach (representative discipline); Flow | Filter `validity__current=True`. Closed losers stay in-class for audit but are excluded from representative selection **and** from confirmation counts. Confirmation-count ties break by recency. |
 | NIT | round 1 | AC5 said judge calls are "bounded by the embedding shortlist size", which the symmetry probe makes false. | Success Criteria AC5 | Reworded to "at most 2x the shortlist cap per entry — one forward ask plus one swapped-order symmetry probe per candidate class". |
 | NIT | round 1 | The uncertainty-marker test targeted M6's formatting layer, which is #565's module and out of scope per the No-Gos. | Failure Path Test Strategy (error state rendering); Task 5 | Assert the flag on M5's own representative-selection return value, not at M6's formatting layer. |
+
+---
+
+## Implementation Notes (concern bound spent — read before building)
+
+**Why this section exists.** The critique loop ran its full
+`MAX_CONCERN_RECRITIQUE_ROUNDS` = 3 with-concerns rounds (verdicts
+2026-09-14T02:41:11Z, and 03:12:13Z closing round 3 with 0 BLOCKERs and 0
+tech-debt items). The bound is now spent, so the residual concerns are
+**accepted without a further critique round** and the lane proceeds to build.
+That acceptance is recorded here rather than enforced by a halt, because
+CONCERNs are non-blocking by definition — the accountability is this list, so
+treat every numbered item as a build obligation, not as advice.
+
+1. **`Defaults` registration goes in the registry, never the gate.** Add each
+   new constant to the `MODULE_CONSTANTS` dict at
+   `tests/benchmarks/overrides.py:37` as `name -> (module, attr)`, **and**
+   expose a module-level alias in `recipes/reconciliation.py` for that entry to
+   point at. `tests/benchmarks/test_defaults_sync.py` only *reads* the
+   registry; if you find yourself editing it, the fix is wrong. Run it
+   explicitly — a narrow lane selection never reaches it, so it fails in CI
+   after review (memory: `project_defaults_sync_gate`).
+2. **`reconcile_entry` is test-only (D5).** The `StreamConsumer` on the
+   `"journal"` stream is the only production trigger. Do not document, export
+   as a host-facing API, or test-drive `reconcile_entry` as a production path:
+   the single-writer invariant that Races 1 and 3 take as their mitigation is
+   *produced by* the consumer being the sole writer, not by the reconcile
+   function itself.
+3. **Neither withdrawn concurrency primitive may appear.** No `HSETNX`, no
+   `SET ... NX EX`. The remaining mentions in this document are a withdrawal
+   audit trail. The Verification table has a client spy asserting their
+   absence.
+4. **Build the mega-class velocity telemetry.** Risk 1 promises it and round 2
+   found no task building it. Emit a class-size-velocity signal past
+   `Defaults.MEGA_CLASS_VELOCITY_ALERT` joins per pass — **telemetry only,
+   never a gate**, since a gate would block legitimate large classes.
+5. **Register `merge` and `disjoin` kinds at `reconciliation.py` module
+   import**, both non-targetless. The registry is process-global and
+   non-persisted, and writing an unregistered kind raises `ValueError` in
+   `pre_save` (already hit in PR #589).
+6. **The Verification greps name identifiers the builder chooses.** Use the
+   identifiers this plan names, or update the Verification table in the same
+   commit. A grep for a string the build renamed passes vacuously.
+7. **The erasure cascade has three legs**, not one: `hard_delete()` on the
+   entry, the `ClaimMembership` row, and the reconciler-side cached embedding
+   (a lossy encoding of `statement`, so content-derived state outside
+   `hard_delete()`'s documented scope — `src/popoto/fields/append_only.py:242-294`),
+   followed by a `ClaimClass` recomputation.
+8. **D1, D3 and the judgment half of D4 are agent decisions, not rulings.** If
+   the build finds one of them materially more expensive than the plan assumes,
+   raise it rather than silently redesigning around it — each was scoped to be
+   a local edit precisely so that raising it is cheap. See the Basis table
+   below.
 
 ---
 
