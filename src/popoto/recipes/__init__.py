@@ -19,12 +19,16 @@ from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
 from .provenance_journal import AnnotationResult, JournalEntry, ProvenanceJournal
 from .subconscious_memory import SubconsciousMemory
 from .trajectory_memory import TrajectoryMemory
+from .view_resolver import BeliefSheet, BeliefSheetResolver, Claim
 
 __all__ = [
     "AdaptiveAssembler",
     "AnnotationResult",
     "AssemblyEvent",
     "AssemblyResult",
+    "BeliefSheet",
+    "BeliefSheetResolver",
+    "Claim",
     "ContextAssembler",
     "DefaultMemory",
     "JournalEntry",

@@ -505,38 +505,38 @@ distinguishable from a packed empty result, which an empty bulk string is not.
 
 ## Test Impact
 
-- [ ] `tests/test_cyclic_decay_field.py` (88 tests) — UPDATE only where a test asserts
+- [x] `tests/test_cyclic_decay_field.py` (88 tests) — UPDATE only where a test asserts
       *how* the write happens. Every test that asserts merge outcomes, reset logging,
       decode fallback or return shapes must pass **unchanged**; that invariance is the
       main regression signal for the Lua port. Audit each test that patches or spies on
       `hget`/`hset` — those spies stop firing once the work moves into a script and
       must be re-pointed at the script's effect (or at `run_lua`), not deleted.
-- [ ] **`tests/test_cyclic_decay_field.py:1512` and `:1534` are the named acceptance
+- [x] **`tests/test_cyclic_decay_field.py:1512` and `:1534` are the named acceptance
       tests for critique C4** — `test_unhashable_period_falls_back_instead_of_raising`
       and `test_partial_merge_discarded_when_a_later_entry_is_malformed`. Both write a
       table-valued period and assert the whole learned bucket is discarded with the
       decode warning. They must pass **unmodified**; if either needs editing to
       accommodate the port, the Lua is missing the C4 `type` guard, not the tests being
       stale.
-- [ ] `tests/test_observation_protocol.py:693-701` (`test_pipeline_support`) — UPDATE
+- [x] `tests/test_observation_protocol.py:693-701` (`test_pipeline_support`) — UPDATE
       for critique C6. It only asserts `result is pipe`, so it cannot see that a
       pipelined `strengthen_cycle`/`weaken_cycle` against a member with **no** stored
       cycles now queues one `EVALSHA` where it previously queued nothing. Extend it, or
       add a sibling test asserting `len(pipe.execute())` for the no-entry pipelined
       case, so the result-list shift is recorded rather than discovered downstream.
-- [ ] `tests/test_transfer_fidelity_fields.py:466-600` — UPDATE if anything asserts a
+- [x] `tests/test_transfer_fidelity_fields.py:466-600` — UPDATE if anything asserts a
       value's *type*. Its current assertions are `pytest.approx` and a
       `len(exported_cycles[0]) == 4` arity check, both int/float-agnostic, so the
       expectation is no change; verify rather than assume (spike-2).
-- [ ] `tests/test_observation_protocol.py`, `tests/test_validity_field.py` — call
+- [x] `tests/test_observation_protocol.py`, `tests/test_validity_field.py` — call
       `strengthen_cycle`/`weaken_cycle`/`resolve_pressure` via the observation path
       with pipelines. UPDATE only if the eager-write placement changes an ordering they
       assert.
-- [ ] `tests/test_cyclic_subclass_companion_keys.py` — no change expected (key
+- [x] `tests/test_cyclic_subclass_companion_keys.py` — no change expected (key
       derivation only); listed so the builder confirms rather than skips it.
-- [ ] **New**: `tests/test_cyclic_decay_atomicity.py` — the concurrency tests
+- [x] **New**: `tests/test_cyclic_decay_atomicity.py` — the concurrency tests
       (Task 4). No existing coverage of concurrent writers exists.
-- [ ] **New coverage for critique B1** — no listed file asserts the stored period's
+- [x] **New coverage for critique B1** — no listed file asserts the stored period's
       *type* (`test_transfer_fidelity_fields.py`'s arity check is period-blind). Add,
       in `tests/test_cyclic_decay_field.py`: (a) after a `save()`, the stored cycles
       entry decodes with a **numeric** period (and a declared string period stays a
@@ -545,10 +545,10 @@ distinguishable from a packed empty result, which an empty bulk string is not.
       #698 baseline-preservation test that would fail if slot 4 were stored as a
       string (save, `strengthen_cycle`, save again with an unchanged declaration →
       learned amplitude survives).
-- [ ] **New coverage for critique B2** — `strengthen_cycle()` / `weaken_cycle()` on a
+- [x] **New coverage for critique B2** — `strengthen_cycle()` / `weaken_cycle()` on a
       member with no stored cycles entry returns `[]` (or the pipeline) and does not
       raise.
-- [ ] No xfail markers relate to this bug — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
+- [x] No xfail markers relate to this bug — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
       tests/` returns nothing matching cycles/amplitude/pressure. Nothing to convert.
 
 ## Rabbit Holes
@@ -710,76 +710,76 @@ public methods keep their signatures.
 ## Documentation
 
 ### Feature Documentation
-- [ ] `docs/features/cyclic-decay-field.md:165-180` — **delete** the "queue the
+- [x] `docs/features/cyclic-decay-field.md:165-180` — **delete** the "queue the
       **save first**" pipeline caveat and its worked example; replace with a short
       statement that both writers are atomic server-side and pipeline ordering no
       longer matters for them, plus the one new fact a user can observe (the
       companion write executes eagerly, not at `pipeline.execute()`).
-- [ ] Same file — note that integral amplitudes may read back as `int` (Risk 1) and
+- [x] Same file — note that integral amplitudes may read back as `int` (Risk 1) and
       that popoto coerces at its own boundaries.
-- [ ] `docs/features/cyclic-decay-field.md:150-152` — **extend the existing rolling-
+- [x] `docs/features/cyclic-decay-field.md:150-152` — **extend the existing rolling-
       deploy caveat** (critique C2, Race 4). It currently covers mixed in-process
       *declarations*; add that during a rolling deploy the atomicity guarantee itself
       does not hold, because a pre-fix process's client-side read-modify-write is not
       excluded by a server-side script, so the lost update stays reachable until every
       writer of that model is upgraded.
-- [ ] `docs/features/README.md` — index entry already exists; verify no text there
+- [x] `docs/features/README.md` — index entry already exists; verify no text there
       repeats the deleted caveat.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes.
+- [x] `mkdocs build --strict` passes.
 
 ### Inline Documentation
-- [ ] `CyclicDecayField.on_save` docstring (`:542-597`) — remove the "an amplitude
+- [x] `CyclicDecayField.on_save` docstring (`:542-597`) — remove the "an amplitude
       adjustment queued on the *same* pipeline as this save is still lost" paragraph;
       state instead that the companion write is one eager atomic script, and why it
       is eager (Risk 2 / #476 precedent).
-- [ ] `Model._adjust_cycle_amplitudes` docstring (`:2703-2723`) — the long comment
+- [x] `Model._adjust_cycle_amplitudes` docstring (`:2703-2723`) — the long comment
       explaining why the baseline slot is repacked untouched must survive the port; the
       property is now enforced by the Lua, so the comment moves next to it. **Translate
       the index when it moves (critique C5):** the Python comment at `base.py:2776`
       calls it `cycle[3]` (0-based); in the Lua it is `c[4]`. Do not carry "slot 3"
       across — `c[3]` is *phase*.
-- [ ] Both Lua scripts get header comments in the style of `CYCLIC_DECAY_LUA`
+- [x] Both Lua scripts get header comments in the style of `CYCLIC_DECAY_LUA`
       (`:60-68`): KEYS/ARGV layout, and an explicit note that the return value is
       `cmsgpack`-packed because bare Lua numbers are truncated to integers over the
       protocol.
 
 ## Success Criteria
 
-- [ ] A concurrency test (N threads interleaving `save()` with `strengthen_cycle()`
+- [x] A concurrency test (N threads interleaving `save()` with `strengthen_cycle()`
       on one member) ends with the amplitude equal to `declared * factor**K` for the
       K adjustments performed — no lost updates.
-- [ ] The same test, run against pre-fix `main`, **fails** — red-state output pasted
+- [x] The same test, run against pre-fix `main`, **fails** — red-state output pasted
       into the PR description (spike-3).
-- [ ] A concurrency test for `save()` vs `resolve_pressure()` shows `last_resolved`
+- [x] A concurrency test for `save()` vs `resolve_pressure()` shows `last_resolved`
       never regresses.
-- [ ] Every existing test in `tests/test_cyclic_decay_field.py` passes **unmodified**,
+- [x] Every existing test in `tests/test_cyclic_decay_field.py` passes **unmodified**,
       except where a test spied on `hget`/`hset` directly (Test Impact).
-- [ ] `grep` confirms no client-side `hget` of either companion hash remains in
+- [x] `grep` confirms no client-side `hget` of either companion hash remains in
       `on_save` or `_adjust_cycle_amplitudes`.
-- [ ] A saved record's stored cycles entry decodes with a **numeric** period, and a
+- [x] A saved record's stored cycles entry decodes with a **numeric** period, and a
       ranked query (`top_by_decay`) over a cycle-declaring model returns without
       `ResponseError` (critique B1).
-- [ ] `strengthen_cycle()` on a member with no stored cycles entry returns `[]`
+- [x] `strengthen_cycle()` on a member with no stored cycles entry returns `[]`
       rather than raising (critique B2).
-- [ ] The rolling-deploy caveat (Race 4 / critique C2) is present in
+- [x] The rolling-deploy caveat (Race 4 / critique C2) is present in
       `docs/features/cyclic-decay-field.md`, not only in this plan.
-- [ ] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
+- [x] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
       *(Task 3 only. Delete this criterion if Open Question 3 is answered "split it
       out" — edit 4 of the removal procedure, critique C7.)*
-- [ ] `tests/test_cyclic_decay_field.py:1512` and `:1534` (table-valued period →
+- [x] `tests/test_cyclic_decay_field.py:1512` and `:1534` (table-valued period →
       whole learned bucket discarded with the decode warning) pass **unmodified** —
       the acceptance test for the C4 `type` guard.
-- [ ] A pipelined `strengthen_cycle`/`weaken_cycle` against a member with no stored
+- [x] A pipelined `strengthen_cycle`/`weaken_cycle` against a member with no stored
       cycles entry is covered by a test that pins `pipe.execute()`'s result length,
       recording the one-entry shift (critique C6).
-- [ ] The "queue the save first" caveat is gone from the docstring and the docs page.
-- [ ] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
-- [ ] `scripts/mypy_ratchet.py`, `ruff check src/`, `black --check src/ tests/`,
+- [x] The "queue the save first" caveat is gone from the docstring and the docs page.
+- [x] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
+- [x] `scripts/mypy_ratchet.py`, `ruff check src/`, `black --check src/ tests/`,
       `mkdocs build --strict` all pass.
-- [ ] Documentation updated (`/do-docs`).
-- [ ] No xfail conversions needed (none exist for this bug).
+- [x] Documentation updated (`/do-docs`).
+- [x] No xfail conversions needed (none exist for this bug).
 
 ## Team Orchestration
 

@@ -628,3 +628,6 @@ occurrence of the record's *key* does not:
   distills accepted candidates into `statement` (leaving `verbatim`
   untouched), writes the `res:{status}` subject tag, and is the sole
   producer of a caller-supplied `valid_from` on the auditable path
+- [Belief-Sheet View](belief-sheet-view.md) — the read-path resolver that
+  folds the journal into surviving claims: retractions dropped, supersessions
+  collapsed to winners, disjunctions as explicit uncertainty

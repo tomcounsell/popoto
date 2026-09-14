@@ -8,6 +8,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 |---------|-------------|--------|
 | [Agent Memory](agent-memory.md) | The map: 17 primitives, the layers composed on them, and where each reference lives | Stable |
 | [Auditable Extraction](auditable-extraction.md) | Opt-in candidate generator + enum-verdict LLM stage + per-candidate decision log — extraction precision/recall computable offline | Stable |
+| [Belief-Sheet View](belief-sheet-view.md) | Read-path claim resolver over the journal: retractions dropped, supersessions collapsed, reader gate, replayable | Stable |
 | [CoOccurrenceField](co-occurrence-field.md) | Associative co-occurrence graph for candidate expansion | Stable |
 | [CompositeScoreQuery](composite-score-query.md) | Multi-factor ranked retrieval across sorted indexes | Stable |
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |

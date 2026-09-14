@@ -73,7 +73,17 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field as dataclass_field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from ..fields.constants import Defaults
 from ..fields.shortcuts import FloatField, IndexedField, IntField, KeyField
@@ -90,8 +100,24 @@ try:  # pragma: no cover - exercised by environment, not by a branch test
 
     _anthropic_available = True
 except ImportError:  # pragma: no cover - same
-    anthropic_module = None  # type: ignore[assignment]
+    # Keep the name bound (to None) even when the optional dependency is
+    # absent, so callers/tests can always monkeypatch this module's
+    # ``anthropic_module`` regardless of whether `anthropic` is installed.
+    # No ``type: ignore`` here, matching the three sibling guards in
+    # ``extraction/``: the gate environment installs no `anthropic` extra,
+    # so the import resolves to ``Any`` and an ignore would be unused --
+    # and ``warn_unused_ignores`` makes an unused one an error.
+    anthropic_module = None
     _anthropic_available = False
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    # Imported for annotations only; the runtime import stays function-local
+    # in ``reconciliation_consumer`` to keep module import cheap.
+    from ..streams import StreamConsumer
+
+#: One decoded stream batch: ``StreamConsumer`` hands the handler a list of
+#: ``(entry_id, fields_dict)`` pairs (``streams/consumer.py:62``).
+StreamBatch = Sequence[Tuple[str, Dict[str, Any]]]
 
 logger = logging.getLogger("POPOTO.Reconciliation")
 
@@ -816,6 +842,11 @@ def resolve_precedence(
             return challenger, incumbent, "rule0_stated"
         return incumbent, challenger, "rule0_stated"
 
+    # Both columns are compared as floats: ``confirmation_count`` returns a
+    # small int that is exactly representable, and recency is a timestamp.
+    # The comparison never crosses columns, so the widening loses nothing.
+    left: float
+    right: float
     for column in PRECEDENCE_ORDER[family]:
         if column == "confirmations":
             left = confirmation_count(challenger)
@@ -1485,7 +1516,7 @@ def make_reconciliation_handler(
     *,
     client: Any = None,
     provider: Any = None,
-):
+) -> Callable[[StreamBatch], Awaitable[None]]:
     """Build the ``StreamConsumer`` handler that is M5's production trigger.
 
     Entries are processed **sequentially** inside one handler call, and the
@@ -1502,7 +1533,7 @@ def make_reconciliation_handler(
         provider: Embedding provider, forwarded to the shortlist.
     """
 
-    async def reconciliation_handler(entries) -> None:
+    async def reconciliation_handler(entries: StreamBatch) -> None:
         """Reconcile each ``assert`` capture the journal stream announces."""
         if not entries:
             return
@@ -1549,7 +1580,7 @@ def reconciliation_consumer(
     group_name: str = "m5-reconciler",
     client: Any = None,
     provider: Any = None,
-):
+) -> "StreamConsumer":
     """Build the journal-stream consumer. **One per agent** -- see the docstring.
 
     Running a second reconciler for one agent is a deployment error, not a
