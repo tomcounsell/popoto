@@ -1231,19 +1231,29 @@ line, and they do not all read the same:
 
 | | Decision | Basis |
 |---|---|---|
-| D1 | Symmetry probe: keep | **Agent judgment.** Argued from the Risk 1 failure-mode trade, with no in-repo evidence or maintainer ruling cited. Reversible: dropping the probe deletes a call, it does not restructure the loop. |
-| D2 | Convention book v1 + precedence table | **Derived.** Rule 0 is set by the issue text; the three flagged rows follow from a stated family-membership rule (supersession family = types whose deterministic rule is same-target supersession, today `deadline` alone). |
-| D3 | Frozen 7-type enum | **Agent judgment.** No evidence cited; taken because a frozen v1 enum is cheaper to widen later than to narrow. |
-| D4 | Embeddings: reconciler-side | **Agent judgment**, with one *verified* consequence: `hard_delete()` does not reach the cache (`src/popoto/fields/append_only.py:242-294`), so the cache joins the erasure cascade. |
-| D5 | Trigger shape: stream-only | **Recorded round-2 disposition**, restored after a revision pass reopened it to dual-trigger by agent judgment. See D5 below. |
+| D1 | Symmetry probe: keep | **Supervisor disposition** ("keep as specified"); the probe's content was already fixed by a round-1 critique row. Argued from the Risk 1 failure-mode trade. No in-repo evidence bears on it, and no maintainer ruled on it. Reversible: dropping the probe deletes a call, it does not restructure the loop. |
+| D2 | Convention book v1 + precedence table | **Mostly derived.** Rule 0 is set by the issue text. The three flagged rows follow from a stated family-membership rule (supersession family = the types whose deterministic rule is same-target supersession, today `deadline` alone). **Totality** (all-column tie → disjunct pair) is derived too, not invented: the issue defines a disjunct pair as what is stored "when precedence ties", and AC3 forbids a silent winner — a non-total table could not satisfy either. **The literal v1 convention-book wording is the one genuinely authored part** — the brief required that concrete wording exist, not what it says. |
+| D3 | Frozen 7-type enum | **Derived from the issue.** #564's own *Dropped* bucket rejects an LLM-extensible type schema because "decidability of rules dies with an open enum; catch-all `note` absorbs the tail." The enum is set by the issue, not chosen here. |
+| D4 | Embeddings: reconciler-side | **Supervisor disposition**, resting on a verified fact: `JournalEntry` carries no `EmbeddingField` today (`src/popoto/recipes/provenance_journal.py:282-311`). Note the honest rider — an `EmbeddingField` *would* have been legal under append-only, so this is a scope/ownership call, not a constraint. One consequence is authored here: `hard_delete()` does not reach the cache (`src/popoto/fields/append_only.py:242-294`), so the cache joins the erasure cascade. |
+| D5 | Trigger shape: **stream-only** | **Recorded PM disposition, restored in round 3.** An interim supervisor brief specified stream-*first* with a public direct call; that reversed the recorded stream-only answer and was carried into the plan verbatim. It is corrected here — not by agent judgment. See D5 below for the technical reason the reversal mattered. |
 
-**What this means for a reviewer:** D2 and the D4 erasure consequence are
-checkable against the repo and the issue. D1, D3, and the rest of D4 are
-judgment calls made to unblock build, and a maintainer who disagrees with any
-of them is disagreeing with a choice, not correcting an error. Each is scoped
-so that reversing it is a local edit — that was the selection criterion, and it
-is the reason closing them without a human was acceptable rather than merely
-convenient.
+**What this means for a reviewer.** D2 (except its convention-book prose), D3,
+and the `JournalEntry` fact under D4 are checkable against the issue text and
+the repo — citations are given inline and each was read in source before being
+written here. Three things are authored rather than derived: the literal
+convention-book v1 text (D2), the embedding-cache erasure obligation (D4), and
+the Risk-1 trade that keeps the D1 probe. A maintainer who disagrees with one
+of those three is disagreeing with a choice, not correcting an error, and each
+is scoped so reversing it is a local edit.
+
+**D5 is the one item where the audit trail matters more than the outcome.** The
+plan briefly documented two production entry points while simultaneously naming
+a single-writer invariant as the mitigation that licensed deleting `HSETNX` and
+the advisory lock. Under stream-only those deletions are sound; under
+stream-first-with-a-public-direct-call they leave a real correctness hole. The
+document now says stream-only and the deletions stand — but the sequence is
+recorded because the error came from a brief, not from the revision work, and a
+reader reconstructing why two concurrency primitives disappeared needs that.
 
 Each is cross-referenced from the body as `D1`–`D5`; where a decision changes
 body text, the body is authoritative and this section is the rationale.
