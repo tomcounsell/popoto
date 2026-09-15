@@ -1271,6 +1271,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/reconciliation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/auditable-extraction/" class="md-nav__link">
         
   
@@ -2077,6 +2105,17 @@
     <span class="md-ellipsis">
       
         Reference Resolution (M4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claim-reconciliation-m5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claim Reconciliation (M5)
       
     </span>
   </a>
@@ -3444,6 +3483,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#claim-reconciliation-m5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claim Reconciliation (M5)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4233,6 +4283,96 @@ metric a sweep would tune:</p>
 <p>The <code>ResolutionRecord</code> sidecar rows themselves are <strong>unbounded</strong>, same as
 M3's decision log — no retention/cap constant exists for them either; see
 <a href="../../features/reference-resolution/#the-resolutionrecord-sidecar">the sidecar</a>.</p>
+<h3 id="claim-reconciliation-m5">Claim Reconciliation (M5)<a class="headerlink" href="#claim-reconciliation-m5" title="Permanent link">&para;</a></h3>
+<p>Source: <code>src/popoto/fields/constants.py</code>, consumed by
+<code>src/popoto/recipes/reconciliation.py</code> (which aliases each one at module level
+and reads it by name, so none is inlined as a literal)</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>Optimal Range</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>M5_SHORTLIST_CAP</code></td>
+<td>8</td>
+<td>Not swept (judge-budget bound)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M5_SYMMETRY_PROBE_ENABLED</code></td>
+<td><code>True</code></td>
+<td>n/a (boolean kill switch)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M5_JUDGE_MODEL</code></td>
+<td><code>"claude-haiku-4-5-20251001"</code></td>
+<td>n/a (pinned model identity)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>M5_JUDGE_MAX_TOKENS</code></td>
+<td>256</td>
+<td>Not swept (reply-shape bound)</td>
+<td>Not swept</td>
+</tr>
+<tr>
+<td><code>M5_REPLAY_WATERMARK_FIELD</code></td>
+<td><code>"captured_at"</code></td>
+<td>n/a (field name, not a quantity)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>MEGA_CLASS_VELOCITY_ALERT</code></td>
+<td>5</td>
+<td>Not swept (telemetry threshold)</td>
+<td>Not swept</td>
+</tr>
+</tbody>
+</table>
+<p>None of these six constants have been through this guide's benchmark harness.
+That is not an oversight pending a sweep: four of them are not quantities a
+retrieval-quality metric can rank, and the two that are numeric bound <em>cost and
+blast radius</em>, not answer quality.</p>
+<ul>
+<li><code>M5_SHORTLIST_CAP</code> (8) caps how many candidate classes the embedding
+  shortlist hands the sameness judge for one capture, and so caps judge calls
+  per capture. It is a spend bound rather than a quality knob: raising it buys
+  recall of a distant equivalent claim at linear cost in judge calls, and the
+  exact-<code>claim_slot</code> equality lookup runs <em>ahead</em> of the shortlist, so a
+  restatement that is textually identical is found by index regardless of this
+  value. A capture whose candidate list is shorter than the cap skips the
+  truncation entirely.</li>
+<li><code>M5_SYMMETRY_PROBE_ENABLED</code> (<code>True</code>) is a <strong>kill switch</strong>, in the
+  <a href="../../features/reconciliation/#the-symmetry-probe">default-on</a> sense: with it
+  on, a forward "same" verdict is re-asked with the two claims swapped, and a
+  disagreement disjoins instead of joining. It exists because the failure it
+  prevents is the worst one available here — a silent mega-class assembled out
+  of non-transitive pairwise "same" verdicts, which no later pass detects
+  because no merge was ever contested. Turning it off halves judge calls on the
+  join path and forfeits that protection; it is not a tuning dial.</li>
+<li><code>M5_JUDGE_MODEL</code> and <code>M5_JUDGE_MAX_TOKENS</code> (256) mirror
+  <code>extraction/verdict.py</code>'s <code>VERDICT_MODEL</code> / <code>VERDICT_MAX_TOKENS</code> on purpose.
+  The judge does a constrained two-value enum classification and replies with
+  one enum key, so the token cap sizes for that reply rather than for prose,
+  and the smaller model is the right one. Neither is a quality constant a
+  sweep would move: changing the model changes the judge, not a parameter of
+  it.</li>
+<li><code>M5_REPLAY_WATERMARK_FIELD</code> (<code>"captured_at"</code>) is the name of the
+  <code>JournalEntry</code> field <code>replay()</code> filters on with a strict <code>&gt;</code>, borrowing
+  <code>crystallize</code>'s watermark shape. It is a constant rather than a literal so
+  that renaming the field is one edit — there is nothing to tune.</li>
+<li><code>MEGA_CLASS_VELOCITY_ALERT</code> (5) is the joins-into-one-class-per-pass count
+  past which a class-size-velocity signal is logged. It is <strong>telemetry only and
+  never a gate</strong>: a legitimately large class must not be blocked, so exceeding
+  it logs and proceeds. Lowering it makes the log noisier, raising it makes a
+  runaway join slower to notice; neither changes behavior.</li>
+</ul>
 <h2 id="cliff-effects">Cliff Effects<a class="headerlink" href="#cliff-effects" title="Permanent link">&para;</a></h2>
 <p>Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):</p>
 <p><strong><code>ACTED_CYCLE_STRENGTHEN_FACTOR</code></strong>: Values below 1.0 cause a 23% drop in nDCG@5 for the temporal scheduling scenario. When the strengthen factor is &lt; 1.0, acted outcomes actually weaken cycle amplitude instead of strengthening it, causing the system to suppress recurring tasks that should be reinforced.</p>

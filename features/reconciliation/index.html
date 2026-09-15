@@ -12,13 +12,13 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/features/confidence-field/">
+        <link rel="canonical" href="https://popoto.io/features/reconciliation/">
       
       
-        <link rel="prev" href="../cyclic-decay-field/">
+        <link rel="prev" href="../provenance-journal/">
       
       
-        <link rel="next" href="../td-value-field/">
+        <link rel="next" href="../auditable-extraction/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>ConfidenceField - Popoto Documentation</title>
+        <title>Reconciliation - Popoto Documentation</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#confidencefield" class="md-skip">
+        <a href="#reconciliation-claim-equivalence-classes" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ConfidenceField
+              Reconciliation
             
           </span>
         </div>
@@ -1074,37 +1074,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ConfidenceField
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../confidence-field/" class="md-nav__link">
         
   
   
@@ -1120,281 +1093,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parameters
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#update-formula" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update Formula
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Update Formula">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#running-mean-regime-evidence_count-cap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Running-Mean Regime (evidence_count &lt; cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#forgetting-regime-evidence_count-cap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Forgetting Regime (evidence_count &gt;= cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#update-behavior-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update Behavior Summary
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#entrainment-with-observationprotocol" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Entrainment with ObservationProtocol
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Entrainment with ObservationProtocol">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#auto-discharge" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Auto-discharge
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#api-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API Reference
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="API Reference">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidenceinstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidence_datainstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence_data(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#inspecting-companion-hash-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Inspecting Companion Hash Keys
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#partitioned-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Partitioned Reads
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Partitioned Reads">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hscan-filtered-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        HSCAN Filtered Reads
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#migration-helper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Migration Helper
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#confidence-feeds-forgetting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Confidence Feeds Forgetting
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#redis-key-patterns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Redis Key Patterns
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-example-popoto-kitchen" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working Example: Popoto Kitchen
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#companion-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Companion Fields
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1572,10 +1270,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../reconciliation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1591,6 +1316,192 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#three-properties-that-shape-everything-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three properties that shape everything here
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capture-assigns-the-claim-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capture assigns the claim type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claim-slots-carry-no-claim-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claim slots carry no claim content
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two tiers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two tiers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-judge-abstains-rather-than-guesses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The judge abstains rather than guesses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-symmetry-probe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The symmetry probe
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#precedence-and-the-tie-that-is-not-a-coin-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precedence, and the tie that is not a coin flip
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Precedence, and the tie that is not a coin flip">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#exactly-one-supersession-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exactly one supersession mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#replay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operator-procedure-erasing-a-reconciled-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator procedure: erasing a reconciled entry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-the-single-writer-invariant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment: the single-writer invariant
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#importers-must-register-the-kinds-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importers must register the kinds first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -3264,10 +3175,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#three-properties-that-shape-everything-here" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Three properties that shape everything here
       
     </span>
   </a>
@@ -3275,10 +3186,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
+  <a href="#capture-assigns-the-claim-type" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Parameters
+        Capture assigns the claim type
       
     </span>
   </a>
@@ -3286,10 +3197,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
+  <a href="#claim-slots-carry-no-claim-content" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage
+        Claim slots carry no claim content
       
     </span>
   </a>
@@ -3297,22 +3208,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#update-formula" class="md-nav__link">
+  <a href="#the-two-tiers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Update Formula
+        The two tiers
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Update Formula">
+    <nav class="md-nav" aria-label="The two tiers">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#running-mean-regime-evidence_count-cap" class="md-nav__link">
+  <a href="#the-judge-abstains-rather-than-guesses" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running-Mean Regime (evidence_count &lt; cap)
+        The judge abstains rather than guesses
       
     </span>
   </a>
@@ -3320,21 +3231,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#forgetting-regime-evidence_count-cap" class="md-nav__link">
+  <a href="#the-symmetry-probe" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Forgetting Regime (evidence_count &gt;= cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#update-behavior-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update Behavior Summary
+        The symmetry probe
       
     </span>
   </a>
@@ -3347,22 +3247,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#entrainment-with-observationprotocol" class="md-nav__link">
+  <a href="#precedence-and-the-tie-that-is-not-a-coin-flip" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Entrainment with ObservationProtocol
+        Precedence, and the tie that is not a coin flip
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Entrainment with ObservationProtocol">
+    <nav class="md-nav" aria-label="Precedence, and the tie that is not a coin flip">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#auto-discharge" class="md-nav__link">
+  <a href="#exactly-one-supersession-mechanism" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auto-discharge
+        Exactly one supersession mechanism
       
     </span>
   </a>
@@ -3375,110 +3275,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api-reference" class="md-nav__link">
+  <a href="#replay" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API Reference
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="API Reference">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidenceinstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidence_datainstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence_data(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#inspecting-companion-hash-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Inspecting Companion Hash Keys
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#partitioned-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Partitioned Reads
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Partitioned Reads">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hscan-filtered-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        HSCAN Filtered Reads
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#migration-helper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Migration Helper
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#confidence-feeds-forgetting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Confidence Feeds Forgetting
+        Replay
       
     </span>
   </a>
@@ -3486,10 +3286,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#redis-key-patterns" class="md-nav__link">
+  <a href="#operator-procedure-erasing-a-reconciled-entry" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Redis Key Patterns
+        Operator procedure: erasing a reconciled entry
       
     </span>
   </a>
@@ -3497,10 +3297,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#working-example-popoto-kitchen" class="md-nav__link">
+  <a href="#deployment-the-single-writer-invariant" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Working Example: Popoto Kitchen
+        Deployment: the single-writer invariant
       
     </span>
   </a>
@@ -3508,10 +3308,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#companion-fields" class="md-nav__link">
+  <a href="#importers-must-register-the-kinds-first" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Companion Fields
+        Importers must register the kinds first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
       
     </span>
   </a>
@@ -3538,322 +3360,283 @@
   
 
 
-<h1 id="confidencefield">ConfidenceField<a class="headerlink" href="#confidencefield" title="Permanent link">&para;</a></h1>
-<p>A <code>Field</code> subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.</p>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p><code>ConfidenceField</code> maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a <strong>capped-evidence Bayesian</strong> (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.</p>
-<p>The field stores its metadata in a companion Redis hash:</p>
-<ul>
-<li><code>{confidence, evidence_count, corroborations, contradictions}</code></li>
-</ul>
-<h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
+<h1 id="reconciliation-claim-equivalence-classes">Reconciliation — claim equivalence classes<a class="headerlink" href="#reconciliation-claim-equivalence-classes" title="Permanent link">&para;</a></h1>
+<p><code>popoto.recipes.reconciliation</code> groups <a href="../provenance-journal/">provenance journal</a>
+entries that assert <strong>one claim</strong> into an <em>equivalence class</em>, resolves typed
+contradictions inside a class through a per-type precedence table, and stores a
+precedence tie as an explicit <strong>disjunct pair</strong> rather than picking an arbitrary
+winner.</p>
+<p>The journal records what an agent captured, immutably and with full attribution.
+It does not notice that two entries say the same thing. That is this layer's job
+— and only that: reconciliation groups and resolves, it never decides what a
+reader should be shown.</p>
+<h2 id="three-properties-that-shape-everything-here">Three properties that shape everything here<a class="headerlink" href="#three-properties-that-shape-everything-here" title="Permanent link">&para;</a></h2>
+<p><strong>Nothing this module writes ever mutates a persisted <code>JournalEntry</code>.</strong> An entry
+composes <code>AppendOnlyMixin</code>, which refuses any re-save of an existing key —
+including a partial <code>save(update_fields=[...])</code>. So class membership cannot be a
+field on the entry: it lives in two ordinary models the module owns,
+<code>ClaimMembership</code> and <code>ClaimClass</code>, where a relabel is an ordinary <code>save()</code>. The
+only writes are <code>claim_type</code> (set by <em>capture</em>, before an entry's first and only
+save), new appended annotation entries, and rows in those two models.</p>
+<p><strong>The merge log is the source of truth; the two tables are a rebuildable
+index.</strong> Every outcome is appended to the journal as an immutable <code>merge</code> (or
+<code>disjoin</code>) annotation carrying the class ids, a machine rationale, the timestamp,
+the convention-book version and the claim slot. <code>replay()</code> discards the index and
+recomputes it from those annotations alone. That is what makes reversibility
+structural: retract a <code>merge</code> annotation, replay, and the pre-merge assignment is
+back. A crash mid-relabel is a repair, not a corruption.</p>
+<p>What makes that hold rather than nearly hold: <strong>every path that writes a
+<code>ClaimMembership</code> row also appends an annotation naming that entry as a member of
+its class.</strong> The outcome-specific annotations are not sufficient on their own — a
+<code>disjoin</code> annotation only <em>repoints</em> a row replay already found, and a
+supersession annotation targets the <em>winner</em>, so an entry that loses to its
+incumbent is named by no outcome annotation at all. Both would be silently
+dropped by a from-genesis rebuild. So the row and its reconstructing annotation
+are written together, unconditionally.</p>
+<p><strong>One reconciler per agent, processing entries sequentially.</strong> See
+<a href="#deployment-the-single-writer-invariant">the single-writer invariant</a> — it is a
+deployment constraint, not an implementation detail.</p>
+<h2 id="capture-assigns-the-claim-type">Capture assigns the claim type<a class="headerlink" href="#capture-assigns-the-claim-type" title="Permanent link">&para;</a></h2>
+<p><code>claim_type</code> is the only new field on <code>JournalEntry</code>, and it is <em>write-once at
+capture</em>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.provenance_journal</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProvenanceJournal</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">statement</span><span class="o">=</span><span class="s2">"prefers morning meetings"</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s2">"dana"</span><span class="p">],</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">claim_type</span><span class="o">=</span><span class="s2">"preference"</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
+</code></pre></div>
+<p>The type vocabulary is a <strong>frozen</strong> seven-value enum:</p>
 <table>
 <thead>
 <tr>
-<th>Parameter</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
+<th>type</th>
+<th>family</th>
+<th>deterministic rule</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>initial_confidence</code></td>
-<td>float</td>
-<td>0.5</td>
-<td>Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean.</td>
+<td><code>deadline</code></td>
+<td>supersession</td>
+<td>a same-slot collision <em>is</em> a conflict; newest wins</td>
 </tr>
 <tr>
-<td><code>evidence_cap</code></td>
-<td>int</td>
-<td>20</td>
-<td>Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of <code>1/(cap+1)</code>, producing bounded exponential forgetting. Must be an integer ≥ 1.</td>
+<td><code>preference</code></td>
+<td>stable</td>
+<td>conflict only on a judged "different"; most-confirmed wins</td>
 </tr>
 <tr>
-<td><code>partition_by</code></td>
-<td>str or tuple</td>
-<td><code>()</code></td>
-<td>Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads.</td>
+<td><code>trait</code></td>
+<td>stable</td>
+<td>as <code>preference</code></td>
+</tr>
+<tr>
+<td><code>relationship</code></td>
+<td>stable</td>
+<td>as <code>preference</code></td>
+</tr>
+<tr>
+<td><code>goal</code></td>
+<td>stable</td>
+<td>as <code>preference</code></td>
+</tr>
+<tr>
+<td><code>procedure</code></td>
+<td>stable</td>
+<td>as <code>preference</code></td>
+</tr>
+<tr>
+<td><code>note</code></td>
+<td>rule-free</td>
+<td>none — can only join, disjoin, or stay a singleton</td>
 </tr>
 </tbody>
 </table>
-<blockquote>
-<p><strong>Warning — same cap across processes</strong>: The <code>evidence_cap</code> is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical <code>evidence_cap</code> values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.</p>
-</blockquote>
-<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Create a memory</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"fact1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"The sky is blue"</span><span class="p">)</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># Corroborate (signal &gt;= 0.5 increases confidence)</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># Contradict (signal &lt; 0.5 decreases confidence)</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="c1"># Read current confidence</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">)</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># Read all metadata</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">data</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_data</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">)</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}</span>
+<p>Frozen rather than open because decidability dies with an open enum: every type
+but <code>note</code> needs a decidable incompatibility rule <em>and</em> a precedence row.
+<code>note</code> is the rule-free catch-all that absorbs the tail, which is what lets the
+enum be frozen without an escape hatch.</p>
+<p>Omitting <code>claim_type</code> is legal and stores <code>None</code> — every entry captured before
+this feature shipped has it, and nothing can back-fill a write-once field on an
+append-only record. <code>normalize_claim_type()</code> maps <code>None</code>, <code>""</code>, and any
+unrecognized string onto <code>note</code>, so such an entry is classified rather than
+skipped.</p>
+<h2 id="claim-slots-carry-no-claim-content">Claim slots carry no claim content<a class="headerlink" href="#claim-slots-carry-no-claim-content" title="Permanent link">&para;</a></h2>
+<p>A <em>claim slot</em> is <code>sha256("{agent_id}|{subject}|{claim_type}")</code>, truncated to 32
+hex characters. Grouping needs only slot <em>equality</em>, so the slot is stored
+one-way and neither reconciliation model holds a subject string or a plaintext
+type.</p>
+<p>That is a correctness requirement, not caution. <code>JournalEntry.hard_delete()</code> is
+the only erasure primitive an append-only record has, and its documented scope is
+the record plus every trace of <em>its own</em> derived state — explicitly <strong>not</strong>
+"every trace of the record anywhere in the keyspace". A plaintext subject on a
+mutable sibling model would be exactly such an out-of-reach field-value copy, and
+<code>JournalEntry</code> also composes <code>NeverRecordMixin</code>, so this data is already governed
+as never-record.</p>
+<h2 id="the-two-tiers">The two tiers<a class="headerlink" href="#the-two-tiers" title="Permanent link">&para;</a></h2>
+<p><strong>Deterministic tier, zero LLM calls.</strong> An exact <code>claim_slot</code> equality lookup
+runs <em>before</em> any embedding work. For <code>deadline</code> — the only singleton-slot type —
+a same-slot collision is a conflict by definition, so the precedence table
+resolves it with the judge never consulted.</p>
+<p><strong>Judge tier.</strong> For the five stable types a same-slot pair may be a restatement
+<em>or</em> a conflict, so a sameness judge distinguishes them under a pinned
+convention book. Same-slot classes are offered first; an embedding shortlist,
+capped at <code>Defaults.M5_SHORTLIST_CAP</code>, then supplies cross-slot candidates such
+as a converse phrasing that names the subjects the other way round. With no
+embedding provider configured the shortlist degrades to a bounded same-subject +
+same-type index scan: recall narrows, every correctness property holds, and the
+call bound is unchanged.</p>
+<h3 id="the-judge-abstains-rather-than-guesses">The judge abstains rather than guesses<a class="headerlink" href="#the-judge-abstains-rather-than-guesses" title="Permanent link">&para;</a></h3>
+<p>The judge follows the same contract as
+<a href="../auditable-extraction/">auditable extraction</a>'s verdict call: the never-record
+firewall runs <strong>before</strong> the request, output is confined by a JSON schema and
+then re-validated field by field, and the function never raises. A blank
+statement costs <strong>zero</strong> calls. A malformed reply, an unreachable provider, or a
+raising client all abstain — and an abstention leaves the entry a new singleton
+class. Rule 8 of the convention book makes that the judge's default under
+uncertainty too: abstaining costs one extra class, whereas a wrong "same" merges
+two beliefs irreversibly from a reader's point of view.</p>
+<h3 id="the-symmetry-probe">The symmetry probe<a class="headerlink" href="#the-symmetry-probe" title="Permanent link">&para;</a></h3>
+<p>Judge verdicts are not transitive, and compounding false "same" verdicts into a
+mega-class is the top threat to this design. So a forward "same" is re-asked
+<strong>once with the claim order swapped</strong>, and the join commits only on same/same.
+Any split — forward-same then probe-different, or a probe abstention — becomes an
+explicit disjunct pair instead of a silent non-merge. Cost is bounded at two
+calls per candidate class, so an entry costs at most <code>2 × M5_SHORTLIST_CAP</code>
+calls. Full N-way transitivity closure is deliberately not implemented:
+quadratic calls, no additional safety over this probe.</p>
+<p>A second, non-gating line of defence reports damage the probe lets through: a
+class absorbing more than <code>Defaults.MEGA_CLASS_VELOCITY_ALERT</code> joins in one pass
+logs a warning. It is telemetry only and never refuses the join — a legitimately
+large class must not be blocked.</p>
+<h2 id="precedence-and-the-tie-that-is-not-a-coin-flip">Precedence, and the tie that is not a coin flip<a class="headerlink" href="#precedence-and-the-tie-that-is-not-a-coin-flip" title="Permanent link">&para;</a></h2>
+<p>Once a type rule has fired, precedence resolves it:</p>
+<ol>
+<li><strong>Rule 0, global and first</strong> — a self-stated claim beats an inferred one
+   (<code>JournalEntry.stated</code>). Applied for every type.</li>
+<li><strong>Family order</strong> — recency for the supersession family; confirmation count
+   <em>then</em> recency for the stable family, so a claim corroborated many times does
+   not lose to a single fresh mention.</li>
+</ol>
+<p>The table is <strong>total</strong>: when Rule 0 ties, the family order ties and recency ties,
+the outcome is an explicit disjunct pair. There is no arbitrary winner to hand a
+reader, which is why <code>representative_for()</code> returns the uncertainty flag from
+M5's own selection call rather than leaving it to a formatting layer:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.reconciliation</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClaimClass</span><span class="p">,</span> <span class="n">representative_for</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">for</span> <span class="n">claim_class</span> <span class="ow">in</span> <span class="n">ClaimClass</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">):</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">entry</span><span class="p">,</span> <span class="n">uncertain</span> <span class="o">=</span> <span class="n">representative_for</span><span class="p">(</span><span class="n">claim_class</span><span class="o">.</span><span class="n">class_id</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="update-formula">Update Formula<a class="headerlink" href="#update-formula" title="Permanent link">&para;</a></h2>
-<p>The update rule uses a capped effective-evidence count:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>n_eff = min(evidence_count + 1, cap)
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>new_confidence = confidence + (signal - confidence) / (n_eff + 1)
+<p>The representative is the class's most-confirmed member <strong>among validity-open
+entries only</strong>, ties broken by recency. A superseded loser stays in-class for
+audit but is excluded from selection and from confirmation counts.</p>
+<h3 id="exactly-one-supersession-mechanism">Exactly one supersession mechanism<a class="headerlink" href="#exactly-one-supersession-mechanism" title="Permanent link">&para;</a></h3>
+<p>Every resolved conflict closes the loser through <code>ProvenanceJournal.supersede()</code>,
+which appends a <code>supersede</code> annotation and closes the target's interval in one
+<code>MULTI</code>/<code>EXEC</code>. It has to be that call rather than <code>save_and_supersede()</code> applied
+to the winner: the winner is already persisted, so re-saving it would raise
+<code>AppendOnlyViolation</code> — the same rule as "nothing here mutates a persisted
+entry".</p>
+<p>If the loser left live membership between the shortlist read and the write,
+<code>ValidityMemberAbsentError</code> is caught, the loser re-read, and the merge log
+records <code>loser-absent</code> while the winner stands. Nothing is deleted — the journal
+is append-only — so the condition is a closed membership with the hash still
+present, which an <code>EXISTS</code> check would pass straight through.</p>
+<h2 id="replay">Replay<a class="headerlink" href="#replay" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.reconciliation</span><span class="w"> </span><span class="kn">import</span> <span class="n">replay</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">replay</span><span class="p">(</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">since</span><span class="o">=</span><span class="n">last_watermark</span><span class="p">)</span>   <span class="c1"># steady state</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">replay</span><span class="p">(</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">rebuild</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>           <span class="c1"># from-genesis repair</span>
 </code></pre></div>
-<p>The <code>+1</code> in <code>evidence_count + 1</code> is an inlined prior pseudo-count — <code>initial_confidence</code> behaves as one real observation. Results are clamped to <code>[0, 1]</code>.</p>
-<h3 id="running-mean-regime-evidence_count-cap">Running-Mean Regime (evidence_count &lt; cap)<a class="headerlink" href="#running-mean-regime-evidence_count-cap" title="Permanent link">&para;</a></h3>
-<p>While the real evidence count is below the cap, the formula is an exact running mean over <code>{prior, s1, s2, …, sn}</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>confidence after n updates = (initial_confidence + s1 + s2 + … + sn) / (n + 1)
+<p><code>since</code> filters on <code>captured_at</code> with a strict <code>&gt;</code>. <code>rebuild=True</code> deletes the
+agent's index rows first, which is what a true from-genesis rebuild needs;
+without it a replay is additive. Only <code>validity__current=True</code> annotations are
+read, so a retracted <code>merge</code> is simply no longer in the log.</p>
+<h2 id="operator-procedure-erasing-a-reconciled-entry">Operator procedure: erasing a reconciled entry<a class="headerlink" href="#operator-procedure-erasing-a-reconciled-entry" title="Permanent link">&para;</a></h2>
+<p><strong>Use <code>erase_entry()</code>, not <code>JournalEntry.hard_delete()</code> directly.</strong> The primitive
+reaches the record and its own derived state; reconciliation adds derived state
+outside that scope, so a bare <code>hard_delete()</code> leaves a dangling membership row
+and a <code>ClaimClass</code> whose <code>representative_key</code> points at an erased key.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.reconciliation</span><span class="w"> </span><span class="kn">import</span> <span class="n">erase_entry</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">erase_entry</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
 </code></pre></div>
-<p>This is order-invariant up to ~1e-12 (IEEE-754 intermediate rounding; the closed form is the oracle, not bit-identical output). The first update from <code>initial_confidence=0.5</code> with <code>signal=0.9</code> yields <strong>0.7</strong>, not 0.9 — the prior is never erased.</p>
-<h3 id="forgetting-regime-evidence_count-cap">Forgetting Regime (evidence_count &gt;= cap)<a class="headerlink" href="#forgetting-regime-evidence_count-cap" title="Permanent link">&para;</a></h3>
-<p>Once the evidence count reaches the cap, the effective gain is fixed at <code>1/(cap+1)</code>. With <code>cap=20</code> (default), each update multiplies <code>(confidence - signal)</code> by <code>20/21 ≈ 0.952</code>.</p>
-<p><strong>Worked example</strong>: a belief with <code>confidence=0.9</code> and <code>evidence_count=20</code> (at the cap) subjected to 15 consecutive contradictions at <code>signal=0.1</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>After k contradictions: confidence = 0.1 + 0.8 × (20/21)^k
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Crossing 0.5 requires:  0.8 × (20/21)^k &lt; 0.4
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>                        k &gt; ln(0.4/0.8) / ln(20/21) ≈ 14.2 → 15 contradictions
+<p>Four legs, in order:</p>
+<ol>
+<li><code>JournalEntry.hard_delete()</code> on the entry.</li>
+<li>Delete its <code>ClaimMembership</code> row.</li>
+<li>Delete its cached reconciler-side embedding — an embedding is a lossy encoding
+   of <code>statement</code>, so the cache is content-derived state the primitive does not
+   reach.</li>
+<li>Recompute the affected <code>ClaimClass</code>: reselect <code>representative_key</code> and
+   <code>member_count</code>, or drop the row when the class is left empty.</li>
+</ol>
+<h2 id="deployment-the-single-writer-invariant">Deployment: the single-writer invariant<a class="headerlink" href="#deployment-the-single-writer-invariant" title="Permanent link">&para;</a></h2>
+<p>The <code>StreamConsumer</code> on the journal's <code>"journal"</code> stream is the <strong>only</strong>
+production trigger, and the deployment contract is <strong>one consumer per agent</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.reconciliation</span><span class="w"> </span><span class="kn">import</span> <span class="n">reconciliation_consumer</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">consumer</span> <span class="o">=</span> <span class="n">reconciliation_consumer</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">consumer_name</span><span class="o">=</span><span class="s2">"worker-1"</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">await</span> <span class="n">consumer</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
 </code></pre></div>
-<p>This is bounded exponential forgetting: well-established beliefs take roughly 15 systematic contradictions to cross the midpoint at the default cap.</p>
-<h3 id="update-behavior-summary">Update Behavior Summary<a class="headerlink" href="#update-behavior-summary" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Regime</th>
-<th>Condition</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Running mean</td>
-<td>evidence_count &lt; cap (20)</td>
-<td>Exact mean of {prior, all signals}; order-invariant to ~1e-12</td>
-</tr>
-<tr>
-<td>Fixed forgetting</td>
-<td>evidence_count &gt;= cap</td>
-<td>Constant gain <code>1/(cap+1)</code>; ~15 contradictions cross 0.5 from 0.9</td>
-</tr>
-</tbody>
-</table>
-<h2 id="entrainment-with-observationprotocol">Entrainment with ObservationProtocol<a class="headerlink" href="#entrainment-with-observationprotocol" title="Permanent link">&para;</a></h2>
-<p>When used with <code>ObservationProtocol</code>, confidence is automatically updated based on how the agent uses retrieved memories:</p>
-<table>
-<thead>
-<tr>
-<th>Outcome</th>
-<th>Effect on Confidence</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>acted</code></td>
-<td>Corroborate (signal=0.9)</td>
-</tr>
-<tr>
-<td><code>dismissed</code></td>
-<td>No change</td>
-</tr>
-<tr>
-<td><code>deferred</code></td>
-<td>No change</td>
-</tr>
-<tr>
-<td><code>contradicted</code></td>
-<td>Contradict (signal=0.1)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="auto-discharge">Auto-discharge<a class="headerlink" href="#auto-discharge" title="Permanent link">&para;</a></h3>
-<p>When confidence drops strictly below <code>AUTO_DISCHARGE_CONFIDENCE_THRESHOLD</code> (0.1), homeostatic pressure on any <code>CyclicDecayField</code> is automatically resolved (discharged). This prevents low-confidence memories from building urgency.</p>
-<p>The comparison uses an epsilon guard: discharge fires only when <code>conf &lt; 0.1 - 1e-9</code>. A confidence value that rounds to exactly 0.1 in display but is stored as <code>0.09999999999999998</code> (a common IEEE-754 artifact on the first contradiction from a default prior) does <strong>not</strong> trigger discharge. A genuine drop — one clearly below the threshold by more than epsilon — still does.</p>
-<h2 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h2>
-<h3 id="confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone"><code>ConfidenceField.update_confidence(instance, field_name, signal, pipeline=None)</code><a class="headerlink" href="#confidencefieldupdate_confidenceinstance-field_name-signal-pipelinenone" title="Permanent link">&para;</a></h3>
-<p>Atomically update confidence using the capped-evidence Bayesian formula.</p>
+<p>Entries are processed sequentially, and being the sole writer is what <em>produces</em>
+the invariant: an entry's membership row is committed before the next entry is
+shortlisted, so the interleaved shortlist-to-commit span the concurrent-join race
+needs never occurs. That invariant is the sole mitigation for that race — an
+atomic membership claim (<code>HSETNX</code>) and an advisory lock were both considered and
+<strong>withdrawn</strong> in its favour, and neither appears in the module.</p>
+<p><code>reconcile_entry()</code> exists for tests to drive the same reconcile function
+directly. It is <strong>not</strong> a production entry point: a host calling it from
+concurrent turn handling has nothing establishing the sequencing, which re-opens
+the race. Running a second reconciler for one agent is a deployment error that
+requires reintroducing an atomic membership claim <em>and</em> per-claim-slot
+serialization at the same time.</p>
+<h2 id="importers-must-register-the-kinds-first">Importers must register the kinds first<a class="headerlink" href="#importers-must-register-the-kinds-first" title="Permanent link">&para;</a></h2>
+<p><code>merge</code> and <code>disjoin</code> are registered with <code>JournalEntry.register_kind()</code> at
+<code>reconciliation.py</code> <strong>import</strong> time, because <code>_REGISTERED_KINDS</code> is
+process-global and non-persisted: writing an unregistered kind raises from
+<code>pre_save</code>, and a worker that reads the log without importing this module sees
+those entries' kinds as unregistered. Both are registered <code>closing=False</code> — a
+join or a disjoin closes nobody's interval — and non-targetless, so every
+merge-log annotation must name a target.</p>
+<p>Because the registry is process-global, the kind names are effectively reserved:
+a second module registering <code>merge</code> with different flags is refused.</p>
+<h2 id="constants">Constants<a class="headerlink" href="#constants" title="Permanent link">&para;</a></h2>
+<p>All tuning values live in <code>popoto.fields.constants.Defaults</code> per the
+<a href="../../guides/tuning-magic-numbers/">magic-numbers doctrine</a>, with module-level
+aliases the code reads by name: <code>M5_SHORTLIST_CAP</code>, <code>M5_SYMMETRY_PROBE_ENABLED</code>,
+<code>M5_JUDGE_MODEL</code>, <code>M5_JUDGE_MAX_TOKENS</code>, <code>M5_REPLAY_WATERMARK_FIELD</code>, and
+<code>MEGA_CLASS_VELOCITY_ALERT</code>.</p>
+<p><code>CONVENTION_BOOK_VERSION</code> is recorded on every merge-log annotation. Changing any
+line of <code>CONVENTION_BOOK_V1</code> is a <strong>version bump, not an edit</strong>: replay pins the
+wording that produced a merge, so a silent reword would make history
+irreproducible.</p>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>signal</strong>: Float 0-1. Values &gt;= 0.5 corroborate, &lt; 0.5 contradict.</li>
-<li><strong>pipeline</strong>: Optional Redis pipeline to queue the update on.</li>
-<li><strong>Returns</strong>: The new confidence value — or <code>None</code> when queued on a pipeline.</li>
-<li><strong>Raises</strong>: <code>TypeError</code> if unsaved or wrong field type; <code>ValueError</code> if signal out of range.</li>
-</ul>
-<p><strong>Pipeline mode (1.9.0)</strong> changes three things, because the result does not
-exist until <code>execute()</code>:</p>
-<ul>
-<li>the return value is <code>None</code> rather than the new confidence;</li>
-<li>the instance attribute is <strong>not</strong> synced;</li>
-<li>an unsaved instance is skipped server-side by the script's <code>EXISTS</code> guard
-  instead of raising <code>TypeError</code> — the round trip that raised is what the
-  batching removes.</li>
-</ul>
-<p>Before 1.9.0 the <code>pipeline</code> argument was accepted and ignored: every update
-ran immediately, one round trip each. Competitive suppression across N
-records is now one <code>execute()</code> (<code>inject_context</code> went from 25 round trips per
-turn to 8). If you passed <code>pipeline=</code> before and relied on the returned
-float, read the value back with <code>get_confidence</code> after <code>execute()</code>.</p>
-<blockquote>
-<p><strong>Warning</strong>: All processes calling <code>update_confidence</code> on the same companion hash entry must use identical <code>evidence_cap</code> values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.</p>
-</blockquote>
-<h3 id="confidencefieldget_confidenceinstance-field_name"><code>ConfidenceField.get_confidence(instance, field_name)</code><a class="headerlink" href="#confidencefieldget_confidenceinstance-field_name" title="Permanent link">&para;</a></h3>
-<p>Read the current confidence value.</p>
-<ul>
-<li><strong>Returns</strong>: Float confidence value, or <code>initial_confidence</code> if no data exists.</li>
-</ul>
-<h3 id="confidencefieldget_confidence_datainstance-field_name"><code>ConfidenceField.get_confidence_data(instance, field_name)</code><a class="headerlink" href="#confidencefieldget_confidence_datainstance-field_name" title="Permanent link">&para;</a></h3>
-<p>Read all confidence metadata.</p>
-<ul>
-<li><strong>Returns</strong>: Dict with keys <code>confidence</code>, <code>evidence_count</code>, <code>corroborations</code>, <code>contradictions</code>.</li>
-</ul>
-<p>Note: <code>evidence_count</code> reflects real observations only — the prior pseudo-count is internal to the Lua update and does not inflate this counter.</p>
-<h3 id="inspecting-companion-hash-keys">Inspecting Companion Hash Keys<a class="headerlink" href="#inspecting-companion-hash-keys" title="Permanent link">&para;</a></h3>
-<p>Each <code>ConfidenceField</code> stores its confidence metadata in a companion Redis hash alongside
-the main model hash. The public companion key methods let you build these Redis keys
-for debugging, monitoring, or direct Redis inspection without reverse-engineering
-suffix conventions.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Create and update a memory</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"fact1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"The sky is blue"</span><span class="p">)</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="c1"># Get the companion hash key for direct Redis inspection</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_options</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">"certainty"</span><span class="p">]</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="n">hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">)</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="c1"># =&gt; "$ConfidencF:Memory:certainty:data"</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="c1"># Inspect the raw companion hash in Redis</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="n">r</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="n">raw_data</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
-<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
-<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="c1"># Shows all members and their msgpack-encoded confidence metadata</span>
-</code></pre></div>
-<p><code>popoto.get_redis()</code> returns the connection Popoto is actually bound to. Building a
-client by hand — <code>redis.from_url(...)</code> — opens a <em>different</em> connection, and unless its
-URL names the same database, <code>hgetall</code> reads a database the write never touched and
-quietly returns <code>{}</code> with nothing to indicate why. A URL with no <code>/database</code> component
-names database 0, which is rarely where your data is.</p>
-<p>When you do not have an instance loaded, use <code>get_data_hash_key_from_values</code> to build
-the key from explicit values:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Build the key without loading a model instance</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">)</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># =&gt; "$ConfidencF:Memory:certainty:data"</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># For partitioned fields, pass the partition values as keyword arguments</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># key = field.get_data_hash_key_from_values(Memory, "certainty", project="atlas")</span>
-</code></pre></div>
-<h2 id="partitioned-reads">Partitioned Reads<a class="headerlink" href="#partitioned-reads" title="Permanent link">&para;</a></h2>
-<p>When the companion hash grows large (thousands of members), reads become expensive because
-<code>HGETALL</code> loads every entry. The <code>partition_by</code> parameter splits the hash by one or more
-field values, so each read only touches the relevant partition.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">project</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s1">'project'</span><span class="p">)</span>
-</code></pre></div>
-<p>All read and write operations automatically resolve the correct partition hash from the
-model instance. Queries on partitioned ConfidenceFields must include the partition field
-value(s), or a <code>QueryException</code> is raised.</p>
-<p>See <a href="../../multi-tenancy/#hash-based-field-partitioning-confidencefield">Multi-Tenancy: Hash-based field partitioning</a>
-for the full pattern including migration from unpartitioned data.</p>
-<h3 id="hscan-filtered-reads">HSCAN Filtered Reads<a class="headerlink" href="#hscan-filtered-reads" title="Permanent link">&para;</a></h3>
-<p>For unpartitioned hashes, <code>get_confidence_filtered()</code> uses HSCAN with MATCH to iterate
-without loading all entries into memory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_filtered</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">"Memory:atlas:*"</span><span class="p">)</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}}</span>
-</code></pre></div>
-<h3 id="migration-helper">Migration Helper<a class="headerlink" href="#migration-helper" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Dry run — see what would happen</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Execute migration</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">)</span>
-</code></pre></div>
-<h2 id="confidence-feeds-forgetting">Confidence Feeds Forgetting<a class="headerlink" href="#confidence-feeds-forgetting" title="Permanent link">&para;</a></h2>
-<p>Confidence used to be a read-only signal for ranking and promotion. It now closes the loop: the
-evidence a record accumulates changes how fast it is forgotten.</p>
-<p><strong>Faster decay.</strong> <a href="../decaying-sorted-field/#confidence-modulated-decay"><code>DecayingSortedField</code></a> and
-<a href="../cyclic-decay-field/#confidence-modulated-decay"><code>CyclicDecayField</code></a> read each record's confidence
-inside their ranking Lua and derive a per-record effective decay rate,
-<code>eff = decay_rate * 2 ^ (s * 2 * (c0 - c))</code>. The zero point is this field's own
-<code>initial_confidence</code>, so a record with no evidence is bit-exactly neutral for any configured <code>c0</code>.
-When a model has exactly one <code>ConfidenceField</code>, this is on with no configuration.</p>
-<p><strong>Eligibility for forgetting.</strong> <a href="../../recipes/#memorylifecycle"><code>MemoryLifecycle</code></a> reads confidence
-on both sides of the ledger: it promotes records to the protected semantic tier, and it also makes
-weakly-evidenced records eligible for removal. Its forget rule:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>(importance &lt; FORGET_IMPORTANCE_FLOOR
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a> OR (confidence &lt; FORGET_CONFIDENCE_CEILING AND evidence_count &gt;= FORGET_MIN_EVIDENCE))
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>AND idle &gt; FORGET_IDLE_SECONDS
-</code></pre></div>
-<p><code>evidence_count</code> is load-bearing. Confidence starts at <code>initial_confidence</code> and moves on <em>every</em>
-signal, so without a minimum track record one unlucky dismissal could bury a memory. Records that
-cross the rule are <strong>tombstoned</strong>, not deleted — reversible via <code>restore()</code>.</p>
-<p><code>ConfidenceField</code> remains the single source of truth for evidence. Nothing about modulation or
-forgetting is persisted back onto the record: the decay path is a pure reader of this field's
-<code>:data</code> hash, so there is no second copy of derived state to desync.</p>
-<h2 id="redis-key-patterns">Redis Key Patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>$ConfidencF:{Model}:{field}:data</code></td>
-<td>HASH</td>
-<td>Unpartitioned: all members' confidence metadata</td>
-</tr>
-<tr>
-<td><code>$ConfidencF:{Model}:{field}:data:{partition_value}</code></td>
-<td>HASH</td>
-<td>Partitioned: members in one partition</td>
-</tr>
-</tbody>
-</table>
-<h2 id="working-example-popoto-kitchen">Working Example: Popoto Kitchen<a class="headerlink" href="#working-example-popoto-kitchen" title="Permanent link">&para;</a></h2>
-<p>The <a href="https://github.com/tomcounsell/popoto/tree/main/examples">Popoto Kitchen example app</a>
-includes a <code>ReviewScore</code> model that demonstrates <code>ConfidenceField</code> with
-<code>partition_by="restaurant"</code>. Run the operations demo to see capped-evidence updates,
-companion hash key inspection, and partitioned confidence in action:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>examples
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--seed-only<span class="w"> </span>--clear
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--ops
-</code></pre></div>
-<p>See <a href="https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py"><code>examples/popoto_kitchen/operations.py</code></a>
-for the full source.</p>
-<h2 id="companion-fields">Companion Fields<a class="headerlink" href="#companion-fields" title="Permanent link">&para;</a></h2>
-<p><code>ConfidenceField</code> works alongside other memory system fields:</p>
-<ul>
-<li><strong>DecayingSortedField</strong>: Composite scoring via <code>priority = decay_score * confidence</code>, and
-  <a href="../decaying-sorted-field/#confidence-modulated-decay">confidence-modulated decay</a> — confidence sets
-  each record's effective decay <em>rate</em>, not just its magnitude</li>
-<li><strong>CyclicDecayField</strong>: Auto-discharge when confidence drops below threshold; inherits confidence
-  modulation (confidence hash bound at <code>KEYS[4]</code> in its forked Lua)</li>
-<li><strong>MemoryLifecycle</strong>: Confidence gates promotion <em>and</em> forgetting; low-confidence idle records with
-  enough evidence are tombstoned</li>
-<li><strong>WriteFilterMixin</strong>: Use confidence in <code>compute_filter_score()</code> for directed forgetting</li>
-<li><strong><a href="../context-assembler/#confidence-gate">ContextAssembler</a></strong>: <code>get_confidence()</code> on the rank-0 pull-path candidate drives the opt-in confidence gate — <code>assemble()</code> can refuse or flag a low-confidence answer instead of injecting it</li>
-<li><strong>AccessTrackerMixin</strong>: Read tracking independent of confidence</li>
+<li><a href="../provenance-journal/">Provenance Journal</a> — the append-only log this stage
+  both reads (as a <code>StreamConsumer</code> on <code>"journal"</code>) and writes back to: the
+  merge log <em>is</em> <code>merge</code>/<code>disjoin</code> annotations, carried in <code>payload</code> rather
+  than <code>statement</code>. This page reserves those two kind names process-globally,
+  which is why that page's <code>register_kind</code> example uses <code>consolidate</code></li>
+<li><a href="../validity-and-supersession/">ValidityField and SupersessionProtocol</a> — the
+  membership mechanism that closes a supersession loser's interval, reached
+  only through <code>ProvenanceJournal.supersede()</code> so the annotation and the close
+  share one <code>MULTI</code>/<code>EXEC</code></li>
+<li><a href="../reference-resolution/">Reference Resolution</a> — the M4 stage upstream:
+  its distilled <code>statement</code> is what a capture reconciles on, and its
+  <code>valid_from</code> is a declared value this stage never recomputes</li>
+<li><a href="../belief-sheet-view/">Belief-Sheet View</a> — the M6 read path downstream,
+  which renders a disjoined class as explicit uncertainty rather than picking
+  a winner</li>
+<li><a href="../never-record-firewall/">Never-Record Firewall</a> — the privacy gate every
+  annotation passes; <code>payload</code> is exempt as a machine-generated field, which
+  is why merge-log JSON lives there and not in <code>statement</code></li>
+<li><a href="../agent-memory/">Agent Memory</a> — the primitive map this stage sits within</li>
+<li><a href="../../guides/tuning-magic-numbers/">Tuning Magic Numbers</a> — the six <code>M5_*</code>
+  constants and why none of them have been swept</li>
 </ul>
 
 

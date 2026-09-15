@@ -1547,6 +1547,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../reconciliation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../auditable-extraction/" class="md-nav__link">
         
   
@@ -4053,6 +4081,11 @@ read it there, and in the comment above the call site in
   bridge that auto-detects a model's <code>ValidityField</code> and applies <code>as_of</code></li>
 <li><a href="../confidence-field/">ConfidenceField</a> — the arm whose contribution the
   composite mask (Layer 2) must subtract out, not merely zero</li>
+<li><a href="../reconciliation/">Claim Reconciliation</a> — the M5 stage that closes a
+  supersession loser's interval; it reaches this mechanism only through
+  <code>ProvenanceJournal.supersede()</code>, never by calling
+  <code>save_and_supersede()</code> itself, so the journal annotation and the close stay
+  in one <code>MULTI</code>/<code>EXEC</code></li>
 </ul>
 
 

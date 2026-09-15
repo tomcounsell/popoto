@@ -18,7 +18,7 @@
         <link rel="prev" href="../validity-and-supersession/">
       
       
-        <link rel="next" href="../auditable-extraction/">
+        <link rel="next" href="../reconciliation/">
       
       
         
@@ -1496,6 +1496,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reconciliation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3593,7 +3621,7 @@ a retraction withdraws it with no replacement.</p>
 reclassify already-stored entries. Downstream modules that need more kinds (a
 merge/equivalence kind, a queue-able kind, an exposure kind) register them
 instead:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">JournalEntry</span><span class="o">.</span><span class="n">register_kind</span><span class="p">(</span><span class="s2">"merge"</span><span class="p">,</span> <span class="n">closing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">JournalEntry</span><span class="o">.</span><span class="n">register_kind</span><span class="p">(</span><span class="s2">"consolidate"</span><span class="p">,</span> <span class="n">closing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">claim</span> <span class="o">=</span> <span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span> <span class="n">statement</span><span class="o">=</span><span class="s2">"Launch date is the 30th"</span>
@@ -3601,12 +3629,22 @@ instead:</p>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">ProvenanceJournal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">kind</span><span class="o">=</span><span class="s2">"merge"</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">kind</span><span class="o">=</span><span class="s2">"consolidate"</span><span class="p">,</span>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">target</span><span class="o">=</span><span class="n">claim</span><span class="p">,</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">statement</span><span class="o">=</span><span class="s2">"Folded into the canonical launch-date claim"</span><span class="p">,</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">)</span>   <span class="c1"># -&gt; target_closed=True: appends the annotation AND closes claim's</span>
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="c1">#    interval, exactly like a supersede</span>
 </code></pre></div>
+<p>The example says <code>consolidate</code> rather than <code>merge</code> for a reason worth reading
+before you copy it. Because registration is process-global, kind names are
+<strong>reserved by whichever module registers them first</strong>, and
+<a href="../reconciliation/">Claim Reconciliation</a> registers both <code>merge</code> and <code>disjoin</code>
+at its own import time — with <code>closing=False</code>, since folding two claims into
+one equivalence class closes nobody's interval. So in any process that imports
+<code>popoto.recipes.reconciliation</code>, the line above written as
+<code>register_kind("merge", closing=True)</code> raises <code>ValueError</code>: the name is taken
+under different flags, and re-registering it would reclassify stored entries.
+Pick a name your own module owns.</p>
 <p><code>register_kind</code> is a <strong>registration call, not a model subclass</strong> — see
 <a href="#do-not-subclass-journalentry">Do not subclass <code>JournalEntry</code></a> for why a
 subclass seam cannot work in this ORM. Registration is process-global and
@@ -4050,6 +4088,11 @@ occurrence of the record's <em>key</em> does not:</p>
 <li><a href="../belief-sheet-view/">Belief-Sheet View</a> — the read-path resolver that
   folds the journal into surviving claims: retractions dropped, supersessions
   collapsed to winners, disjunctions as explicit uncertainty</li>
+<li><a href="../reconciliation/">Claim Reconciliation</a> — the M5 stage that groups
+  equivalent claims into classes, writing its merge log as <code>merge</code>/<code>disjoin</code>
+  annotations through <code>append()</code> and closing supersession losers only through
+  <code>supersede()</code>; it reserves both of those kind names process-globally, and
+  is why the <code>register_kind</code> example above says <code>consolidate</code></li>
 </ul>
 
 
