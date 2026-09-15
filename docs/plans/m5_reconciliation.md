@@ -539,7 +539,13 @@ order and is never asked as its own question.
   `("disjoin", closing=False)` at module import of `reconciliation.py`.
 
   Both flags matter, and `closing` is NOT the docstring's example value
-  (`register_kind("merge", closing=True)` at `:351`). `closing=False`
+  (`register_kind("merge", closing=True)` at `:351`). **Superseded as
+  shipped:** that collision is why the example itself had to move — reserving
+  `merge` here made the docstring's own example raise, so it now reads
+  `register_kind("consolidate", closing=True)` and carries a note that
+  `merge`/`disjoin` are reserved by this module. The flag contrast the
+  paragraph draws still holds; only the kind name in the citation is stale.
+  `closing=False`
   because a join or a disjoin does **not** close anybody's validity interval —
   only the deterministic/precedence path closes, and it does so through
   `save_and_supersede`, not through a merge kind. And `targetless=False` (the

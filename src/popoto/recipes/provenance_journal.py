@@ -362,10 +362,19 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
         would be permanently target-required and permanently inert for
         membership::
 
-            JournalEntry.register_kind("merge", closing=True)
+            JournalEntry.register_kind("consolidate", closing=True)
             ProvenanceJournal.append(
-                agent_id="a1", kind="merge", target=old, statement="merged"
+                agent_id="a1", kind="consolidate", target=old,
+                statement="folded into the canonical claim",
             )  # closes old's interval, exactly like a supersede
+
+        The example says ``consolidate``, not ``merge``, because the registry
+        below is process-global and kind names are reserved by whichever module
+        registers them first: ``recipes/reconciliation.py`` claims both
+        ``merge`` and ``disjoin`` at its own import time, with
+        ``closing=False``. Written as ``register_kind("merge", closing=True)``
+        this example raises ``ValueError`` in any process that has imported
+        that module. Pick a name your own module owns.
 
         The reader rule this seam is built around is unchanged: an entry whose
         ``kind`` a reader does not recognize is **inert for membership** --
