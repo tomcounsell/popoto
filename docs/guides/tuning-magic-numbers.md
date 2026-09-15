@@ -300,6 +300,59 @@ The `ResolutionRecord` sidecar rows themselves are **unbounded**, same as
 M3's decision log — no retention/cap constant exists for them either; see
 [the sidecar](../features/reference-resolution.md#the-resolutionrecord-sidecar).
 
+### Claim Reconciliation (M5)
+
+Source: `src/popoto/fields/constants.py`, consumed by
+`src/popoto/recipes/reconciliation.py` (which aliases each one at module level
+and reads it by name, so none is inlined as a literal)
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `M5_SHORTLIST_CAP` | 8 | Not swept (judge-budget bound) | Not swept |
+| `M5_SYMMETRY_PROBE_ENABLED` | `True` | n/a (boolean kill switch) | n/a |
+| `M5_JUDGE_MODEL` | `"claude-haiku-4-5-20251001"` | n/a (pinned model identity) | n/a |
+| `M5_JUDGE_MAX_TOKENS` | 256 | Not swept (reply-shape bound) | Not swept |
+| `M5_REPLAY_WATERMARK_FIELD` | `"captured_at"` | n/a (field name, not a quantity) | n/a |
+| `MEGA_CLASS_VELOCITY_ALERT` | 5 | Not swept (telemetry threshold) | Not swept |
+
+None of these six constants have been through this guide's benchmark harness.
+That is not an oversight pending a sweep: four of them are not quantities a
+retrieval-quality metric can rank, and the two that are numeric bound *cost and
+blast radius*, not answer quality.
+
+- `M5_SHORTLIST_CAP` (8) caps how many candidate classes the embedding
+  shortlist hands the sameness judge for one capture, and so caps judge calls
+  per capture. It is a spend bound rather than a quality knob: raising it buys
+  recall of a distant equivalent claim at linear cost in judge calls, and the
+  exact-`claim_slot` equality lookup runs *ahead* of the shortlist, so a
+  restatement that is textually identical is found by index regardless of this
+  value. A capture whose candidate list is shorter than the cap skips the
+  truncation entirely.
+- `M5_SYMMETRY_PROBE_ENABLED` (`True`) is a **kill switch**, in the
+  [default-on](../features/reconciliation.md#the-symmetry-probe) sense: with it
+  on, a forward "same" verdict is re-asked with the two claims swapped, and a
+  disagreement disjoins instead of joining. It exists because the failure it
+  prevents is the worst one available here — a silent mega-class assembled out
+  of non-transitive pairwise "same" verdicts, which no later pass detects
+  because no merge was ever contested. Turning it off halves judge calls on the
+  join path and forfeits that protection; it is not a tuning dial.
+- `M5_JUDGE_MODEL` and `M5_JUDGE_MAX_TOKENS` (256) mirror
+  `extraction/verdict.py`'s `VERDICT_MODEL` / `VERDICT_MAX_TOKENS` on purpose.
+  The judge does a constrained two-value enum classification and replies with
+  one enum key, so the token cap sizes for that reply rather than for prose,
+  and the smaller model is the right one. Neither is a quality constant a
+  sweep would move: changing the model changes the judge, not a parameter of
+  it.
+- `M5_REPLAY_WATERMARK_FIELD` (`"captured_at"`) is the name of the
+  `JournalEntry` field `replay()` filters on with a strict `>`, borrowing
+  `crystallize`'s watermark shape. It is a constant rather than a literal so
+  that renaming the field is one edit — there is nothing to tune.
+- `MEGA_CLASS_VELOCITY_ALERT` (5) is the joins-into-one-class-per-pass count
+  past which a class-size-velocity signal is logged. It is **telemetry only and
+  never a gate**: a legitimately large class must not be blocked, so exceeding
+  it logs and proceeds. Lowering it makes the log noisier, raising it makes a
+  runaway join slower to notice; neither changes behavior.
+
 ## Cliff Effects
 
 Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):
