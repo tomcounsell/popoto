@@ -40,6 +40,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest
 
+from src.popoto.fields.validity_field import ValidityMemberAbsentError
 from src.popoto.recipes.provenance_journal import (
     JournalEntry,
     ProvenanceJournal,
@@ -744,7 +745,19 @@ def test_erasing_the_last_member_drops_the_class_row():
 # ---------------------------------------------------------------------------
 
 
-def test_every_outcome_is_written_to_the_merge_log():
+def test_merge_log_annotations_carry_the_pinned_payload_shape():
+    """Payload shape, on the two outcomes this reconcile pair produces.
+
+    Named for what it checks rather than for all seven ``ReconcileOutcome``
+    actions: an always-"same" judge over two captures can only produce
+    ``created`` then ``confirmed``, so a name claiming every outcome read as
+    coverage the assertions never had. The other five are covered one test
+    each -- ``joined`` and ``superseded`` by
+    :func:`test_deadline_supersession_closes_the_loser_through_the_journal`,
+    ``disjoined`` by :func:`test_split_verdict_disjoins`, ``noop`` by
+    :func:`test_reconcile_is_idempotent_on_a_rerun`, and ``loser-absent`` by
+    the test below.
+    """
     judge = ScriptedJudge(always("same"))
     first = capture("dana prefers mornings", claim_type="preference", at=100.0)
     second = capture("dana likes early starts", claim_type="preference", at=200.0)
@@ -762,6 +775,55 @@ def test_every_outcome_is_written_to_the_merge_log():
         assert isinstance(payload["ts"], float)
         rationales.append(payload["rationale"])
     assert rationales == ["created", "confirmed"]
+
+
+def test_a_loser_that_left_live_membership_records_loser_absent(monkeypatch):
+    """The seventh outcome: the race window between shortlist and close.
+
+    ``_supersede_loser`` catches ``ValidityMemberAbsentError`` and records
+    ``loser-absent`` instead of crashing. The condition it detects is a
+    *closed membership with the hash still present*, so it cannot be staged
+    by deleting or by closing the loser first -- ``_live_members`` filters on
+    validity, so a pre-closed loser is never shortlisted as an incumbent and
+    the supersession branch is never reached. The window is genuinely between
+    the shortlist read and the write, which under the single-writer invariant
+    no test can open for real. So the journal call is made to raise once,
+    which is exactly the state the real race hands it.
+    """
+    calls = []
+
+    def absent(loser, **kwargs):
+        calls.append(loser.pk)
+        raise ValidityMemberAbsentError(f"member closed: {loser.pk}")
+
+    judge = ScriptedJudge(always("different"))
+    older = capture("deadline monday", claim_type="deadline", at=100.0)
+    newer = capture("deadline friday", claim_type="deadline", at=200.0)
+    reconcile_entry(older, client=judge)
+
+    monkeypatch.setattr(
+        recon_module.ProvenanceJournal, "supersede", staticmethod(absent)
+    )
+    outcome = reconcile_entry(newer, client=judge)
+
+    assert calls == [older.pk]
+    assert outcome.action == "loser-absent"
+    assert outcome.superseded_key == older.pk
+
+    # The winner stands, and the log names it as the annotation's target.
+    absent_rows = [
+        annotation
+        for annotation in merge_log_entries(AGENT)
+        if json.loads(annotation.payload)["rationale"] == "loser-absent"
+    ]
+    assert len(absent_rows) == 1
+    payload = json.loads(absent_rows[0].payload)
+    assert payload["class_a"] == outcome.class_id
+    assert payload["other"] == older.pk
+    assert absent_rows[0].target == newer._redis_key
+
+    representative, _uncertain = representative_for(outcome.class_id)
+    assert representative.pk == newer.pk
 
 
 def test_a_luhn_tripping_class_id_does_not_block_the_merge_log(monkeypatch):
