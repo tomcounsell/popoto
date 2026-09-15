@@ -29,6 +29,15 @@ recomputes it from those annotations alone. That is what makes reversibility
 structural: retract a `merge` annotation, replay, and the pre-merge assignment is
 back. A crash mid-relabel is a repair, not a corruption.
 
+What makes that hold rather than nearly hold: **every path that writes a
+`ClaimMembership` row also appends an annotation naming that entry as a member of
+its class.** The outcome-specific annotations are not sufficient on their own — a
+`disjoin` annotation only *repoints* a row replay already found, and a
+supersession annotation targets the *winner*, so an entry that loses to its
+incumbent is named by no outcome annotation at all. Both would be silently
+dropped by a from-genesis rebuild. So the row and its reconstructing annotation
+are written together, unconditionally.
+
 **One reconciler per agent, processing entries sequentially.** See
 [the single-writer invariant](#deployment-the-single-writer-invariant) — it is a
 deployment constraint, not an implementation detail.

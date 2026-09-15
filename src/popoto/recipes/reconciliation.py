@@ -87,11 +87,15 @@ from typing import (
 
 from ..fields.constants import Defaults
 from ..fields.shortcuts import FloatField, IndexedField, IntField, KeyField
-from ..fields.validity_field import ValidityMemberAbsentError
+from ..fields.validity_field import ValidityField, ValidityMemberAbsentError
 from ..models.base import Model
 from ..privacy.never_record import scan_never_record
 from ..redis_db import get_REDIS_DB
-from .provenance_journal import JournalEntry, ProvenanceJournal
+from .provenance_journal import (
+    VALIDITY_FIELD_NAME,
+    JournalEntry,
+    ProvenanceJournal,
+)
 
 from ..extraction._anthropic_compat import assert_messages_create_supported
 
@@ -743,13 +747,22 @@ def _live_members(class_id: str) -> List[Any]:
     representative selection **and** from confirmation counts: a superseded
     claim should not be what the judge compares against, nor should its
     corroboration keep counting for a claim that is no longer believed.
+
+    The loop is inverted -- membership rows first, then a per-member validity
+    probe -- rather than hydrating ``filter(validity__current=True)`` and
+    intersecting. The intersecting shape read *every* validity-open
+    ``JournalEntry`` in the keyspace, for every agent, and discarded all but
+    one class's members; ``_reconcile`` reaches here once per candidate class
+    plus once per :func:`_recompute_class`, so a single reconcile cost up to
+    ~9 full-journal scans. ``is_valid_at`` is two ``ZSCORE``s against the
+    interval ZSETs, so the cost is now proportional to the class, not to the
+    journal.
     """
     live: List[Any] = []
-    open_keys = {
-        candidate.pk for candidate in JournalEntry.query.filter(validity__current=True)
-    }
     for row in ClaimMembership.query.filter(class_id=class_id):
-        if row.entry_redis_key not in open_keys:
+        if not ValidityField.is_valid_at(
+            JournalEntry, VALIDITY_FIELD_NAME, row.entry_redis_key
+        ):
             continue
         entry = JournalEntry.query.get(redis_key=row.entry_redis_key)
         if entry is not None:
@@ -876,7 +889,7 @@ def _merge_payload(
     disjunction_id: str = "",
     other: str = "",
 ) -> str:
-    """Build a merge-log annotation's ``statement``.
+    """Build a merge-log annotation's ``payload``.
 
     Carries class ids, a machine rationale token, the timestamp, the
     convention-book version, and the one-way slot digest -- no claim content,
@@ -1214,8 +1227,15 @@ def _reconcile(
         class_id = slot_class_ids[0]
         incumbents = _live_members(class_id)
         _record_membership(entry, class_id, slot)
+        # The row and the annotation that reconstructs it are written
+        # together, unconditionally. :func:`replay` rebuilds the index from
+        # the log alone, so a membership row with no annotation naming this
+        # entry as a member is a row a from-genesis rebuild silently drops --
+        # and the outcome-specific annotations appended below do not name it:
+        # ``disjoin`` only repoints an existing row, and ``_supersede_loser``
+        # targets the *winner*, which on an incumbent win is not this entry.
+        _append_merge_log(entry, class_a=class_id, rationale="joined", slot=slot)
         if not incumbents:
-            _append_merge_log(entry, class_a=class_id, rationale="joined", slot=slot)
             _recompute_class(class_id)
             return ReconcileOutcome(entry_key, class_id, "joined", budget.calls)
         incumbent = incumbents[0]
@@ -1294,6 +1314,12 @@ def _reconcile(
                 joined_class_id = _new_class_id()
                 _record_membership(entry, joined_class_id, slot)
                 _touch_class(joined_class_id, str(entry.agent_id), entry.pk, 1)
+                # Same rebuildability rule as the deterministic tier above:
+                # the ``disjoin`` annotation appended next repoints rows, it
+                # does not create them.
+                _append_merge_log(
+                    entry, class_a=joined_class_id, rationale="joined", slot=slot
+                )
             disjunction_id = _store_disjunction(
                 entry, representative, slot, joined_class_id
             )
@@ -1313,6 +1339,10 @@ def _reconcile(
             if joined_class_id is None:
                 joined_class_id = class_id
                 _record_membership(entry, class_id, slot)
+                # Same rebuildability rule as the deterministic tier above.
+                _append_merge_log(
+                    entry, class_a=class_id, rationale="joined", slot=slot
+                )
             winner, loser, basis = resolve_precedence(entry, representative, claim_type)
             if winner is None:
                 disjunction_id = _store_disjunction(

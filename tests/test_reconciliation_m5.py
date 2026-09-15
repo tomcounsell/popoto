@@ -808,6 +808,65 @@ def test_replay_rebuilds_index_from_the_merge_log_alone():
     assert index_snapshot() == before
 
 
+def test_replay_rebuilds_the_index_for_a_disjoined_entry():
+    """``always("same")`` only reaches ``created``/``confirmed``, so the test
+    above cannot see this: a precedence tie writes a membership row and a
+    ``disjoin`` annotation, and the replay ``disjoin`` branch only *repoints*
+    rows it finds. Without a ``joined`` annotation naming each side, a
+    from-genesis rebuild dropped both rows."""
+    judge = ScriptedJudge(always("same"))
+    left = capture("deadline monday", claim_type="deadline", at=100.0)
+    right = capture("deadline friday", claim_type="deadline", at=100.0)
+    reconcile_entry(left, client=judge)
+    outcome = reconcile_entry(right, client=judge)
+    assert outcome.action == "disjoined"
+
+    before = index_snapshot()
+    assert {left.pk, right.pk} <= set(before)
+
+    replay(AGENT, rebuild=True)
+    assert index_snapshot() == before
+
+
+def test_replay_rebuilds_the_index_when_the_incumbent_wins_the_supersession():
+    """``_supersede_loser`` logs against the *winner*, so on an incumbent win
+    the reconciled entry is named by no outcome annotation at all. Its row is
+    reconstructible only from the unconditional ``joined`` annotation."""
+    judge = ScriptedJudge(always("same"))
+    incumbent = capture("deadline friday", claim_type="deadline", at=200.0)
+    challenger = capture("deadline monday", claim_type="deadline", at=100.0)
+    reconcile_entry(incumbent, client=judge)
+    outcome = reconcile_entry(challenger, client=judge)
+    assert outcome.action == "superseded"
+    assert outcome.superseded_key == challenger.pk
+
+    before = index_snapshot()
+    assert {incumbent.pk, challenger.pk} <= set(before)
+
+    replay(AGENT, rebuild=True)
+    assert index_snapshot() == before
+
+
+def test_replay_rebuilds_the_index_for_a_probe_split_disjunction():
+    """The third site that records a row outside the join path: a split verdict
+    opens a fresh class for the entry before disjoining it."""
+    first = capture("dana prefers mornings", claim_type="preference", at=100.0)
+    second = capture("dana is a morning person", claim_type="preference", at=200.0)
+
+    def split(claim_a, claim_b):
+        return "same" if claim_a == second.statement else "different"
+
+    reconcile_entry(first, client=ScriptedJudge(always("different")))
+    outcome = reconcile_entry(second, client=ScriptedJudge(split))
+    assert outcome.action == "disjoined"
+
+    before = index_snapshot()
+    assert {first.pk, second.pk} <= set(before)
+
+    replay(AGENT, rebuild=True)
+    assert index_snapshot() == before
+
+
 def test_replay_reverses_a_retracted_merge():
     judge = ScriptedJudge(always("same"))
     first = capture("dana prefers mornings", claim_type="preference", at=100.0)
