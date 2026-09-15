@@ -304,6 +304,12 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
     speaker = IndexedField(type=str, null=True)
     verbatim = StringField(default="")
     statement = StringField(default="")
+    #: Structured bookkeeping a *recipe* writes about its own decision --
+    #: never anything a human or a model uttered. Machine-generated, so it is
+    #: exempt from the never-record scan (see
+    #: :attr:`_MACHINE_GENERATED_FIELDS`). Keep human-authored content in
+    #: ``statement``/``verbatim``, which are scanned.
+    payload = StringField(default="")
     subjects = TagField(null=True)
     stated = BooleanField(default=True)
     kind = IndexedField(type=str, null=True)
@@ -445,7 +451,7 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
     #: Non-key fields whose value Popoto itself generates, never a caller or a
     #: speaker. Excluded from the never-record scan surface -- see
     #: :meth:`_never_record_scan_values`.
-    _MACHINE_GENERATED_FIELDS = frozenset({"target"})
+    _MACHINE_GENERATED_FIELDS = frozenset({"target", "payload"})
 
     def _never_record_scan_values(self) -> Iterator[str]:
         """Yield the content values the firewall scans, minus machine pointers.
@@ -470,12 +476,29 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
         annotation was silently dropped while the invalidate EVAL still closed
         the target -- a membership change with zero provenance. (PR #589.)
 
+        ``payload`` is exempt for the same reason and was added by the same
+        failure. It holds a recipe's structured record *of its own decision* --
+        M5's merge log is JSON whose values are class ids, disjunction ids and
+        entry keys, three or more uuid4 hexes per write. That put the #589 bug
+        back on a second door: measured at ~0.23% per hex and **~0.66% per
+        merge-log write**, which is what made
+        ``test_a_precedence_tie_inside_a_slot_becomes_an_explicit_disjunction``
+        fail on CI's Valkey job while the identical commit passed on Redis.
+        This time the block *raised* (the façade's ``_scan_or_block``) instead
+        of dropping silently, so it surfaced as a red check rather than as
+        missing provenance -- but the category error is the same one.
+
+        The rule these two share, and the one to apply to a third field:
+        **exempt a field when Popoto itself generates every byte of it.** A
+        field that can carry what a human or a model said stays scanned, no
+        matter how structured it looks.
+
         Every genuine content field is still scanned: ``verbatim``,
         ``statement``, ``speaker``, ``turn_id``, ``kind``, and -- via the
         façade's pre-flight, which also covers the ``subjects`` list the mixin
-        cannot see -- ``agent_id`` and ``subjects``. This narrows the surface by
-        exactly one machine-generated pointer; it does not weaken the firewall
-        for anything a human or a model ever wrote.
+        cannot see -- ``agent_id`` and ``subjects``. This narrows the surface to
+        machine-generated values only; it does not weaken the firewall for
+        anything a human or a model ever wrote.
         """
         skip = self._MACHINE_GENERATED_FIELDS
         for field_name in self._never_record_scan_field_names():
@@ -574,6 +597,7 @@ class ProvenanceJournal:
         agent_id: str,
         statement: str = "",
         verbatim: str = "",
+        payload: str = "",
         speaker: Optional[str] = None,
         turn_id: Optional[str] = None,
         subjects: Optional[Sequence[str]] = None,
@@ -590,6 +614,13 @@ class ProvenanceJournal:
         Args:
             agent_id: Partition key. Required and non-null -- a ``None`` would
                 render the literal ``"None"`` into the record's Redis key.
+            payload: Structured bookkeeping a recipe writes about its own
+                decision. **Exempt from the never-record firewall**, so pass
+                only values Popoto itself generated -- ids, keys, counters. It
+                does not satisfy the "a record needs content" check below:
+                a targetless entry still needs a ``statement`` or a
+                ``verbatim``. See
+                :meth:`JournalEntry._never_record_scan_values`.
             statement: The atomic claim. Required unless ``verbatim`` is given.
             verbatim: The exact source span.
             speaker: Who said it. Attribution, not authentication.
@@ -647,6 +678,7 @@ class ProvenanceJournal:
             target=target,
             statement=statement,
             verbatim=verbatim,
+            payload=payload,
             speaker=speaker,
             turn_id=turn_id,
             subjects=subjects,
@@ -904,6 +936,7 @@ class ProvenanceJournal:
         statement: str,
         verbatim: str,
         speaker: Optional[str],
+        payload: str = "",
         turn_id: Optional[str],
         subjects: Optional[Sequence[str]],
         stated: bool,
@@ -951,6 +984,7 @@ class ProvenanceJournal:
             speaker=speaker,
             verbatim=verbatim,
             statement=statement,
+            payload=payload,
             subjects=subject_tags,
             stated=stated,
             kind=kind,
@@ -1288,6 +1322,7 @@ _REQUIRED_ENTRY_FIELDS = frozenset(
         "speaker",
         "verbatim",
         "statement",
+        "payload",
         "subjects",
         "stated",
         "kind",

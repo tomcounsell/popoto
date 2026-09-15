@@ -56,6 +56,7 @@ Tests cover:
   provenance, exactly one close applies
 """
 
+import json
 import os
 import sys
 import time
@@ -898,9 +899,9 @@ class TestMachineGeneratedTargetIsNotScanned:
         assert LUHN_TRIPPING_TARGET_KEY not in set(entry._never_record_scan_values())
 
     def test_every_genuine_content_field_is_still_scanned(self):
-        """The narrowing is exactly one machine-generated pointer. If a future
-        edit widened it to a field a human or a model wrote, that is a privacy
-        regression, not a flake fix."""
+        """The narrowing covers machine-generated values only (``target`` here,
+        ``payload`` since #564). If a future edit widened it to a field a human
+        or a model wrote, that is a privacy regression, not a flake fix."""
         entry = JournalEntry(
             agent_id=AGENT,
             kind="confirm",
@@ -1001,6 +1002,91 @@ class TestMachineGeneratedTargetIsNotScanned:
         survivor = JournalEntry.query.get(redis_key=annotation.db_key.redis_key)
         assert survivor is not None
         assert survivor.statement == "it slipped to the 31st"
+
+
+#: A uuid4 hex containing a Luhn-passing 13-digit run, from a random sample
+#: rather than hand-crafted — the same provenance as
+#: ``LUHN_TRIPPING_ENTRY_ID`` above. Sampling rate measured at ~0.23% per hex.
+LUHN_TRIPPING_CLASS_ID = "3ff8f2567646418588de71a311ae237a"
+
+
+class TestMachineGeneratedPayloadIsNotScanned:
+    """``payload`` carries a recipe's record of its own decision, not content.
+
+    Same category error as ``target``, through a second door, found the same
+    way — by a red CI job. M5's merge log is JSON holding three or more uuid4
+    hexes (class ids, a disjunction id, entry keys), each ~0.23% likely to
+    contain a Luhn-passing digit run, so ~0.66% of merge-log writes were
+    refused at random. It raised rather than dropping silently this time, which
+    is why it cost a CI cycle instead of provenance.
+
+    These tests pin the exemption *and* its boundary: the same bytes that pass
+    in ``payload`` must still be blocked in ``statement``, or the fix has
+    widened into a privacy hole.
+    """
+
+    def test_the_pinned_class_id_really_does_trip_the_detector(self):
+        """Pin the trigger, so this class cannot pass for the wrong reason if
+        the detector or the Luhn bounds ever change."""
+        verdict = scan_never_record(LUHN_TRIPPING_CLASS_ID)
+        assert verdict.blocked is True
+        assert verdict.reason == "payment_card"
+        assert verdict.detector == "luhn"
+
+    def test_payload_is_absent_from_the_scan_surface(self):
+        entry = JournalEntry(
+            agent_id=AGENT,
+            kind="confirm",
+            target=LUHN_TRIPPING_TARGET_KEY,
+            statement="a claim",
+            payload=LUHN_TRIPPING_CLASS_ID,
+        )
+        assert LUHN_TRIPPING_CLASS_ID not in set(entry._never_record_scan_values())
+
+    def test_a_luhn_tripping_payload_round_trips_through_append(self):
+        """The Valkey-job failure, deterministically. Before the fix this same
+        value in ``statement`` raised ``JournalBlockedError`` and wrote
+        nothing."""
+        payload = json.dumps({"class_a": LUHN_TRIPPING_CLASS_ID, "r": "disjoined"})
+        target = _append()
+        result = ProvenanceJournal.append(
+            agent_id=AGENT,
+            kind="confirm",
+            target=target,
+            payload=payload,
+        )
+        stored = JournalEntry.query.get(redis_key=result.entry.db_key.redis_key)
+        assert stored is not None
+        assert json.loads(stored.payload)["class_a"] == LUHN_TRIPPING_CLASS_ID
+
+    def test_the_same_bytes_in_statement_are_still_refused(self):
+        """The boundary. ``payload`` being exempt must not make the identical
+        content acceptable in the field a human writes."""
+        target = _append()
+        with pytest.raises(JournalBlockedError):
+            ProvenanceJournal.append(
+                agent_id=AGENT,
+                kind="confirm",
+                target=target,
+                statement=LUHN_TRIPPING_CLASS_ID,
+            )
+
+    def test_a_real_secret_in_payload_is_still_not_in_the_keyspace_by_accident(
+        self,
+    ):
+        """``payload`` is exempt, so a caller that misuses it for human content
+        gets no firewall. That is the documented contract — this test states it
+        outright so the exemption is never mistaken for "payload is scanned
+        too", and so the blast radius of a misuse is on the record.
+        """
+        entry = JournalEntry(
+            agent_id=AGENT,
+            kind="confirm",
+            target=LUHN_TRIPPING_TARGET_KEY,
+            statement="a claim",
+            payload=SECRET,
+        )
+        assert SECRET not in set(entry._never_record_scan_values())
 
 
 class TestPreFlightScansExactlyWhatTheMixinScans:

@@ -63,6 +63,7 @@ from src.popoto.recipes.reconciliation import (
     resolve_precedence,
     shortlist_candidates,
 )
+from src.popoto.privacy.never_record import scan_never_record
 from src.popoto.redis_db import get_REDIS_DB, scan_keys
 
 #: The module object the imported functions actually close over.
@@ -78,6 +79,12 @@ recon_module = sys.modules[reconcile_entry.__module__]
 journal_module = sys.modules[JournalEntry.__module__]
 
 AGENT = "agent-m5"
+
+#: A uuid4 hex holding a Luhn-passing 13-digit run, from a random sample. Used
+#: to make the ~0.66%-per-write firewall false positive deterministic; the
+#: sibling constant in ``tests/test_provenance_journal.py`` pins the same
+#: trigger at the journal layer.
+LUHN_TRIPPING_HEX = "3ff8f2567646418588de71a311ae237a"
 
 RECON_SOURCE_PATH = os.path.join(
     os.path.dirname(SCRIPT_DIR),
@@ -748,13 +755,39 @@ def test_every_outcome_is_written_to_the_merge_log():
     assert len(log) == 2
     rationales = []
     for annotation in log:
-        payload = json.loads(annotation.statement)
+        payload = json.loads(annotation.payload)
         assert payload["judge_version"] == CONVENTION_BOOK_VERSION
         assert payload["class_a"]
         assert payload["slot"]
         assert isinstance(payload["ts"], float)
         rationales.append(payload["rationale"])
     assert rationales == ["created", "confirmed"]
+
+
+def test_a_luhn_tripping_class_id_does_not_block_the_merge_log(monkeypatch):
+    """The CI failure that held this PR, deterministically.
+
+    ``_append_merge_log`` used to write its JSON to ``statement``, which the
+    never-record firewall scans; the Luhn rule matches any 13-19 digit run, and
+    a uuid4 hex contains one ~0.23% of the time. With three or more hexes per
+    payload that refused ~0.66% of merge-log writes with
+    ``JournalBlockedError``, which is why the identical commit went green on
+    CI's Redis job and red on Valkey. Pinning the id makes the 1-in-150 a
+    certainty, so this fails every run if the payload ever moves back to a
+    scanned field.
+    """
+    monkeypatch.setattr(recon_module, "_new_class_id", lambda: LUHN_TRIPPING_HEX)
+    assert scan_never_record(LUHN_TRIPPING_HEX).blocked is True
+
+    judge = ScriptedJudge(always("same"))
+    entry = capture("dana prefers mornings", claim_type="preference", at=100.0)
+    outcome = reconcile_entry(entry, client=judge)
+
+    assert outcome.class_id == LUHN_TRIPPING_HEX
+    log = merge_log_entries(AGENT)
+    assert len(log) == 1
+    assert json.loads(log[0].payload)["class_a"] == LUHN_TRIPPING_HEX
+    assert log[0].statement == ""
 
 
 def test_replay_rebuilds_index_from_the_merge_log_alone():
@@ -788,7 +821,7 @@ def test_replay_reverses_a_retracted_merge():
     join_log = [
         annotation
         for annotation in merge_log_entries(AGENT)
-        if json.loads(annotation.statement)["rationale"] == "confirmed"
+        if json.loads(annotation.payload)["rationale"] == "confirmed"
     ]
     assert len(join_log) == 1
     ProvenanceJournal.retract(join_log[0], agent_id=AGENT)

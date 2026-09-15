@@ -917,12 +917,22 @@ def _append_merge_log(
     ``merge``, one side of the pair for a ``disjoin`` (with the other side and
     the shared disjunction id in the payload). Both kinds are non-targetless,
     so a missing target would raise from ``pre_save``.
+
+    The JSON goes to ``payload``, **not** ``statement``. Every value in it is
+    Popoto-generated -- class ids, a disjunction id, entry keys -- and
+    ``statement`` is scanned by the never-record firewall, whose Luhn rule
+    matches any 13-19 digit run. A uuid4 hex trips it ~0.23% of the time and a
+    merge-log write carries three or more, so routing this through ``statement``
+    raised ``JournalBlockedError`` on ~0.66% of writes: red on CI's Valkey job,
+    green on Redis, same commit. ``payload`` is exempt because Popoto generates
+    all of it; see :meth:`JournalEntry._never_record_scan_values`, which
+    carries the measurement and the #589 precedent.
     """
     return ProvenanceJournal.append(
         agent_id=str(entry.agent_id),
         kind=kind,
         target=entry,
-        statement=_merge_payload(
+        payload=_merge_payload(
             class_a=class_a,
             class_b=class_b,
             rationale=rationale,
@@ -953,9 +963,16 @@ def merge_log_entries(agent_id: str) -> List[Any]:
 
 
 def _decode_payload(entry: Any) -> Optional[Dict[str, Any]]:
-    """Decode a merge-log annotation's payload, or ``None`` if unreadable."""
+    """Decode a merge-log annotation's payload, or ``None`` if unreadable.
+
+    Reads ``payload``, the firewall-exempt machine field ``_append_merge_log``
+    writes. Do not fall back to ``statement``: no merge-log annotation has ever
+    been persisted with the JSON there (M5 ships in one PR with the field), so
+    a fallback would be dead code that also re-legitimises the scanned field as
+    a payload home.
+    """
     try:
-        parsed = json.loads(str(entry.statement or ""))
+        parsed = json.loads(str(entry.payload or ""))
     except (ValueError, TypeError):
         return None
     return parsed if isinstance(parsed, dict) else None
