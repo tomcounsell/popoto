@@ -821,7 +821,7 @@ def test_a_loser_that_left_live_membership_records_loser_absent(monkeypatch):
     payload = json.loads(absent_rows[0].payload)
     assert payload["class_a"] == outcome.class_id
     assert payload["other"] == older.pk
-    assert absent_rows[0].target == newer._redis_key
+    assert absent_rows[0].target == newer.db_key.redis_key
 
     representative, _uncertain = representative_for(outcome.class_id)
     assert representative.pk == newer.pk
