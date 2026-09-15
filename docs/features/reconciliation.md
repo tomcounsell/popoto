@@ -269,3 +269,27 @@ aliases the code reads by name: `M5_SHORTLIST_CAP`, `M5_SYMMETRY_PROBE_ENABLED`,
 line of `CONVENTION_BOOK_V1` is a **version bump, not an edit**: replay pins the
 wording that produced a merge, so a silent reword would make history
 irreproducible.
+
+## See Also
+
+- [Provenance Journal](provenance-journal.md) — the append-only log this stage
+  both reads (as a `StreamConsumer` on `"journal"`) and writes back to: the
+  merge log *is* `merge`/`disjoin` annotations, carried in `payload` rather
+  than `statement`. This page reserves those two kind names process-globally,
+  which is why that page's `register_kind` example uses `consolidate`
+- [ValidityField and SupersessionProtocol](validity-and-supersession.md) — the
+  membership mechanism that closes a supersession loser's interval, reached
+  only through `ProvenanceJournal.supersede()` so the annotation and the close
+  share one `MULTI`/`EXEC`
+- [Reference Resolution](reference-resolution.md) — the M4 stage upstream:
+  its distilled `statement` is what a capture reconciles on, and its
+  `valid_from` is a declared value this stage never recomputes
+- [Belief-Sheet View](belief-sheet-view.md) — the M6 read path downstream,
+  which renders a disjoined class as explicit uncertainty rather than picking
+  a winner
+- [Never-Record Firewall](never-record-firewall.md) — the privacy gate every
+  annotation passes; `payload` is exempt as a machine-generated field, which
+  is why merge-log JSON lives there and not in `statement`
+- [Agent Memory](agent-memory.md) — the primitive map this stage sits within
+- [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) — the six `M5_*`
+  constants and why none of them have been swept

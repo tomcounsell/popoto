@@ -649,25 +649,25 @@ order and is never asked as its own question.
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] The reconcile loop's `except` around `save_and_supersede`
+- [x] The reconcile loop's `except` around `save_and_supersede`
   (`ValidityMemberAbsentError` → re-read → `loser-absent` log) must have a test
   asserting the merge-log entry, not a silent pass. Same for the judge
   abstention path (logged, entry stays singleton).
-- [ ] Audit `except Exception` blocks in touched journal/supersession call sites
+- [x] Audit `except Exception` blocks in touched journal/supersession call sites
   during build; each needs an observable-behavior assertion.
 
 ### Empty/Invalid Input Handling
-- [ ] Empty/whitespace-only `statement` never reaches the judge (firewall, same
+- [x] Empty/whitespace-only `statement` never reaches the judge (firewall, same
   as `llm_verdict`'s `reject`/`empty_turn`); test asserts zero judge calls.
-- [ ] Entries with empty `subjects` skip the deterministic tier (no identity key
+- [x] Entries with empty `subjects` skip the deterministic tier (no identity key
   computable) and enter the judge path with subject-unbounded shortlist capped
   by `Defaults`; test covers the cap.
-- [ ] Malformed judge replies (wrong schema, verdict outside fixed vocabulary,
+- [x] Malformed judge replies (wrong schema, verdict outside fixed vocabulary,
   reply about a different class) map to abstention — copy `verdict.py`'s
   `_parse_reply` adversarial tests.
 
 ### Error State Rendering
-- [ ] Disjunct pairs and supersession pointers must surface in the M6-facing
+- [x] Disjunct pairs and supersession pointers must surface in the M6-facing
   representative read as explicit uncertainty markers; the test asserts the
   flag on M5's own representative-selection return value — NOT at M6's
   formatting layer (M6 is #565's module per the No-Gos). No silent winner at
@@ -679,20 +679,20 @@ New module, one additive `JournalEntry` field, and two new M5-owned models; no
 existing behavior changes, so no UPDATE/DELETE — but three adjacent suites
 constrain the build:
 
-- [ ] `tests/` journal suites (`test_provenance_journal.py` et al) — MUST PASS
+- [x] `tests/` journal suites (`test_provenance_journal.py` et al) — MUST PASS
   UNCHANGED: `claim_type` defaults NULL, no entry is ever mutated, merge kinds
   are additive registrations.
   Any failure here is a regression, not an expected update.
-- [ ] `tests/test_ci_workflow_redis_url.py`-style env contracts — new tests bind
+- [x] `tests/test_ci_workflow_redis_url.py`-style env contracts — new tests bind
   via the pytest plugin (`popoto_test_db`), never `REDIS_URL` + DB 0.
-- [ ] `tests/benchmarks/overrides.py` — MUST UPDATE: every new `Defaults`
+- [x] `tests/benchmarks/overrides.py` — MUST UPDATE: every new `Defaults`
   constant gets a `MODULE_CONSTANTS` entry (shortlist cap, probe flag,
   watermark, judge caps) plus a module-level alias in
   `recipes/reconciliation.py` for it to point at.
   `tests/benchmarks/test_defaults_sync.py` is the **gate**, not the registry —
   it should need no edit. It fails only in CI under narrow test selection, so
   the build must run it explicitly.
-- [ ] New `tests/test_reconciliation_m5.py` (name per issue's
+- [x] New `tests/test_reconciliation_m5.py` (name per issue's
   `tests/test_<name>.py` criterion): restatement-joins, rule-fires-supersedes,
   tie-disjoins, replay-reverses, zero-LLM-calls-for-rules, judge-call bound,
   plus the Verification-table suites — `append_only` (no entry is ever
@@ -878,10 +878,10 @@ invoke it".
 ## Documentation
 
 ### Feature Documentation
-- [ ] Create `docs/features/reconciliation.md`: equivalence classes, convention
+- [x] Create `docs/features/reconciliation.md`: equivalence classes, convention
   book (with version), frozen type enum + per-type rules + precedence tables,
   disjunct-pair semantics, merge-log replay procedure, embedding-fallback behavior.
-- [ ] **Document the erasure cascade as an operator procedure, not a footnote.**
+- [x] **Document the erasure cascade as an operator procedure, not a footnote.**
   `JournalEntry.hard_delete()` is the retention/erasure primitive, and its
   documented scope is the record plus "every trace of its **own** derived
   state" — explicitly "**not** 'every trace of the record anywhere in the
@@ -898,46 +898,54 @@ invoke it".
   `claim_slot` digest and no claim content, by the Key Elements invariant —
   which matters because `JournalEntry` also composes `NeverRecordMixin`
   (`src/popoto/recipes/provenance_journal.py:282`).
-- [ ] Document the **single-writer invariant** as a deployment constraint, with
+- [x] Document the **single-writer invariant** as a deployment constraint, with
   the consequence named: running a second reconciler per agent re-opens Races 1
   and 3 and requires an atomic claim plus per-claim-slot serialization.
-- [ ] Add entry to `docs/features/` index (mkdocs nav if index-driven — follow
+- [x] Add entry to `docs/features/` index (mkdocs nav if index-driven — follow
   the precedent of the validity/journal feature pages).
 
 ### External Documentation Site
-- [ ] Verify `mkdocs serve` builds with the new page (docs gate runs at merge).
+- [x] Verify `mkdocs serve` builds with the new page (docs gate runs at merge).
 
 ### Inline Documentation
-- [ ] Convention-book rationale comments on each per-type rule (why this
+- [x] Convention-book rationale comments on each per-type rule (why this
   precedence, not just what).
-- [ ] Docstrings on the reconciler entry points, judge contract, and replay
+- [x] Docstrings on the reconciler entry points, judge contract, and replay
   procedure (watermark semantics mirror `crystallize`'s documented limits).
 
 ## Success Criteria
 
-- [ ] A restatement of a stored claim increments its class's confirmation count
+- [x] A restatement of a stored claim increments its class's confirmation count
   and creates no duplicate class (issue AC1).
-- [ ] A firing type rule resolves by the per-type precedence table, marking the
+- [x] A firing type rule resolves by the per-type precedence table, marking the
   loser superseded (never deleted) with a pointer to the winner, written through
   `save_and_supersede` (issue AC2).
-- [ ] A precedence tie produces a disjunct pair retrievable together; no silent
+  **Mechanism as shipped:** the close routes through
+  `ProvenanceJournal.supersede()`, not `save_and_supersede()` applied to the
+  winner. The behavior AC2 asks for is unchanged — one annotation plus the
+  loser's interval close in a single `MULTI`/`EXEC`, pointer to the winner,
+  nothing deleted — but the named call could not be the one used: the winner is
+  already persisted, so re-saving it raises `AppendOnlyViolation`. The criterion
+  is met on substance and the call name in it is superseded; see
+  [Exactly one supersession mechanism](../features/reconciliation.md#exactly-one-supersession-mechanism).
+- [x] A precedence tie produces a disjunct pair retrievable together; no silent
   winner at write or read time (issue AC3).
-- [ ] Any merge is reversible: revoking a merge-log entry and replaying
+- [x] Any merge is reversible: revoking a merge-log entry and replaying
   reproduces the pre-merge class assignment (issue AC4).
-- [ ] Type rules run with zero LLM calls; judge calls are at most 2x the
+- [x] Type rules run with zero LLM calls; judge calls are at most 2x the
   shortlist cap per entry — one forward ask plus one swapped-order symmetry
   probe per candidate class (issue AC5).
-- [ ] Tests at `tests/test_reconciliation_m5.py`; docs page under
+- [x] Tests at `tests/test_reconciliation_m5.py`; docs page under
   `docs/features/` (issue AC6).
-- [ ] No claim content leaves the append-only record: `ClaimMembership` /
+- [x] No claim content leaves the append-only record: `ClaimMembership` /
   `ClaimClass` hold the `claim_slot` digest and no subject text or plaintext
   `claim_type`, and `erase_entry` cascades an erasure to the membership row, the
   cached embedding, and the `ClaimClass` recomputation (see Verification).
-- [ ] Tests pass (`/do-test`); Documentation updated (`/do-docs`); every new
+- [x] Tests pass (`/do-test`); Documentation updated (`/do-docs`); every new
   `Defaults` constant registered in
   `tests/benchmarks/overrides.py::MODULE_CONSTANTS` (with its module-level
   alias), and `tests/benchmarks/test_defaults_sync.py` green without edits.
-- [ ] Anti-criterion: M6 surfacing stays out (see Verification).
+- [x] Anti-criterion: M6 surfacing stays out (see Verification).
 
 ## Team Orchestration
 
