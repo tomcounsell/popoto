@@ -752,8 +752,9 @@ def test_merge_log_annotations_carry_the_pinned_payload_shape():
     actions: an always-"same" judge over two captures can only produce
     ``created`` then ``confirmed``, so a name claiming every outcome read as
     coverage the assertions never had. The other five are covered one test
-    each -- ``joined`` and ``superseded`` by
-    :func:`test_deadline_supersession_closes_the_loser_through_the_journal`,
+    each, every one asserting ``outcome.action`` directly -- ``joined`` by
+    :func:`test_restatement_confirms_rather_than_superseding`, ``superseded``
+    by :func:`test_deadline_supersession_closes_the_loser_through_the_journal`,
     ``disjoined`` by :func:`test_split_verdict_disjoins`, ``noop`` by
     :func:`test_reconcile_is_idempotent_on_a_rerun`, and ``loser-absent`` by
     the test below.
