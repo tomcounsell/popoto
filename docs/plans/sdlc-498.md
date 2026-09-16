@@ -154,8 +154,10 @@ and `FACTS_SCHEMA` at `claude.py:83-90`, which requires exactly `["text", "entit
 
 > `ExtractedFact` has twelve fields: `text`, `entities`, `importance`, `confidence`,
 > `span_start`, `span_end`, `turn_id`, `candidate_id`, `generator_rule`, `verbatim`,
-> `resolution_status`, `assumption`. Every one of them is `str` / `float` / `list[str]`.
-> **None is a slot for a typed value of any kind** — no number, no relation, no role.
+> `resolution_status`, `assumption`. Every one of them is `str` / `float` / `int` /
+> `list[str]` — the only two numeric fields, `span_start` and `span_end`, are character
+> offsets into the source turn (provenance), not a domain value.
+> **None is a slot for a typed domain value** — no amount, no relation, no role.
 > Neither provider, including the paid Claude one, can emit
 > "payer=Alice, amount=179, split_with=[Bob]".
 
@@ -425,7 +427,13 @@ averages.
   than loudly. With the `Spec` entries in place, the results page is generated at build time
   from the committed artifact, per #453. The scan, even after the extension, only ever
   `print`s to stderr and never raises, so it cannot be what makes `mkdocs build --strict`
-  fail (see the test-based check in §Success Criteria and §Verification instead).
+  fail (see the test-based check in §Success Criteria and §Verification instead). That
+  test-based check is only falsifiable if the directory it scans is non-empty at the point
+  it runs: task 11 commits the `--judge stub` artifact that Success Criteria bullet 1
+  already produces, under `results/sme/`, before `test_sme_artifacts_have_spec_entries` is
+  added, and the test itself asserts the glob is non-empty (not just that every match has a
+  `Spec`) so it cannot pass vacuously against an empty results directory the way the
+  original `mkdocs build --strict` claim did.
 - **Third-party data enters the repo.** Vendored fixtures are Apache-2.0 upstream material
   and require attribution: a `tests/benchmarks/sme/fixtures/UPSTREAM.md` recording the repo,
   commit SHA, license, and the paper citation, and a matching entry in `NOTICE` if the repo
@@ -701,7 +709,7 @@ possible:
 | `test_mcnemar_and_power_on_fixed_table` | exact McNemar, MDE, underpowered flag and Holm–Bonferroni reproduce known values on a fixed synthetic contingency table |
 | `test_ingest_granularity_is_per_message` | `NativeAdapter.ingest_session` issues one `extract_memories()` call per message with the pinned `turn_id` shape |
 | `test_upstream_attribution_present` | `fixtures/UPSTREAM.md` exists and names the pinned SHA and the Apache-2.0 license |
-| `test_sme_artifacts_have_spec_entries` | every committed `tests/benchmarks/results/sme/*_latest*.md` stem has a matching `Spec` in `gen_benchmark_pages.py` (the falsifiable orphan-artifact check — see §Architectural Impact) |
+| `test_sme_artifacts_have_spec_entries` | the `tests/benchmarks/results/sme/*_latest*.md` glob is non-empty (fails on an empty results dir) **and** every matched stem has a matching `Spec` in `gen_benchmark_pages.py` — both conjuncts required so the check cannot pass vacuously (the falsifiable orphan-artifact check — see §Architectural Impact) |
 
 Narrow-scope run for this lane: `pytest tests/benchmarks/test_sme.py`. Note the standing
 repo gotcha — if any `Defaults` constant is added, it must be registered in
@@ -830,7 +838,7 @@ reads only the full-corpus artifact. A fixture-derived artifact is marked
 
 Lane 1 (schedulable now, no key, no spend):
 
-- [ ] `python -m tests.benchmarks.sme.run_sme --fixture tests/benchmarks/sme/fixtures/sme_sample.json --db 3 --judge stub` exits 0, performs **zero network requests**, requires **no API key**, and writes a schema-valid artifact.
+- [ ] `python -m tests.benchmarks.sme.run_sme --fixture tests/benchmarks/sme/fixtures/sme_sample.json --db 3 --judge stub` exits 0, performs **zero network requests**, requires **no API key**, and writes a schema-valid artifact under `tests/benchmarks/results/sme/`; this artifact is committed in task 11 so the orphan-`Spec` check below has a real target.
 - [ ] `pytest tests/benchmarks/test_sme.py` passes; every test in §Test Impact exists.
 - [ ] `sme/compare.py` raises `SmeComparabilityError` on a fingerprint mismatch **and** on a judge-identity mismatch, each covered by a test.
 - [ ] Every artifact records: upstream commit SHA, corpus fingerprint, **asserted** `redis_db`, judge model + prompt SHA-256, `popoto` + `redis-py` versions, `n` per family, and the full status breakdown summing to the item total.
@@ -839,7 +847,7 @@ Lane 1 (schedulable now, no key, no spend):
 - [ ] The zero-by-construction rule is enforced: a cell configured unroutably (accounting with no ledger primitive; tree with the heuristic extractor) emits `status="unroutable"` with a reason and **no accuracy number**, and is excluded from every denominator. Covered by a test that plants such a configuration.
 - [ ] `compare.py` computes exact McNemar per family and pooled, prints the declared MDE and the underpowered flag per family, and applies Holm–Bonferroni across families — all covered by a test with a fixed synthetic contingency table.
 - [ ] `fixtures/UPSTREAM.md` records repo, commit SHA, Apache-2.0, and the paper citation.
-- [ ] `docs/scripts/gen_benchmark_pages.py` has `Spec` entries for the SME artifacts, its `_warn_orphan_artifacts()` scan is extended to cover `results/sme/`, and `test_sme_artifacts_have_spec_entries` (a new test asserting every committed `sme/*_latest*.md` stem has a matching `Spec`) passes — this is the falsifiable check; `mkdocs build --strict` passing is necessary but cannot by itself detect a missing `Spec`, since the scan only ever prints to stderr and `docs/plans/` is excluded from the site build.
+- [ ] `docs/scripts/gen_benchmark_pages.py` has `Spec` entries for the SME artifacts, its `_warn_orphan_artifacts()` scan is extended to cover `results/sme/`, and `test_sme_artifacts_have_spec_entries` (a new test asserting the `results/sme/*_latest*.md` glob is non-empty and every matched stem has a matching `Spec`) passes against the stub artifact committed by task 11 — this is the falsifiable check; `mkdocs build --strict` passing is necessary but cannot by itself detect a missing `Spec`, since the scan only ever prints to stderr.
 - [ ] No file under `src/popoto/` is modified; `run_external.py` is unchanged.
 
 Lane 2 (needs `OPENAI_API_KEY` + maintainer go-ahead):
@@ -913,7 +921,7 @@ interleave. Tasks 1–3 and 7 can start in parallel; 4–6 and 8–9 serialize b
 8. `sme/runner.py` + `sme/run_sme.py`: CLI, orchestration, cost estimate, `--dry-run`.
 9. `sme/compare.py`: paired join, both refusal conditions, discordant cells, gap artifact.
 10. `tests/benchmarks/test_sme.py`: the full table in §Test Impact.
-11. `gen_benchmark_pages.py` `Spec` entries; extend `_warn_orphan_artifacts()`'s glob to also cover `tests/benchmarks/results/sme/`; add `test_sme_artifacts_have_spec_entries`; `mkdocs build --strict`.
+11. Commit the `--judge stub` run's artifact (produced per Success Criteria bullet 1, once task 8's runner exists) under `tests/benchmarks/results/sme/`, giving the glob below a real target; `gen_benchmark_pages.py` `Spec` entries for it; extend `_warn_orphan_artifacts()`'s glob to also cover `tests/benchmarks/results/sme/`; add `test_sme_artifacts_have_spec_entries` (asserting the glob is non-empty and every stem has a matching `Spec`); `mkdocs build --strict`.
 12. Narrow-scope test run + lint/format/mypy-ratchet; PR.
 
 **Lane 2** (gated on Q5)
@@ -931,7 +939,7 @@ interleave. Tasks 1–3 and 7 can start in parallel; 4–6 and 8–9 serialize b
 3. Same without `--dry-run`; inspect the artifact for every field in §Success Criteria.
 4. `POPOTO_BENCH_DB=9 python -m tests.benchmarks.sme.run_sme --db 3 ...` → must raise `SmeDbError`, not run.
 5. `ruff check src/` (unchanged), `black --check src/ tests/`, `scripts/mypy_ratchet.py`.
-6. `pytest tests/benchmarks/test_sme.py -k test_sme_artifacts_have_spec_entries` → every committed `sme/*_latest*.md` has a matching `Spec` (the falsifiable check; `mkdocs build --strict` cannot detect a missing `Spec` on its own — see §Architectural Impact).
+6. `pytest tests/benchmarks/test_sme.py -k test_sme_artifacts_have_spec_entries` → the `results/sme/*_latest*.md` glob is non-empty (the stub artifact committed by task 11) and every matched stem has a matching `Spec` (the falsifiable check; `mkdocs build --strict` cannot detect a missing `Spec` on its own — see §Architectural Impact).
 7. Confirm `git diff --stat main` touches nothing under `src/popoto/`.
 
 ---
@@ -977,8 +985,10 @@ ledger, and per spike-1 no extraction provider — including the paid Claude one
 typed value at all. `ExtractedFact` (`src/popoto/extraction/__init__.py:48`) has twelve
 fields — `text`, `entities`, `importance`, `confidence`, `span_start`, `span_end`,
 `turn_id`, `candidate_id`, `generator_rule`, `verbatim`, `resolution_status`, `assumption`
-— and every one of them is `str` / `float` / `list[str]`; none is a numeric, relational, or
-role slot. So there is **no subconscious write path into any typed structure**, and the
+— and every one of them is `str` / `float` / `int` / `list[str]`; the only two numeric
+fields (`span_start`, `span_end`) are character offsets into the source turn, i.e.
+provenance, not a domain value — none is a slot for a typed *domain* value, relation, or
+role. So there is **no subconscious write path into any typed structure**, and the
 count-based family has nothing to route to. I have planned to report that as a structural
 gap rather than score it as 0%. Confirm that is the wanted disposition. The alternative —
 hand-writing a benchmark-local structured extractor so the accounting arm has something to
