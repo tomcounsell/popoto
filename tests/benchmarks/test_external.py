@@ -814,6 +814,10 @@ class TestStaleKeySweep:
             "$ValidityF:ExtMem12345678:validity:valid_from": "1",
             "$Class:ExtMem12345678": "1",
             "$KeyF:ExtMem12345678:agent_id:x": "1",
+            # #586: a run killed mid-item leaves ValidityField open-interval
+            # keys that per-item teardown never reached, and item 1 of the
+            # next run would read them as live records.
+            "$ValidityF:ExtMem12345678:validity:open:k": "1",
         }
         keeper = "SomeOtherModel:keepme"
         for k, v in stale.items():
@@ -1525,3 +1529,104 @@ class TestSupersessionArm:
             retrieval_mode="vector",
             supersession_arm="none",
         )
+
+
+class TestEnvironmentStamp:
+    """The report's ``machine`` block records redis-py and the bench DB (#586).
+
+    CLAUDE.md requires the environment to be stated alongside any count, and a
+    retrieval metric on this axis is redis-py-version-dependent. Before #586
+    the block held only {python_version, platform, cpu_count}, so
+    ``tests/benchmarks/README.md``'s promise that every number on this axis
+    carries its redis-py version was simply false.
+    """
+
+    def test_resolves_real_redis_version(self):
+        from tests.benchmarks.run_external import _redis_py_version
+
+        import redis
+
+        assert _redis_py_version() == str(redis.__version__)
+
+    def test_unresolvable_version_degrades_to_unknown(self):
+        """A stamp must never cost a completed run its artifact."""
+        import builtins
+
+        from tests.benchmarks import run_external
+
+        real_import = builtins.__import__
+
+        def boom(name, *args, **kwargs):
+            if name == "redis":
+                raise ImportError("simulated")
+            return real_import(name, *args, **kwargs)
+
+        builtins.__import__ = boom
+        try:
+            assert run_external._redis_py_version() == "unknown"
+        finally:
+            builtins.__import__ = real_import
+
+    def test_aggregate_machine_block_has_both_keys(self):
+        """The keys reach the serialized report, not just the helper."""
+        import inspect
+
+        from tests.benchmarks import run_external
+
+        src = inspect.getsource(run_external)
+        assert '"redis_version": _redis_py_version()' in src
+        assert '"bench_db": _resolve_bench_db()' in src
+
+
+class TestTeardownIsNonRaising:
+    """``teardown()`` runs in ``Scenario.execute()``'s ``finally`` (#586).
+
+    ``execute()`` wraps only ``setup()``/``run()``, so anything raising in
+    ``teardown()`` escapes uncaught and kills the driver loop mid-arm instead
+    of producing the single-item ``status="error"`` containment the harness
+    relies on.
+
+    Both assertions below are on source *shape*. That is deliberate, and
+    matches the plan's own Verification table: in lexical mode --- the mode all
+    three #586 arms run under --- ``stop_invalidation_listeners()`` is a
+    documented no-op and the validity-cleanup block never fails, so no
+    executable behavior distinguishes guarded from unguarded here. A
+    behavioral test would pass equally against the unguarded code, which is
+    the repo's vacuity trap.
+    """
+
+    def _source(self):
+        import inspect
+
+        from tests.benchmarks.scenarios import external_base
+
+        return inspect.getsource(external_base)
+
+    def test_stop_invalidation_listeners_is_guarded(self):
+        import ast
+
+        tree = ast.parse(self._source())
+        guarded = [
+            c
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Try)
+            for c in ast.walk(n)
+            if isinstance(c, ast.Call)
+            and getattr(c.func, "id", "") == "stop_invalidation_listeners"
+        ]
+        assert guarded, "stop_invalidation_listeners() must be inside a try"
+
+    def test_validity_cleanup_failure_is_logged_not_swallowed(self):
+        src = self._source()
+        assert "validity key cleanup failed" in src
+
+    def test_prefix_is_bound_before_the_guarded_block(self):
+        """An unbound ``prefix`` would make the handler itself raise.
+
+        ``get_all_keys()`` and its ``delete()`` both run before ``prefix`` is
+        assigned, so binding it only inside the ``try`` turns the warning call
+        into a ``NameError`` --- teardown would raise, which is exactly what
+        the guard exists to prevent.
+        """
+        src = self._source()
+        assert 'prefix = "<unresolved>"' in src

@@ -275,6 +275,55 @@ Every number produced under this axis carries Python version, redis-py
 version, platform, Redis DB, and the baseline commit SHA, per repo doctrine.
 Numbers from different redis-py versions are not compared.
 
+### The measured result (#586, full n=500)
+
+This axis has now been run at full scale. Artifacts, the three exact commands,
+and the complete environment:
+`tests/benchmarks/results/external/validity_586/` (see its `README.md`).
+Narrative write-up: `docs/benchmarks.md` § "Validity gating (V0)".
+
+Environment: Python 3.12.14, redis-py **8.1.0**, Redis DB 12,
+macOS-26.6.2-arm64 10-core, full 500/500 LongMemEval-S, **lexical** retrieval.
+
+| Metric | A | B | C | A→B | B→C |
+|---|---|---|---|---|---|
+| Recall@1 | 0.8560 | 0.8560 | 0.8480 | +0.0000 | −0.0080 |
+| Recall@5 | 0.9520 | 0.9520 | 0.9480 | +0.0000 | −0.0040 |
+| Recall@10 | 0.9780 | 0.9780 | 0.9780 | +0.0000 | +0.0000 |
+| MRR | 0.8987 | 0.8987 | 0.8935 | +0.0000 | −0.0052 |
+
+- **A→B is exactly 0.0000 on every metric and every one of the 500 questions.**
+  The "non-zero A→B is a finding about the harness" clause above did not fire;
+  B→C is readable as the gate alone.
+- **The gate is live**, which was the open question: arm C reports 3699
+  excluded keys and **177 excluded hits** against arm B's **0 hits**. Arm B
+  computes excluded keys as well (3697); "gate off" means nothing is subtracted
+  with them, not that none are found.
+- **B→C is a small cost, one-directional at the top of the ranking**: 4 of 500
+  questions lost their rank-1 hit and 0 gained one (R@5: 0 gained, 2 lost).
+  Paired bootstrap (20k resamples, seed 0): R@1 −0.0080, CI [−0.0160, −0.0020];
+  MRR −0.0052, CI [−0.0111, −0.0005]; R@5's CI includes zero. R@1's interval
+  excludes zero because the direction is one-sided over four questions, not
+  because the effect is large. **MRR's does not**: nine questions moved there,
+  3 up and 6 down, and its interval excludes zero on magnitude. R@10's
+  published +0.0000 is likewise two offsetting flips, not stasis — gating
+  removed a record and thereby *promoted* one question's hit across the cutoff.
+  A gate that subtracts records can add a hit; do not assume otherwise.
+- **`knowledge-update` (n=78) moved by exactly zero** on every metric, 0
+  questions changing rank — so the caveat above about category-level
+  conclusions resolves in the cleanest possible way: there is no delta to
+  over-read. The measured cost falls on `temporal-reasoning` (n=133, R@1
+  −0.0150, 2 questions) and `multi-session` (n=133, R@1 −0.0075, 1 question).
+
+Arms B and C each report `producer_failures: 1` — one unit of 246,738 whose
+corpus timestamps are non-monotonic, so `SUPERSEDE_LUA` correctly refused an
+inverted interval. Impact is nil and measured, not assumed: one item holds 435
+records instead of 436, scores 1.0 in all three arms, and zero of the 500 items
+differ on any metric between A and B. The failure reproduces identically in C,
+so it cancels in B→C. Details in the artifact README and in deviation D3 of
+`docs/plans/sdlc-586.md`. Fixing the producer to skip (or clamp) an
+out-of-order supersession rather than dropping the unit is open follow-up work.
+
 **Fixed (#701):** every per-item benchmark model class is now built with
 `type(class_name, bases, namespace_dict)` rather than a `class` statement
 followed by a post-hoc `cls.__name__` rename. `_meta.db_class_key` (and

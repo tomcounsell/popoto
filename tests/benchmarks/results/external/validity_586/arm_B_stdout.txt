@@ -1,0 +1,88 @@
+13:11:44 ExternalBenchmark: Benchmark isolation: Popoto connection pointed at DB 12 (override via POPOTO_BENCH_DB; db0 rejected).
+13:11:44 ExternalBenchmark: Swept 2094 stale benchmark key(s) from DB 12 at startup.
+13:11:44 POPOTO.Benchmark.LongMemEvalS: LongMemEval-S: using cached file at /Users/valorengels/.cache/popoto_benchmarks/longmemeval_s_cleaned.json
+13:11:46 POPOTO.Benchmark.LongMemEvalS: LongMemEval-S: yielded 500 items (sample=stride seed=0)
+13:11:46 ExternalBenchmark: Starting benchmark: dataset=longmemeval-s limit=all sample=stride seed=0 retrieval_mode=lexical dry_run=False bench_db=12
+13:11:46 ExternalBenchmark: Progress: 1 questions processed (0.0s elapsed)
+13:12:03 ExternalBenchmark: Progress: 10 questions processed (16.8s elapsed)
+13:12:22 ExternalBenchmark: Progress: 20 questions processed (35.4s elapsed)
+13:12:44 ExternalBenchmark: Progress: 30 questions processed (57.5s elapsed)
+13:13:02 ExternalBenchmark: Progress: 40 questions processed (75.5s elapsed)
+13:13:21 ExternalBenchmark: Progress: 50 questions processed (94.4s elapsed)
+13:13:38 ExternalBenchmark: Progress: 60 questions processed (112.2s elapsed)
+13:13:59 ExternalBenchmark: Progress: 70 questions processed (133.0s elapsed)
+13:14:16 ExternalBenchmark: Progress: 80 questions processed (149.7s elapsed)
+13:14:33 ExternalBenchmark: Progress: 90 questions processed (166.8s elapsed)
+13:14:53 ExternalBenchmark: Progress: 100 questions processed (187.1s elapsed)
+13:15:11 ExternalBenchmark: Progress: 110 questions processed (204.3s elapsed)
+13:15:29 ExternalBenchmark: Progress: 120 questions processed (222.7s elapsed)
+13:15:47 ExternalBenchmark: Progress: 130 questions processed (240.5s elapsed)
+13:16:05 ExternalBenchmark: Progress: 140 questions processed (259.0s elapsed)
+13:16:23 ExternalBenchmark: Progress: 150 questions processed (277.2s elapsed)
+13:16:41 ExternalBenchmark: Progress: 160 questions processed (294.6s elapsed)
+13:16:59 ExternalBenchmark: Progress: 170 questions processed (313.2s elapsed)
+13:17:18 ExternalBenchmark: Progress: 180 questions processed (331.5s elapsed)
+13:17:35 ExternalBenchmark: Progress: 190 questions processed (348.8s elapsed)
+13:17:52 ExternalBenchmark: Progress: 200 questions processed (366.1s elapsed)
+13:18:10 ExternalBenchmark: Progress: 210 questions processed (383.5s elapsed)
+13:18:28 ExternalBenchmark: Progress: 220 questions processed (401.8s elapsed)
+13:18:47 ExternalBenchmark: Progress: 230 questions processed (420.8s elapsed)
+13:19:10 ExternalBenchmark: Progress: 240 questions processed (443.5s elapsed)
+13:19:29 ExternalBenchmark: Progress: 250 questions processed (462.8s elapsed)
+13:19:50 ExternalBenchmark: Progress: 260 questions processed (483.8s elapsed)
+13:20:08 ExternalBenchmark: Progress: 270 questions processed (502.0s elapsed)
+13:20:28 ExternalBenchmark: Progress: 280 questions processed (522.2s elapsed)
+13:20:47 ExternalBenchmark: Progress: 290 questions processed (541.0s elapsed)
+13:21:06 ExternalBenchmark: Progress: 300 questions processed (559.8s elapsed)
+13:21:26 ExternalBenchmark: Progress: 310 questions processed (580.0s elapsed)
+13:21:44 ExternalBenchmark: Progress: 320 questions processed (597.6s elapsed)
+13:22:01 ExternalBenchmark: Progress: 330 questions processed (615.1s elapsed)
+13:22:19 ExternalBenchmark: Progress: 340 questions processed (632.8s elapsed)
+13:22:37 ExternalBenchmark: Progress: 350 questions processed (650.5s elapsed)
+13:22:54 ExternalBenchmark: Progress: 360 questions processed (668.2s elapsed)
+13:23:14 ExternalBenchmark: Progress: 370 questions processed (687.5s elapsed)
+13:23:33 ExternalBenchmark: Progress: 380 questions processed (707.0s elapsed)
+13:23:51 ExternalBenchmark: Progress: 390 questions processed (724.5s elapsed)
+13:24:07 POPOTO.Benchmark.Supersession: supersession producer failed: ValidityField: close-at precedes the record's own valid_from (Command # 7 (EVALSHA 9c50716105633ccfe3ec55a1522d7e5099d5feb1 6...) of pipeline caused error: POPOTO_VALIDITY_CLOSE_BEFORE_START)
+13:24:07 POPOTO.Benchmark.ExternalScenario: Failed to save unit for item 18bc8abd (save() returned False)
+13:24:10 ExternalBenchmark: Progress: 400 questions processed (743.4s elapsed)
+13:24:27 ExternalBenchmark: Progress: 410 questions processed (761.1s elapsed)
+13:24:46 ExternalBenchmark: Progress: 420 questions processed (780.0s elapsed)
+13:25:04 ExternalBenchmark: Progress: 430 questions processed (797.5s elapsed)
+13:25:25 ExternalBenchmark: Progress: 440 questions processed (818.3s elapsed)
+13:25:42 ExternalBenchmark: Progress: 450 questions processed (835.5s elapsed)
+13:25:59 ExternalBenchmark: Progress: 460 questions processed (853.0s elapsed)
+13:26:17 ExternalBenchmark: Progress: 470 questions processed (870.8s elapsed)
+13:26:35 ExternalBenchmark: Progress: 480 questions processed (889.1s elapsed)
+13:26:54 ExternalBenchmark: Progress: 490 questions processed (908.0s elapsed)
+13:27:13 ExternalBenchmark: Progress: 500 questions processed (927.2s elapsed)
+13:27:15 ExternalBenchmark: Benchmark complete: 500 questions in 929.0s
+
+============================================================
+BENCHMARK RESULTS: LONGMEMEVAL-S
+============================================================
+  Retrieval mode      : lexical
+  Ingest arm          : raw
+    facts/turn        : 1.0 (turns=246738 records=246737 dropped=0)
+  Supersession arm    : content-identity (--no-validity-gating)
+    identity writes   : 5473 (groups=1193 units_with_identity=5474/246738)
+    supersessions     : 3698
+    excluded keys/hits: 3697 / 0
+    producer failures : 1
+    measurement fails : 0
+  Questions evaluated : 500 / 500
+  Errors              : 0
+  Recall@1            : 0.8560
+  Recall@5            : 0.9520
+  Recall@10           : 0.9780
+  MRR                 : 0.8987
+  Latency p50 (ms)    : 9.85
+  Latency p95 (ms)    : 14.6
+============================================================
+13:27:15 ExternalBenchmark: Saved JSON report: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908_sup-content-identity_nogate.json
+13:27:15 ExternalBenchmark: Saved Markdown report: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908_sup-content-identity_nogate.md
+
+Reports saved:
+  JSON: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908_sup-content-identity_nogate.json
+  Markdown: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908_sup-content-identity_nogate.md
+13:27:15 ExternalBenchmark: Swept 182 benchmark key(s) from DB 12 at teardown.

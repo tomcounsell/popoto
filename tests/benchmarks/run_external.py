@@ -129,7 +129,34 @@ _STALE_KEY_PATTERNS = (
     "ExtMem*",
     "$BM25:ExtMem*",
     "*:ExtMem*",
+    # $ValidityF:* covers the supersession axis's ValidityField ZSETs (#586).
+    # ExternalScenario.teardown() deletes these per item, which protects items
+    # 2..N, but never item 1 of a *later* process: a run killed mid-item (or
+    # SIGKILLed before its teardown) leaves open-interval keys behind, and the
+    # first item of the next run would see them as live records. Same literal
+    # form as $BM25:ExtMem* above — ``$`` is not a Redis SCAN metacharacter.
+    #
+    # "*:ExtMem*" above already reaches the $ValidityF:ExtMem<hash>* keys a
+    # post-#701 run writes; this pattern is still not redundant, because it also
+    # reaches the pre-#701 $ValidityF:ExternalBenchmarkMemory:* family and any
+    # future validity key whose model name neither pattern anticipates.
+    "$ValidityF:*",
 )
+
+
+def _redis_py_version() -> str:
+    """Return the installed redis-py version, or ``"unknown"``.
+
+    Never raises: this feeds a report's ``machine`` block, and a completed
+    benchmark run must not lose its artifact because a version string could
+    not be resolved.
+    """
+    try:
+        import redis
+
+        return str(redis.__version__)
+    except Exception:  # noqa: BLE001 - a stamp must never break a run
+        return "unknown"
 
 
 def _resolve_bench_db() -> int:
@@ -610,10 +637,19 @@ def compute_aggregate(
                 else {}
             ),
         },
+        # redis_version and bench_db are recorded because a retrieval metric on
+        # this axis is redis-py-version-dependent and DB-dependent: CLAUDE.md
+        # requires the environment to be stated alongside any count, and the
+        # benchmark README already promised every number carried its redis-py
+        # version — a promise this block did not keep until #586. Never raises:
+        # an unresolvable version degrades to "unknown" rather than losing a
+        # completed run's report at serialization time.
         "machine": {
             "python_version": platform.python_version(),
             "platform": platform.platform(),
             "cpu_count": os.cpu_count(),
+            "redis_version": _redis_py_version(),
+            "bench_db": _resolve_bench_db(),
         },
         "by_question_type": by_qt,
         "summary": {
@@ -818,6 +854,8 @@ def build_markdown_report(aggregate: dict) -> str:
         + "  ",
         f"**Python:** {machine['python_version']}  ",
         f"**Platform:** {machine['platform']}  ",
+        f"**redis-py:** {machine.get('redis_version', 'unknown')}  ",
+        f"**Bench DB:** {machine.get('bench_db', 'unknown')}  ",
         f"**Sample mode:** {sample_mode}  ",
         f"**Seed:** {seed}  ",
         f"**Limit:** {limit_str}  ",
