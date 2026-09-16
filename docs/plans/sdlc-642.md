@@ -172,6 +172,29 @@ classifier is never reached on that path.
 - **[EXTERNAL]** The Part B changes land in `~/src/ai`, a different repository, on branch
   `session/sdlc-642`. This popoto PR cannot merge them.
 
+## Note (out of scope): a lane cannot trust its inherited Redis binding
+
+Observed while this lane ran, and recorded here because it is the same defect class as #642 —
+a pipeline step whose environment is not what the operator assumes. It is **not** fixed by this
+PR and should get its own slug.
+
+The session runner injects `REDIS_URL=redis://localhost:6379/0` into the harness process. It is
+not in `~/.zshrc`, `~/.zshenv`, `~/.zprofile` or any `settings*.json`, so this is not the
+documented "unset falls back to `DEFAULT_URL`" hazard in CLAUDE.md — it is an *actively bound*
+value no lane can correct from the inside. Two consequences the existing docs do not cover:
+
+- `scripts/scratch_repro.py` uses `os.environ.setdefault("REDIS_URL", ...)`, which is a **no-op**
+  when the variable is already set. The template CLAUDE.md recommends as the safe starting point
+  binds to DB 0 in this harness.
+- Shell state does not persist between tool calls, so `export REDIS_URL=…` does not stick; each
+  command must be prefixed inline.
+- A second binder exists further in: the benchmark harness's `_resolve_bench_db()` overrides the
+  pool onto `POPOTO_BENCH_DB` (default 14), silently taking precedence over `REDIS_URL`.
+
+If the SDLC lane-setup surface gains a startup step, it should **assert** the bound database and
+fail, rather than inherit whatever is present. Deliberately kept out of this PR: #642 is a
+verdict-trailer defect and lane-setup work shares none of its files.
+
 ## Questions for the architect
 
 1. **Merge authority for `~/src/ai`.** Part B is implemented on a `session/sdlc-642` branch in
