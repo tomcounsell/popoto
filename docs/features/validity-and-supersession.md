@@ -605,12 +605,17 @@ including `DefaultMemory`, does.
     cyclic override rather than of a dispatch branch in the query builder —
     read it there, and in the comment above the call site in
     `models/query.py`.
-- **Gating costs up to two `ZSCORE`s per member inside the decay Lua**, and
-  `DECAY_SCORE_LUA` full-scans its partition regardless of gating (a
-  pre-existing property, not introduced here). Measured locally on a 20k-record
-  partition: `top_by_decay` at ~1.4x wall time gated vs. ungated (~37ms
-  ungated / ~51ms gated). The cost scales with partition size, not with how
-  many records are actually closed.
+- **`DECAY_SCORE_LUA` full-scans its partition regardless of gating** (a
+  pre-existing property, not introduced here) — the cost scales with partition
+  size, not with how many records are actually closed. Since
+  [#585](https://github.com/tomcounsell/popoto/issues/585) the gate itself is
+  no longer the expensive part: see [What gating costs](#what-gating-costs)
+  above for the measured 0.94x figure and the pre-trim mechanism that buys it.
+  The **fallback** path — reached when the exclusion sets are more than
+  `VALIDITY_GATE_PRETRIM_MAX_RATIO` times the partition, or when pre-trim is
+  disabled — still costs up to two `ZSCORE`s per scanned member, which is what
+  the pre-#585 ~1.4x measurement (~37ms ungated / ~51ms gated on a 20k-record
+  partition) reflected.
 - **The TTL warning fires on first save, not at model-definition time.**
   `ValidityField.warn_if_ttl` logs once per `(model, field)` pair the first
   time a record on a `Meta.ttl`-bearing model is saved, not when the class
