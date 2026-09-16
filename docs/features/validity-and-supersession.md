@@ -445,10 +445,12 @@ the `filters` dict entirely. That single fact is why validity gating is not
 one mechanism but three, each with a distinct, non-overlapping job:
 
 **Layer 1 — decay-Lua gate.** `DECAY_SCORE_LUA` grows `KEYS[3]` (`invalid_at`),
-`KEYS[4]` (`valid_from`), and `ARGV[7]` (as-of). Per member, before the
-base-score `HGET` and before any decay math, up to two `ZSCORE`s decide
-inclusion: skip if `invalid_at <= as_of` (closed) or `valid_from > as_of` (not
-yet started). Every `KEYS[n]` read is guarded `KEYS[n] or ''`, so a caller
+`KEYS[4]` (`valid_from`), and `ARGV[7]` (as-of). Before the base-score `HGET`
+and before any decay math, the script decides inclusion: skip if
+`invalid_at <= as_of` (closed) or `valid_from > as_of` (not yet started). It
+answers that question one of two ways, chosen at run time — see "What gating
+costs" below — and the two answers are identical by construction. Every
+`KEYS[n]` read is guarded `KEYS[n] or ''`, so a caller
 that passes a short `numkeys` (existing hand-`eval` test call sites included)
 gets `nil` → `''` → gate disabled, with byte-identical scores to the
 pre-#580 script. This layer is **authoritative for `top_by_decay` on a plain
@@ -488,6 +490,53 @@ the only mechanism for `top_by_decay` on a plain `DecayingSortedField`; Layer 2
 is the only one that enforces membership on the composite path; Layer 3 is the
 only one that reaches `fuse`/BM25/graph. The one path no layer covers is a
 direct `top_by_decay` on a `CyclicDecayField` — see "Known limitations".
+
+## What gating costs
+
+Gating a `top_by_decay` at 20k records measures at **0.94x** ungated retrieval
+— parity, within jitter (Python 3.12.14, redis-py 8.1.0, Redis DB 8,
+Darwin 25.6.0 / Apple silicon; p50 of 21 samples, ungated 37.70 ms / gated
+35.59 ms). `tests/test_validity_field.py::TestValidityBenchmark` pins the
+ceiling at 2.0x against a same-process, same-data ungated control.
+
+Read that as a **ratio**, never as a wall-clock budget. `DECAY_SCORE_LUA`
+full-scans its partition to rank it, so the ungated cost at 20k is already
+tens of milliseconds and dominates whatever the gate adds; an absolute budget
+would be measuring the scan. The V0 plan originally stated one ("within 1 ms
+of ungated"), and
+[#585](https://github.com/tomcounsell/popoto/issues/585) withdrew it for that
+reason.
+
+The parity comes from **pre-trimming**. The naive gate costs up to two
+`ZSCORE` round trips per scanned member — 40,000 extra server-side dispatches
+at 20k. Instead, the script reads the excluded members up front with two
+`ZRANGEBYSCORE`s and builds a Lua lookup table, making the per-member decision
+O(1) with no round trip.
+
+That is not always the cheaper shape, and the script checks before committing
+to it. The interval ZSETs are **model+field scoped** while the scan is **one
+partition**, so a small hot partition sitting beside a large archive of closed
+records makes the range read pull far more than the scan touches — measured at
+16x ungated before the guard existed. Two `ZCOUNT`s bound it: pre-trim runs
+only while
+
+```
+ZCOUNT(closed) + ZCOUNT(not-yet-started) <= ZCARD(partition) * Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO
+```
+
+`VALIDITY_GATE_PRETRIM_MAX_RATIO` defaults to `4.0` (measured crossover is
+~5x, flat across partition sizes). Past it, the script falls back to the
+per-member path. Setting it to `0` or less disables pre-trim entirely and
+restores the pre-#585 per-member path byte-for-byte; like every other switch
+on this path it is read from `Defaults` at call time, never captured at
+import, so it is flippable at deploy time by an adopter who cannot edit model
+code. It is a latency knob, never a correctness one — both branches return
+identical replies, asserted by
+`tests/test_validity_field.py::TestValidityPretrim`.
+
+Layers 2 and 3 are already sub-scan and unchanged: four core commands per
+`composite_score` call and two `ZRANGEBYSCORE`s per `assemble()`, neither
+per-member.
 
 ## Point-in-time reconstruction
 
@@ -556,12 +605,17 @@ including `DefaultMemory`, does.
     cyclic override rather than of a dispatch branch in the query builder —
     read it there, and in the comment above the call site in
     `models/query.py`.
-- **Gating costs up to two `ZSCORE`s per member inside the decay Lua**, and
-  `DECAY_SCORE_LUA` full-scans its partition regardless of gating (a
-  pre-existing property, not introduced here). Measured locally on a 20k-record
-  partition: `top_by_decay` at ~1.4x wall time gated vs. ungated (~37ms
-  ungated / ~51ms gated). The cost scales with partition size, not with how
-  many records are actually closed.
+- **`DECAY_SCORE_LUA` full-scans its partition regardless of gating** (a
+  pre-existing property, not introduced here) — the cost scales with partition
+  size, not with how many records are actually closed. Since
+  [#585](https://github.com/tomcounsell/popoto/issues/585) the gate itself is
+  no longer the expensive part: see [What gating costs](#what-gating-costs)
+  above for the measured 0.94x figure and the pre-trim mechanism that buys it.
+  The **fallback** path — reached when the exclusion sets are more than
+  `VALIDITY_GATE_PRETRIM_MAX_RATIO` times the partition, or when pre-trim is
+  disabled — still costs up to two `ZSCORE`s per scanned member, which is what
+  the pre-#585 ~1.4x measurement (~37ms ungated / ~51ms gated on a 20k-record
+  partition) reflected.
 - **The TTL warning fires on first save, not at model-definition time.**
   `ValidityField.warn_if_ttl` logs once per `(model, field)` pair the first
   time a record on a `Meta.ttl`-bearing model is saved, not when the class

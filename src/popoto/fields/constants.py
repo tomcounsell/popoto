@@ -295,6 +295,30 @@ class Defaults:
     # read shape. Not a tunable: changing it would silently reclassify every
     # already-stored open record as closed.
     VALIDITY_OPEN_SENTINEL = float("inf")
+    # Pre-trim budget for the decay-Lua validity gate (#585). DECAY_SCORE_LUA
+    # can decide membership two ways: a ZSCORE pair per scanned member, or two
+    # ZRANGEBYSCOREs up front into a Lua lookup table. The table wins by a wide
+    # margin at normal shapes (measured 1.55x -> 1.00x of ungated at 20k
+    # members, 10% closed) but LOSES badly when the interval ZSETs are much
+    # larger than the partition being scanned: they are model+field scoped while
+    # the scan is one partition, so a small hot partition beside a large archive
+    # of closed records makes the range read pull far more than the scan touches
+    # (measured 16.26x of ungated at a 2k partition beside a 200k archive).
+    # This is the changeover point, as a multiple of the scanned partition's
+    # cardinality: pre-trim only while
+    #   ZCOUNT(closed) + ZCOUNT(not-yet-started) <= ZCARD(partition) * this.
+    # Measured crossover is ~5x, flat across partition sizes (5k and 20k); 4.0
+    # keeps margin below it and bounds the Lua table at 4x a partition already
+    # being scanned. <= 0 disables pre-trim entirely, restoring the pre-#585
+    # per-member path byte-for-byte.
+    #
+    # Calibrated on one machine against synthetic shapes. It is a latency knob,
+    # never a correctness one — both branches return identical replies, pinned
+    # by tests/test_validity_field.py::TestValidityPretrim. Confirming it
+    # against realistic skew and a second machine is tracked in #716; whether
+    # the pre-trim/fallback choice should be observable in production is #717.
+    # Magic number for experimental tuning, not user config. Not swept.
+    VALIDITY_GATE_PRETRIM_MAX_RATIO = 4.0
 
     # -- CoOccurrenceField (fields/co_occurrence_field.py) --------------------
     CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-20, variance=0.0) — family scenario never calls weaken_all()

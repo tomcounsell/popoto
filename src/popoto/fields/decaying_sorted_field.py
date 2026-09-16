@@ -64,6 +64,9 @@ logger = logging.getLogger("POPOTO.DecayingSortedField")
 #           configured initial_confidence (not just 0.5).
 # ARGV[7] = as-of epoch seconds for the validity gate. Absent / unparseable =
 #           gate disabled, exactly like an empty KEYS[3]/KEYS[4].
+# ARGV[8] = pre-trim budget, as a multiple of the scanned partition's
+#           cardinality (#585). Absent / unparseable / <= 0 = never pre-trim,
+#           which is the pre-#585 per-member-ZSCORE path byte-for-byte.
 #
 # Validity gate convention (#580): KEYS[3]/KEYS[4]/ARGV[7] are APPENDED, never
 # renumbered -- see the KEYS[2] note inside the script. All three must be
@@ -94,6 +97,12 @@ local base_score_field = ARGV[4]
 local s = tonumber(ARGV[5]) or 0
 local c0 = tonumber(ARGV[6]) or 0.5
 local as_of = tonumber(ARGV[7] or '')
+-- The as-of RANGE BOUND is the raw ARGV string, never a reformatted `as_of`.
+-- Python builds it with repr(float) in validity_gate_args; round-tripping it
+-- through Lua 5.1's %.14g tostring (or string.format %.17g) perturbs the last
+-- digits and would misclassify a member sitting exactly on the boundary.
+local as_of_raw = ARGV[7] or ''
+local pretrim_max_ratio = tonumber(ARGV[8] or '') or 0
 
 -- When modulation is off, never pay for the extra HGET per member.
 local modulate = confidence_hash_key ~= '' and s ~= 0
@@ -102,6 +111,50 @@ local modulate = confidence_hash_key ~= '' and s ~= 0
 -- missing means "gate disabled" -- the same empty-string-is-off convention the
 -- confidence modulation guard uses.
 local gate = invalid_key ~= '' and valid_key ~= '' and as_of ~= nil
+
+-- Pre-trim (#585). The gate's rule is an EXCLUSION -- skip a member whose
+-- invalid_at <= as_of, or whose valid_from > as_of; a member absent from either
+-- ZSET is unmanaged and stays visible. Those two clauses are exactly two score
+-- ranges, so the whole exclusion set can be fetched in TWO calls and looked up
+-- in O(1) per member, instead of paying a ZSCORE pair per scanned member.
+-- Semantics are identical, not merely similar: '-inf'..as_of is the first
+-- clause with its inclusive bound, '(as_of'..'+inf' the second with its
+-- exclusive one, and a member in neither range is in neither result.
+--
+-- It is CONDITIONAL because invalid_at/valid_from are model+field scoped while
+-- this scan is ONE partition. A small hot partition beside a large archive of
+-- closed records makes the range read pull far more than the scan touches --
+-- measured at 16x ungated before this guard existed. So: count first (ZCOUNT is
+-- O(log N)), and only pre-trim while the exclusion set is within
+-- pretrim_max_ratio times the partition we are about to scan. Otherwise fall
+-- through to the per-member path below, unchanged.
+--
+-- The two ZCOUNTs are SUMMED, which double-counts a member present in both
+-- ranges (a malformed interval, valid_from > invalid_at). That is deliberate:
+-- the `excluded` table de-duplicates, so it never affects correctness, and
+-- over-counting only makes the guard fall back sooner -- the safe direction.
+-- Do not "fix" it into a union count; the 4.0 default is calibrated against
+-- this sum.
+local excluded = nil
+if gate and pretrim_max_ratio > 0 then
+    local partition_n = redis.call('ZCARD', zset_key)
+    -- pcall: as_of_raw satisfied tonumber() above, but tonumber accepts strings
+    -- Redis rejects as a range bound (hex, for one). Falling back beats erroring
+    -- on a call shape that worked before this optimization existed.
+    local ok, closed_n = pcall(redis.call, 'ZCOUNT', invalid_key, '-inf', as_of_raw)
+    local ok2, future_n = pcall(redis.call, 'ZCOUNT', valid_key, '(' .. as_of_raw, '+inf')
+    if ok and ok2 and (closed_n + future_n) <= (partition_n * pretrim_max_ratio) then
+        local ok3, closed = pcall(
+            redis.call, 'ZRANGEBYSCORE', invalid_key, '-inf', as_of_raw)
+        local ok4, future = pcall(
+            redis.call, 'ZRANGEBYSCORE', valid_key, '(' .. as_of_raw, '+inf')
+        if ok3 and ok4 then
+            excluded = {}
+            for i = 1, #closed do excluded[closed[i]] = true end
+            for i = 1, #future do excluded[future[i]] = true end
+        end
+    end
+end
 
 -- Get all members with their last_updated timestamps
 local members = redis.call('ZRANGE', zset_key, 0, -1, 'WITHSCORES')
@@ -113,9 +166,15 @@ for i = 1, #members, 2 do
 
     -- Validity gate (#580, plan D5). Placed here deliberately: it is the
     -- cheapest possible position, before the base-score HGET and before all
-    -- decay math, so an excluded member costs at most two ZSCOREs. Lua 5.1
-    -- has no `goto`, hence the `if include then` wrapper around the body
-    -- rather than a `continue`.
+    -- decay math, so an excluded member costs at most one table lookup (or,
+    -- on the un-pretrimmed path, two ZSCOREs). Lua 5.1 has no `goto`, hence
+    -- the `if include then` wrapper around the body rather than a `continue`.
+    --
+    -- The two branches below MUST stay semantically identical (#585): the
+    -- per-member one is the parity oracle for the pre-trimmed one, and
+    -- tests/test_validity_field.py::TestValidityPretrim asserts byte-identical
+    -- replies between them. The `elseif` fires whenever pre-trim declined --
+    -- exclusion set too large for the budget, or a range read that errored.
     --
     -- A member is skipped when its interval does not cover as_of:
     --   invalid_at <= as_of  (already closed)  or  valid_from > as_of (not yet
@@ -124,7 +183,13 @@ for i = 1, #members, 2 do
     --   false. A member absent from either ZSET has no interval and is left
     --   alone -- the gate is an exclusion rule, not a whitelist.
     local include = true
-    if gate then
+    if gate and excluded ~= nil then
+        -- Pre-trimmed: the membership question was already answered in two
+        -- range reads above. O(1) table lookup, no round trip per member.
+        if excluded[member] then
+            include = false
+        end
+    elseif gate then
         local closed_at = redis.call('ZSCORE', invalid_key, member)
         if closed_at then
             local cn = tonumber(closed_at)
@@ -382,6 +447,12 @@ class DecayingSortedField(SortedFieldMixin, Field):
             conf_s,
             conf_c0,
             gate_as_of,  # ARGV[7]
+            # ARGV[8] (#585): pre-trim budget. Read from Defaults HERE, at call
+            # time, never captured at import -- same rule as every other switch
+            # on this path, so an adopter who cannot edit model code can still
+            # turn it off at deploy time. <= 0 restores the pre-#585 per-member
+            # ZSCORE path byte-for-byte.
+            str(Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO),
         )
 
 

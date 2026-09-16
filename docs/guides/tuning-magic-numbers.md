@@ -111,6 +111,7 @@ data-loss behavior on the first save after upgrading an over-cap deployment.
 | `decay_rate` | **0.1** (sweep 2026-04-17) | [0.1, 1.0] | **Medium** (variance 0.067) |
 | `DECAY_CONFIDENCE_MODULATION_STRENGTH` | 0.5 (not yet swept) | [0.3, 0.7] | Unmeasured |
 | `DECAY_CONFIDENCE_MODULATION_ENABLED` | `True` | n/a (boolean) | n/a |
+| `VALIDITY_GATE_PRETRIM_MAX_RATIO` | 4.0 (2026-09-16) | [1.0, 5.0] | Unmeasured beyond the crossover |
 
 `DECAY_CONFIDENCE_MODULATION_STRENGTH` is the `s` in the per-record effective rate
 `decay_rate * 2^(s * 2 * (c0 - confidence))`, where `c0` is the confidence field's own
@@ -121,6 +122,17 @@ data-loss behavior on the first save after upgrading an over-cap deployment.
 `DECAY_CONFIDENCE_MODULATION_ENABLED` is a deploy-level kill switch, not a tuning knob: modulation
 is default-on via auto-detection, and setting this `False` restores pre-modulation behavior
 byte-for-byte without editing any model definition.
+
+`VALIDITY_GATE_PRETRIM_MAX_RATIO` ([#585](https://github.com/tomcounsell/popoto/issues/585))
+caps how much larger the validity exclusion sets may be than the partition being scanned before
+the gate abandons the up-front pre-trim (two `ZRANGEBYSCORE` range reads into a Lua lookup table)
+and falls back to the per-member `ZSCORE` pair. Below the cap the pre-trim wins — validity-gated
+`top_by_decay` measured at 0.94x ungated on a 20k partition; the measured crossover is around 5x,
+so 4.0 sits just inside it with margin. Confirming that crossover against realistic skew and a
+second machine is [#716](https://github.com/tomcounsell/popoto/issues/716). Like
+`DECAY_CONFIDENCE_MODULATION_ENABLED` this doubles as a deploy-level kill switch: any value
+`<= 0` disables pre-trim entirely and restores pre-#585 gating behavior byte-for-byte. It is read
+at call time, so it can be set on a running process.
 
 ### MemoryLifecycle
 
