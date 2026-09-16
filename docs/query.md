@@ -1384,6 +1384,15 @@ Fact.query.filter(validity__current=True)
 Fact.query.filter(validity__as_of=two_weeks_ago)
 ```
 
+These lookups report interval state; they do not create it. A record saved with
+a plain `.save()` has an open interval (`invalid_at = +inf`), so it satisfies
+`current=True` forever. `current=True` starts excluding records only once a
+supersession producer — `SupersessionProtocol.supersede()`, `invalidate()`,
+`ProvenanceJournal`, or a `_superseded_by`-tagged `ObservationProtocol`
+`"contradicted"` outcome — has closed one. Declaring the field alone never
+closes anything; see
+[ValidityField and SupersessionProtocol](features/validity-and-supersession.md).
+
 Using either lookup consumes a filter slot, so it disables sorted-range `limit`
 pushdown on that query — the default retrieval path (`composite_score()`,
 `top_by_decay()`, `ContextAssembler.assemble()`) instead accepts a keyword-only

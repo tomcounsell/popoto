@@ -54,6 +54,27 @@ Fact.query.filter(validity__as_of=two_weeks_ago)  # -> [old]
 SupersessionProtocol.chain(new)  # -> [old, new], oldest first
 ```
 
+!!! warning "Declaring the field is not enough — exclusion needs a producer"
+
+    Every `SupersessionProtocol` call in the example above is load-bearing,
+    including the *first* one that returns `None`. A plain `.save()` only ever
+    **opens** an interval (`valid_from = save time`, `invalid_at = +inf`) and
+    never registers the record as the incumbent for any identity. So a model
+    that declares `validity = ValidityField()` and writes records with `.save()`
+    alone gets two fully populated interval ZSETs and an exclusion set that is
+    **permanently empty** — no error, no warning, and Redis state that looks
+    like gating is working. Worse, skipping the first `supersede()` is not a
+    small omission: without it the *second* claim finds no incumbent, closes
+    nothing, and returns `None` too.
+
+    Closing an interval requires one of: `SupersessionProtocol.supersede()` /
+    `save_and_supersede()`, `SupersessionProtocol.invalidate()`,
+    `ProvenanceJournal`, or `ObservationProtocol.on_context_used()` with the
+    `"contradicted"` outcome and `instance._superseded_by` set (see
+    [Observation Protocol](observation-protocol.md)). All four are explicit
+    application calls. Whether this should stay imperative is
+    [issue #693](https://github.com/tomcounsell/popoto/issues/693).
+
 ## Keyspace
 
 `ValidityField` owns six Redis keys per model/field, all under the
