@@ -926,7 +926,7 @@ guard and the subprocess-test database derivation (see `DOMAIN_FRAMING.md`).
 | Help works | `python -m popoto.transfer.cli --help` | exit code 0 |
 | DB-0 refusal names the flag | `REDIS_URL=redis://localhost:6379/0 python -m popoto.transfer.cli export --model popoto:Model --out - 2>&1` | output contains --allow-db0 |
 | DB-0 refusal exits non-zero | `REDIS_URL=redis://localhost:6379/0 python -m popoto.transfer.cli export --model popoto:Model --out - > /dev/null 2>&1` | exit code 1 |
-| No `--preserve-keys` flag (anti-criterion, #557) | `grep -Ec -- '--preserve-keys|--regenerate-keys' src/popoto/transfer/cli.py` | match count == 0 |
+| ~~No `--preserve-keys` flag (anti-criterion, #557)~~ **Retired:** #557 claimed the name and added `--regenerate-keys`; see `docs/plans/sdlc-557.md`. | -- | -- |
 | Pre-existing transfer modules untouched (anti-criterion, #572) | `git diff --name-only main...HEAD -- src/popoto/transfer/export.py src/popoto/transfer/import_.py src/popoto/transfer/format.py src/popoto/transfer/results.py \| grep -c .` | match count == 0 |
 | Failed export preserves the destination | `POPOTO_TEST_DB=1 python -m pytest tests/test_transfer_cli.py -q -k "preserves_destination"` | exit code 0 |
 | No silent excepts | `grep -A1 'except Exception:' src/popoto/transfer/cli.py \| grep -c '^ *pass$'` | match count == 0 |

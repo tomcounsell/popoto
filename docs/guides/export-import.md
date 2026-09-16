@@ -99,11 +99,106 @@ with open("memories.jsonl") as fh:
 print(report.summary())
 ```
 
-Keys are always preserved on import — the imported record lands at the same Redis
-key it exported from. This is what makes `Relationship` values and any
+Keys are preserved on import by default — the imported record lands at the same
+Redis key it exported from. This is what makes `Relationship` values and any
 application-level string holding a Redis key keep pointing at the right record, and
 it is what makes `on_conflict="overwrite"` an idempotent way to resume an interrupted
-import.
+import. To copy records into the same database as new records instead, see
+[Regenerating keys on import](#regenerating-keys-on-import).
+
+### Regenerating keys on import
+
+Pass `preserve_keys=False` to mint a fresh key for every imported record instead of
+reusing the exported one. Use it to clone a dataset into the database it came from,
+or to merge two datasets whose keys collide.
+
+```python
+with open("nodes.jsonl") as fh:
+    report = Node.import_records(fh, preserve_keys=False)
+
+print(report.key_map)   # {"Node:<old>": "Node:<new>", ...}
+```
+
+References between the imported records are rewritten to the new keys, so a graph
+imported this way points at its own copies rather than back at the originals.
+
+Three properties matter before you choose this mode.
+
+**It is not idempotent.** Every other import mode converges on a re-run. This one
+mints new keys each time, so running it twice leaves two copies of every record.
+`on_conflict` still applies, but it will almost never fire — a freshly minted key
+does not collide.
+
+**The remap is partial, by design.** Only fields that *declare* a reference are
+rewritten. `Relationship` is the only field Popoto ships that does. An
+application-level pointer stored in a plain `Field(type=str)` is indistinguishable
+from ordinary text, is never rewritten, and will dangle. Popoto does not guess: a
+heuristic that scanned strings for key-shaped values would turn a documented
+limitation into occasional silent corruption. Carried field state is not remapped
+either — a `ValidityField` supersession chain imported this way still names the
+source records. The report's warning names both the remapped and the dangling
+counts, so you see it in the run that created it:
+
+```
+warning: key regeneration: 1284 key(s) minted; 903 reference value(s) remapped;
+  12 reference value(s) left pointing at keys absent from the key map (those
+  references dangle). ...
+```
+
+A dangling reference is stored, not dropped: the rewritten-or-not string is saved
+as the field's value, so the relationship's reverse index
+(`$RelationshipF:<SourceModel>:<field>:<target_key>`) gains a member naming a key
+that does not exist in the destination. Reading the field yields `None` rather than
+raising, but a reverse lookup from the *other* side still counts it. The warning's
+dangling count covers both causes — a target absent from the key map, and a target
+whose own record was rejected or errored on this run (the warning names that second
+count separately) — so it is the list to work from before treating the destination
+as consistent. Both reference counts are scoped to the records that actually
+reached storage: a reference on a record the write gate rejected is in no
+destination at all, so it is counted neither way.
+
+To make your own field participate, override `remap_references` on it. The base
+implementation returns the value unchanged:
+
+```python
+class MyPointerField(popoto.Field):
+    @classmethod
+    def remap_references(cls, field_name, field_value, key_map, **kwargs):
+        # Rewrite the stored string. Never dereference it, and never guess.
+        if isinstance(field_value, str) and field_value:
+            return key_map.get(field_value, field_value)
+        return field_value
+```
+
+**It requires a mintable key.** The model's key must be a single auto key — the
+implicit `_auto_key`, or one `AutoKeyField`. A model keyed by a `KeyField` or
+`UniqueKeyField` (or one that mixes a `KeyField` with an `AutoKeyField`) is refused
+with a `ModelException` before anything is written: there is no way to invent a
+meaningful value for a key the application chose.
+
+#### Chaining across models
+
+`ImportReport.key_map` carries every old-to-new pair this run actually wrote,
+merged over whatever you seeded. Keys are minted before any write, so a record
+that conflicted, was rejected by the write gate or raised on save has its mint
+pruned from the map once the run finishes, and the regeneration warning says how
+many were dropped. Feed the map into the next model to keep cross-model
+references pointing at the right copies:
+
+```python
+with open("authors.jsonl") as fh:
+    authors = Author.import_records(fh, preserve_keys=False)
+
+with open("books.jsonl") as fh:
+    books = Book.import_records(
+        fh, preserve_keys=False, key_map=authors.key_map
+    )
+```
+
+Import in dependency order, and pass each report's `key_map` forward. Passing
+`key_map` without `preserve_keys=False` raises `ValueError` — under key
+preservation there is nothing to remap, and a silently ignored argument is how a
+migration quietly leaves half its references stale.
 
 ### The three policy flags
 
@@ -298,9 +393,19 @@ $ echo $?
 `--in PATH` reads JSON Lines from `PATH` (default `-` for stdin). `--on-conflict`
 (`error` default, `skip`, `overwrite`), `--on-write-gate` (`reject` default,
 `bypass`), and `--on-embedding-mismatch` (`error` default, `carry`, `regenerate`)
-mirror the three Python API policy flags described above exactly. Keys are always
-preserved on import, so a re-run with `--on-conflict overwrite` converges rather than
-duplicating a partially completed import.
+mirror the three Python API policy flags described above exactly. Keys are preserved
+on import by default, so a re-run with `--on-conflict overwrite` converges rather
+than duplicating a partially completed import.
+
+`--regenerate-keys` is the command-line form of `preserve_keys=False`: it mints a
+fresh key for every record and rewrites the references between them. Read
+[Regenerating keys on import](#regenerating-keys-on-import) first — the mode is
+**not idempotent** (each run adds a full copy of the dataset), the remap covers
+declared references only, and it is refused for a model whose key is not a single
+auto key. The old-to-new key map is reachable from the CLI only through `--json`,
+which includes the report's `key_map` in its stdout payload; there is no flag that
+*seeds* one, so a multi-model migration has to either feed that JSON into the next
+run itself or use the Python API and chain `report.key_map` directly.
 
 ### `--json` and where the summary goes
 

@@ -8,10 +8,11 @@ model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,
-`roundtrip_note`, `export_state`, and `import_state`. These four members exist so that
-[`popoto.transfer`](guides/export-import.md) — the export/import driver — can move
-records between Redis instances without losing state that only your field knows how
-to serialize.
+`roundtrip_note`, `export_state`, `import_state`, and `remap_references`. These five
+members exist so that [`popoto.transfer`](guides/export-import.md) — the export/import
+driver — can move records between Redis instances without losing state that only your
+field knows how to serialize. The first four cover state; the fifth covers *references*,
+and is only consulted when the import regenerates keys.
 
 ## The `on_save` hook
 
@@ -240,6 +241,52 @@ restore.
 Both methods resolve their own configuration from
 `model_instance._meta.fields[field_name]` rather than taking it as an argument,
 mirroring `on_save`'s existing shape.
+
+## The reference-remapping hook
+
+`roundtrip_policy` and the two state hooks are about *state*. A field whose stored
+value is another record's `redis_key` has a second obligation, and it only comes due
+when an import mints new keys — `import_records(..., preserve_keys=False)`, or
+`popoto-transfer import --regenerate-keys`. Every record gets a fresh key on that
+path, so any value pointing at an old key points at nothing unless it is rewritten.
+The fifth hook is where that rewrite happens:
+
+```python
+@classmethod
+def remap_references(cls, field_name, field_value, key_map, **kwargs):
+    """Return this field's value with record references remapped, or as-is."""
+    return field_value
+```
+
+The base implementation returns the value unchanged, which is correct for every field
+that stores no reference to another record — so the vast majority of fields, including
+every `"carry"` field, need nothing here. `Relationship` is the only field Popoto ships
+that overrides it, and its override is a one-line `key_map.get(field_value, field_value)`.
+
+`key_map` maps old `redis_key` to new `redis_key` for the records minted so far on this
+run. It is passed **before** the instance is constructed: the rewritten value goes into
+the record's `values` dict on its way into `model_class(**values)`, so `on_save` rebuilds
+any index off the new key with no extra work.
+
+Two rules an override must honor:
+
+- **Rewrite the stored string; never dereference it.** `Relationship` stores a
+  `redis_key` string and loads the related object lazily, precisely so a circular
+  reference does not recurse forever. Hydrating the target here to inspect it would
+  reintroduce that recursion, and the string rewrite is sufficient on its own —
+  `encode_popoto_model_obj` accepts a plain `redis_key` string as already being in
+  storage format.
+- **Never guess.** Only a field that *declares* it holds a reference is remapped. A
+  plain `Field(type=str)` an application happens to fill with another record's key is
+  indistinguishable from ordinary text, so it is left alone and will dangle after
+  regeneration. That partial guarantee is documented; a heuristic that scanned strings
+  for things that "look like" keys would trade a loud, documented limitation for
+  occasional silent corruption.
+
+A target absent from `key_map` keeps its old key rather than being dropped or invented.
+The import report counts and names those, so a dangling pointer is reported rather than
+hidden — see
+[Regenerating keys on import](guides/export-import.md#regenerating-keys-on-import).
 
 ## Model-level state
 

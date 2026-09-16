@@ -1113,7 +1113,7 @@ verified against Tasks 1 and 3 after critique flagged the original split.
 | Anti-criterion: no CLI entry point added (#555) | `grep -c "project.scripts" pyproject.toml` | match count == 0 |
 | Anti-criterion: `CyclicDecayField.on_save` body untouched (#556) | `scripts/verify/cyclic_on_save_untouched.sh` | match count == 0 |
 | Anti-criterion: no silent swallow in import loop | `scripts/verify/no_silent_swallow.sh` | match count == 0 |
-| Anti-criterion: `remap_references` not shipped (#557) | `grep -rc "remap_references" src/popoto/` | match count == 0 |
+| ~~Anti-criterion: `remap_references` not shipped (#557)~~ **Retired:** #557 shipped the hook and `preserve_keys=False`; see `docs/plans/sdlc-557.md`. | -- | -- |
 
 The five multi-pipe anti-criteria are shell scripts rather than table cells,
 because a markdown table cell must escape `|` as `\|` and a builder copy-pasting

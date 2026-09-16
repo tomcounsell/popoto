@@ -3207,12 +3207,14 @@ class Model(metaclass=ModelBase):
         on_conflict: str = "error",
         on_write_gate: str = "reject",
         on_embedding_mismatch: str = "error",
+        preserve_keys: bool = True,
+        key_map: "dict[str, str] | None" = None,
     ):
         """Import records from a JSON Lines export into this model.
 
         Thin delegate to :func:`popoto.transfer.import_records`; see that
-        function for the full contract. Keys are always preserved, so a re-run
-        converges rather than duplicating.
+        function for the full contract. Keys are preserved by default, so a
+        re-run converges rather than duplicating.
 
         Args:
             stream: Text file-like object positioned at the manifest line.
@@ -3220,6 +3222,14 @@ class Model(metaclass=ModelBase):
             on_write_gate: ``"reject"`` (default) / ``"bypass"``.
             on_embedding_mismatch: ``"error"`` (default) / ``"carry"`` /
                 ``"regenerate"``.
+            preserve_keys: ``True`` (default) carries keys verbatim.
+                ``False`` mints a new key per record and remaps declared
+                references; it is not idempotent, remaps only fields that
+                declare a reference, and requires this model's key to be
+                exactly one ``auto=True`` field.
+            key_map: Old-to-new ``redis_key`` seed from a previous model's
+                import, for chaining a multi-model migration. Only valid with
+                ``preserve_keys=False``.
 
         Returns:
             popoto.transfer.ImportReport
@@ -3237,6 +3247,8 @@ class Model(metaclass=ModelBase):
             on_conflict=on_conflict,
             on_write_gate=on_write_gate,
             on_embedding_mismatch=on_embedding_mismatch,
+            preserve_keys=preserve_keys,
+            key_map=key_map,
         )
 
     @classmethod

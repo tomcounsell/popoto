@@ -162,6 +162,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     imp.add_argument(
+        "--regenerate-keys",
+        action="store_true",
+        help=(
+            "mint a new key for every record instead of preserving the "
+            "exported one, remapping Relationship references onto the new "
+            "keys. NOT idempotent -- a second run creates a second copy of "
+            "every record. Only fields that declare a reference are remapped; "
+            "a key stored in a plain string field is never rewritten and will "
+            "dangle. Requires the destination model's key to be exactly one "
+            "AutoKeyField"
+        ),
+    )
+    imp.add_argument(
         "--on-embedding-mismatch",
         choices=["error", "carry", "regenerate"],
         default="error",
@@ -459,6 +472,7 @@ def _cmd_import(args: Any) -> int:
             on_conflict=args.on_conflict,
             on_write_gate=args.on_write_gate,
             on_embedding_mismatch=args.on_embedding_mismatch,
+            preserve_keys=not args.regenerate_keys,
         )
     except (
         ModelException,
