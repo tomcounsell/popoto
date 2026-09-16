@@ -86,7 +86,8 @@ no step that reads a `PLAN_CHECKBOX_SYNC` marker. Until both land, an operator
 running `/do-pr-review` in this repo must manually skip the generic
 checkbox-commit step, and plan checkboxes must be ticked by hand — checkbox
 syncing currently happens in neither place. This is tracked as follow-up work
-on #642; see `docs/plans/sdlc-642.md` Tasks A1–A4 (unchecked).
+on #725 (split out so the tracker survives #642's closure at merge); see
+`docs/plans/sdlc-642.md` Tasks A1–A4 (unchecked).
 
 It used to run unconditionally, with no way to opt out. The generic plan-checkbox updater in the global skill's
 `sub-skills/post-review.md` § 2.5 ticked `docs/plans/{slug}.md`'s Success
@@ -117,12 +118,14 @@ not exist yet** — see the status note above — so treat this paragraph as the
 target design, not current behavior.
 
 **Never re-run `finalize` to refresh a stale trailer.** Minting APPROVED
-against an uninspected head is self-clearing a review gate. If `selfcheck`
-reports `head_drift: "code"`, a source file genuinely changed after approval
-and the remedy is another REVIEW pass.
+against an uninspected head is self-clearing a review gate. **Once the
+classifier lands**, if `selfcheck` reports `head_drift: "code"`, a source
+file genuinely changed after approval and the remedy is another REVIEW pass.
+Today, `selfcheck` emits no `head_drift` key at all — verified against the
+live output of `sdlc-tool verdict selfcheck` — so this condition is
+unreachable until the classifier below ships.
 
-### What still moves the head after REVIEW, and what changes once #642's
-### control-plane half lands
+### What still moves the head after REVIEW, and what changes once #642's control-plane half lands
 
 `/do-docs` is a mandatory stage that commits *after* REVIEW by design, so the
 head always moves before `/do-merge` evaluates the gate.
