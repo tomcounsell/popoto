@@ -2965,6 +2965,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-reference-remapping-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The reference-remapping hook
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#model-level-state" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3194,6 +3205,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-reference-remapping-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The reference-remapping hook
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#model-level-state" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3243,10 +3265,11 @@ for example a field that maintains its own companion hash in Redis alongside the
 model's primary hash, the way <code>ConfidenceField</code> and <code>CyclicDecayField</code> do.</p>
 <p>This page documents the contract a <code>Field</code> subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: <code>roundtrip_policy</code>,
-<code>roundtrip_note</code>, <code>export_state</code>, and <code>import_state</code>. These four members exist so that
-<a href="../guides/export-import/"><code>popoto.transfer</code></a> — the export/import driver — can move
-records between Redis instances without losing state that only your field knows how
-to serialize.</p>
+<code>roundtrip_note</code>, <code>export_state</code>, <code>import_state</code>, and <code>remap_references</code>. These five
+members exist so that <a href="../guides/export-import/"><code>popoto.transfer</code></a> — the export/import
+driver — can move records between Redis instances without losing state that only your
+field knows how to serialize. The first four cover state; the fifth covers <em>references</em>,
+and is only consulted when the import regenerates keys.</p>
 <h2 id="the-on_save-hook">The <code>on_save</code> hook<a class="headerlink" href="#the-on_save-hook" title="Permanent link">&para;</a></h2>
 <p>Most custom fields extend behavior through <code>on_save</code>, a classmethod called after the
 model instance's primary hash is written:</p>
@@ -3441,6 +3464,45 @@ restore.</p>
 <p>Both methods resolve their own configuration from
 <code>model_instance._meta.fields[field_name]</code> rather than taking it as an argument,
 mirroring <code>on_save</code>'s existing shape.</p>
+<h2 id="the-reference-remapping-hook">The reference-remapping hook<a class="headerlink" href="#the-reference-remapping-hook" title="Permanent link">&para;</a></h2>
+<p><code>roundtrip_policy</code> and the two state hooks are about <em>state</em>. A field whose stored
+value is another record's <code>redis_key</code> has a second obligation, and it only comes due
+when an import mints new keys — <code>import_records(..., preserve_keys=False)</code>, or
+<code>popoto-transfer import --regenerate-keys</code>. Every record gets a fresh key on that
+path, so any value pointing at an old key points at nothing unless it is rewritten.
+The fifth hook is where that rewrite happens:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">remap_references</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">key_map</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="sd">"""Return this field's value with record references remapped, or as-is."""</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="k">return</span> <span class="n">field_value</span>
+</code></pre></div>
+<p>The base implementation returns the value unchanged, which is correct for every field
+that stores no reference to another record — so the vast majority of fields, including
+every <code>"carry"</code> field, need nothing here. <code>Relationship</code> is the only field Popoto ships
+that overrides it, and its override is a one-line <code>key_map.get(field_value, field_value)</code>.</p>
+<p><code>key_map</code> maps old <code>redis_key</code> to new <code>redis_key</code> for the records minted so far on this
+run. It is passed <strong>before</strong> the instance is constructed: the rewritten value goes into
+the record's <code>values</code> dict on its way into <code>model_class(**values)</code>, so <code>on_save</code> rebuilds
+any index off the new key with no extra work.</p>
+<p>Two rules an override must honor:</p>
+<ul>
+<li><strong>Rewrite the stored string; never dereference it.</strong> <code>Relationship</code> stores a
+  <code>redis_key</code> string and loads the related object lazily, precisely so a circular
+  reference does not recurse forever. Hydrating the target here to inspect it would
+  reintroduce that recursion, and the string rewrite is sufficient on its own —
+  <code>encode_popoto_model_obj</code> accepts a plain <code>redis_key</code> string as already being in
+  storage format.</li>
+<li><strong>Never guess.</strong> Only a field that <em>declares</em> it holds a reference is remapped. A
+  plain <code>Field(type=str)</code> an application happens to fill with another record's key is
+  indistinguishable from ordinary text, so it is left alone and will dangle after
+  regeneration. That partial guarantee is documented; a heuristic that scanned strings
+  for things that "look like" keys would trade a loud, documented limitation for
+  occasional silent corruption.</li>
+</ul>
+<p>A target absent from <code>key_map</code> keeps its old key rather than being dropped or invented.
+The import report counts and names those, so a dangling pointer is reported rather than
+hidden — see
+<a href="../guides/export-import/#regenerating-keys-on-import">Regenerating keys on import</a>.</p>
 <h2 id="model-level-state">Model-level state<a class="headerlink" href="#model-level-state" title="Permanent link">&para;</a></h2>
 <p>The round-trip protocol also applies to Model-level mixins that are not <code>Field</code>
 subclasses — for example a mixin that maintains its own top-level Redis key rather
@@ -3448,15 +3510,15 @@ than a field-scoped one. <code>popoto.transfer</code> walks <code>type(instance)
 <code>export_state</code>/<code>import_state</code> on any class that defines them <strong>as its own
 attribute</strong> (<code>"export_state" in cls.__dict__</code>), with the same two-value shape minus
 <code>field_name</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AuditedMixin</span><span class="p">:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"audit_log"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_audit_log</span><span class="p">()}</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        <span class="k">if</span> <span class="n">state</span><span class="p">:</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_write_audit_log</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">"audit_log"</span><span class="p">])</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AuditedMixin</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">roundtrip_policy</span> <span class="o">=</span> <span class="s2">"carry"</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">export_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">"audit_log"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_audit_log</span><span class="p">()}</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">import_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>        <span class="k">if</span> <span class="n">state</span><span class="p">:</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_write_audit_log</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">"audit_log"</span><span class="p">])</span>
 </code></pre></div>
 <p>State from a model-level mixin is keyed by the mixin's class name in the export
 file, distinct from the field-keyed state above. <code>Model</code> itself defines neither

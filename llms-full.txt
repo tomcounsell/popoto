@@ -19194,6 +19194,14 @@ print(restaurant.cuisine)     # => "American"
 # Subsequent access uses the resolved instance -- no extra Redis call
 ```
 
+Because the stored value is a key string rather than an embedded object, an import
+that regenerates keys can repoint a relationship by rewriting that string, without
+ever loading the target. That is what `Relationship.remap_references` does under
+`import_records(..., preserve_keys=False)` and
+`popoto-transfer import --regenerate-keys`; a target that is not part of the same
+import keeps its old key and is reported as dangling. See
+[Regenerating keys on import](guides/export-import.md#regenerating-keys-on-import).
+
 ### Relationship Index
 
 Popoto maintains a Redis set for each relationship value so that
@@ -20311,11 +20319,106 @@ with open("memories.jsonl") as fh:
 print(report.summary())
 ```
 
-Keys are always preserved on import — the imported record lands at the same Redis
-key it exported from. This is what makes `Relationship` values and any
+Keys are preserved on import by default — the imported record lands at the same
+Redis key it exported from. This is what makes `Relationship` values and any
 application-level string holding a Redis key keep pointing at the right record, and
 it is what makes `on_conflict="overwrite"` an idempotent way to resume an interrupted
-import.
+import. To copy records into the same database as new records instead, see
+[Regenerating keys on import](#regenerating-keys-on-import).
+
+### Regenerating keys on import
+
+Pass `preserve_keys=False` to mint a fresh key for every imported record instead of
+reusing the exported one. Use it to clone a dataset into the database it came from,
+or to merge two datasets whose keys collide.
+
+```python
+with open("nodes.jsonl") as fh:
+    report = Node.import_records(fh, preserve_keys=False)
+
+print(report.key_map)   # {"Node:<old>": "Node:<new>", ...}
+```
+
+References between the imported records are rewritten to the new keys, so a graph
+imported this way points at its own copies rather than back at the originals.
+
+Three properties matter before you choose this mode.
+
+**It is not idempotent.** Every other import mode converges on a re-run. This one
+mints new keys each time, so running it twice leaves two copies of every record.
+`on_conflict` still applies, but it will almost never fire — a freshly minted key
+does not collide.
+
+**The remap is partial, by design.** Only fields that *declare* a reference are
+rewritten. `Relationship` is the only field Popoto ships that does. An
+application-level pointer stored in a plain `Field(type=str)` is indistinguishable
+from ordinary text, is never rewritten, and will dangle. Popoto does not guess: a
+heuristic that scanned strings for key-shaped values would turn a documented
+limitation into occasional silent corruption. Carried field state is not remapped
+either — a `ValidityField` supersession chain imported this way still names the
+source records. The report's warning names both the remapped and the dangling
+counts, so you see it in the run that created it:
+
+```
+warning: key regeneration: 1284 key(s) minted; 903 reference value(s) remapped;
+  12 reference value(s) left pointing at keys absent from the key map (those
+  references dangle). ...
+```
+
+A dangling reference is stored, not dropped: the rewritten-or-not string is saved
+as the field's value, so the relationship's reverse index
+(`$RelationshipF:<SourceModel>:<field>:<target_key>`) gains a member naming a key
+that does not exist in the destination. Reading the field yields `None` rather than
+raising, but a reverse lookup from the *other* side still counts it. The warning's
+dangling count covers both causes — a target absent from the key map, and a target
+whose own record was rejected or errored on this run (the warning names that second
+count separately) — so it is the list to work from before treating the destination
+as consistent. Both reference counts are scoped to the records that actually
+reached storage: a reference on a record the write gate rejected is in no
+destination at all, so it is counted neither way.
+
+To make your own field participate, override `remap_references` on it. The base
+implementation returns the value unchanged:
+
+```python
+class MyPointerField(popoto.Field):
+    @classmethod
+    def remap_references(cls, field_name, field_value, key_map, **kwargs):
+        # Rewrite the stored string. Never dereference it, and never guess.
+        if isinstance(field_value, str) and field_value:
+            return key_map.get(field_value, field_value)
+        return field_value
+```
+
+**It requires a mintable key.** The model's key must be a single auto key — the
+implicit `_auto_key`, or one `AutoKeyField`. A model keyed by a `KeyField` or
+`UniqueKeyField` (or one that mixes a `KeyField` with an `AutoKeyField`) is refused
+with a `ModelException` before anything is written: there is no way to invent a
+meaningful value for a key the application chose.
+
+#### Chaining across models
+
+`ImportReport.key_map` carries every old-to-new pair this run actually wrote,
+merged over whatever you seeded. Keys are minted before any write, so a record
+that conflicted, was rejected by the write gate or raised on save has its mint
+pruned from the map once the run finishes, and the regeneration warning says how
+many were dropped. Feed the map into the next model to keep cross-model
+references pointing at the right copies:
+
+```python
+with open("authors.jsonl") as fh:
+    authors = Author.import_records(fh, preserve_keys=False)
+
+with open("books.jsonl") as fh:
+    books = Book.import_records(
+        fh, preserve_keys=False, key_map=authors.key_map
+    )
+```
+
+Import in dependency order, and pass each report's `key_map` forward. Passing
+`key_map` without `preserve_keys=False` raises `ValueError` — under key
+preservation there is nothing to remap, and a silently ignored argument is how a
+migration quietly leaves half its references stale.
 
 ### The three policy flags
 
@@ -20510,9 +20613,19 @@ $ echo $?
 `--in PATH` reads JSON Lines from `PATH` (default `-` for stdin). `--on-conflict`
 (`error` default, `skip`, `overwrite`), `--on-write-gate` (`reject` default,
 `bypass`), and `--on-embedding-mismatch` (`error` default, `carry`, `regenerate`)
-mirror the three Python API policy flags described above exactly. Keys are always
-preserved on import, so a re-run with `--on-conflict overwrite` converges rather than
-duplicating a partially completed import.
+mirror the three Python API policy flags described above exactly. Keys are preserved
+on import by default, so a re-run with `--on-conflict overwrite` converges rather
+than duplicating a partially completed import.
+
+`--regenerate-keys` is the command-line form of `preserve_keys=False`: it mints a
+fresh key for every record and rewrites the references between them. Read
+[Regenerating keys on import](#regenerating-keys-on-import) first — the mode is
+**not idempotent** (each run adds a full copy of the dataset), the remap covers
+declared references only, and it is refused for a model whose key is not a single
+auto key. The old-to-new key map is reachable from the CLI only through `--json`,
+which includes the report's `key_map` in its stdout payload; there is no flag that
+*seeds* one, so a multi-model migration has to either feed that JSON into the next
+run itself or use the Python API and chain `report.key_map` directly.
 
 ### `--json` and where the summary goes
 
@@ -20568,10 +20681,11 @@ model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,
-`roundtrip_note`, `export_state`, and `import_state`. These four members exist so that
-[`popoto.transfer`](guides/export-import.md) — the export/import driver — can move
-records between Redis instances without losing state that only your field knows how
-to serialize.
+`roundtrip_note`, `export_state`, `import_state`, and `remap_references`. These five
+members exist so that [`popoto.transfer`](guides/export-import.md) — the export/import
+driver — can move records between Redis instances without losing state that only your
+field knows how to serialize. The first four cover state; the fifth covers *references*,
+and is only consulted when the import regenerates keys.
 
 ## The `on_save` hook
 
@@ -20800,6 +20914,52 @@ restore.
 Both methods resolve their own configuration from
 `model_instance._meta.fields[field_name]` rather than taking it as an argument,
 mirroring `on_save`'s existing shape.
+
+## The reference-remapping hook
+
+`roundtrip_policy` and the two state hooks are about *state*. A field whose stored
+value is another record's `redis_key` has a second obligation, and it only comes due
+when an import mints new keys — `import_records(..., preserve_keys=False)`, or
+`popoto-transfer import --regenerate-keys`. Every record gets a fresh key on that
+path, so any value pointing at an old key points at nothing unless it is rewritten.
+The fifth hook is where that rewrite happens:
+
+```python
+@classmethod
+def remap_references(cls, field_name, field_value, key_map, **kwargs):
+    """Return this field's value with record references remapped, or as-is."""
+    return field_value
+```
+
+The base implementation returns the value unchanged, which is correct for every field
+that stores no reference to another record — so the vast majority of fields, including
+every `"carry"` field, need nothing here. `Relationship` is the only field Popoto ships
+that overrides it, and its override is a one-line `key_map.get(field_value, field_value)`.
+
+`key_map` maps old `redis_key` to new `redis_key` for the records minted so far on this
+run. It is passed **before** the instance is constructed: the rewritten value goes into
+the record's `values` dict on its way into `model_class(**values)`, so `on_save` rebuilds
+any index off the new key with no extra work.
+
+Two rules an override must honor:
+
+- **Rewrite the stored string; never dereference it.** `Relationship` stores a
+  `redis_key` string and loads the related object lazily, precisely so a circular
+  reference does not recurse forever. Hydrating the target here to inspect it would
+  reintroduce that recursion, and the string rewrite is sufficient on its own —
+  `encode_popoto_model_obj` accepts a plain `redis_key` string as already being in
+  storage format.
+- **Never guess.** Only a field that *declares* it holds a reference is remapped. A
+  plain `Field(type=str)` an application happens to fill with another record's key is
+  indistinguishable from ordinary text, so it is left alone and will dangle after
+  regeneration. That partial guarantee is documented; a heuristic that scanned strings
+  for things that "look like" keys would trade a loud, documented limitation for
+  occasional silent corruption.
+
+A target absent from `key_map` keeps its old key rather than being dropped or invented.
+The import report counts and names those, so a dangling pointer is reported rather than
+hidden — see
+[Regenerating keys on import](guides/export-import.md#regenerating-keys-on-import).
 
 ## Model-level state
 

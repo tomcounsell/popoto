@@ -3613,6 +3613,13 @@ string. Popoto resolves it to a full instance only when you access the field.</p
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>     <span class="c1"># =&gt; "American"</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Subsequent access uses the resolved instance -- no extra Redis call</span>
 </code></pre></div>
+<p>Because the stored value is a key string rather than an embedded object, an import
+that regenerates keys can repoint a relationship by rewriting that string, without
+ever loading the target. That is what <code>Relationship.remap_references</code> does under
+<code>import_records(..., preserve_keys=False)</code> and
+<code>popoto-transfer import --regenerate-keys</code>; a target that is not part of the same
+import keeps its old key and is reported as dangling. See
+<a href="../guides/export-import/#regenerating-keys-on-import">Regenerating keys on import</a>.</p>
 <h3 id="relationship-index">Relationship Index<a class="headerlink" href="#relationship-index" title="Permanent link">&para;</a></h3>
 <p>Popoto maintains a Redis set for each relationship value so that
 <code>filter(restaurant=instance)</code> is an O(1) set lookup rather than a scan.</p>

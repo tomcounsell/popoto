@@ -2888,6 +2888,34 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#regenerating-keys-on-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating keys on import
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Regenerating keys on import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chaining-across-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chaining across models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-three-policy-flags" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3226,6 +3254,34 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#regenerating-keys-on-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating keys on import
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Regenerating keys on import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chaining-across-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chaining across models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-three-policy-flags" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3490,11 +3546,86 @@ for the full accounting.</p>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
 </code></pre></div>
-<p>Keys are always preserved on import — the imported record lands at the same Redis
-key it exported from. This is what makes <code>Relationship</code> values and any
+<p>Keys are preserved on import by default — the imported record lands at the same
+Redis key it exported from. This is what makes <code>Relationship</code> values and any
 application-level string holding a Redis key keep pointing at the right record, and
 it is what makes <code>on_conflict="overwrite"</code> an idempotent way to resume an interrupted
-import.</p>
+import. To copy records into the same database as new records instead, see
+<a href="#regenerating-keys-on-import">Regenerating keys on import</a>.</p>
+<h3 id="regenerating-keys-on-import">Regenerating keys on import<a class="headerlink" href="#regenerating-keys-on-import" title="Permanent link">&para;</a></h3>
+<p>Pass <code>preserve_keys=False</code> to mint a fresh key for every imported record instead of
+reusing the exported one. Use it to clone a dataset into the database it came from,
+or to merge two datasets whose keys collide.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"nodes.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Node</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">preserve_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">key_map</span><span class="p">)</span>   <span class="c1"># {"Node:&lt;old&gt;": "Node:&lt;new&gt;", ...}</span>
+</code></pre></div>
+<p>References between the imported records are rewritten to the new keys, so a graph
+imported this way points at its own copies rather than back at the originals.</p>
+<p>Three properties matter before you choose this mode.</p>
+<p><strong>It is not idempotent.</strong> Every other import mode converges on a re-run. This one
+mints new keys each time, so running it twice leaves two copies of every record.
+<code>on_conflict</code> still applies, but it will almost never fire — a freshly minted key
+does not collide.</p>
+<p><strong>The remap is partial, by design.</strong> Only fields that <em>declare</em> a reference are
+rewritten. <code>Relationship</code> is the only field Popoto ships that does. An
+application-level pointer stored in a plain <code>Field(type=str)</code> is indistinguishable
+from ordinary text, is never rewritten, and will dangle. Popoto does not guess: a
+heuristic that scanned strings for key-shaped values would turn a documented
+limitation into occasional silent corruption. Carried field state is not remapped
+either — a <code>ValidityField</code> supersession chain imported this way still names the
+source records. The report's warning names both the remapped and the dangling
+counts, so you see it in the run that created it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>warning: key regeneration: 1284 key(s) minted; 903 reference value(s) remapped;
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  12 reference value(s) left pointing at keys absent from the key map (those
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  references dangle). ...
+</code></pre></div>
+<p>A dangling reference is stored, not dropped: the rewritten-or-not string is saved
+as the field's value, so the relationship's reverse index
+(<code>$RelationshipF:&lt;SourceModel&gt;:&lt;field&gt;:&lt;target_key&gt;</code>) gains a member naming a key
+that does not exist in the destination. Reading the field yields <code>None</code> rather than
+raising, but a reverse lookup from the <em>other</em> side still counts it. The warning's
+dangling count covers both causes — a target absent from the key map, and a target
+whose own record was rejected or errored on this run (the warning names that second
+count separately) — so it is the list to work from before treating the destination
+as consistent. Both reference counts are scoped to the records that actually
+reached storage: a reference on a record the write gate rejected is in no
+destination at all, so it is counted neither way.</p>
+<p>To make your own field participate, override <code>remap_references</code> on it. The base
+implementation returns the value unchanged:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyPointerField</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Field</span><span class="p">):</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">remap_references</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_value</span><span class="p">,</span> <span class="n">key_map</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="c1"># Rewrite the stored string. Never dereference it, and never guess.</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">field_value</span><span class="p">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>            <span class="k">return</span> <span class="n">key_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_value</span><span class="p">,</span> <span class="n">field_value</span><span class="p">)</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        <span class="k">return</span> <span class="n">field_value</span>
+</code></pre></div>
+<p><strong>It requires a mintable key.</strong> The model's key must be a single auto key — the
+implicit <code>_auto_key</code>, or one <code>AutoKeyField</code>. A model keyed by a <code>KeyField</code> or
+<code>UniqueKeyField</code> (or one that mixes a <code>KeyField</code> with an <code>AutoKeyField</code>) is refused
+with a <code>ModelException</code> before anything is written: there is no way to invent a
+meaningful value for a key the application chose.</p>
+<h4 id="chaining-across-models">Chaining across models<a class="headerlink" href="#chaining-across-models" title="Permanent link">&para;</a></h4>
+<p><code>ImportReport.key_map</code> carries every old-to-new pair this run actually wrote,
+merged over whatever you seeded. Keys are minted before any write, so a record
+that conflicted, was rejected by the write gate or raised on save has its mint
+pruned from the map once the run finishes, and the regeneration warning says how
+many were dropped. Feed the map into the next model to keep cross-model
+references pointing at the right copies:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"authors.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">authors</span> <span class="o">=</span> <span class="n">Author</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">preserve_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"books.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">books</span> <span class="o">=</span> <span class="n">Book</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>        <span class="n">fh</span><span class="p">,</span> <span class="n">preserve_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">key_map</span><span class="o">=</span><span class="n">authors</span><span class="o">.</span><span class="n">key_map</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="p">)</span>
+</code></pre></div>
+<p>Import in dependency order, and pass each report's <code>key_map</code> forward. Passing
+<code>key_map</code> without <code>preserve_keys=False</code> raises <code>ValueError</code> — under key
+preservation there is nothing to remap, and a silently ignored argument is how a
+migration quietly leaves half its references stale.</p>
 <h3 id="the-three-policy-flags">The three policy flags<a class="headerlink" href="#the-three-policy-flags" title="Permanent link">&para;</a></h3>
 <p><code>import_records</code> takes three flags, each with a default chosen to fail safely rather
 than silently:</p>
@@ -3587,11 +3718,11 @@ written and some not. The recovery path is to re-run the same file with
 <code>on_conflict="overwrite"</code>: already-landed records overwrite themselves with identical
 values (a no-op in effect), and records that had not yet been written land normally.
 Because keys are always preserved, this converges rather than producing duplicates.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"memories.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s2">"overwrite"</span><span class="p">)</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">errored</span> <span class="ow">or</span> <span class="n">report</span><span class="o">.</span><span class="n">partial</span><span class="p">:</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>  <span class="c1"># inspect what needs attention</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"memories.jsonl"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">import_records</span><span class="p">(</span><span class="n">fh</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s2">"overwrite"</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">errored</span> <span class="ow">or</span> <span class="n">report</span><span class="o">.</span><span class="n">partial</span><span class="p">:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>  <span class="c1"># inspect what needs attention</span>
 </code></pre></div>
 <h2 id="fidelity-what-crosses-and-what-does-not">Fidelity: what crosses, and what does not<a class="headerlink" href="#fidelity-what-crosses-and-what-does-not" title="Permanent link">&para;</a></h2>
 <p>Popoto's secondary Redis structures fall into two groups, and the line between
@@ -3682,17 +3813,17 @@ async wrapper. A CLI front-end is available — see
 beyond <code>pip install popoto</code>) and wraps <code>export_records</code> / <code>import_records</code> with a
 reconciliation summary, an exit code a script can act on, and a refusal to touch
 Redis database 0 by accident.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>--help
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--help
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>--help
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--help
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--help
 </code></pre></div>
 <h3 id="export"><code>export</code><a class="headerlink" href="#export" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--filter<span class="w"> </span><span class="nv">project_key</span><span class="o">=</span>ai<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--out<span class="w"> </span>memories.jsonl
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="go">ExportResult for Memory</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="go">  filter:        Q(project_key='ai')</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="go">  matched:       1284</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="go">  written:       1284</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--filter<span class="w"> </span><span class="nv">project_key</span><span class="o">=</span>ai<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>--out<span class="w"> </span>memories.jsonl
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="go">ExportResult for Memory</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="go">  filter:        Q(project_key='ai')</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="go">  matched:       1284</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="go">  written:       1284</span>
 </code></pre></div>
 <p><code>--model module.path:ClassName</code> (one colon) names the model to export. The named
 module is <strong>imported</strong> to resolve the class, so this runs whatever module-level code
@@ -3709,25 +3840,34 @@ many keys are hydrated per round trip (default 500).</p>
 never truncates a pre-existing file at <code>PATH</code>, since the export is written to a
 sibling temporary file and promoted only on success.</p>
 <h3 id="import"><code>import</code><a class="headerlink" href="#import" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--in<span class="w"> </span>memories.jsonl<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--on-conflict<span class="w"> </span>overwrite
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="go">ImportReport for Memory</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="go">  records read:  1284</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="go">  landed:        1284</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="go">  ...</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="nv">$?</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="go">0</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--in<span class="w"> </span>memories.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span>--on-conflict<span class="w"> </span>overwrite
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="go">ImportReport for Memory</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="go">  records read:  1284</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="go">  landed:        1284</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="go">  ...</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="nv">$?</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="go">0</span>
 </code></pre></div>
 <p><code>--in PATH</code> reads JSON Lines from <code>PATH</code> (default <code>-</code> for stdin). <code>--on-conflict</code>
 (<code>error</code> default, <code>skip</code>, <code>overwrite</code>), <code>--on-write-gate</code> (<code>reject</code> default,
 <code>bypass</code>), and <code>--on-embedding-mismatch</code> (<code>error</code> default, <code>carry</code>, <code>regenerate</code>)
-mirror the three Python API policy flags described above exactly. Keys are always
-preserved on import, so a re-run with <code>--on-conflict overwrite</code> converges rather than
-duplicating a partially completed import.</p>
+mirror the three Python API policy flags described above exactly. Keys are preserved
+on import by default, so a re-run with <code>--on-conflict overwrite</code> converges rather
+than duplicating a partially completed import.</p>
+<p><code>--regenerate-keys</code> is the command-line form of <code>preserve_keys=False</code>: it mints a
+fresh key for every record and rewrites the references between them. Read
+<a href="#regenerating-keys-on-import">Regenerating keys on import</a> first — the mode is
+<strong>not idempotent</strong> (each run adds a full copy of the dataset), the remap covers
+declared references only, and it is refused for a model whose key is not a single
+auto key. The old-to-new key map is reachable from the CLI only through <code>--json</code>,
+which includes the report's <code>key_map</code> in its stdout payload; there is no flag that
+<em>seeds</em> one, so a multi-model migration has to either feed that JSON into the next
+run itself or use the Python API and chain <code>report.key_map</code> directly.</p>
 <h3 id="-json-and-where-the-summary-goes"><code>--json</code> and where the summary goes<a class="headerlink" href="#-json-and-where-the-summary-goes" title="Permanent link">&para;</a></h3>
 <p>The human-readable summary always goes to <strong>stderr</strong>, so <code>--out -</code> can stream JSON
 Lines on stdout without the summary corrupting it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--out<span class="w"> </span>-<span class="w"> </span><span class="p">|</span><span class="w"> </span>gzip<span class="w"> </span>&gt;<span class="w"> </span>backup.jsonl.gz
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--out<span class="w"> </span>-<span class="w"> </span><span class="p">|</span><span class="w"> </span>gzip<span class="w"> </span>&gt;<span class="w"> </span>backup.jsonl.gz
 </code></pre></div>
 <p><code>--json</code> writes a machine-readable summary (the result/report as JSON, plus a
 <code>counts</code> object) to <strong>stdout</strong> instead, and is refused together with <code>--out -</code> since
@@ -3762,11 +3902,11 @@ both would claim stdout.</p>
 <h3 id="refusing-database-0">Refusing database 0<a class="headerlink" href="#refusing-database-0" title="Permanent link">&para;</a></h3>
 <p>Both subcommands refuse to run when the effective Redis database is 0, unless
 <code>--allow-db0</code> is passed:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--in<span class="w"> </span>memories.jsonl
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="go">popoto-transfer: refusing to write to database 0 -- this is often a live store, not</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="go">a test database.</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="go">  Pass --allow-db0 to proceed anyway, or point at a different database, e.g.</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="go">  REDIS_URL=redis://localhost:6379/1</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--in<span class="w"> </span>memories.jsonl
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="go">popoto-transfer: refusing to write to database 0 -- this is often a live store, not</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="go">a test database.</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="go">  Pass --allow-db0 to proceed anyway, or point at a different database, e.g.</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="go">  REDIS_URL=redis://localhost:6379/1</span>
 </code></pre></div>
 <p>The check reads the database off the live connection pool, not an environment
 variable, so it catches the unset-<code>REDIS_URL</code> fallback (which also binds database 0)

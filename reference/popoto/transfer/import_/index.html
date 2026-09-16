@@ -2963,6 +2963,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#popoto.transfer.import_.REMAPPED_REFERENCES_KEY" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REMAPPED_REFERENCES_KEY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#popoto.transfer.import_.import_records" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3014,10 +3025,16 @@
     <div class="doc doc-contents first">
 
         <p>Import records from a JSON Lines export produced by :mod:<code>popoto.transfer</code>.</p>
-<p>Keys are always preserved. Records are saved one at a time -- deliberately not
-through <code>bulk_create</code> -- because an external pipeline makes <code>save()</code> return
-the pipeline for every record and destroys per-record observability, which the
-reconciliation ledger depends on.</p>
+<p>Keys are preserved by default. Records are saved one at a time -- deliberately
+not through <code>bulk_create</code> -- because an external pipeline makes <code>save()</code>
+return the pipeline for every record and destroys per-record observability,
+which the reconciliation ledger depends on.</p>
+<p><code>preserve_keys=False</code> is the opt-out: every record gets a freshly minted key
+and every field that <em>declares</em> a reference to another record is rewritten to
+point at the new one. That mode reads the record stream twice (see
+<code>_spool_and_mint</code>), because a reference on record 3 can point at record 4000
+and the complete old-to-new map must exist before the first write. The default
+path is untouched by it: one forward pass, no buffering, no map.</p>
 
 
 
@@ -3058,6 +3075,32 @@ reconciliation ledger depends on.</p>
 
 </div>
 
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.transfer.import_.REMAPPED_REFERENCES_KEY" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">REMAPPED_REFERENCES_KEY</span> <span class="o">=</span> <span class="s1">'__remapped_references__'</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.transfer.import_.REMAPPED_REFERENCES_KEY" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>In-memory slot on a record dict carrying its rewritten reference strings.</p>
+<p>Set by :func:<code>_remap_record</code> and consumed by :func:<code>_process_batch</code> only when
+that batch was produced by the regenerating path. Export never writes this
+name, and the preserving path pops it and throws it away, so a file that
+happens to carry one cannot use it to set relationship values.</p>
+
+    </div>
+
+</div>
+
 
 
 
@@ -3065,7 +3108,7 @@ reconciliation ledger depends on.</p>
 
 
 <h3 id="popoto.transfer.import_.import_records" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">import_records</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s1">'error'</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="o">=</span><span class="s1">'reject'</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="o">=</span><span class="s1">'error'</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">import_records</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="s1">'error'</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="o">=</span><span class="s1">'reject'</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="o">=</span><span class="s1">'error'</span><span class="p">,</span> <span class="n">preserve_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">key_map</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 <a href="#popoto.transfer.import_.import_records" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -3073,9 +3116,28 @@ reconciliation ledger depends on.</p>
     <div class="doc doc-contents ">
 
         <p>Import records from a JSON Lines export into <code>model_class</code>.</p>
-<p>Keys are always preserved, so re-running an import converges rather than
-duplicating, and every <code>Relationship</code> value and application-level key
-pointer keeps pointing at the same record.</p>
+<p>By default keys are preserved, so re-running an import converges rather
+than duplicating, and every <code>Relationship</code> value and application-level
+key pointer keeps pointing at the same record.</p>
+<p><code>preserve_keys=False</code> regenerates every key instead, and rewrites the
+references it can. Three properties of that mode matter before choosing
+it:</p>
+<ul>
+<li><strong>It is not idempotent.</strong> Every other mode converges on a re-run; this
+  one mints fresh keys each time, so running it twice against the same
+  destination leaves two copies of every record.</li>
+<li><strong>The remap is partial, by design.</strong> Only fields that <em>declare</em> a
+  reference are rewritten -- <code>Relationship</code> is the only one Popoto
+  ships. An application-level pointer stored in a plain
+  <code>Field(type=str)</code> is indistinguishable from ordinary text, is never
+  rewritten, and will dangle. Popoto does not guess: a heuristic that
+  scanned strings for key-shaped values would turn a documented
+  limitation into occasional silent corruption. The report names both
+  counts so a dangling reference is visible in the run that created it.</li>
+<li><strong>It requires a mintable key.</strong> The destination model's key must be
+  exactly one <code>auto=True</code> field; anything else is refused before a byte
+  is written.</li>
+</ul>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -3179,6 +3241,49 @@ imports the vectors anyway; <code>"regenerate"</code> drops them so
                   <code>&#39;error&#39;</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>preserve_keys</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> (default) carries each record's key verbatim.
+<code>False</code> mints a new key per record and remaps declared
+references onto it -- see the three caveats above. Under
+<code>False</code>, <code>on_conflict</code> still applies but covers only the
+vanishing-probability case of a minted key colliding with one
+already on the destination, not the merge semantics it has when
+keys are preserved.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>key_map</code>
+            </td>
+            <td>
+                  <code>&#39;dict[str, str] | None&#39;</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Only valid with <code>preserve_keys=False</code>: a seed of old-to-new
+<code>redis_key</code> mappings from a previous import of <em>another</em> model,
+so a multi-model migration can carry cross-model references
+across runs. Feed run N's <code>ImportReport.key_map</code> in as run
+N+1's seed. A reference whose target is in no seed and not in
+this file keeps its old key and is counted as dangling.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -3233,7 +3338,37 @@ imports the vectors anyway; <code>"regenerate"</code> drops them so
             </td>
             <td>
               <div class="doc-md-description">
-                <p>record.</p>
+                <p>record. Under <code>preserve_keys=False</code> its <code>key_map</code> holds every</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="ImportReport
+
+
+  
+      dataclass
+   (popoto.transfer.results.ImportReport)" href="../results/#popoto.transfer.results.ImportReport">ImportReport</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>mapping this run actually wrote, merged over the seed -- mints whose</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="ImportReport
+
+
+  
+      dataclass
+   (popoto.transfer.results.ImportReport)" href="../results/#popoto.transfer.results.ImportReport">ImportReport</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>record did not land are pruned; see :class:<code>ImportReport</code>.</p>
               </div>
             </td>
           </tr>
@@ -3256,7 +3391,9 @@ imports the vectors anyway; <code>"regenerate"</code> drops them so
             </td>
             <td>
               <div class="doc-md-description">
-                <p>If a policy argument is not one of its allowed values.</p>
+                <p>If a policy argument is not one of its allowed values, or
+if <code>key_map</code> is passed with <code>preserve_keys=True</code> (there is
+nothing to remap when no key changes).</p>
               </div>
             </td>
           </tr>
@@ -3268,8 +3405,10 @@ imports the vectors anyway; <code>"regenerate"</code> drops them so
               <div class="doc-md-description">
                 <p>If the manifest is missing, the format version is
 unsupported, the model name does not match, an embedding
-provenance mismatch is refused, or <code>on_conflict="error"</code> hits a
-collision. The first three raise before anything is written.</p>
+provenance mismatch is refused, <code>preserve_keys=False</code> is asked
+of a model whose key is not exactly one <code>auto=True</code> field, or
+<code>on_conflict="error"</code> hits a collision. Every one of those but
+the last raises before anything is written.</p>
               </div>
             </td>
           </tr>
@@ -3293,225 +3432,333 @@ print(report.summary())</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/transfer/import_.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-315">315</a></span>
-<span class="normal"><a href="#__codelineno-0-316">316</a></span>
-<span class="normal"><a href="#__codelineno-0-317">317</a></span>
-<span class="normal"><a href="#__codelineno-0-318">318</a></span>
-<span class="normal"><a href="#__codelineno-0-319">319</a></span>
-<span class="normal"><a href="#__codelineno-0-320">320</a></span>
-<span class="normal"><a href="#__codelineno-0-321">321</a></span>
-<span class="normal"><a href="#__codelineno-0-322">322</a></span>
-<span class="normal"><a href="#__codelineno-0-323">323</a></span>
-<span class="normal"><a href="#__codelineno-0-324">324</a></span>
-<span class="normal"><a href="#__codelineno-0-325">325</a></span>
-<span class="normal"><a href="#__codelineno-0-326">326</a></span>
-<span class="normal"><a href="#__codelineno-0-327">327</a></span>
-<span class="normal"><a href="#__codelineno-0-328">328</a></span>
-<span class="normal"><a href="#__codelineno-0-329">329</a></span>
-<span class="normal"><a href="#__codelineno-0-330">330</a></span>
-<span class="normal"><a href="#__codelineno-0-331">331</a></span>
-<span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span>
-<span class="normal"><a href="#__codelineno-0-335">335</a></span>
-<span class="normal"><a href="#__codelineno-0-336">336</a></span>
-<span class="normal"><a href="#__codelineno-0-337">337</a></span>
-<span class="normal"><a href="#__codelineno-0-338">338</a></span>
-<span class="normal"><a href="#__codelineno-0-339">339</a></span>
-<span class="normal"><a href="#__codelineno-0-340">340</a></span>
-<span class="normal"><a href="#__codelineno-0-341">341</a></span>
-<span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span>
-<span class="normal"><a href="#__codelineno-0-344">344</a></span>
-<span class="normal"><a href="#__codelineno-0-345">345</a></span>
-<span class="normal"><a href="#__codelineno-0-346">346</a></span>
-<span class="normal"><a href="#__codelineno-0-347">347</a></span>
-<span class="normal"><a href="#__codelineno-0-348">348</a></span>
-<span class="normal"><a href="#__codelineno-0-349">349</a></span>
-<span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span>
-<span class="normal"><a href="#__codelineno-0-352">352</a></span>
-<span class="normal"><a href="#__codelineno-0-353">353</a></span>
-<span class="normal"><a href="#__codelineno-0-354">354</a></span>
-<span class="normal"><a href="#__codelineno-0-355">355</a></span>
-<span class="normal"><a href="#__codelineno-0-356">356</a></span>
-<span class="normal"><a href="#__codelineno-0-357">357</a></span>
-<span class="normal"><a href="#__codelineno-0-358">358</a></span>
-<span class="normal"><a href="#__codelineno-0-359">359</a></span>
-<span class="normal"><a href="#__codelineno-0-360">360</a></span>
-<span class="normal"><a href="#__codelineno-0-361">361</a></span>
-<span class="normal"><a href="#__codelineno-0-362">362</a></span>
-<span class="normal"><a href="#__codelineno-0-363">363</a></span>
-<span class="normal"><a href="#__codelineno-0-364">364</a></span>
-<span class="normal"><a href="#__codelineno-0-365">365</a></span>
-<span class="normal"><a href="#__codelineno-0-366">366</a></span>
-<span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span>
-<span class="normal"><a href="#__codelineno-0-369">369</a></span>
-<span class="normal"><a href="#__codelineno-0-370">370</a></span>
-<span class="normal"><a href="#__codelineno-0-371">371</a></span>
-<span class="normal"><a href="#__codelineno-0-372">372</a></span>
-<span class="normal"><a href="#__codelineno-0-373">373</a></span>
-<span class="normal"><a href="#__codelineno-0-374">374</a></span>
-<span class="normal"><a href="#__codelineno-0-375">375</a></span>
-<span class="normal"><a href="#__codelineno-0-376">376</a></span>
-<span class="normal"><a href="#__codelineno-0-377">377</a></span>
-<span class="normal"><a href="#__codelineno-0-378">378</a></span>
-<span class="normal"><a href="#__codelineno-0-379">379</a></span>
-<span class="normal"><a href="#__codelineno-0-380">380</a></span>
-<span class="normal"><a href="#__codelineno-0-381">381</a></span>
-<span class="normal"><a href="#__codelineno-0-382">382</a></span>
-<span class="normal"><a href="#__codelineno-0-383">383</a></span>
-<span class="normal"><a href="#__codelineno-0-384">384</a></span>
-<span class="normal"><a href="#__codelineno-0-385">385</a></span>
-<span class="normal"><a href="#__codelineno-0-386">386</a></span>
-<span class="normal"><a href="#__codelineno-0-387">387</a></span>
-<span class="normal"><a href="#__codelineno-0-388">388</a></span>
-<span class="normal"><a href="#__codelineno-0-389">389</a></span>
-<span class="normal"><a href="#__codelineno-0-390">390</a></span>
-<span class="normal"><a href="#__codelineno-0-391">391</a></span>
-<span class="normal"><a href="#__codelineno-0-392">392</a></span>
-<span class="normal"><a href="#__codelineno-0-393">393</a></span>
-<span class="normal"><a href="#__codelineno-0-394">394</a></span>
-<span class="normal"><a href="#__codelineno-0-395">395</a></span>
-<span class="normal"><a href="#__codelineno-0-396">396</a></span>
-<span class="normal"><a href="#__codelineno-0-397">397</a></span>
-<span class="normal"><a href="#__codelineno-0-398">398</a></span>
-<span class="normal"><a href="#__codelineno-0-399">399</a></span>
-<span class="normal"><a href="#__codelineno-0-400">400</a></span>
-<span class="normal"><a href="#__codelineno-0-401">401</a></span>
-<span class="normal"><a href="#__codelineno-0-402">402</a></span>
-<span class="normal"><a href="#__codelineno-0-403">403</a></span>
-<span class="normal"><a href="#__codelineno-0-404">404</a></span>
-<span class="normal"><a href="#__codelineno-0-405">405</a></span>
-<span class="normal"><a href="#__codelineno-0-406">406</a></span>
-<span class="normal"><a href="#__codelineno-0-407">407</a></span>
-<span class="normal"><a href="#__codelineno-0-408">408</a></span>
-<span class="normal"><a href="#__codelineno-0-409">409</a></span>
-<span class="normal"><a href="#__codelineno-0-410">410</a></span>
-<span class="normal"><a href="#__codelineno-0-411">411</a></span>
-<span class="normal"><a href="#__codelineno-0-412">412</a></span>
-<span class="normal"><a href="#__codelineno-0-413">413</a></span>
-<span class="normal"><a href="#__codelineno-0-414">414</a></span>
-<span class="normal"><a href="#__codelineno-0-415">415</a></span>
-<span class="normal"><a href="#__codelineno-0-416">416</a></span>
-<span class="normal"><a href="#__codelineno-0-417">417</a></span>
-<span class="normal"><a href="#__codelineno-0-418">418</a></span>
-<span class="normal"><a href="#__codelineno-0-419">419</a></span>
-<span class="normal"><a href="#__codelineno-0-420">420</a></span>
-<span class="normal"><a href="#__codelineno-0-421">421</a></span>
-<span class="normal"><a href="#__codelineno-0-422">422</a></span>
-<span class="normal"><a href="#__codelineno-0-423">423</a></span>
-<span class="normal"><a href="#__codelineno-0-424">424</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="k">def</span><span class="w"> </span><span class="nf">import_records</span><span class="p">(</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">"type[Model]"</span><span class="p">,</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">TextIO</span><span class="p">,</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="n">on_conflict</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"error"</span><span class="p">,</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">on_write_gate</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"reject"</span><span class="p">,</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="n">on_embedding_mismatch</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"error"</span><span class="p">,</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ImportReport</span><span class="p">:</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="w">    </span><span class="sd">"""Import records from a JSON Lines export into ``model_class``.</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    Keys are always preserved, so re-running an import converges rather than</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    duplicating, and every ``Relationship`` value and application-level key</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    pointer keeps pointing at the same record.</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">        model_class: The destination Model class.</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        stream: A text file-like object positioned at the manifest line.</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        on_conflict: What to do when the destination already holds a key.</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">            ``"error"`` (default) refuses -- the only mode that cannot</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">            clobber; ``"skip"`` leaves the existing record untouched;</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">            ``"overwrite"`` replaces it, which makes a re-run idempotent.</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        on_write_gate: ``"reject"`` (default) honors the destination model's</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">            ``WriteFilterMixin`` gate and reports every refusal;</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">            ``"bypass"`` writes around it. Bypass only disables Popoto's own</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">            gate -- an application's ``save()`` override returning falsy still</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">            surfaces as a rejection.</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">        on_embedding_mismatch: ``"error"`` (default) refuses when the export's</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">            provider fingerprint differs from the destination's; ``"carry"``</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">            imports the vectors anyway; ``"regenerate"`` drops them so</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">            ``on_save`` re-embeds.</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">        An :class:`ImportReport` accounting for every record line as landed,</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">        skipped, rejected, errored, or partial, with a reason per non-landed</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">        record.</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">        ValueError: If a policy argument is not one of its allowed values.</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">        ModelException: If the manifest is missing, the format version is</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">            unsupported, the model name does not match, an embedding</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">            provenance mismatch is refused, or ``on_conflict="error"`` hits a</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">            collision. The first three raise before anything is written.</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">    Note:</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">        Import is not atomic across records and assumes the destination is not</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">        under concurrent write for this model. The recovery path for an</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a><span class="sd">        interrupted run is to re-run with ``on_conflict="overwrite"``.</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">        with open("memories.jsonl") as fh:</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="sd">            report = Memory.import_records(fh, on_conflict="overwrite")</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">        print(report.summary())</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    """</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">"on_conflict"</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">_ON_CONFLICT</span><span class="p">)</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">"on_write_gate"</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">_ON_WRITE_GATE</span><span class="p">)</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="n">_check_choice</span><span class="p">(</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>        <span class="s2">"on_embedding_mismatch"</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">_ON_EMBEDDING_MISMATCH</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="p">)</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>
-<a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">ImportReport</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="n">lines</span> <span class="o">=</span> <span class="n">iter_lines</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="n">manifest</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="k">for</span> <span class="n">_line_number</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a>            <span class="n">manifest</span> <span class="o">=</span> <span class="n">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a>        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="sa">f</span><span class="s2">"first line of the export is not valid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a>            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a>        <span class="k">break</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>    <span class="n">manifest</span> <span class="o">=</span> <span class="n">_validate_manifest</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">manifest</span><span class="p">)</span>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a>    <span class="n">report</span><span class="o">.</span><span class="n">source_matched_count</span> <span class="o">=</span> <span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"matched_count"</span><span class="p">)</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>    <span class="n">report</span><span class="o">.</span><span class="n">fidelity</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"fields"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"mixins"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="p">}</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a>    <span class="n">drop_state</span> <span class="o">=</span> <span class="n">_resolve_embedding_provenance</span><span class="p">(</span>
-<a id="__codelineno-0-393" name="__codelineno-0-393"></a>        <span class="n">model_class</span><span class="p">,</span> <span class="n">manifest</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">report</span>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="p">)</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a>    <span class="n">batch</span><span class="p">:</span> <span class="s2">"list[dict[str, Any]]"</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="k">for</span> <span class="n">line_number</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>            <span class="n">record</span> <span class="o">=</span> <span class="n">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a>        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">ERRORED</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"malformed JSON line: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"key"</span><span class="p">)</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">key</span><span class="p">:</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a>                <span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a>                <span class="n">ERRORED</span><span class="p">,</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>                <span class="s2">"record has no usable 'key'; keys are always preserved, so a "</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>                <span class="s2">"record without one cannot be placed"</span><span class="p">,</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a>            <span class="p">)</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="n">batch</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">BATCH_SIZE</span><span class="p">:</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="n">_process_batch</span><span class="p">(</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>                <span class="n">model_class</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">report</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">drop_state</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>            <span class="p">)</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>            <span class="n">batch</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="k">if</span> <span class="n">batch</span><span class="p">:</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="n">_process_batch</span><span class="p">(</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>            <span class="n">model_class</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">report</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">drop_state</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>        <span class="p">)</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>    <span class="k">return</span> <span class="n">report</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-712">712</a></span>
+<span class="normal"><a href="#__codelineno-0-713">713</a></span>
+<span class="normal"><a href="#__codelineno-0-714">714</a></span>
+<span class="normal"><a href="#__codelineno-0-715">715</a></span>
+<span class="normal"><a href="#__codelineno-0-716">716</a></span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span>
+<span class="normal"><a href="#__codelineno-0-720">720</a></span>
+<span class="normal"><a href="#__codelineno-0-721">721</a></span>
+<span class="normal"><a href="#__codelineno-0-722">722</a></span>
+<span class="normal"><a href="#__codelineno-0-723">723</a></span>
+<span class="normal"><a href="#__codelineno-0-724">724</a></span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span>
+<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+<span class="normal"><a href="#__codelineno-0-727">727</a></span>
+<span class="normal"><a href="#__codelineno-0-728">728</a></span>
+<span class="normal"><a href="#__codelineno-0-729">729</a></span>
+<span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span>
+<span class="normal"><a href="#__codelineno-0-732">732</a></span>
+<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span>
+<span class="normal"><a href="#__codelineno-0-735">735</a></span>
+<span class="normal"><a href="#__codelineno-0-736">736</a></span>
+<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+<span class="normal"><a href="#__codelineno-0-738">738</a></span>
+<span class="normal"><a href="#__codelineno-0-739">739</a></span>
+<span class="normal"><a href="#__codelineno-0-740">740</a></span>
+<span class="normal"><a href="#__codelineno-0-741">741</a></span>
+<span class="normal"><a href="#__codelineno-0-742">742</a></span>
+<span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+<span class="normal"><a href="#__codelineno-0-753">753</a></span>
+<span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span>
+<span class="normal"><a href="#__codelineno-0-757">757</a></span>
+<span class="normal"><a href="#__codelineno-0-758">758</a></span>
+<span class="normal"><a href="#__codelineno-0-759">759</a></span>
+<span class="normal"><a href="#__codelineno-0-760">760</a></span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span>
+<span class="normal"><a href="#__codelineno-0-773">773</a></span>
+<span class="normal"><a href="#__codelineno-0-774">774</a></span>
+<span class="normal"><a href="#__codelineno-0-775">775</a></span>
+<span class="normal"><a href="#__codelineno-0-776">776</a></span>
+<span class="normal"><a href="#__codelineno-0-777">777</a></span>
+<span class="normal"><a href="#__codelineno-0-778">778</a></span>
+<span class="normal"><a href="#__codelineno-0-779">779</a></span>
+<span class="normal"><a href="#__codelineno-0-780">780</a></span>
+<span class="normal"><a href="#__codelineno-0-781">781</a></span>
+<span class="normal"><a href="#__codelineno-0-782">782</a></span>
+<span class="normal"><a href="#__codelineno-0-783">783</a></span>
+<span class="normal"><a href="#__codelineno-0-784">784</a></span>
+<span class="normal"><a href="#__codelineno-0-785">785</a></span>
+<span class="normal"><a href="#__codelineno-0-786">786</a></span>
+<span class="normal"><a href="#__codelineno-0-787">787</a></span>
+<span class="normal"><a href="#__codelineno-0-788">788</a></span>
+<span class="normal"><a href="#__codelineno-0-789">789</a></span>
+<span class="normal"><a href="#__codelineno-0-790">790</a></span>
+<span class="normal"><a href="#__codelineno-0-791">791</a></span>
+<span class="normal"><a href="#__codelineno-0-792">792</a></span>
+<span class="normal"><a href="#__codelineno-0-793">793</a></span>
+<span class="normal"><a href="#__codelineno-0-794">794</a></span>
+<span class="normal"><a href="#__codelineno-0-795">795</a></span>
+<span class="normal"><a href="#__codelineno-0-796">796</a></span>
+<span class="normal"><a href="#__codelineno-0-797">797</a></span>
+<span class="normal"><a href="#__codelineno-0-798">798</a></span>
+<span class="normal"><a href="#__codelineno-0-799">799</a></span>
+<span class="normal"><a href="#__codelineno-0-800">800</a></span>
+<span class="normal"><a href="#__codelineno-0-801">801</a></span>
+<span class="normal"><a href="#__codelineno-0-802">802</a></span>
+<span class="normal"><a href="#__codelineno-0-803">803</a></span>
+<span class="normal"><a href="#__codelineno-0-804">804</a></span>
+<span class="normal"><a href="#__codelineno-0-805">805</a></span>
+<span class="normal"><a href="#__codelineno-0-806">806</a></span>
+<span class="normal"><a href="#__codelineno-0-807">807</a></span>
+<span class="normal"><a href="#__codelineno-0-808">808</a></span>
+<span class="normal"><a href="#__codelineno-0-809">809</a></span>
+<span class="normal"><a href="#__codelineno-0-810">810</a></span>
+<span class="normal"><a href="#__codelineno-0-811">811</a></span>
+<span class="normal"><a href="#__codelineno-0-812">812</a></span>
+<span class="normal"><a href="#__codelineno-0-813">813</a></span>
+<span class="normal"><a href="#__codelineno-0-814">814</a></span>
+<span class="normal"><a href="#__codelineno-0-815">815</a></span>
+<span class="normal"><a href="#__codelineno-0-816">816</a></span>
+<span class="normal"><a href="#__codelineno-0-817">817</a></span>
+<span class="normal"><a href="#__codelineno-0-818">818</a></span>
+<span class="normal"><a href="#__codelineno-0-819">819</a></span>
+<span class="normal"><a href="#__codelineno-0-820">820</a></span>
+<span class="normal"><a href="#__codelineno-0-821">821</a></span>
+<span class="normal"><a href="#__codelineno-0-822">822</a></span>
+<span class="normal"><a href="#__codelineno-0-823">823</a></span>
+<span class="normal"><a href="#__codelineno-0-824">824</a></span>
+<span class="normal"><a href="#__codelineno-0-825">825</a></span>
+<span class="normal"><a href="#__codelineno-0-826">826</a></span>
+<span class="normal"><a href="#__codelineno-0-827">827</a></span>
+<span class="normal"><a href="#__codelineno-0-828">828</a></span>
+<span class="normal"><a href="#__codelineno-0-829">829</a></span>
+<span class="normal"><a href="#__codelineno-0-830">830</a></span>
+<span class="normal"><a href="#__codelineno-0-831">831</a></span>
+<span class="normal"><a href="#__codelineno-0-832">832</a></span>
+<span class="normal"><a href="#__codelineno-0-833">833</a></span>
+<span class="normal"><a href="#__codelineno-0-834">834</a></span>
+<span class="normal"><a href="#__codelineno-0-835">835</a></span>
+<span class="normal"><a href="#__codelineno-0-836">836</a></span>
+<span class="normal"><a href="#__codelineno-0-837">837</a></span>
+<span class="normal"><a href="#__codelineno-0-838">838</a></span>
+<span class="normal"><a href="#__codelineno-0-839">839</a></span>
+<span class="normal"><a href="#__codelineno-0-840">840</a></span>
+<span class="normal"><a href="#__codelineno-0-841">841</a></span>
+<span class="normal"><a href="#__codelineno-0-842">842</a></span>
+<span class="normal"><a href="#__codelineno-0-843">843</a></span>
+<span class="normal"><a href="#__codelineno-0-844">844</a></span>
+<span class="normal"><a href="#__codelineno-0-845">845</a></span>
+<span class="normal"><a href="#__codelineno-0-846">846</a></span>
+<span class="normal"><a href="#__codelineno-0-847">847</a></span>
+<span class="normal"><a href="#__codelineno-0-848">848</a></span>
+<span class="normal"><a href="#__codelineno-0-849">849</a></span>
+<span class="normal"><a href="#__codelineno-0-850">850</a></span>
+<span class="normal"><a href="#__codelineno-0-851">851</a></span>
+<span class="normal"><a href="#__codelineno-0-852">852</a></span>
+<span class="normal"><a href="#__codelineno-0-853">853</a></span>
+<span class="normal"><a href="#__codelineno-0-854">854</a></span>
+<span class="normal"><a href="#__codelineno-0-855">855</a></span>
+<span class="normal"><a href="#__codelineno-0-856">856</a></span>
+<span class="normal"><a href="#__codelineno-0-857">857</a></span>
+<span class="normal"><a href="#__codelineno-0-858">858</a></span>
+<span class="normal"><a href="#__codelineno-0-859">859</a></span>
+<span class="normal"><a href="#__codelineno-0-860">860</a></span>
+<span class="normal"><a href="#__codelineno-0-861">861</a></span>
+<span class="normal"><a href="#__codelineno-0-862">862</a></span>
+<span class="normal"><a href="#__codelineno-0-863">863</a></span>
+<span class="normal"><a href="#__codelineno-0-864">864</a></span>
+<span class="normal"><a href="#__codelineno-0-865">865</a></span>
+<span class="normal"><a href="#__codelineno-0-866">866</a></span>
+<span class="normal"><a href="#__codelineno-0-867">867</a></span>
+<span class="normal"><a href="#__codelineno-0-868">868</a></span>
+<span class="normal"><a href="#__codelineno-0-869">869</a></span>
+<span class="normal"><a href="#__codelineno-0-870">870</a></span>
+<span class="normal"><a href="#__codelineno-0-871">871</a></span>
+<span class="normal"><a href="#__codelineno-0-872">872</a></span>
+<span class="normal"><a href="#__codelineno-0-873">873</a></span>
+<span class="normal"><a href="#__codelineno-0-874">874</a></span>
+<span class="normal"><a href="#__codelineno-0-875">875</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="k">def</span><span class="w"> </span><span class="nf">import_records</span><span class="p">(</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">"type[Model]"</span><span class="p">,</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a>    <span class="n">stream</span><span class="p">:</span> <span class="n">TextIO</span><span class="p">,</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="n">on_conflict</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"error"</span><span class="p">,</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="n">on_write_gate</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"reject"</span><span class="p">,</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>    <span class="n">on_embedding_mismatch</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"error"</span><span class="p">,</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="n">preserve_keys</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="n">key_map</span><span class="p">:</span> <span class="s2">"dict[str, str] | None"</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ImportReport</span><span class="p">:</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="w">    </span><span class="sd">"""Import records from a JSON Lines export into ``model_class``.</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">    By default keys are preserved, so re-running an import converges rather</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">    than duplicating, and every ``Relationship`` value and application-level</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">    key pointer keeps pointing at the same record.</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">    ``preserve_keys=False`` regenerates every key instead, and rewrites the</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">    references it can. Three properties of that mode matter before choosing</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">    it:</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">    - **It is not idempotent.** Every other mode converges on a re-run; this</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">      one mints fresh keys each time, so running it twice against the same</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">      destination leaves two copies of every record.</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">    - **The remap is partial, by design.** Only fields that *declare* a</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">      reference are rewritten -- ``Relationship`` is the only one Popoto</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">      ships. An application-level pointer stored in a plain</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="sd">      ``Field(type=str)`` is indistinguishable from ordinary text, is never</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">      rewritten, and will dangle. Popoto does not guess: a heuristic that</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">      scanned strings for key-shaped values would turn a documented</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">      limitation into occasional silent corruption. The report names both</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">      counts so a dangling reference is visible in the run that created it.</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">    - **It requires a mintable key.** The destination model's key must be</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">      exactly one ``auto=True`` field; anything else is refused before a byte</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">      is written.</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        model_class: The destination Model class.</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">        stream: A text file-like object positioned at the manifest line.</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">        on_conflict: What to do when the destination already holds a key.</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">            ``"error"`` (default) refuses -- the only mode that cannot</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">            clobber; ``"skip"`` leaves the existing record untouched;</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">            ``"overwrite"`` replaces it, which makes a re-run idempotent.</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">        on_write_gate: ``"reject"`` (default) honors the destination model's</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">            ``WriteFilterMixin`` gate and reports every refusal;</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">            ``"bypass"`` writes around it. Bypass only disables Popoto's own</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">            gate -- an application's ``save()`` override returning falsy still</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">            surfaces as a rejection.</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">        on_embedding_mismatch: ``"error"`` (default) refuses when the export's</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a><span class="sd">            provider fingerprint differs from the destination's; ``"carry"``</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a><span class="sd">            imports the vectors anyway; ``"regenerate"`` drops them so</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a><span class="sd">            ``on_save`` re-embeds.</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a><span class="sd">        preserve_keys: ``True`` (default) carries each record's key verbatim.</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a><span class="sd">            ``False`` mints a new key per record and remaps declared</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a><span class="sd">            references onto it -- see the three caveats above. Under</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a><span class="sd">            ``False``, ``on_conflict`` still applies but covers only the</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a><span class="sd">            vanishing-probability case of a minted key colliding with one</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a><span class="sd">            already on the destination, not the merge semantics it has when</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a><span class="sd">            keys are preserved.</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a><span class="sd">        key_map: Only valid with ``preserve_keys=False``: a seed of old-to-new</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a><span class="sd">            ``redis_key`` mappings from a previous import of *another* model,</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a><span class="sd">            so a multi-model migration can carry cross-model references</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a><span class="sd">            across runs. Feed run N's ``ImportReport.key_map`` in as run</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a><span class="sd">            N+1's seed. A reference whose target is in no seed and not in</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="sd">            this file keeps its old key and is counted as dangling.</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">        An :class:`ImportReport` accounting for every record line as landed,</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a><span class="sd">        skipped, rejected, errored, or partial, with a reason per non-landed</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a><span class="sd">        record. Under ``preserve_keys=False`` its ``key_map`` holds every</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a><span class="sd">        mapping this run actually wrote, merged over the seed -- mints whose</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a><span class="sd">        record did not land are pruned; see :class:`ImportReport`.</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a><span class="sd">        ValueError: If a policy argument is not one of its allowed values, or</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a><span class="sd">            if ``key_map`` is passed with ``preserve_keys=True`` (there is</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a><span class="sd">            nothing to remap when no key changes).</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a><span class="sd">        ModelException: If the manifest is missing, the format version is</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a><span class="sd">            unsupported, the model name does not match, an embedding</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a><span class="sd">            provenance mismatch is refused, ``preserve_keys=False`` is asked</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a><span class="sd">            of a model whose key is not exactly one ``auto=True`` field, or</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="sd">            ``on_conflict="error"`` hits a collision. Every one of those but</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="sd">            the last raises before anything is written.</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a><span class="sd">        Import is not atomic across records and assumes the destination is not</span>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a><span class="sd">        under concurrent write for this model. The recovery path for an</span>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a><span class="sd">        interrupted run is to re-run with ``on_conflict="overwrite"``.</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a><span class="sd">        with open("memories.jsonl") as fh:</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a><span class="sd">            report = Memory.import_records(fh, on_conflict="overwrite")</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a><span class="sd">        print(report.summary())</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a><span class="sd">    """</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">"on_conflict"</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">_ON_CONFLICT</span><span class="p">)</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a>    <span class="n">_check_choice</span><span class="p">(</span><span class="s2">"on_write_gate"</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">_ON_WRITE_GATE</span><span class="p">)</span>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a>    <span class="n">_check_choice</span><span class="p">(</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>        <span class="s2">"on_embedding_mismatch"</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">_ON_EMBEDDING_MISMATCH</span>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a>    <span class="p">)</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a>    <span class="k">if</span> <span class="n">preserve_keys</span> <span class="ow">and</span> <span class="n">key_map</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>            <span class="s2">"key_map is only meaningful with preserve_keys=False; when keys "</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>            <span class="s2">"are preserved no reference needs remapping"</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>        <span class="p">)</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>    <span class="n">report</span> <span class="o">=</span> <span class="n">ImportReport</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a>    <span class="n">lines</span> <span class="o">=</span> <span class="n">iter_lines</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a>    <span class="n">manifest</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>    <span class="k">for</span> <span class="n">_line_number</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>            <span class="n">manifest</span> <span class="o">=</span> <span class="n">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>                <span class="sa">f</span><span class="s2">"first line of the export is not valid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a>        <span class="k">break</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>    <span class="n">manifest</span> <span class="o">=</span> <span class="n">_validate_manifest</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">manifest</span><span class="p">)</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>    <span class="n">report</span><span class="o">.</span><span class="n">source_matched_count</span> <span class="o">=</span> <span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"matched_count"</span><span class="p">)</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>    <span class="n">report</span><span class="o">.</span><span class="n">fidelity</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"fields"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="o">**</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"mixins"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}),</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>    <span class="p">}</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>    <span class="n">drop_state</span> <span class="o">=</span> <span class="n">_resolve_embedding_provenance</span><span class="p">(</span>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>        <span class="n">model_class</span><span class="p">,</span> <span class="n">manifest</span><span class="p">,</span> <span class="n">on_embedding_mismatch</span><span class="p">,</span> <span class="n">report</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>    <span class="p">)</span>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a>
+<a id="__codelineno-0-838" name="__codelineno-0-838"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">preserve_keys</span><span class="p">:</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a>        <span class="n">working_map</span><span class="p">:</span> <span class="s2">"dict[str, str]"</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">key_map</span> <span class="ow">or</span> <span class="p">{})</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a>        <span class="n">report</span><span class="o">.</span><span class="n">key_map</span> <span class="o">=</span> <span class="n">working_map</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a>        <span class="n">_import_regenerating</span><span class="p">(</span>
+<a id="__codelineno-0-842" name="__codelineno-0-842"></a>            <span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-843" name="__codelineno-0-843"></a>            <span class="n">lines</span><span class="p">,</span>
+<a id="__codelineno-0-844" name="__codelineno-0-844"></a>            <span class="n">report</span><span class="p">,</span>
+<a id="__codelineno-0-845" name="__codelineno-0-845"></a>            <span class="n">on_conflict</span><span class="p">,</span>
+<a id="__codelineno-0-846" name="__codelineno-0-846"></a>            <span class="n">on_write_gate</span><span class="p">,</span>
+<a id="__codelineno-0-847" name="__codelineno-0-847"></a>            <span class="n">drop_state</span><span class="p">,</span>
+<a id="__codelineno-0-848" name="__codelineno-0-848"></a>            <span class="n">working_map</span><span class="p">,</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>        <span class="p">)</span>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a>        <span class="k">return</span> <span class="n">report</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a>    <span class="n">batch</span><span class="p">:</span> <span class="s2">"list[dict[str, Any]]"</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a>    <span class="k">for</span> <span class="n">line_number</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a>            <span class="n">record</span> <span class="o">=</span> <span class="n">parse_line</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a>        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">ERRORED</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"malformed JSON line: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-859" name="__codelineno-0-859"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"key"</span><span class="p">)</span>
+<a id="__codelineno-0-860" name="__codelineno-0-860"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">key</span><span class="p">:</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a>            <span class="n">report</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">line_number</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">ERRORED</span><span class="p">,</span> <span class="n">_NO_KEY_REASON</span><span class="p">)</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>        <span class="n">batch</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">BATCH_SIZE</span><span class="p">:</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a>            <span class="n">_process_batch</span><span class="p">(</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>                <span class="n">model_class</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">report</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">drop_state</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>            <span class="p">)</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>            <span class="n">batch</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a>    <span class="k">if</span> <span class="n">batch</span><span class="p">:</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a>        <span class="n">_process_batch</span><span class="p">(</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a>            <span class="n">model_class</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">report</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">on_write_gate</span><span class="p">,</span> <span class="n">drop_state</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a>        <span class="p">)</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a>    <span class="k">return</span> <span class="n">report</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
