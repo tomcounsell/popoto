@@ -201,6 +201,14 @@ print(restaurant.cuisine)     # => "American"
 # Subsequent access uses the resolved instance -- no extra Redis call
 ```
 
+Because the stored value is a key string rather than an embedded object, an import
+that regenerates keys can repoint a relationship by rewriting that string, without
+ever loading the target. That is what `Relationship.remap_references` does under
+`import_records(..., preserve_keys=False)` and
+`popoto-transfer import --regenerate-keys`; a target that is not part of the same
+import keeps its old key and is reported as dangling. See
+[Regenerating keys on import](guides/export-import.md#regenerating-keys-on-import).
+
 ### Relationship Index
 
 Popoto maintains a Redis set for each relationship value so that

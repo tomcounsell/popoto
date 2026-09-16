@@ -8,9 +8,10 @@ not be preserved and why.
 The driver is model-generic: it holds no knowledge of any concrete field or
 mixin type. Fields and model-level mixins declare their own fidelity via the
 round-trip protocol on :class:`popoto.Field` (``roundtrip_policy``,
-``roundtrip_note``, ``export_state``, ``import_state``), all of which have
-working no-op defaults, so a field type Popoto does not yet have round-trips
-correctly with no change here.
+``roundtrip_note``, ``export_state``, ``import_state``, and -- for a field
+whose stored value is another record's ``redis_key`` -- ``remap_references``),
+all of which have working no-op defaults, so a field type Popoto does not yet
+have round-trips correctly with no change here.
 
 Example:
     with open("memories.jsonl", "w") as fh:
