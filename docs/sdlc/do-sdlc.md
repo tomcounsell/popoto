@@ -149,7 +149,10 @@ environment.** Reproduce a subagent's metric before relaying it.
 ## Not declared here
 
 Popoto uses the generic defaults for: multi-judge consensus, bot review
-identity, cross-vendor judging, the verification-table runner, plan-checkbox
-writing, and cross-repo `gh` targeting. There is no popoto-local diagnostic
-dashboard; `sdlc-tool` state questions go through
-`sdlc-tool stage-query --issue-number N`.
+identity, cross-vendor judging, the verification-table runner, and
+cross-repo `gh` targeting. There is no popoto-local diagnostic dashboard;
+`sdlc-tool` state questions go through `sdlc-tool stage-query --issue-number N`.
+
+Plan-checkbox writing is **declared — disabled** here, not a generic
+default: see
+[`do-pr-review.md`](do-pr-review.md#the-reviewer-has-read-access-to-the-branch-and-only-read-access-642).

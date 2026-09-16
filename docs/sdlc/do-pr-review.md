@@ -64,16 +64,31 @@ sdlc-tool stage-marker --stage REVIEW --status in_progress \
 ```
 
 Not declared here (use the generic defaults): bot review identity, multi-judge
-consensus, cross-vendor judge, verification-table runner, plan-checkbox
-updater, cross-repo `gh` targeting. Post under the operator's `gh` credential;
-one reviewer, one verdict.
+consensus, cross-vendor judge, verification-table runner, cross-repo `gh`
+targeting. Post under the operator's `gh` credential; one reviewer, one
+verdict.
+
+Plan-checkbox updater: **declared — disabled**, not a generic default. See
+"The reviewer has READ access to the branch, and only read access" below.
 
 ## The reviewer has READ access to the branch, and only read access (#642)
 
 **`/do-pr-review` must not `git add`, `git commit`, or `git push` in this
 repo — on any path, including the plan file.**
 
-It used to. The generic plan-checkbox updater in the global skill's
+**Status as of 2026-09-16: this is the declared contract, not yet the enforced
+behavior.** The mechanism that would make it automatic lives outside this
+repository and has not landed: `~/.claude/skills/do-pr-review/sub-skills/post-review.md`
+§ 2.5 still runs `git commit -m "docs(#N): sync plan checkboxes with review
+verdict"` unconditionally (line 221, its "commit-then-post-review ordering —
+non-negotiable" rationale intact), and `~/.claude/skills/do-docs/SKILL.md` has
+no step that reads a `PLAN_CHECKBOX_SYNC` marker. Until both land, an operator
+running `/do-pr-review` in this repo must manually skip the generic
+checkbox-commit step, and plan checkboxes must be ticked by hand — checkbox
+syncing currently happens in neither place. This is tracked as follow-up work
+on #642; see `docs/plans/sdlc-642.md` Tasks A1–A4 (unchecked).
+
+It used to run unconditionally, with no way to opt out. The generic plan-checkbox updater in the global skill's
 `sub-skills/post-review.md` § 2.5 ticked `docs/plans/{slug}.md`'s Success
 Criteria and pushed a `docs(#N): sync plan checkboxes with review verdict`
 commit to the branch under review — authored under the operator's git identity,
@@ -93,28 +108,44 @@ a head that is stale the moment it is written. Observed on #635 / PR #637, where
 `_verdicts.REVIEW.head_sha` was recorded as `0229bfcc` — the reviewer's own
 commit.
 
-Plan-checkbox syncing now happens in **`/do-docs`**, after the verdict is
-recorded. The reviewer publishes the intended state as a one-line
-`<!-- PLAN_CHECKBOX_SYNC {...} -->` marker in the review body; the docs cascade
-parses it, applies the ticks, and carries them in its own commit. All of that
-is soft: an unmatched criterion leaves its checkbox alone.
+The design is for plan-checkbox syncing to move to **`/do-docs`**, after the
+verdict is recorded: the reviewer would publish the intended state as a
+one-line `<!-- PLAN_CHECKBOX_SYNC {...} -->` marker in the review body, and
+the docs cascade would parse it, apply the ticks, and carry them in its own
+commit, with an unmatched criterion left alone. **That `/do-docs` step does
+not exist yet** — see the status note above — so treat this paragraph as the
+target design, not current behavior.
 
 **Never re-run `finalize` to refresh a stale trailer.** Minting APPROVED
 against an uninspected head is self-clearing a review gate. If `selfcheck`
 reports `head_drift: "code"`, a source file genuinely changed after approval
 and the remedy is another REVIEW pass.
 
-### What still moves the head after REVIEW, and why that is now fine
+### What still moves the head after REVIEW, and what changes once #642's
+### control-plane half lands
 
 `/do-docs` is a mandatory stage that commits *after* REVIEW by design, so the
-head always moves before `/do-merge` evaluates the gate. Since #642 the gate
-classifies that drift instead of comparing SHAs for equality
-(`tools/sdlc_review_drift.py` in the control-plane repo): a range that strictly
-descends from the reviewed commit and touches only documentation
-(`docs/`, top-level `*.md`, `.claude/commands/`) is fresh and reports
-`head_drift: "docs_only"`. Everything else — a changed file under `src/` or
-`tests/`, `mkdocs.yml`, a force-push, or any error resolving the comparison —
-still fails closed as `REVIEW_TRAILER_MISSING`.
+head always moves before `/do-merge` evaluates the gate.
+
+**The classifier below is not live.** `tools/sdlc_review_drift.py` exists only
+on the unmerged `session/sdlc-642` branch of the control-plane repo
+(`~/src/ai`, commit `3e0d4b737`); `~/src/ai`'s `main` has no such file. Until
+that branch merges, `/do-merge`'s freshness check still compares SHAs for
+strict equality, so *any* post-review commit — including a docs-only
+`/do-docs` cascade — fails closed as `REVIEW_TRAILER_MISSING` and needs a
+fresh REVIEW pass.
+
+Once `tools/sdlc_review_drift.py` lands in the control-plane repo (unmerged as
+of 2026-09-16), the gate will classify that drift instead of comparing SHAs
+for equality: a range that strictly descends from the reviewed commit and
+touches only documentation (`docs/`, top-level `*.md`, `.claude/commands/`)
+will be fresh and report `head_drift: "docs_only"`. Everything else — a
+changed file under `src/` or `tests/`, `mkdocs.yml`, a force-push, or any
+error resolving the comparison — will still fail closed as
+`REVIEW_TRAILER_MISSING`. That docs-only path set is one notch more
+permissive than `guard-main-push.yml`'s human-ratified set and is proposed,
+not yet architect-ratified — see the open questions in
+`docs/plans/sdlc-642.md`.
 
 The consequence worth knowing before you plan a cascade: a `/do-docs` pass that
 fixes a **docstring inside a source file** produces code drift and will refuse
